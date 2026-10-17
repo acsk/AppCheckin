@@ -529,6 +529,7 @@ class MatriculaMigracaoService
             $usuario,
             $dataVencimento,
             $escolhaGateway,
+            (int) ($data['installment_count'] ?? $data['parcelas'] ?? 1),
         );
 
         if (isset($mpResult['erro'])) {
@@ -987,6 +988,7 @@ class MatriculaMigracaoService
         array $usuario,
         string $dataVencimento,
         ?array $escolhaGateway = null,
+        int $installmentCount = 1,
     ): array {
         $descricaoCompra = $novoCiclo
             ? "{$novoPlano['nome']} ({$cicloNome}) - {$novoPlano['modalidade_nome']}"
@@ -1009,6 +1011,7 @@ class MatriculaMigracaoService
             'descricao' => "Migração: {$descricaoCompra}",
             'valor' => $valorParcela,
             'max_parcelas' => 12,
+            'installment_count' => $installmentCount,
             'academia_nome' => $academiaNome,
             'apenas_cartao' => $isRecorrente,
             'metodo_pagamento' => $metodoPagamento,

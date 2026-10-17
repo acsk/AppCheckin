@@ -31,6 +31,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
+import ParcelasCartaoPicker from "@/src/components/ds/ParcelasCartaoPicker";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
@@ -556,7 +557,10 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
-  const executarMigracao = async (metodo: MetodoPagamentoOpcao) => {
+  const executarMigracao = async (
+    metodo: MetodoPagamentoOpcao,
+    installmentCount?: number,
+  ) => {
     if (!plano || !selectedCicloId) return;
     const token = await AsyncStorage.getItem("@appcheckin:token");
     if (!token) throw new Error("Token não encontrado");
@@ -575,6 +579,9 @@ export default function PlanoDetalhesScreen() {
         plano_id: plano.id,
         plano_ciclo_id: selectedCicloId,
         metodo_pagamento: metodo,
+        ...(metodo === "cartao" && installmentCount
+          ? { installment_count: installmentCount }
+          : {}),
       },
       escolherGateway,
       onEscolherGateway,
@@ -735,6 +742,7 @@ export default function PlanoDetalhesScreen() {
 
   const executarMigracaoConfirmada = async () => {
     const metodo = migracaoMetodoPendente;
+    const installmentCount = migracaoSimulacao?.taxa_cartao?.parcela_count;
     if (!metodo) {
       showErrorModal(
         "⚠️ Sessão expirada",
@@ -751,7 +759,7 @@ export default function PlanoDetalhesScreen() {
       setMigracaoModalVisible(false);
       setMigracaoSimulacao(null);
       setMigracaoMetodoPendente(null);
-      await executarMigracao(metodo);
+      await executarMigracao(metodo, installmentCount);
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Erro ao migrar plano";
@@ -764,7 +772,7 @@ export default function PlanoDetalhesScreen() {
 
   const handleContratar = async (
     metodo: MetodoPagamentoOpcao = "cartao",
-    opcoes?: { jaSimulouTaxa?: boolean; gateway?: string },
+    opcoes?: { jaSimulouTaxa?: boolean; gateway?: string; installment_count?: number },
   ) => {
     if (!plano || !selectedCicloId) return;
 
@@ -861,6 +869,9 @@ export default function PlanoDetalhesScreen() {
           plano_ciclo_id: selectedCiclo.id,
           metodo_pagamento: metodo,
           ...(gateway ? { gateway } : {}),
+          ...(metodo === "cartao" && opcoes?.installment_count
+            ? { installment_count: opcoes.installment_count }
+            : {}),
         },
         escolherGateway,
         onEscolherGateway,
@@ -1515,13 +1526,23 @@ export default function PlanoDetalhesScreen() {
                   <Text style={styles.migracaoLinha}>
                     Taxa do cartão (Asaas): {migracaoSimulacao.taxa_cartao.tarifa_formatada}
                   </Text>
+                  <ParcelasCartaoPicker
+                    simulacao={migracaoSimulacao.taxa_cartao}
+                    onChange={(next) =>
+                      setMigracaoSimulacao((prev) =>
+                        prev ? { ...prev, taxa_cartao: next } : prev,
+                      )
+                    }
+                  />
                 </>
               ) : null}
               <View style={styles.migracaoPagarBox}>
                 <Text style={styles.migracaoPagarLabel}>Você paga agora</Text>
                 <Text style={styles.migracaoPagarValor}>
                   {migracaoSimulacao?.taxa_cartao?.aplica_repasse
-                    ? migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
+                    ? (migracaoSimulacao.taxa_cartao.parcela_count ?? 1) > 1
+                      ? migracaoSimulacao.taxa_cartao.rotulo_parcela
+                      : migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
                     : migracaoSimulacao?.valor_parcela_formatado || "R$ 0,00"}
                 </Text>
               </View>
@@ -1559,7 +1580,11 @@ export default function PlanoDetalhesScreen() {
                     {Number(migracaoSimulacao?.valor_parcela ?? 0) <= 0
                       ? "Confirmar migração"
                       : migracaoSimulacao?.taxa_cartao?.aplica_repasse
-                        ? `Pagar ${migracaoSimulacao.taxa_cartao.valor_cobrar_formatado}`
+                        ? `Pagar ${
+                            (migracaoSimulacao.taxa_cartao.parcela_count ?? 1) > 1
+                              ? migracaoSimulacao.taxa_cartao.rotulo_parcela
+                              : migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
+                          }`
                         : migracaoSimulacao?.valor_parcela_formatado
                           ? `Pagar ${migracaoSimulacao.valor_parcela_formatado}`
                           : "Confirmar"}
@@ -1659,7 +1684,7 @@ export default function PlanoDetalhesScreen() {
             setTaxaCartaoSimulacao(null);
           }
         }}
-        onConfirm={() => {
+        onConfirm={(sim) => {
           void (async () => {
             setTaxaCartaoConfirmando(true);
             setTaxaCartaoVisible(false);
@@ -1667,6 +1692,7 @@ export default function PlanoDetalhesScreen() {
               await handleContratar("cartao", {
                 jaSimulouTaxa: true,
                 gateway: taxaCartaoGateway,
+                installment_count: sim.parcela_count ?? 1,
               });
             } finally {
               setTaxaCartaoConfirmando(false);

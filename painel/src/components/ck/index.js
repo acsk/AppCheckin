@@ -1,8 +1,10 @@
 /* AppCheckin — componentes do design system do painel (artefato "AppCheckin" / painel).
    Portado de project/components/bundle.js para módulo ES. Estilos: src/theme/ck.css + ck-tokens.css.
-   Extensões locais: ícones file-text, building-2 e menu; AppHeader com `leading`,
-   `notifications={false}` e trilha com onClick. */
-/* @ds-bundle: {"format":4,"namespace":"AppCheckin","components":[{"name":"AppShell"},{"name":"Sidebar"},{"name":"AppHeader"},{"name":"PageHeader"},{"name":"Button"},{"name":"IconButton"},{"name":"Switch"},{"name":"SegmentedControl"},{"name":"TextField"},{"name":"SecretField"},{"name":"Fieldset"},{"name":"Tabs"},{"name":"ChoiceCard"},{"name":"Card"},{"name":"ProviderTile"},{"name":"ProviderCard"},{"name":"ProviderLogo"},{"name":"SaveBar"},{"name":"Badge"},{"name":"Callout"},{"name":"Avatar"},{"name":"Icon"}]} */
+   Extensões locais: ícones file-text, building-2, menu, unlock e layers; AppHeader com `leading`,
+   `notifications={false}` e trilha com onClick. Matricula: `enrollment.statusLabel/statusTone`,
+   `actions` (substitui os botões do cabeçalho), `notices` (abaixo do cabeçalho), `children` (no fim),
+   fatura com `canSettle: false` + `settleNote`, e `invoiceMenu={false}` (sem editar/excluir). */
+/* @ds-bundle: {"format":4,"namespace":"AppCheckin","components":[{"name":"AppShell"},{"name":"Sidebar"},{"name":"AppHeader"},{"name":"PageHeader"},{"name":"Button"},{"name":"IconButton"},{"name":"Switch"},{"name":"SegmentedControl"},{"name":"TextField"},{"name":"SecretField"},{"name":"Fieldset"},{"name":"Tabs"},{"name":"ChoiceCard"},{"name":"Card"},{"name":"ProviderTile"},{"name":"ProviderCard"},{"name":"ProviderLogo"},{"name":"SaveBar"},{"name":"ActionMenu"},{"name":"Modal"},{"name":"SelectField"},{"name":"Matricula"},{"name":"PacoteMatricula"},{"name":"DescontoModal"},{"name":"Badge"},{"name":"Callout"},{"name":"Avatar"},{"name":"Icon"}]} */
 import React from 'react';
 
 
@@ -24,6 +26,8 @@ import React from 'react';
     'file-text': [P('M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'), P('M14 2v4a2 2 0 0 0 2 2h4'), P('M10 9H8'), P('M16 13H8'), P('M16 17H8')],
     'building-2': [P('M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z'), P('M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2'), P('M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2'), P('M10 6h4'), P('M10 10h4'), P('M10 14h4'), P('M10 18h4')],
     'menu': [P('M4 12h16'), P('M4 6h16'), P('M4 18h16')],
+    'unlock': [R(3, 11, 18, 11, 2), P('M7 11V7a5 5 0 0 1 9.9-1')],
+    'layers': [P('m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z'), P('m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65'), P('m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65')],
     'layout-dashboard': [R(3, 3, 7, 9, 1), R(14, 3, 7, 5, 1), R(14, 12, 7, 9, 1), R(3, 16, 7, 5, 1)],
     'wrench': [P('M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z')],
     'wallet': [P('M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1'), P('M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4')],
@@ -56,7 +60,22 @@ import React from 'react';
     'x': [P('M18 6 6 18'), P('m6 6 12 12')],
     'loader': [P('M21 12a9 9 0 1 1-6.22-8.56')],
     'power': [P('M12 2v10'), P('M18.4 6.6a9 9 0 1 1-12.77.04')],
-    'plus': [P('M5 12h14'), P('M12 5v14')]
+    'plus': [P('M5 12h14'), P('M12 5v14')],
+    'arrow-left': [P('m12 19-7-7 7-7'), P('M19 12H5')],
+    'calendar': [R(3, 4, 18, 18, 2), P('M16 2v4'), P('M8 2v4'), P('M3 10h18')],
+    'clock': [Ci(12, 12, 10), P('M12 6v6l4 2')],
+    'waves': [P('M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'), P('M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'), P('M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1')],
+    'more-horizontal': [Ci(12, 12, 1), Ci(19, 12, 1), Ci(5, 12, 1)],
+    'refresh-cw': [P('M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8'), P('M21 3v5h-5'), P('M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16'), P('M8 16H3v5')],
+    'repeat': [P('m17 2 4 4-4 4'), P('M3 11v-1a4 4 0 0 1 4-4h14'), P('m7 22-4-4 4-4'), P('M21 13v1a4 4 0 0 1-4 4H3')],
+    'trash': [P('M3 6h18'), P('M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'), P('M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2')],
+    'percent': [P('M19 5 5 19'), Ci(6.5, 6.5, 2.5), Ci(17.5, 17.5, 2.5)],
+    'receipt': [P('M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z'), P('M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8'), P('M12 17.5v-11')],
+    'ban': [Ci(12, 12, 10), P('m4.9 4.9 14.2 14.2')],
+    'package': [P('m7.5 4.27 9 5.15'), P('M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z'), P('m3.3 7 8.7 5 8.7-5'), P('M12 22V12')],
+    'users': [P('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'), Ci(9, 7, 4), P('M22 21v-2a4 4 0 0 0-3-3.87'), P('M16 3.13a4 4 0 0 1 0 7.75')],
+    'user-check': [P('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'), Ci(9, 7, 4), P('m16 11 2 2 4-4')],
+    'arrow-right': [P('M5 12h14'), P('m12 5 7 7-7 7')]
   };
 
   function Icon(p) {
@@ -219,7 +238,8 @@ import React from 'react';
     var icon = p.icon || ({ info: 'info', warning: 'alert-triangle', success: 'check-circle', danger: 'alert-triangle', neutral: 'info' })[tone];
     return h('div', { className: cx('ck-callout', 'ck-callout--' + tone, p.className), role: tone === 'danger' ? 'alert' : 'note' },
       h(Icon, { name: icon, size: 16, className: 'ck-callout__icon' }),
-      h('div', null, p.title ? h('span', { className: 'ck-callout__title' }, p.title) : null, p.children ? h('span', { className: 'ck-callout__text' }, p.children) : null));
+      h('div', { style: { flex: 1, minWidth: 0 } }, p.title ? h('span', { className: 'ck-callout__title' }, p.title) : null, p.children ? h('span', { className: 'ck-callout__text' }, p.children) : null),
+      p.action ? h('div', { className: 'ck-callout__action' }, p.action) : null);
   }
 
   function Card(p) {
@@ -312,6 +332,365 @@ import React from 'react';
       h('span', { className: 'ck-savebar__text' }, p.message || 'Você tem alterações não salvas'),
       h(Button, { variant: 'ghost', onClick: p.onDiscard }, p.discardLabel || 'Descartar'),
       h(Button, { variant: 'primary', icon: 'save', loading: p.saving, onClick: p.onSave }, p.saving ? 'Salvando…' : (p.saveLabel || 'Salvar alterações')));
+  }
+
+
+  function ActionMenu(p) {
+    var o = useState(false), open = o[0];
+    var ref = useRef(null);
+    useEffect(function () {
+      if (!open) return;
+      function off(e) { if (ref.current && !ref.current.contains(e.target)) o[1](false); }
+      function esc(e) { if (e.key === 'Escape') o[1](false); }
+      document.addEventListener('mousedown', off); document.addEventListener('keydown', esc);
+      return function () { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc); };
+    }, [open]);
+    return h('div', { className: 'ck-actionmenu', ref: ref },
+      h(IconButton, { icon: p.icon || 'more-horizontal', label: p.label || 'Mais ações', size: p.size || 'sm', variant: p.variant, 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: function () { o[1](!open); } }),
+      open ? h('div', { className: 'ck-menu ck-menu--compact', role: 'menu' }, (p.items || []).map(function (it, i) {
+        if (it === '-') return h('div', { key: i, className: 'ck-menu__sep', role: 'separator' });
+        return h('button', { key: i, type: 'button', role: 'menuitem', className: cx('ck-menu__item', it.danger && 'ck-menu__item--danger'), disabled: it.disabled,
+          onClick: function () { o[1](false); if (it.onClick) it.onClick(); } }, it.icon ? h(Icon, { name: it.icon, size: 16 }) : null, it.label);
+      })) : null);
+  }
+
+  /* ---------- Matrícula: tela completa de uma matrícula ---------- */
+  var BRL = typeof Intl !== 'undefined' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }) : null;
+  function money(v) { return BRL ? BRL.format(v || 0) : 'R$ ' + (v || 0).toFixed(2); }
+  function pd(iso) { if (!iso) return null; var a = String(iso).split('-'); return new Date(+a[0], +a[1] - 1, +a[2]); }
+  function fdate(iso) { if (!iso) return '—'; var a = String(iso).split('-'); return a[2] + '/' + a[1] + '/' + a[0]; }
+  function dayDiff(a, b) { return Math.round((pd(b) - pd(a)) / 86400000); }
+  var ENROLL_STATUS = { pendente: ['warning', 'Pagamento pendente'], ativa: ['success', 'Ativa'], bloqueada: ['danger', 'Bloqueada'], cancelada: ['neutral', 'Cancelada'] };
+  var INV_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'] };
+
+  function MtPlanCard(p) {
+    var e = p.enrollment, today = p.today;
+    var total = Math.max(1, dayDiff(e.startDate, e.accessUntil));
+    var left = Math.max(0, dayDiff(today, e.accessUntil));
+    var used = Math.min(total, Math.max(0, total - left));
+    var pct = Math.round(used / total * 100);
+    var c = e.cycle || {};
+    return h('section', { className: 'ck-mt-plan', 'aria-label': 'Plano' },
+      h('div', { className: 'ck-mt-plan__top' },
+        h('span', { className: 'ck-mt-plan__icon', 'aria-hidden': true }, h(Icon, { name: e.modalityIcon || 'dumbbell', size: 20, strokeWidth: 2 })),
+        h('div', { style: { flex: 1, minWidth: 0 } },
+          h('h2', { className: 'ck-mt-plan__name' }, e.modality),
+          h('span', { className: 'ck-mt-plan__freq' }, e.frequency)),
+        c.label ? h('span', { className: 'ck-mt-plan__chip' }, c.label) : null),
+      h('div', { className: 'ck-mt-plan__price' },
+        h('span', { className: 'ck-mt-plan__value' }, money(c.amount)),
+        h('span', { className: 'ck-mt-plan__per' }, c.per || 'por mês')),
+      c.monthlyEquivalent != null && c.monthlyEquivalent !== c.amount ? h('p', { className: 'ck-mt-plan__note' }, 'Equivale a ' + money(c.monthlyEquivalent) + ' por mês') : null,
+      h('div', { className: 'ck-mt-plan__access' },
+        h('div', { className: 'ck-mt-plan__row' },
+          h('span', null, 'Acesso'),
+          h('strong', null, left === 0 ? 'Encerra hoje' : left + (left === 1 ? ' dia restante' : ' dias restantes'))),
+        h('div', { className: 'ck-mt-plan__track', role: 'progressbar', 'aria-label': 'Período de acesso usado', 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 },
+          h('span', { className: 'ck-mt-plan__fill', style: { width: Math.max(pct, 2) + '%' } })),
+        h('div', { className: 'ck-mt-plan__row ck-mt-plan__dates' }, h('span', null, fdate(e.startDate)), h('span', null, fdate(e.accessUntil)))),
+      h('dl', { className: 'ck-mt-plan__facts' },
+        h('div', null, h('dt', null, 'Duração'), h('dd', null, e.duration)),
+        h('div', null, h('dt', null, 'Próximo vencimento'), h('dd', null, fdate(c.nextDue)))));
+  }
+
+  function MtFinance(p) {
+    var inv = (p.invoices || []).filter(function (i) { return i.status !== 'cancelado'; });
+    var sum = function (st) { return inv.filter(function (i) { return i.status === st; }).reduce(function (a, i) { return a + (i.amount || 0); }, 0); };
+    var paid = sum('pago'), wait = sum('aguardando'), late = sum('atrasado'), total = paid + wait + late;
+    var pc = function (v) { return total ? (v / total * 100) : 0; };
+    var rows = [['success', 'Pago', paid], ['warning', 'Aguardando', wait], ['danger', 'Atrasado', late]];
+    return h('section', { className: 'ck-card ck-mt-box', 'aria-label': 'Resumo financeiro' },
+      h('div', { className: 'ck-mt-box__head' },
+        h('h2', { className: 'ck-mt-box__title' }, 'Resumo financeiro'),
+        h('span', { className: 'ck-mt-box__aside' }, Math.round(pc(paid)) + '% pago')),
+      h('div', { className: 'ck-mt-bar', role: 'img', 'aria-label': rows.map(function (r) { return r[1] + ' ' + money(r[2]); }).join(', ') },
+        rows.map(function (r) { return r[2] > 0 ? h('span', { key: r[1], className: 'ck-mt-bar__seg ck-mt-bar__seg--' + r[0], style: { width: pc(r[2]) + '%' } }) : null; })),
+      h('ul', { className: 'ck-mt-legend' }, rows.map(function (r) {
+        return h('li', { key: r[1], className: r[2] === 0 ? 'is-zero' : null },
+          h('span', { className: 'ck-mt-legend__key ck-mt-legend__key--' + r[0], 'aria-hidden': true }),
+          h('span', { className: 'ck-mt-legend__label' }, r[1]),
+          h('span', { className: 'ck-mt-legend__value' }, money(r[2])));
+      }),
+        h('li', { className: 'ck-mt-legend__total' }, h('span', { className: 'ck-mt-legend__label' }, 'Total das parcelas ativas'), h('span', { className: 'ck-mt-legend__value' }, money(total)))));
+  }
+
+  function discountValue(d) { return d.mode === 'percentual' ? String(d.value).replace('.', ',') + '%' : money(d.value); }
+  var DISCOUNT_TYPE = { recorrente: 'Recorrente', primeira: '1ª mensalidade' };
+
+  function MtDiscounts(p) {
+    var d = p.discounts || [];
+    var active = d.filter(function (x) { return x.active !== false; }).length;
+    return h('section', { className: 'ck-card ck-mt-box', 'aria-label': 'Descontos' },
+      h('div', { className: 'ck-mt-box__head' },
+        h('div', null, h('h2', { className: 'ck-mt-box__title' }, 'Descontos'),
+          d.length ? h('span', { className: 'ck-mt-box__sub' }, active + (active === 1 ? ' ativo' : ' ativos')) : null),
+        d.length ? h(Button, { size: 'sm', variant: 'ghost', icon: 'plus', onClick: p.onAdd }, 'Adicionar') : null),
+      d.length ? h('ul', { className: 'ck-mt-discounts' }, d.map(function (x) {
+        return h('li', { key: x.id, className: x.active === false ? 'is-off' : null },
+          h('div', { className: 'ck-mt-discounts__top' },
+            h('span', { className: 'ck-mt-discounts__value' }, '− ' + discountValue(x)),
+            h('span', { className: 'ck-mt-discounts__tags' },
+              h(Badge, { tone: 'brand' }, DISCOUNT_TYPE[x.type] || x.type),
+              x.active === false ? h(Badge, null, 'Encerrado') : null),
+            h(ActionMenu, { label: 'Ações do desconto', items: [
+              { label: 'Editar desconto', icon: 'pencil', onClick: function () { p.onEdit && p.onEdit(x); } }, '-',
+              { label: 'Remover desconto', icon: 'trash', danger: true, onClick: function () { p.onRemove && p.onRemove(x); } }] })),
+          h('p', { className: 'ck-mt-discounts__reason' }, x.reason),
+          h('div', { className: 'ck-mt-discounts__meta' },
+            h('span', null, h(Icon, { name: 'calendar', size: 14 }), x.end ? fdate(x.start) + ' a ' + fdate(x.end) : 'Desde ' + fdate(x.start) + ', sem fim'),
+            x.authorizedBy ? h('span', null, h(Icon, { name: 'user-check', size: 14 }), 'Autorizado por ' + x.authorizedBy) : null,
+            x.remaining != null ? h('span', null, h(Icon, { name: 'receipt', size: 14 }), x.remaining + (x.remaining === 1 ? ' parcela restante' : ' parcelas restantes')) : null));
+      })) :
+        h('div', { className: 'ck-mt-empty' },
+          h('span', { className: 'ck-mt-empty__icon', 'aria-hidden': true }, h(Icon, { name: 'percent', size: 20 })),
+          h('strong', null, 'Nenhum desconto ativo'),
+          h('p', null, 'Descontos cadastrados entram automaticamente nas próximas parcelas.'),
+          h(Button, { size: 'sm', variant: 'secondary', icon: 'plus', onClick: p.onAdd }, 'Adicionar desconto')));
+  }
+
+  function MtInvoices(p) {
+    var f = useState('ativas'), filter = f[0];
+    var counts = p.counts || {};
+    var list = (p.invoices || []).filter(function (i) { return filter === 'canceladas' ? i.status === 'cancelado' : i.status !== 'cancelado'; });
+    return h('section', { className: 'ck-card ck-mt-invoices', 'aria-label': 'Faturas' },
+      h('div', { className: 'ck-mt-invoices__head' },
+        h('div', { style: { flex: 1, minWidth: 200 } },
+          h('h2', { className: 'ck-mt-box__title' }, 'Faturas'),
+          h('p', { className: 'ck-mt-invoices__sub' }, counts.overdue ? h(Badge, { tone: 'danger', dot: true }, counts.overdue + (counts.overdue === 1 ? ' atrasada' : ' atrasadas')) : h(Badge, { tone: 'success', icon: 'check' }, 'Nenhuma atrasada'))),
+        h(SegmentedControl, { label: 'Filtrar faturas', value: filter, onChange: f[1], options: [
+          { value: 'ativas', label: 'Ativas ' + (counts.active != null ? counts.active : '') },
+          { value: 'canceladas', label: 'Canceladas ' + (counts.cancelled != null ? counts.cancelled : '') }] }),
+        h(IconButton, { icon: 'refresh-cw', label: 'Recarregar faturas', variant: 'secondary', onClick: p.onReload })),
+      h('div', { className: 'ck-mt-table-wrap' },
+        h('table', { className: 'ck-mt-table' },
+          h('thead', null, h('tr', null,
+            h('th', { scope: 'col' }, 'Parcela'), h('th', { scope: 'col' }, 'Vencimento'), h('th', { scope: 'col', className: 'is-num' }, 'Valor'),
+            h('th', { scope: 'col' }, 'Pagamento'), h('th', { scope: 'col' }, 'Status'), h('th', { scope: 'col' }, h('span', { className: 'ck-sr' }, 'Ações')))),
+          h('tbody', null, list.length ? list.map(function (i) {
+            var st = INV_STATUS[i.status] || INV_STATUS.aguardando;
+            var due = i.status === 'aguardando' || i.status === 'atrasado';
+            var dueNote = due && p.today ? (function () { var d = dayDiff(p.today, i.dueDate); return d === 0 ? 'Vence hoje' : d > 0 ? 'Em ' + d + (d === 1 ? ' dia' : ' dias') : 'Há ' + (-d) + (d === -1 ? ' dia' : ' dias'); })() : null;
+            return h('tr', { key: i.id, className: due ? 'is-due' : null },
+              h('td', null, h('span', { className: 'ck-mt-cell__main' }, 'Parcela ' + i.number), h('span', { className: 'ck-mt-cell__sub' }, 'Fatura ' + i.id)),
+              h('td', null, h('span', { className: 'ck-mt-cell__main' }, fdate(i.dueDate)), dueNote ? h('span', { className: cx('ck-mt-cell__sub', i.status === 'atrasado' && 'is-late') }, dueNote) : null),
+              h('td', { className: 'is-num' }, h('span', { className: 'ck-mt-cell__main ck-mt-money' }, money(i.amount)),
+                i.credit ? h('span', { className: 'ck-mt-cell__sub' }, 'Crédito de ' + money(i.credit)) : null,
+                i.discount ? h('span', { className: 'ck-mt-cell__sub ck-mt-cell__sub--discount' }, '− ' + money(i.discount) + (i.discountNote ? ' (' + i.discountNote + ')' : ' de desconto')) : null),
+              h('td', null, i.paidDate ? h('div', { className: 'ck-mt-paid' },
+                  i.paidBy ? h(Avatar, { name: i.paidBy, size: 'sm', className: 'ck-mt-paid__avatar' }) : null,
+                  h('span', null, h('span', { className: 'ck-mt-cell__main' }, fdate(i.paidDate)),
+                    h('span', { className: 'ck-mt-cell__sub' }, [i.method, i.channel].filter(Boolean).join(', ')))) :
+                h('span', { className: 'ck-mt-cell__sub' }, 'Não pago')),
+              h('td', null, h(Badge, { tone: st[0], dot: true }, st[1])),
+              h('td', { className: 'ck-mt-actions' },
+                due && i.canSettle !== false ? h(Button, { size: 'sm', variant: 'secondary', icon: 'check-circle', onClick: function () { p.onSettle && p.onSettle(i); } }, 'Dar baixa') : null,
+                due && i.canSettle === false && i.settleNote ? h(Badge, { tone: 'info', icon: 'package' }, i.settleNote) : null,
+                p.menu === false ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: [
+                  { label: 'Editar parcela', icon: 'pencil', onClick: function () { p.onEdit && p.onEdit(i); } }, '-',
+                  { label: 'Excluir parcela', icon: 'trash', danger: true, onClick: function () { p.onDelete && p.onDelete(i); } }] })));
+          }) : h('tr', null, h('td', { colSpan: 6, className: 'ck-mt-table__empty' }, filter === 'canceladas' ? 'Nenhuma fatura cancelada.' : 'Nenhuma fatura ativa.'))))));
+  }
+
+  function Matricula(p) {
+    var e = p.enrollment || {};
+    var st = e.statusLabel ? [e.statusTone || 'neutral', e.statusLabel] : (ENROLL_STATUS[e.status] || ENROLL_STATUS.ativa);
+    var next = (p.invoices || []).filter(function (i) { return (i.status === 'atrasado' || i.status === 'aguardando') && i.canSettle !== false; })
+      .sort(function (a, b) { return a.status === 'atrasado' ? -1 : (pd(a.dueDate) - pd(b.dueDate)); })[0];
+    var nextDiff = next && p.today ? dayDiff(p.today, next.dueDate) : null;
+    var alertDays = p.alertDays != null ? p.alertDays : 7;
+    if (next && next.status !== 'atrasado' && nextDiff != null && nextDiff > alertDays) next = null;
+    var whenTxt = (!next || nextDiff == null) ? '' : nextDiff === 0 ? 'vence hoje' : nextDiff > 0 ? 'vence em ' + fdate(next.dueDate) : 'venceu em ' + fdate(next.dueDate);
+    return h('div', { className: cx('ck-mt', p.className) },
+      h('div', { className: 'ck-mt-hero' },
+        p.onBack ? h('button', { type: 'button', className: 'ck-mt-back', onClick: p.onBack }, h(Icon, { name: 'arrow-left', size: 16 }), p.backLabel || 'Matrículas') : null,
+        h('div', { className: 'ck-mt-hero__row' },
+          h(Avatar, { name: e.student && e.student.name, src: e.student && e.student.avatar, size: 'lg', className: 'ck-mt-hero__avatar', decorative: true }),
+          h('div', { className: 'ck-mt-hero__text' },
+            h('div', { className: 'ck-mt-hero__titleline' },
+              h('h1', { className: 'ck-mt-hero__name' }, e.student && e.student.name),
+              h(Badge, { tone: st[0], dot: true }, st[1]),
+              p.pkg ? h(Badge, { tone: 'info', icon: 'package' }, 'Pacote ' + p.pkg.contract) : null),
+            h('ul', { className: 'ck-mt-hero__meta' },
+              h('li', null, h(Icon, { name: 'receipt', size: 15 }), 'Matrícula ' + e.id),
+              h('li', null, h(Icon, { name: e.modalityIcon || 'dumbbell', size: 15 }), e.modality + ', ' + String(e.frequency || '').toLowerCase()),
+              h('li', null, h(Icon, { name: 'calendar', size: 15 }), 'Desde ' + fdate(e.startDate)))),
+          p.actions !== undefined ? (p.actions ? h('div', { className: 'ck-mt-hero__actions' }, p.actions) : null) :
+          h('div', { className: 'ck-mt-hero__actions' },
+            h(Button, { variant: 'ghost', icon: 'lock', onClick: p.onBlock }, 'Bloquear matrícula'),
+            h(Button, { variant: 'secondary', icon: 'repeat', onClick: p.onChangePlan }, 'Alterar plano')))),
+      p.notices || null,
+      next ? h(Callout, { tone: next.status === 'atrasado' ? 'danger' : 'warning', icon: 'clock', className: 'ck-mt-alert',
+        title: 'Parcela ' + next.number + ' de ' + money(next.amount) + ' ' + whenTxt,
+        action: h(Button, { variant: 'primary', icon: 'check-circle', onClick: function () { p.onSettle && p.onSettle(next); } }, 'Dar baixa') },
+        'O acesso do aluno depende desse pagamento.') : null,
+      p.pkg ? h(PacoteMatricula, Object.assign({ today: p.today }, p.pkg, { currentStudent: e.student && e.student.name, onSettle: p.onSettlePackage })) : null,
+      h('div', { className: 'ck-mt-overview' },
+        h(MtPlanCard, { enrollment: e, today: p.today }),
+        h(MtFinance, { invoices: p.invoices }),
+        h(MtDiscounts, { discounts: p.discounts, onAdd: p.onAddDiscount, onEdit: p.onEditDiscount, onRemove: p.onRemoveDiscount })),
+      h(MtInvoices, { invoices: p.invoices, counts: p.counts, today: p.today, onSettle: p.onSettle, onEdit: p.onEditInvoice, onDelete: p.onDeleteInvoice, onReload: p.onReload, menu: p.invoiceMenu }),
+      p.children || null);
+  }
+
+
+  /* ---------- Modal ---------- */
+  function Modal(p) {
+    var ref = useRef(null), id = useId();
+    useEffect(function () {
+      if (!p.open) return;
+      var prev = document.activeElement;
+      var el = ref.current;
+      var first = el && el.querySelector(p.initialFocus || 'input:not([type="date"]), select, textarea');
+      if (first && p.autoFocus !== false) first.focus(); else if (el) el.focus();
+      function key(e) {
+        if (e.key === 'Escape' && p.onClose) { e.preventDefault(); p.onClose(); }
+        if (e.key === 'Tab' && el) {
+          var f = el.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea, [href], [tabindex]:not([tabindex="-1"])');
+          if (!f.length) return;
+          var a = f[0], z = f[f.length - 1];
+          if (e.shiftKey && document.activeElement === a) { e.preventDefault(); z.focus(); }
+          else if (!e.shiftKey && document.activeElement === z) { e.preventDefault(); a.focus(); }
+        }
+      }
+      document.addEventListener('keydown', key);
+      return function () { document.removeEventListener('keydown', key); if (prev && prev.focus) prev.focus(); };
+    }, [p.open]);
+    if (!p.open) return null;
+    return h('div', { className: cx('ck-modal', p.inline && 'ck-modal--inline'), onMouseDown: function (e) { if (e.target === e.currentTarget && p.onClose && p.dismissable !== false) p.onClose(); } },
+      h('div', { className: cx('ck-modal__dialog', 'ck-modal__dialog--' + (p.size || 'md')), role: 'dialog', 'aria-modal': true, 'aria-labelledby': id, tabIndex: -1, ref: ref },
+        h('header', { className: 'ck-modal__head' },
+          h('div', { style: { flex: 1, minWidth: 0 } },
+            h('h2', { className: 'ck-modal__title', id: id }, p.title),
+            p.description ? h('p', { className: 'ck-modal__desc' }, p.description) : null),
+          h(IconButton, { icon: 'x', label: 'Fechar', className: 'ck-modal__close', onClick: p.onClose })),
+        h('div', { className: 'ck-modal__body' }, p.children),
+        p.footer ? h('footer', { className: 'ck-modal__foot' }, p.footer) : null));
+  }
+
+  function SelectField(p) {
+    var auto = useId(), id = p.id || auto;
+    var rest = omit(p, ['label', 'hint', 'error', 'options', 'placeholder', 'icon', 'className', 'id', 'labelAside']);
+    var control = h('div', { className: cx('ck-control ck-select', p.error && 'is-invalid') },
+      p.icon ? h(Icon, { name: p.icon, size: 16, className: 'ck-control__icon' }) : null,
+      h('select', Object.assign({ id: id, className: 'ck-control__input', 'aria-describedby': (p.hint || p.error) ? id + '-m' : undefined }, rest),
+        p.placeholder ? h('option', { value: '', disabled: true }, p.placeholder) : null,
+        (p.options || []).map(function (o) { var v = typeof o === 'string' ? o : o.value; return h('option', { key: v, value: v }, typeof o === 'string' ? o : o.label); })),
+      h(Icon, { name: 'chevron-down', size: 16, className: 'ck-control__icon ck-select__chev' }));
+    return FieldShell(p, id, control);
+  }
+
+  /* ---------- PacoteMatricula ---------- */
+  function PacoteMatricula(p) {
+    var members = p.members || [];
+    var settled = !!p.settled;
+    var total = p.total != null ? p.total : members.reduce(function (a, m) { return a + (m.amount || 0); }, 0);
+    var per = p.perPerson != null ? p.perPerson : (members.length ? total / members.length : 0);
+    var left = p.today && p.endDate ? dayDiff(p.today, p.endDate) : null;
+    return h('section', { className: 'ck-card ck-pkg', 'aria-label': 'Pacote ' + (p.contract || '') },
+      h('header', { className: 'ck-pkg__head' },
+        h('span', { className: 'ck-pkg__icon', 'aria-hidden': true }, h(Icon, { name: 'package', size: 20 })),
+        h('div', { style: { flex: 1, minWidth: 220 } },
+          h('div', { className: 'ck-pkg__eyebrow' }, 'Matrícula vinculada ao pacote ' + (p.contract || '')),
+          h('h2', { className: 'ck-pkg__title' }, p.name),
+          h('div', { className: 'ck-pkg__badges' },
+            h(Badge, { tone: p.status === 'ativo' ? 'success' : 'neutral', dot: true }, p.status === 'ativo' ? 'Pacote ativo' : 'Pacote encerrado'),
+            h(Badge, { icon: 'users' }, members.length + (members.length === 1 ? ' pessoa' : ' pessoas')))),
+        settled ? h('span', { className: 'ck-pkg__settled' }, h(Icon, { name: 'check-circle', size: 18 }),
+            h('span', null, h('strong', null, 'Pago pelo grupo'), p.settledAt ? h('span', null, 'Baixa em ' + fdate(p.settledAt)) : null))
+          : h(Button, { variant: 'primary', icon: 'check-circle', onClick: p.onSettle }, 'Dar baixa no pacote')),
+      h('div', { className: 'ck-pkg__body' },
+        h('dl', { className: 'ck-pkg__facts' },
+          h('div', null, h('dt', null, 'Vigência'), h('dd', null, fdate(p.startDate), h(Icon, { name: 'arrow-right', size: 14, className: 'ck-pkg__arrow' }), fdate(p.endDate)),
+            left != null ? h('span', { className: 'ck-pkg__hint' }, left > 0 ? 'Termina em ' + left + (left === 1 ? ' dia' : ' dias') : left === 0 ? 'Termina hoje' : 'Encerrada') : null),
+          h('div', null, h('dt', null, 'Duração'), h('dd', null, p.duration)),
+          h('div', null, h('dt', null, 'Valor do pacote'), h('dd', null, money(total))),
+          h('div', null, h('dt', null, 'Por pessoa'), h('dd', null, money(per)), h('span', { className: 'ck-pkg__hint' }, 'Valor rateado'))),
+        h('div', { className: 'ck-pkg__split' },
+          h('div', { className: 'ck-pkg__splithead' },
+            h('h3', null, 'Beneficiários e rateio'),
+            p.payer ? h('span', null, 'Quem paga: ', h('strong', null, p.payer)) : null),
+          h('div', { className: 'ck-pkg__bar', role: 'img', 'aria-label': members.map(function (m) { return m.name + ' ' + money(m.amount); }).join(', ') },
+            members.map(function (m, i) {
+              var cur = p.currentStudent && m.name === p.currentStudent;
+              return h('span', { key: i, className: cx('ck-pkg__seg', cur && 'is-current'), style: { flexGrow: m.amount || 1 } }, initialsOf(m.name));
+            })),
+          h('ul', { className: 'ck-pkg__members' }, members.map(function (m, i) {
+            var cur = p.currentStudent && m.name === p.currentStudent;
+            return h('li', { key: i, className: cur ? 'is-current' : null },
+              h(Avatar, { name: m.name, size: 'sm', decorative: true }),
+              h('span', { className: 'ck-pkg__who' },
+                h('strong', null, m.name),
+                h('span', null, m.role + (m.status && m.status !== 'ativo' ? ', ' + m.status : ''))),
+              cur ? h(Badge, { tone: 'brand' }, 'Esta matrícula') : null,
+              m.role === 'Pagante' ? h(Badge, { tone: 'info', icon: 'wallet' }, 'Pagante') : null,
+              h('span', { className: 'ck-pkg__amount' }, money(m.amount)));
+          }))),
+        h('div', { className: 'ck-pkg__rule' },
+          h(Icon, { name: 'info', size: 16 }),
+          h('p', null, p.rule || ('O desconto do pacote vale só durante a vigência. A baixa do grupo usa o valor rateado (' + money(per) + ' por pessoa). Depois de ' + fdate(p.endDate) + ', as parcelas individuais voltam ao valor cheio do plano.')))));
+  }
+
+  /* ---------- DescontoModal ---------- */
+  function DescontoModal(p) {
+    var init = p.discount || {};
+    var t = useState(init.type || 'recorrente'), md = useState(init.mode || 'fixo');
+    var v = useState(init.value != null ? ((init.mode || 'fixo') === 'fixo' ? Number(init.value).toFixed(2) : String(init.value)).replace('.', ',') : '');
+    var r = useState(init.reason || ''), au = useState(init.authorizedBy || (p.authorizers && p.authorizers[0]) || '');
+    var st = useState(init.start || p.today || ''), en = useState(init.end || '');
+    var rem = useState(init.remaining != null ? String(init.remaining) : '');
+    var tried = useState(false), saving = useState(false);
+    var num = parseFloat(String(v[0]).replace(/\./g, '').replace(',', '.')) || 0;
+    var base = p.planAmount || 0;
+    var off = md[0] === 'percentual' ? base * num / 100 : num;
+    var result = Math.max(0, base - off);
+    var errs = {};
+    if (!r[0].trim()) errs.reason = 'Escreva o motivo do desconto.';
+    if (!num) errs.value = 'Informe um valor maior que zero.';
+    else if (md[0] === 'percentual' && num > 100) errs.value = 'O percentual vai até 100%.';
+    else if (md[0] === 'fixo' && base && num > base) errs.value = 'O desconto passa do valor da parcela (' + money(base) + ').';
+    if (en[0] && st[0] && en[0] < st[0]) errs.end = 'O fim precisa ser depois do início.';
+    var ok = !Object.keys(errs).length;
+    function save() {
+      tried[1](true);
+      if (!ok) return;
+      var data = { id: init.id, type: t[0], mode: md[0], value: num, reason: r[0].trim(), authorizedBy: au[0], start: st[0], end: en[0] || null, remaining: rem[0] ? parseInt(rem[0], 10) : null };
+      if (p.onSave) { var res = p.onSave(data); if (res && res.then) { saving[1](true); res.then(function () { saving[1](false); }, function () { saving[1](false); }); } }
+    }
+    var editing = !!init.id;
+    return h(Modal, { open: p.open, onClose: p.onCancel, inline: p.inline, size: 'md',
+      title: editing ? 'Editar desconto' : 'Novo desconto',
+      description: p.studentName ? 'Matrícula de ' + p.studentName + (base ? ', parcela de ' + money(base) : '') : null,
+      footer: h(React.Fragment, null,
+        editing && p.onRemove ? h(Button, { variant: 'ghost', icon: 'trash', className: 'ck-modal__danger', onClick: function () { p.onRemove(init); } }, 'Remover') : null,
+        h('span', { style: { flex: 1 } }),
+        h(Button, { variant: 'ghost', onClick: p.onCancel }, 'Cancelar'),
+        h(Button, { variant: 'primary', icon: 'save', loading: saving[0], onClick: save }, saving[0] ? 'Salvando…' : (editing ? 'Salvar desconto' : 'Criar desconto')))
+    },
+      h('div', { className: 'ck-dm' },
+        h('div', { className: 'ck-section' },
+          h('span', { className: 'ck-field__label', id: 'dm-type' }, 'Quando aplicar'),
+          h(ChoiceGroup, { label: 'Quando aplicar', className: 'ck-dm__choices' },
+            h(ChoiceCard, { checked: t[0] === 'primeira', onSelect: function () { t[1]('primeira'); }, title: 'Só na 1ª mensalidade', description: 'Entra uma vez, na próxima parcela.' }),
+            h(ChoiceCard, { checked: t[0] === 'recorrente', onSelect: function () { t[1]('recorrente'); }, title: 'Recorrente', description: 'Entra em todas as parcelas da vigência.' }))),
+        h('div', { className: 'ck-dm__value' },
+          h('div', { className: 'ck-field' },
+            h('span', { className: 'ck-field__label' }, 'Desconto em'),
+            h(SegmentedControl, { label: 'Desconto em', value: md[0], onChange: md[1], options: [{ value: 'fixo', label: 'R$' }, { value: 'percentual', label: '%' }] })),
+          h(TextField, { label: md[0] === 'fixo' ? 'Valor (R$)' : 'Percentual (%)', inputMode: 'decimal', value: v[0], placeholder: md[0] === 'fixo' ? '0,00' : '0', className: 'ck-dm__amount',
+            onChange: function (e) { v[1](e.target.value.replace(/[^0-9.,]/g, '')); }, error: tried[0] ? errs.value : null })),
+        base ? h('div', { className: 'ck-dm__preview', 'aria-live': 'polite' },
+          h('span', { className: 'ck-dm__from' }, money(base)),
+          h(Icon, { name: 'arrow-right', size: 16 }),
+          h('span', { className: 'ck-dm__to' }, money(result)),
+          h('span', { className: 'ck-dm__note' }, off > 0 ? 'por parcela, ' + money(Math.min(off, base)) + ' a menos' + (t[0] === 'primeira' ? ', só na próxima' : '') : 'Sem desconto ainda')) : null,
+        h(TextField, { label: 'Motivo', value: r[0], onChange: function (e) { r[1](e.target.value); }, placeholder: 'Ex.: Pacote família, indicação, convênio', error: tried[0] ? errs.reason : null, hint: 'Aparece no histórico da matrícula e nas faturas.' }),
+        h(SelectField, { label: 'Autorizado por', icon: 'user-check', value: au[0], onChange: function (e) { au[1](e.target.value); }, options: p.authorizers || [] }),
+        h('div', { className: 'ck-dm__row' },
+          h(TextField, { label: 'Início da vigência', type: 'date', value: st[0], onChange: function (e) { st[1](e.target.value); } }),
+          h(TextField, { label: 'Fim da vigência', type: 'date', value: en[0], onChange: function (e) { en[1](e.target.value); }, error: tried[0] ? errs.end : null,
+            hint: en[0] ? null : 'Sem data de fim',
+            labelAside: en[0] ? h('button', { type: 'button', className: 'ck-linkbtn', onClick: function () { en[1](''); } }, 'Sem fim') : null })),
+        t[0] === 'recorrente' ? h(TextField, { label: 'Limite de parcelas', type: 'number', min: 1, inputMode: 'numeric', value: rem[0], onChange: function (e) { rem[1](e.target.value); }, placeholder: 'Sem limite', hint: 'Deixe vazio para aplicar até o fim da vigência.' }) : null));
   }
 
   function Sidebar(p) {
@@ -417,7 +796,7 @@ import React from 'react';
         h('main', { className: 'ck-shell__content' }, h('div', { className: 'ck-shell__inner' }, p.children))));
   }
 
-  var api = { AppShell: AppShell, Sidebar: Sidebar, AppHeader: AppHeader, PageHeader: PageHeader, Button: Button, IconButton: IconButton, Switch: Switch, SegmentedControl: SegmentedControl, TextField: TextField, SecretField: SecretField, Fieldset: Fieldset, Card: Card, ProviderCard: ProviderCard, ProviderTile: ProviderTile, ProviderLogo: ProviderLogo, ChoiceCard: ChoiceCard, ChoiceGroup: ChoiceGroup, Tabs: Tabs, SaveBar: SaveBar, Badge: Badge, Callout: Callout, Avatar: Avatar, Icon: Icon };
+  var api = { AppShell: AppShell, Sidebar: Sidebar, AppHeader: AppHeader, PageHeader: PageHeader, Button: Button, IconButton: IconButton, Switch: Switch, SegmentedControl: SegmentedControl, TextField: TextField, SecretField: SecretField, Fieldset: Fieldset, Card: Card, ProviderCard: ProviderCard, ProviderTile: ProviderTile, ProviderLogo: ProviderLogo, ChoiceCard: ChoiceCard, ChoiceGroup: ChoiceGroup, Tabs: Tabs, SaveBar: SaveBar, ActionMenu: ActionMenu, Matricula: Matricula, Modal: Modal, SelectField: SelectField, PacoteMatricula: PacoteMatricula, DescontoModal: DescontoModal, Badge: Badge, Callout: Callout, Avatar: Avatar, Icon: Icon };
 
-export { AppShell, Sidebar, AppHeader, PageHeader, Button, IconButton, Switch, SegmentedControl, TextField, SecretField, Fieldset, Card, ProviderCard, ProviderTile, ProviderLogo, ChoiceCard, ChoiceGroup, Tabs, SaveBar, Badge, Callout, Avatar, Icon };
+export { AppShell, Sidebar, AppHeader, PageHeader, Button, IconButton, Switch, SegmentedControl, TextField, SecretField, Fieldset, Card, ProviderCard, ProviderTile, ProviderLogo, ChoiceCard, ChoiceGroup, Tabs, SaveBar, ActionMenu, Matricula, Modal, SelectField, PacoteMatricula, DescontoModal, Badge, Callout, Avatar, Icon };
 export default api;

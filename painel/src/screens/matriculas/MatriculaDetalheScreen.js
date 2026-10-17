@@ -28,6 +28,15 @@ import { obterMensagemErro } from '../../utils/errorHandler';
 import { showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
 import descontoMatriculaService from '../../services/descontoMatriculaService';
+import {
+  Matricula,
+  DescontoModal,
+  Button as CkButton,
+  Callout as CkCallout,
+  Card as CkCard,
+  Badge as CkBadge,
+  Icon as CkIcon,
+} from '../../components/ck';
 
 export default function MatriculaDetalheScreen() {
   const { id } = useLocalSearchParams();
@@ -102,25 +111,9 @@ export default function MatriculaDetalheScreen() {
 
   // Descontos
   const [descontos, setDescontos] = useState([]);
-  const [loadingDescontos, setLoadingDescontos] = useState(false);
   const [modalDescontoVisible, setModalDescontoVisible] = useState(false);
-  const [salvandoDesconto, setSalvandoDesconto] = useState(false);
   const [descontoEditando, setDescontoEditando] = useState(null); // null = novo, obj = editar
   const [adminsLista, setAdminsLista] = useState([]);
-  const [formDesconto, setFormDesconto] = useState({
-    tipo: 'recorrente',
-    modo: 'valor', // 'valor' | 'percentual'
-    valor: '',
-    percentual: '',
-    motivo: '',
-    vigencia_inicio: '',
-    vigencia_fim: '',
-    parcelas_restantes: '',
-    autorizado_por: '',
-  });
-  const [calendarDescontoVisible, setCalendarDescontoVisible] = useState(false);
-  const [calendarDescontoCampo, setCalendarDescontoCampo] = useState('inicio'); // 'inicio' | 'fim'
-  const [mesCalendarioDesconto, setMesCalendarioDesconto] = useState(new Date());
 
   useEffect(() => {
     authService.getCurrentUser().then((user) => {
@@ -1018,87 +1011,46 @@ export default function MatriculaDetalheScreen() {
     return Number(normalizado);
   };
 
-  // --- Descontos ---
-  const formatarDataBRDesconto = (dataISO) => {
-    if (!dataISO) return '';
-    const [y, m, d] = dataISO.split('-');
-    return `${d}/${m}/${y}`;
-  };
+  // --- Descontos (DescontoModal do design system) ---
+  // API: tipo 'recorrente' | 'primeira_mensalidade', valor OU percentual, autorizado_por (id do admin).
+  const descontoParaDs = (desc) => ({
+    id: desc.id,
+    type: desc.tipo === 'primeira_mensalidade' ? 'primeira' : 'recorrente',
+    mode: desc.percentual ? 'percentual' : 'fixo',
+    value: Number(desc.percentual || desc.valor || 0),
+    reason: desc.motivo || '',
+    authorizedBy: desc.autorizado_por != null ? String(desc.autorizado_por) : '',
+    authorizedByName: desc.autorizado_por_nome || '',
+    start: desc.vigencia_inicio ? String(desc.vigencia_inicio).slice(0, 10) : '',
+    end: desc.vigencia_fim ? String(desc.vigencia_fim).slice(0, 10) : null,
+    remaining: desc.parcelas_restantes != null ? Number(desc.parcelas_restantes) : null,
+    active: Number(desc.ativo) === 1,
+  });
 
   const abrirNovoDesconto = () => {
     setDescontoEditando(null);
-    const hoje = new Date();
-    const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-    setFormDesconto({
-      tipo: 'recorrente',
-      modo: 'valor',
-      valor: '',
-      percentual: '',
-      motivo: '',
-      vigencia_inicio: hojeISO,
-      vigencia_fim: '',
-      parcelas_restantes: '',
-      autorizado_por: '',
-    });
     setModalDescontoVisible(true);
   };
 
   const abrirEditarDesconto = (desc) => {
     setDescontoEditando(desc);
-    setFormDesconto({
-      tipo: desc.tipo || 'recorrente',
-      modo: desc.percentual ? 'percentual' : 'valor',
-      valor: desc.valor ? formatarMoedaInput(desc.valor) : '',
-      percentual: desc.percentual ? String(desc.percentual).replace('.', ',') : '',
-      motivo: desc.motivo || '',
-      vigencia_inicio: desc.vigencia_inicio || '',
-      vigencia_fim: desc.vigencia_fim || '',
-      parcelas_restantes: desc.parcelas_restantes != null ? String(desc.parcelas_restantes) : '',
-      autorizado_por: desc.autorizado_por != null ? String(desc.autorizado_por) : '',
-    });
     setModalDescontoVisible(true);
   };
 
-  const handleSalvarDesconto = async () => {
-    if (!formDesconto.motivo.trim()) {
-      showAlert('Atenção', 'Informe o motivo do desconto.');
-      return;
-    }
-
+  // O DescontoModal já valida motivo, valor, percentual e datas; aqui só monta o payload da API.
+  const handleSalvarDesconto = async (data) => {
     const payload = {
-      tipo: formDesconto.tipo,
-      motivo: formDesconto.motivo.trim(),
+      tipo: data.type === 'primeira' ? 'primeira_mensalidade' : 'recorrente',
+      motivo: data.reason,
     };
-
-    if (formDesconto.modo === 'valor') {
-      const val = parseMoeda(formDesconto.valor);
-      if (!val || val <= 0) { showAlert('Atenção', 'Informe um valor de desconto válido.'); return; }
-      payload.valor = val;
-    } else {
-      const pct = parseFloat(String(formDesconto.percentual).replace(',', '.'));
-      if (!pct || pct <= 0 || pct > 100) { showAlert('Atenção', 'Informe um percentual entre 0,01 e 100.'); return; }
-      payload.percentual = pct;
-    }
-
-    if (formDesconto.vigencia_inicio) payload.vigencia_inicio = formDesconto.vigencia_inicio;
-    if (formDesconto.vigencia_fim) {
-      if (formDesconto.vigencia_inicio && formDesconto.vigencia_fim < formDesconto.vigencia_inicio) {
-        showAlert('Atenção', 'A data de fim não pode ser anterior à data de início.');
-        return;
-      }
-      payload.vigencia_fim = formDesconto.vigencia_fim;
-    }
-    if (formDesconto.parcelas_restantes !== '') {
-      const prc = parseInt(formDesconto.parcelas_restantes, 10);
-      if (prc > 0) payload.parcelas_restantes = prc;
-    }
-
-    if (formDesconto.autorizado_por) {
-      payload.autorizado_por = Number(formDesconto.autorizado_por);
-    }
+    if (data.mode === 'percentual') payload.percentual = data.value;
+    else payload.valor = data.value;
+    if (data.start) payload.vigencia_inicio = data.start;
+    if (data.end) payload.vigencia_fim = data.end;
+    if (data.type === 'recorrente' && data.remaining > 0) payload.parcelas_restantes = data.remaining;
+    if (data.authorizedBy) payload.autorizado_por = Number(data.authorizedBy);
 
     try {
-      setSalvandoDesconto(true);
       if (descontoEditando) {
         await descontoMatriculaService.atualizar(descontoEditando.id, payload);
         showToast('Desconto atualizado com sucesso!');
@@ -1111,8 +1063,6 @@ export default function MatriculaDetalheScreen() {
     } catch (error) {
       const mensagem = obterMensagemErro(error, 'Erro ao salvar desconto');
       showAlert('Erro', mensagem);
-    } finally {
-      setSalvandoDesconto(false);
     }
   };
 
@@ -1223,65 +1173,6 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
-  const renderAcoesPagamento = (pagamento, mobile = false) => (
-    <View className={`flex-row flex-wrap items-center ${mobile ? 'justify-start' : 'justify-end'} gap-1.5`}>
-      {isPagamentoBaixavel(pagamento) ? (
-        <Pressable
-          className="flex-row items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5"
-          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-          onPress={() => handleBaixaPagamento(pagamento)}
-        >
-          <Feather name="check-circle" size={12} color="#fff" />
-          <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
-        </Pressable>
-      ) : pagamento?.pacote_contrato_id && Number(pagamento?.status_pagamento_id) !== 2 && Number(pagamento?.status_pagamento_id) !== 4 && !pagamento?.data_pagamento ? (
-        <View className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
-          <Text className="text-[11px] font-semibold text-emerald-700">Baixa só no pacote</Text>
-        </View>
-      ) : null}
-
-        {/* {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
-          <Pressable
-            className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-            onPress={handleReprocessarPagamentoMP}
-            disabled={reprocessandoPagamentoId !== null}
-          >
-            {reprocessandoPagamentoId !== null ? (
-              <ActivityIndicator size="small" color="#f97316" />
-            ) : (
-              <>
-                <Feather name="refresh-ccw" size={12} color="#475569" />
-                <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
-              </>
-            )}
-          </Pressable>
-        ) : null} */}
-
-      {currentUserId === 3 && (
-        <>
-          <Pressable
-            className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
-            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-            onPress={() => handleAbrirEditarPagamento(pagamento)}
-          >
-            <Feather name="edit-2" size={14} color="#334155" />
-            <Text className="text-[11px] font-semibold text-slate-700">Editar</Text>
-          </Pressable>
-
-          <Pressable
-            className="flex-row items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
-            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-            onPress={() => handleAbrirExcluirPagamento(pagamento)}
-          >
-            <Feather name="trash-2" size={14} color="#dc2626" />
-            <Text className="text-[11px] font-semibold text-rose-600">Excluir</Text>
-          </Pressable>
-        </>
-      )}
-    </View>
-  );
-
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
   const ultimoPagamentoPago = [...pagamentos]
@@ -1311,1071 +1202,269 @@ export default function MatriculaDetalheScreen() {
           )
         )} dias`
       : `${matricula.duracao_dias} dias`;
+  // ---- Dados no formato do design system (Matricula / PacoteMatricula / DescontoModal) ----
+  const isoDia = (v) => (v ? String(v).slice(0, 10) : null);
+  const agora = new Date();
+  const hojeISO = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+
+  // Status: 1=Ativa, 2=Vencida, 3=Cancelada, 4=Finalizada, 5=Pendente, 6=Bloqueado, 7=Concluída
+  const STATUS_DS = {
+    1: ['ativa', 'success', 'Ativa'],
+    2: ['pendente', 'danger', 'Vencida'],
+    3: ['cancelada', 'neutral', 'Cancelada'],
+    4: ['cancelada', 'neutral', 'Finalizada'],
+    5: ['pendente', 'warning', 'Pagamento pendente'],
+    6: ['bloqueada', 'danger', 'Bloqueada'],
+    7: ['ativa', 'success', 'Concluída'],
+  };
+  const statusDs = STATUS_DS[Number(matricula.status_id)] || ['ativa', 'neutral', getStatusLabel(matricula.status_id)];
+  const limiteEsgotado = Number(matricula.status_id) === 5 && matricula.motivo_status === 'limite_checkins';
+  const mesesCiclo = cicloInfo?.meses || 0;
+  const iconeModalidade = /swim|pool|wave|nata/i.test(`${matricula.modalidade_icone || ''} ${matricula.modalidade_nome || ''}`)
+    ? 'waves'
+    : 'dumbbell';
+
+  const enrollmentDs = {
+    id: `#${matricula.id}`,
+    status: statusDs[0],
+    statusTone: statusDs[1],
+    statusLabel: limiteEsgotado ? 'Limite esgotado' : statusDs[2],
+    student: { name: matricula.usuario_nome || matricula.aluno_nome || 'Aluno' },
+    modality: matricula.modalidade_nome || matricula.plano_nome || 'Plano',
+    modalityIcon: iconeModalidade,
+    frequency:
+      matricula.plano_nome ||
+      (matricula.checkins_semanais ? `${matricula.checkins_semanais}x por semana` : ''),
+    startDate: isoDia(matricula.data_inicio),
+    accessUntil: isoDia(acessoAte) || isoDia(matricula.data_inicio),
+    duration: duracaoLabel,
+    cycle: {
+      label: cicloInfo?.frequencia || null,
+      amount: Number(matricula.valor) || 0,
+      monthlyEquivalent: mesesCiclo > 1 ? (Number(matricula.valor) || 0) / mesesCiclo : undefined,
+      nextDue: isoDia(proximoVencimentoExibicao),
+      per: mesesCiclo > 1 ? `a cada ${mesesCiclo} meses` : 'por mês',
+    },
+  };
+
+  const numeroParcelaMap = buildNumeroParcelaMap(pagamentos);
+  const invoicesDs = [...pagamentos]
+    .sort((a, b) => String(b.data_vencimento || '').localeCompare(String(a.data_vencimento || '')))
+    .map((pg) => {
+      const statusId = Number(pg.status_pagamento_id);
+      const status =
+        statusId === 2
+          ? 'pago'
+          : statusId === 4
+            ? 'cancelado'
+            : statusId === 3 || isVencido(pg.data_vencimento)
+              ? 'atrasado'
+              : 'aguardando';
+      const pacoteSemBaixaIndividual = Boolean(pg.pacote_contrato_id);
+      return {
+        raw: pg,
+        id: `#${getPagamentoId(pg) ?? '-'}`,
+        number: resolveNumeroParcela(pg, numeroParcelaMap) ?? '-',
+        dueDate: isoDia(pg.data_vencimento),
+        paidDate: isoDia(pg.data_pagamento),
+        paidBy: pg.baixado_por_nome || pg.criado_por_nome || undefined,
+        method: pg.forma_pagamento_nome || undefined,
+        channel: pg.tipo_baixa_nome ? String(pg.tipo_baixa_nome).toLowerCase() : undefined,
+        amount: parseFloat(pg.valor || 0),
+        credit: Number(pg.credito_aplicado) > 0 ? Number(pg.credito_aplicado) : undefined,
+        discount: Number(pg.desconto) > 0 ? Number(pg.desconto) : undefined,
+        discountNote: pg.motivo_desconto || undefined,
+        status,
+        canSettle: !pacoteSemBaixaIndividual,
+        settleNote: pacoteSemBaixaIndividual ? 'Baixa só no pacote' : undefined,
+      };
+    });
+  const countsDs = {
+    overdue: pagamentosPendentes.length,
+    active: pagamentos.filter((pg) => Number(pg.status_pagamento_id) !== 4).length,
+    cancelled: pagamentos.filter((pg) => Number(pg.status_pagamento_id) === 4).length,
+  };
+
+  const descontosDs = descontos.map((desc) => ({
+    ...descontoParaDs(desc),
+    authorizedBy: desc.autorizado_por_nome || undefined,
+    raw: desc,
+  }));
+
+  const pacote = isPacote ? matricula.pacote : null;
+  const pacoteDs = pacote
+    ? {
+        contract: `#${pacote.contrato_id}`,
+        name: pacote.pacote_nome || 'Pacote',
+        status: ['encerrado', 'cancelado', 'finalizado', 'expirado'].includes(
+          String(pacote.contrato_status || '').toLowerCase()
+        )
+          ? 'encerrado'
+          : 'ativo',
+        startDate: isoDia(pacote.contrato_data_inicio),
+        endDate: isoDia(pacote.contrato_data_fim),
+        duration:
+          pacote.contrato_data_inicio && pacote.contrato_data_fim
+            ? `${Math.max(
+                1,
+                Math.round(
+                  (new Date(pacote.contrato_data_fim).getTime() - new Date(pacote.contrato_data_inicio).getTime()) /
+                    (1000 * 60 * 60 * 24)
+                ) + 1
+              )} dias`
+            : '-',
+        total: Number(pacote.contrato_valor_total || pacote.pacote_valor_total) || 0,
+        perPerson: matricula.valor_rateado != null ? Number(matricula.valor_rateado) : undefined,
+        payer: pacote.pagante_nome || undefined,
+        settled: !podeDarBaixaPacote,
+        members: (Array.isArray(pacote.beneficiarios) ? pacote.beneficiarios : []).map((b) => ({
+          name: b.aluno_nome || '-',
+          role: b.is_pagante ? 'Pagante' : 'Dependente',
+          status: b.status || undefined,
+          amount: Number(b.valor_rateado) || 0,
+        })),
+      }
+    : undefined;
+
+  // Ações do cabeçalho, conforme o estado da matrícula.
+  const acoesCabecalho =
+    podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula ? (
+      <>
+        {podeExibirAlterarPlano && !(matricula?.valor > 0) ? (
+          <CkButton variant="ghost" icon="calendar" onClick={handleAbrirModalEditarVencimento}>
+            Alterar vencimento
+          </CkButton>
+        ) : null}
+        {podeBloquearMatricula ? (
+          <CkButton variant="ghost" icon="lock" onClick={() => setModalBloquearVisible(true)}>
+            Bloquear matrícula
+          </CkButton>
+        ) : null}
+        {podeDesbloquearMatricula ? (
+          <CkButton
+            variant="secondary"
+            icon="unlock"
+            loading={desbloqueandoMatricula}
+            onClick={handleDesbloquearMatricula}
+          >
+            {desbloqueandoMatricula ? 'Desbloqueando…' : 'Desbloquear matrícula'}
+          </CkButton>
+        ) : null}
+        {podeExibirAlterarPlano ? (
+          <CkButton variant="secondary" icon="repeat" onClick={handleAbrirAlterarPlano}>
+            {isMatriculaRenovavel ? 'Renovar matrícula' : 'Alterar plano'}
+          </CkButton>
+        ) : null}
+      </>
+    ) : null;
+
+  const avisosMatricula =
+    limiteEsgotado || isMatriculaBloqueada || (isPacote && isMatriculaRenovavel) ? (
+      <>
+        {limiteEsgotado ? (
+          <CkCallout tone="warning" icon="alert-triangle" title="Limite de check-ins do ciclo esgotado">
+            O período pago segue até {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}, mas o
+            check-in foi bloqueado porque o aluno usou todos os check-ins do ciclo
+            {matricula.limite_ciclo?.checkins_mes != null && matricula.limite_ciclo?.limite_mensal != null
+              ? ` (${matricula.limite_ciclo.checkins_mes}/${matricula.limite_ciclo.limite_mensal}${
+                  matricula.limite_ciclo?.mes_referencia ? ` em ${matricula.limite_ciclo.mes_referencia}` : ''
+                })`
+              : ''}
+            . A renovação libera o próximo ciclo.
+          </CkCallout>
+        ) : null}
+        {isMatriculaBloqueada ? (
+          <CkCallout tone="danger" icon="lock" title="Matrícula bloqueada">
+            Check-in e app do aluno estão suspensos. A matrícula não foi excluída.
+          </CkCallout>
+        ) : null}
+        {isPacote && isMatriculaRenovavel ? (
+          <CkCallout tone="info" icon="info" title="Renovação fora do pacote">
+            A renovação sai do pacote, encerra o desconto e cobra o valor individual do plano.
+          </CkCallout>
+        ) : null}
+      </>
+    ) : null;
+
   const planoSelecionadoAlteracao = planosAlteracao.find(
     (plano) => plano.id === Number(formAlterarPlano.plano_id)
   );
 
   return (
-    <LayoutBase title={`Matrícula #${matricula.id}`}>
-      <ScrollView className="flex-1 bg-slate-100">
-        <View className={`mx-auto w-full ${isDesktop ? 'max-w-6xl px-6 py-6' : 'px-4 py-5'}`}>
-          {/* Header */}
-          <View className="mb-5 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 shadow-md">
-            <Pressable
-              className="flex-row items-center gap-2"
-              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-              onPress={() => router.push('/matriculas')}
-            >
-              <Feather name="arrow-left" size={18} color="#94a3b8" />
-              <Text className="text-sm font-semibold text-slate-500">Voltar</Text>
-            </Pressable>
-            
-            <View className="mt-3 flex-row items-center justify-between border-t border-orange-100 pt-3">
-              <View className="flex-1">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-base font-semibold text-slate-900">{matricula.usuario_nome}</Text>
-                  <View
-                    className="rounded-full px-2.5 py-0.5"
-                    style={{ backgroundColor: getStatusColor(matricula.status_id) }}
-                  >
-                    <Text className="text-[10px] font-bold tracking-wide text-white">
-                      {getStatusLabel(matricula.status_id)}
-                    </Text>
-                  </View>
-                </View>
-                <Text className="text-[11px] text-slate-600">
-                  Contrato #{matricula.id} • {matricula.modalidade_nome} - {matricula.plano_nome}
-                </Text>
-              </View>
-            </View>
-
-            {isPacote && (
-              <View className="mt-4 flex-row items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
-                <View className="h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
-                  <Feather name="package" size={24} color="#10b981" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[17px] font-bold text-emerald-700">Matrícula vinculada a pacote</Text>
-                  <Text className="text-[13px] text-emerald-600">
-                    O desconto do pacote vale só no ciclo pago. A baixa do grupo usa o valor rateado;
-                    depois da vigência, a parcela individual volta ao valor cheio do plano.
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {Number(matricula.status_id) === 5 && matricula.motivo_status === 'limite_checkins' && (
-              <View className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <Text className="text-sm font-semibold text-amber-900">
-                  Limite de check-ins do ciclo esgotado
-                </Text>
-                <Text className="mt-1 text-[12px] leading-5 text-amber-800">
-                  O período pago segue até{' '}
-                  {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}, mas o
-                  check-in foi bloqueado porque o aluno usou todos os check-ins do ciclo
-                  {matricula.limite_ciclo?.checkins_mes != null && matricula.limite_ciclo?.limite_mensal != null
-                    ? ` (${matricula.limite_ciclo.checkins_mes}/${matricula.limite_ciclo.limite_mensal}`
-                    : ''}
-                  {matricula.limite_ciclo?.mes_referencia
-                    ? ` em ${matricula.limite_ciclo.mes_referencia}`
-                    : ''}
-                  {matricula.limite_ciclo?.checkins_mes != null ? ')' : ''}. A renovação libera o próximo
-                  ciclo.
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {isPacote && matricula?.pacote && (
-            <View className="mb-5 overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
-              <View className="flex-row items-center justify-between border-b border-emerald-100 bg-emerald-50 px-5 py-3">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
-                    <Feather name="package" size={18} color="#10b981" />
-                  </View>
-                  <View>
-                    <Text className="text-sm font-semibold text-emerald-800">Detalhes do Pacote</Text>
-                    <Text className="text-[11px] text-emerald-600">
-                      Contrato #{matricula.pacote.contrato_id} • {matricula.pacote.contrato_status || '-'}
-                    </Text>
-                  </View>
-                </View>
-                <View className="rounded-full bg-emerald-200 px-2.5 py-0.5">
-                  <Text className="text-[10px] font-semibold text-emerald-800">
-                    {qtdPessoasPacote} {qtdPessoasPacote === 1 ? 'pessoa' : 'pessoas'}
-                  </Text>
-                </View>
-              </View>
-
-              <View className="px-5 py-4">
-                <Text className="text-[12px] font-semibold text-slate-800">
-                  {matricula.pacote.pacote_nome}
-                </Text>
-                <Text className="mt-1 text-[11px] text-slate-500">
-                  Vigência: {formatDate(matricula.pacote.contrato_data_inicio)} • {formatDate(matricula.pacote.contrato_data_fim)}
-                </Text>
-
-                <View className="mt-3 flex-row flex-wrap gap-3">
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <Text className="text-[10px] uppercase text-slate-400">Duração</Text>
-                    <Text className="text-sm font-semibold text-slate-700">
-                      {matricula.pacote.contrato_data_inicio && matricula.pacote.contrato_data_fim
-                        ? `${Math.max(
-                            1,
-                            Math.round(
-                              (new Date(matricula.pacote.contrato_data_fim).getTime() -
-                                new Date(matricula.pacote.contrato_data_inicio).getTime()) /
-                                (1000 * 60 * 60 * 24)
-                            ) + 1
-                          )} dias`
-                        : '-'}
-                    </Text>
-                  </View>
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <Text className="text-[10px] uppercase text-slate-400">Valor total</Text>
-                    <Text className="text-sm font-semibold text-slate-700">
-                      {formatCurrency(matricula.pacote.contrato_valor_total || matricula.pacote.pacote_valor_total)}
-                    </Text>
-                  </View>
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <Text className="text-[10px] uppercase text-slate-400">Valor rateado</Text>
-                    <Text className="text-sm font-semibold text-slate-700">
-                      {formatCurrency(matricula.valor_rateado)}
-                    </Text>
-                  </View>
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <Text className="text-[10px] uppercase text-slate-400">Pagante</Text>
-                    <Text className="text-sm font-semibold text-slate-700">
-                      {matricula.pacote.pagante_nome || '-'}
-                    </Text>
-                  </View>
-                </View>
-
-                {Array.isArray(matricula.pacote.beneficiarios) && matricula.pacote.beneficiarios.length > 0 && (
-                  <View className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-                    <Text className="mb-2 text-[10px] font-semibold uppercase text-slate-400">
-                      Beneficiários
-                    </Text>
-                    {matricula.pacote.beneficiarios.map((beneficiario, idx) => (
-                      <View key={`${beneficiario.aluno_id}-${idx}`} className="flex-row items-center justify-between py-1">
-                        <View className="flex-1">
-                          <Text className="text-[12px] font-semibold text-slate-700">
-                            {beneficiario.aluno_nome || '-'}
-                          </Text>
-                          <Text className="text-[10px] text-slate-500">
-                            {beneficiario.is_pagante ? 'Pagante' : 'Dependente'} • {beneficiario.status || '-'}
-                          </Text>
-                        </View>
-                        <Text className="text-[11px] font-semibold text-slate-700">
-                          {formatCurrency(beneficiario.valor_rateado)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                <View className="mt-4">
-                  {podeDarBaixaPacote ? (
-                    <Pressable
-                      onPress={() => setModalBaixaPacoteVisible(true)}
-                      className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
-                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                    >
-                      <Feather name="check-circle" size={16} color="#fff" />
-                      <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
-                    </Pressable>
-                  ) : (
-                    <View className="flex-row items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 py-3">
-                      <Feather name="check-circle" size={16} color="#10b981" />
-                      <Text className="text-sm font-semibold text-emerald-700">Pacote já baixado</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Card com informações da matrícula - Design Compacto */}
-          <View className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {/* Header do Card */}
-            <View className="flex-row items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
-              <View className="flex-1 flex-row items-center gap-3">
-                {matricula.modalidade_icone && (
-                  <View
-                    className="h-10 w-10 items-center justify-center rounded-2xl shadow-sm"
-                    style={{ backgroundColor: matricula.modalidade_cor || '#f97316' }}
-                  >
-                    <MaterialCommunityIcons
-                      name={matricula.modalidade_icone}
-                      size={22}
-                      color="#fff"
-                    />
-                  </View>
-                )}
-                <View className="flex-1">
-                  <Text className="text-[14px] font-semibold text-slate-800">{matricula.modalidade_nome}</Text>
-                  <Text className="text-[11px] text-slate-500">{matricula.plano_nome} • Matrícula #{matricula.id}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Grid de Informações Compacto */}
-            <View className="flex-row items-center border-b border-slate-100 bg-white px-4 py-3">
-              <View className="flex-1 items-center gap-1">
-                <Feather name="calendar" size={16} color="#f97316" />
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">Início</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">{formatDate(matricula.data_inicio)}</Text>
-              </View>
-
-              <View className="h-8 w-px bg-slate-200" />
-
-              <View className="flex-1 items-center gap-1">
-                <Feather name="clock" size={16} color="#f59e0b" />
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">Acesso até</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">
-                  {formatDate(acessoAte)}
-                </Text>
-                {isProximoVencer(acessoAte) && (
-                  <View className="rounded-full bg-amber-100 px-2 py-0.5">
-                    <Text className="text-[10px] font-bold text-amber-700">Vence em breve</Text>
-                  </View>
-                )}
-              </View>
-
-              <View className="h-8 w-px bg-slate-200" />
-
-              <View className="flex-1 items-center gap-1">
-                <MaterialCommunityIcons name="dumbbell" size={16} color="#f97316" />
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">Check-ins</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">{matricula.checkins_semanais}x/sem</Text>
-              </View>
-
-              <View className="h-8 w-px bg-slate-200" />
-
-              <View className="flex-1 items-center gap-1">
-                <Feather name="hash" size={16} color="#94a3b8" />
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">Duração</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">{duracaoLabel}</Text>
-              </View>
-            </View>
-
-            {/* Informações do Ciclo (quando existir) */}
-            {cicloInfo && (
-              <View className="border-b border-slate-100 bg-slate-50 px-5 py-4">
-                <View className="mb-3 flex-row items-center justify-between">
-                  <Text className="text-[11px] font-semibold uppercase text-slate-500">Ciclo do Plano</Text>
-                  <View className="rounded-full bg-slate-200 px-2 py-0.5">
-                    <Text className="text-[10px] font-semibold text-slate-600">
-                      {cicloInfo.frequencia}
-                      {cicloInfo.meses ? ` • ${cicloInfo.meses} ${cicloInfo.meses === 1 ? 'mês' : 'meses'}` : ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <View className="flex-row flex-wrap gap-3">
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Valor do Ciclo</Text>
-                    <Text className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatCurrency(cicloInfo.ciclo.valor)}
-                    </Text>
-                  </View>
-
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Valor Mensal Equiv.</Text>
-                    <Text className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatCurrency(cicloInfo.ciclo.valor_mensal_equivalente)}
-                    </Text>
-                  </View>
-
-                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
-                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Próximo Vencimento</Text>
-                    <Text className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatDate(proximoVencimentoExibicao)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Footer com Valor */}
-            <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-3">
-              <Text className="text-xs font-semibold text-emerald-800">
-                {cicloInfo ? 'Valor do Ciclo' : 'Valor Mensal'}
-              </Text>
-              <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
-            </View>
-
-            {/* Ações da matrícula */}
-            {(podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula) && (
-              <View className="border-t border-slate-100 px-5 py-3">
-                <View className={`gap-3 ${isDesktop ? 'flex-row flex-wrap' : ''}`}>
-                  {podeExibirAlterarPlano && !(matricula?.valor > 0) && (
-                    <Pressable
-                      onPress={handleAbrirModalEditarVencimento}
-                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
-                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                    >
-                      <Feather name="calendar" size={16} color="#fff" />
-                      <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
-                    </Pressable>
-                  )}
-
-                  {podeExibirAlterarPlano && (
-                    <View className="flex-1">
-                      <Pressable
-                        onPress={handleAbrirAlterarPlano}
-                        className="flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
-                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                      >
-                        <Feather name="repeat" size={16} color="#fff" />
-                        <Text className="text-sm font-semibold text-white">
-                          {isMatriculaRenovavel ? 'Renovar Matrícula' : 'Alterar Plano'}
-                        </Text>
-                      </Pressable>
-                      {isPacote && isMatriculaRenovavel ? (
-                        <Text className="mt-1.5 text-center text-[11px] text-slate-500">
-                          A renovação sai do pacote, encerra o desconto e cobra o valor individual do plano.
-                        </Text>
-                      ) : null}
-                    </View>
-                  )}
-
-                  {podeBloquearMatricula && (
-                    <Pressable
-                      onPress={() => setModalBloquearVisible(true)}
-                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-violet-600 py-3"
-                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                    >
-                      <Feather name="lock" size={16} color="#fff" />
-                      <Text className="text-sm font-semibold text-white">Bloquear Matrícula</Text>
-                    </Pressable>
-                  )}
-
-                  {podeDesbloquearMatricula && (
-                    <Pressable
-                      onPress={handleDesbloquearMatricula}
-                      disabled={desbloqueandoMatricula}
-                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
-                      style={({ pressed }) => [
-                        pressed && { opacity: 0.8 },
-                        desbloqueandoMatricula && { opacity: 0.6 },
-                      ]}
-                    >
-                      {desbloqueandoMatricula ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Feather name="unlock" size={16} color="#fff" />
-                      )}
-                      <Text className="text-sm font-semibold text-white">
-                        {desbloqueandoMatricula ? 'Desbloqueando...' : 'Desbloquear Matrícula'}
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
-                {isMatriculaBloqueada && (
-                  <Text className="mt-2 text-center text-[11px] text-violet-700">
-                    Matrícula bloqueada — check-in e app do aluno estão suspensos (a matrícula não foi excluída).
-                  </Text>
-                )}
-              </View>
-            )}
-
-          </View>
-
-          {outrasMatriculas.length > 0 && (
-            <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <View className="flex-row items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-blue-100">
-                  <Feather name="layers" size={18} color="#2563eb" />
-                </View>
-                <View>
-                  <Text className="text-sm font-semibold text-slate-800">Outras matrículas do aluno</Text>
-                  <Text className="text-xs text-slate-500">
-                    Inclui diárias e planos paralelos deste aluno
-                  </Text>
-                </View>
-              </View>
-              <View className="px-4 py-3 gap-2">
-                {outrasMatriculas.map((outra) => (
-                  <Pressable
-                    key={outra.id}
-                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
-                    style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-                    onPress={() => router.push(`/matriculas/detalhe?id=${outra.id}`)}
-                  >
-                    <View className="flex-row items-start justify-between gap-3">
-                      <View className="flex-1">
-                        <Text className="text-sm font-semibold text-slate-800">
-                          {outra.plano_nome || 'Plano'}
-                          {outra.modalidade_nome ? ` • ${outra.modalidade_nome}` : ''}
-                        </Text>
-                        <Text className="mt-0.5 text-xs text-slate-500">
-                          #{outra.id}
-                          {Number(outra.duracao_dias) === 1 ? ' • Diária' : ''}
-                          {outra.tipo_cobranca ? ` • ${outra.tipo_cobranca}` : ''}
-                        </Text>
-                        <Text className="mt-1 text-xs text-slate-500">
-                          {formatDate(outra.data_inicio)} → {formatDate(outra.data_vencimento)}
-                        </Text>
-                      </View>
-                      <View className="items-end gap-1">
-                        <Text className="text-sm font-semibold text-orange-500">
-                          {formatCurrency(outra.valor)}
-                        </Text>
-                        <View className="rounded-full bg-slate-200 px-2 py-0.5">
-                          <Text className="text-[11px] font-semibold text-slate-700">
-                            {outra.status_nome || outra.status_codigo || '-'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Faturas (todas as parcelas em uma tabela única) */}
-          <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-            <View className="flex-row flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <View className="flex-row items-center gap-3">
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-100">
-                  <Feather name="file-text" size={18} color="#f97316" />
-                </View>
-                <View>
-                  <Text className="text-sm font-semibold text-slate-800">Faturas da Matrícula</Text>
-                  <Text className="text-xs text-slate-500">
-                    {pagamentosPendentes.length} atrasado(s) •{' '}
-                    {pagamentos.filter((p) => Number(p.status_pagamento_id) !== 4).length} ativos
-                    {pagamentos.some((p) => Number(p.status_pagamento_id) === 4)
-                      ? ` • ${pagamentos.filter((p) => Number(p.status_pagamento_id) === 4).length} cancelado(s)`
-                      : ''}
-                  </Text>
-                </View>
-              </View>
-              <View className="flex-row items-center gap-2">
-                {pagamentos.some((p) => Number(p.status_pagamento_id) === 4) && (
-                  <Pressable
-                    className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                    onPress={() => setMostrarCancelados((v) => !v)}
-                  >
-                    <Text className="text-[11px] font-semibold text-slate-600">
-                      {mostrarCancelados ? 'Ocultar cancelados' : 'Mostrar cancelados'}
-                    </Text>
-                  </Pressable>
-                )}
-                <Pressable
-                  className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                  onPress={carregarDados}
-                >
-                  <Text className="text-[11px] font-semibold text-slate-600">Recarregar</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {pagamentos.length === 0 ? (
-              <View className="px-5 py-6">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-                    <Feather name="info" size={18} color="#94a3b8" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-semibold text-slate-700">Nenhuma fatura encontrada</Text>
-                    <Text className="mt-1 text-xs text-slate-500">
-                      A matrícula ainda não gerou cobranças ou o backend não retornou parcelas.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ) : (() => {
-              const pagamentosVisiveis = mostrarCancelados
-                ? pagamentos
-                : pagamentos.filter((p) => Number(p.status_pagamento_id) !== 4);
-              if (pagamentosVisiveis.length === 0) {
-                return (
-                  <View className="px-5 py-6">
-                    <Text className="text-sm text-slate-600">
-                      Só há faturas canceladas. Use &quot;Mostrar cancelados&quot; para vê-las.
-                    </Text>
-                  </View>
-                );
-              }
-              const pagamentosOrdenados = pagamentosVisiveis
-                .slice()
-                .sort((a, b) => {
-                  const pagamentoBId = Number(getPagamentoId(b) || 0);
-                  const pagamentoAId = Number(getPagamentoId(a) || 0);
-
-                  if (pagamentoBId !== pagamentoAId) {
-                    return pagamentoBId - pagamentoAId;
-                  }
-
-                  return new Date(b.data_vencimento || 0) - new Date(a.data_vencimento || 0);
-                });
-              const numeroParcelaMap = buildNumeroParcelaMap(pagamentos);
-
-              if (!isDesktop) {
-                return (
-                  <View className="gap-3 px-4 py-3">
-                    {pagamentosOrdenados.map((pagamento, index) => {
-                      const numeroParcela = resolveNumeroParcela(pagamento, numeroParcelaMap);
-                      return (
-                        <View key={pagamento.id || index} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-                          <View className="mb-2 flex-row items-center justify-between">
-                            <View>
-                              <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
-                              <Text className="text-[14px] font-semibold text-slate-800">
-                                Parcela {numeroParcela ?? '-'}
-                              </Text>
-                            </View>
-                            <View
-                              className="rounded-full px-2.5 py-1"
-                              style={{ backgroundColor: getPagamentoStatusColor(pagamento.status_pagamento_id) }}
-                            >
-                              <Text className="text-[11px] font-bold text-white">
-                                {getPagamentoStatusLabel(pagamento.status_pagamento_id)}
-                              </Text>
-                            </View>
-                          </View>
-
-                          <View className="mb-2 flex-row justify-between">
-                            <Text className="text-[12px] text-slate-500">Vencimento</Text>
-                            <Text className="text-[13px] font-semibold text-slate-700">{formatDate(pagamento.data_vencimento)}</Text>
-                          </View>
-
-                          <View className="mb-2 flex-row justify-between">
-                            <Text className="text-[12px] text-slate-500">Pagamento</Text>
-                            <Text className={`text-[13px] font-semibold ${pagamento.data_pagamento ? 'text-emerald-600' : 'text-slate-400'}`}>
-                              {pagamento.data_pagamento ? formatDate(pagamento.data_pagamento) : '-'}
-                            </Text>
-                          </View>
-
-                          <View className="mb-2 flex-row justify-between">
-                            <Text className="text-[12px] text-slate-500">Valor</Text>
-                            <Text className="text-[14px] font-bold text-slate-800">{formatCurrency(pagamento.valor)}</Text>
-                          </View>
-
-                          <View className="mb-2 flex-row justify-between">
-                            <Text className="text-[12px] text-slate-500">Desconto</Text>
-                            <Text className="text-[13px] font-semibold text-slate-700">{formatCurrency(pagamento.desconto || 0)}</Text>
-                          </View>
-                          {pagamento.motivo_desconto ? (
-                            <Text className="mb-2 text-[11px] leading-4 text-emerald-700">{pagamento.motivo_desconto}</Text>
-                          ) : null}
-
-                          {pagamento.credito_aplicado > 0 && (
-                            <View className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
-                              <View className="flex-row items-center gap-1.5">
-                                <Feather name="gift" size={12} color="#10b981" />
-                                <Text className="text-[11px] font-semibold text-emerald-700">
-                                  Crédito aplicado: {formatCurrency(pagamento.credito_aplicado)}
-                                </Text>
-                              </View>
-                            </View>
-                          )}
-
-                          <View className="mb-3 rounded-lg bg-slate-50 px-2.5 py-2">
-                            <Text className="text-[11px] text-slate-500">Baixado por</Text>
-                            <Text className="text-[12px] font-semibold text-slate-700">
-                              {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
-                            </Text>
-                            {(pagamento.tipo_baixa_nome || pagamento.forma_pagamento_nome) && (
-                              <Text className="mt-0.5 text-[11px] text-slate-500">
-                                {[pagamento.tipo_baixa_nome, pagamento.forma_pagamento_nome]
-                                  .filter(Boolean)
-                                  .join(' • ')}
-                              </Text>
-                            )}
-                          </View>
-
-                          {renderAcoesPagamento(pagamento, true)}
-                        </View>
-                      );
-                    })}
-                  </View>
-                );
-              }
-
-              return (
-                <View className="px-4 py-3">
-                  <View className="flex-row items-center border-b border-slate-200 pb-2">
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.7 }}>Parcela</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Vencimento</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Pagamento</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.3 }}>Baixado por</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Valor</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Desconto</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.9 }}>Status</Text>
-                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 2.2 }}>Ação</Text>
-                  </View>
-
-                  {pagamentosOrdenados.map((pagamento, index) => {
-                    const numeroParcela = resolveNumeroParcela(pagamento, numeroParcelaMap);
-                    return (
-                      <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
-                        <View style={{ flex: 0.7 }}>
-                          <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
-                          <Text className="text-[13px] font-medium text-slate-700">
-                            Parcela {numeroParcela ?? '-'}
-                          </Text>
-                        </View>
-                        <Text className="text-[13px] text-slate-600" style={{ flex: 1.1 }}>
-                          {formatDate(pagamento.data_vencimento)}
-                        </Text>
-                        <Text className={`text-[13px] ${pagamento.data_pagamento ? 'text-emerald-600' : 'text-slate-400'}`} style={{ flex: 1.1 }}>
-                          {pagamento.data_pagamento ? formatDate(pagamento.data_pagamento) : '-'}
-                        </Text>
-                        <View style={{ flex: 1.3 }}>
-                          <Text className="text-[13px] font-medium text-slate-700">
-                            {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
-                          </Text>
-                          {(pagamento.tipo_baixa_nome || pagamento.forma_pagamento_nome) && (
-                            <Text className="mt-0.5 text-[11px] text-slate-500">
-                              {[pagamento.tipo_baixa_nome, pagamento.forma_pagamento_nome]
-                                .filter(Boolean)
-                                .join(' • ')}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text className="text-[13px] font-semibold text-slate-700">
-                            {formatCurrency(pagamento.valor)}
-                          </Text>
-                          {pagamento.credito_aplicado > 0 && (
-                            <Text className="text-[10px] text-emerald-600">
-                              crédito: {formatCurrency(pagamento.credito_aplicado)}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text className="text-[13px] font-semibold text-slate-700">
-                            {formatCurrency(pagamento.desconto || 0)}
-                          </Text>
-                          {pagamento.motivo_desconto ? (
-                            <Text className="mt-0.5 text-right text-[10px] leading-3 text-emerald-700" numberOfLines={2}>
-                              {pagamento.motivo_desconto}
-                            </Text>
-                          ) : null}
-                        </View>
-                        <View style={{ flex: 0.9, alignItems: 'center' }}>
-                          <View
-                            className="rounded-full px-2.5 py-1"
-                            style={{ backgroundColor: getPagamentoStatusColor(pagamento.status_pagamento_id) }}
-                          >
-                            <Text className="text-[11px] font-bold text-white">
-                              {getPagamentoStatusLabel(pagamento.status_pagamento_id)}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={{ flex: 2.2, alignItems: 'flex-end' }}>
-                          {renderAcoesPagamento(pagamento)}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })()}
-          </View>
-
-          {/* Card de Resumo Financeiro - Design Moderno */}
-          {pagamentos.length > 0 && (
-            <View className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
-              <View className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-orange-500 shadow-sm">
-                    <MaterialCommunityIcons name="chart-donut" size={20} color="#fff" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-semibold text-slate-800">Resumo Financeiro</Text>
-                    <Text className="text-xs text-slate-500">
-                    {Math.round((resumo.pago / resumo.total) * 100)}% pago do total
-                  </Text>
-                </View>
-                </View>
-
-                <View className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
-                  <View
-                    className="h-2 bg-emerald-500"
-                    style={{ width: `${(resumo.pago / resumo.total) * 100}%` }}
-                  />
-                  {resumo.atrasado > 0 && (
-                    <View
-                      className="h-2 bg-rose-500"
-                      style={{ width: `${(resumo.atrasado / resumo.total) * 100}%` }}
-                    />
-                  )}
-                  <View
-                    className="h-2 bg-amber-400"
-                    style={{ width: `${(resumo.aguardando / resumo.total) * 100}%` }}
-                  />
-                </View>
-              </View>
-
-              <View className="flex-row flex-wrap gap-3 px-5 py-4">
-                <View className="min-w-[220px] flex-1 rounded-xl border border-emerald-100 bg-emerald-50/80 p-4">
-                  <View className="flex-row items-center gap-2">
-                    <Feather name="check-circle" size={18} color="#10b981" />
-                    <Text className="text-xs font-semibold text-emerald-700">Pago</Text>
-                  </View>
-                  <Text className="mt-2 text-lg font-bold text-emerald-600">
-                    {formatCurrency(resumo.pago)}
-                  </Text>
-                </View>
-
-                {resumo.atrasado > 0 && (
-                  <View className="min-w-[220px] flex-1 rounded-xl border border-rose-100 bg-rose-50/80 p-4">
-                    <View className="flex-row items-center gap-2">
-                      <Feather name="alert-triangle" size={18} color="#ef4444" />
-                      <Text className="text-xs font-semibold text-rose-600">Atrasado</Text>
-                    </View>
-                    <Text className="mt-2 text-lg font-bold text-rose-600">
-                      {formatCurrency(resumo.atrasado)}
-                    </Text>
-                  </View>
-                )}
-
-                <View className="min-w-[220px] flex-1 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
-                  <View className="flex-row items-center gap-2">
-                    <Feather name="clock" size={18} color="#f59e0b" />
-                    <Text className="text-xs font-semibold text-amber-700">Aguardando</Text>
-                  </View>
-                  <Text className="mt-2 text-lg font-bold text-amber-600">
-                    {formatCurrency(resumo.aguardando)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Card de Descontos */}
-          <View className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
-            <View className="flex-row items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
-              <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-xl bg-violet-500 shadow-sm">
-                  <Feather name="percent" size={20} color="#fff" />
-                </View>
-                <View>
-                  <Text className="text-sm font-semibold text-slate-800">Descontos</Text>
-                  <Text className="text-xs text-slate-500">
-                    {descontos.filter((d) => d.ativo === 1).length} ativo(s)
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                className="flex-row items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-2"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                onPress={abrirNovoDesconto}
+    <LayoutBase title={`Matrícula #${matricula.id}`} pageHeader={false}>
+      {/* O conteúdo já rola dentro do AppShell */}
+      <div className="ck-mt-page">
+          <Matricula
+            enrollment={enrollmentDs}
+            pkg={pacoteDs}
+            invoices={invoicesDs}
+            counts={countsDs}
+            discounts={descontosDs}
+            today={hojeISO}
+            backLabel="Matrículas"
+            onBack={() => router.push('/matriculas')}
+            onSettle={(inv) => handleBaixaPagamento(inv.raw)}
+            invoiceMenu={currentUserId === 3}
+            onEditInvoice={(inv) => handleAbrirEditarPagamento(inv.raw)}
+            onDeleteInvoice={(inv) => handleAbrirExcluirPagamento(inv.raw)}
+            onSettlePackage={() => setModalBaixaPacoteVisible(true)}
+            onAddDiscount={abrirNovoDesconto}
+            onEditDiscount={(d) => abrirEditarDesconto(d.raw)}
+            onRemoveDiscount={(d) => handleDesativarDesconto(d.id)}
+            onReload={carregarDados}
+            actions={acoesCabecalho}
+            notices={avisosMatricula}
+          >
+            {outrasMatriculas.length > 0 ? (
+              <CkCard
+                title="Outras matrículas do aluno"
+                description="Inclui diárias e planos paralelos deste aluno"
+                leading={<CkIcon name="layers" size={20} />}
               >
-                <Feather name="plus" size={14} color="#fff" />
-                <Text className="text-[12px] font-semibold text-white">Adicionar</Text>
-              </Pressable>
-            </View>
+                <ul className="ck-mt-others">
+                  {outrasMatriculas.map((outra) => (
+                    <li key={outra.id}>
+                      <button type="button" onClick={() => router.push(`/matriculas/detalhe?id=${outra.id}`)}>
+                        <span className="ck-mt-others__main">
+                          <strong>
+                            {outra.plano_nome || 'Plano'}
+                            {outra.modalidade_nome ? `, ${outra.modalidade_nome}` : ''}
+                          </strong>
+                          <span>
+                            Matrícula #{outra.id}
+                            {Number(outra.duracao_dias) === 1 ? ', diária' : ''}
+                            {' · '}
+                            {formatDate(outra.data_inicio)} a {formatDate(outra.data_vencimento)}
+                          </span>
+                        </span>
+                        <span className="ck-mt-others__value">{formatCurrency(outra.valor)}</span>
+                        <CkBadge>{outra.status_nome || outra.status_codigo || '-'}</CkBadge>
+                        <CkIcon name="chevron-right" size={16} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </CkCard>
+            ) : null}
+          </Matricula>
+      </div>
 
-            {descontos.length === 0 ? (
-              <View className="px-5 py-6">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-                    <Feather name="info" size={18} color="#94a3b8" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-semibold text-slate-700">Nenhum desconto cadastrado</Text>
-                    <Text className="mt-1 text-xs text-slate-500">
-                      Adicione descontos para aplicação automática nas próximas parcelas.
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ) : (
-              <View className="gap-3 px-4 py-3">
-                {descontos.map((desc) => (
-                  <View
-                    key={desc.id}
-                    className={`rounded-xl border px-4 py-3 ${desc.ativo === 1 ? 'border-violet-200 bg-violet-50/50' : 'border-slate-200 bg-slate-50 opacity-60'}`}
-                  >
-                    <View className="flex-row items-start justify-between">
-                      <View className="flex-1">
-                        <View className="flex-row items-center gap-2 mb-1">
-                          <View className={`rounded-full px-2 py-0.5 ${desc.tipo === 'primeira_mensalidade' ? 'bg-amber-100' : 'bg-violet-100'}`}>
-                            <Text className={`text-[10px] font-bold ${desc.tipo === 'primeira_mensalidade' ? 'text-amber-700' : 'text-violet-700'}`}>
-                              {desc.tipo === 'primeira_mensalidade' ? '1ª MENSALIDADE' : 'RECORRENTE'}
-                            </Text>
-                          </View>
-                          <View className={`rounded-full px-2 py-0.5 ${desc.ativo === 1 ? 'bg-emerald-100' : 'bg-slate-200'}`}>
-                            <Text className={`text-[10px] font-bold ${desc.ativo === 1 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                              {desc.ativo === 1 ? 'ATIVO' : 'INATIVO'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <Text className="text-base font-bold text-slate-800">
-                          {desc.valor ? formatCurrency(desc.valor) : `${String(desc.percentual).replace('.', ',')}%`}
-                        </Text>
-                        <Text className="text-xs text-slate-500 mt-0.5">{desc.motivo}</Text>
-
-                        {desc.autorizado_por_nome && (
-                          <View className="flex-row items-center gap-1 mt-1">
-                            <Feather name="user-check" size={11} color="#6366f1" />
-                            <Text className="text-[11px] font-medium text-indigo-600">
-                              Autorizado por: {desc.autorizado_por_nome}
-                            </Text>
-                          </View>
-                        )}
-
-                        <View className="flex-row flex-wrap gap-x-4 gap-y-1 mt-2">
-                          <Text className="text-[11px] text-slate-400">
-                            Início: {desc.vigencia_inicio ? formatDate(desc.vigencia_inicio) : '-'}
-                          </Text>
-                          <Text className="text-[11px] text-slate-400">
-                            Fim: {desc.vigencia_fim ? formatDate(desc.vigencia_fim) : 'Indefinido'}
-                          </Text>
-                          {desc.parcelas_restantes != null && (
-                            <Text className="text-[11px] text-slate-400">
-                              Parcelas restantes: {desc.parcelas_restantes}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-
-                      {desc.ativo === 1 && (
-                        <View className="flex-row gap-1.5 ml-2">
-                          <Pressable
-                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
-                            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                            onPress={() => abrirEditarDesconto(desc)}
-                          >
-                            <Feather name="edit-2" size={14} color="#334155" />
-                          </Pressable>
-                          <Pressable
-                            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
-                            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                            onPress={() => handleDesativarDesconto(desc.id)}
-                          >
-                            <Feather name="x" size={14} color="#dc2626" />
-                          </Pressable>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Modal Desconto (Novo + Editar) */}
-      <Modal
-        visible={modalDescontoVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModalDescontoVisible(false)}
-      >
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/40 px-4"
-          onPress={() => setModalDescontoVisible(false)}
-        >
-          <Pressable onPress={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Header */}
-              <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
-                <Text className="text-lg font-bold text-slate-800">
-                  {descontoEditando ? 'Editar Desconto' : 'Novo Desconto'}
-                </Text>
-                <Pressable onPress={() => setModalDescontoVisible(false)} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
-                  <Feather name="x" size={22} color="#64748b" />
-                </Pressable>
-              </View>
-
-              <View className="px-6 py-4 gap-4">
-                {/* Tipo */}
-                <View>
-                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Tipo de desconto</Text>
-                  <View className="flex-row gap-2">
-                    {[
-                      { value: 'primeira_mensalidade', label: '1ª Mensalidade' },
-                      { value: 'recorrente', label: 'Recorrente' },
-                    ].map((opt) => (
-                      <Pressable
-                        key={opt.value}
-                        onPress={() => setFormDesconto({ ...formDesconto, tipo: opt.value })}
-                        className={`flex-1 items-center rounded-lg border py-2.5 ${formDesconto.tipo === opt.value ? 'border-violet-500 bg-violet-500' : 'border-slate-200 bg-white'}`}
-                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                      >
-                        <Text className={`text-[13px] font-semibold ${formDesconto.tipo === opt.value ? 'text-white' : 'text-slate-600'}`}>
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Modo: Valor / Percentual */}
-                <View>
-                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Desconto em</Text>
-                  <View className="flex-row gap-2">
-                    {[
-                      { value: 'valor', label: 'R$ (Fixo)' },
-                      { value: 'percentual', label: '% (Percentual)' },
-                    ].map((opt) => (
-                      <Pressable
-                        key={opt.value}
-                        onPress={() => setFormDesconto({ ...formDesconto, modo: opt.value })}
-                        className={`flex-1 items-center rounded-lg border py-2.5 ${formDesconto.modo === opt.value ? 'border-violet-500 bg-violet-500' : 'border-slate-200 bg-white'}`}
-                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                      >
-                        <Text className={`text-[13px] font-semibold ${formDesconto.modo === opt.value ? 'text-white' : 'text-slate-600'}`}>
-                          {opt.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Campo valor ou percentual */}
-                {formDesconto.modo === 'valor' ? (
-                  <View>
-                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Valor do desconto (R$)</Text>
-                    <TextInput
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base font-bold text-slate-800"
-                      placeholder="0,00"
-                      value={formDesconto.valor}
-                      onChangeText={(val) => setFormDesconto({ ...formDesconto, valor: aplicarMascaraDesconto(val) })}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                ) : (
-                  <View>
-                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Percentual (%)</Text>
-                    <TextInput
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base font-bold text-slate-800"
-                      placeholder="0,00"
-                      value={formDesconto.percentual}
-                      onChangeText={(val) => {
-                        const limpo = val.replace(/[^0-9,]/g, '');
-                        setFormDesconto({ ...formDesconto, percentual: limpo });
-                      }}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-                )}
-
-                {/* Motivo */}
-                <View>
-                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Motivo *</Text>
-                  <TextInput
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
-                    placeholder="Ex: Promoção de inauguração, Funcionário..."
-                    value={formDesconto.motivo}
-                    onChangeText={(val) => setFormDesconto({ ...formDesconto, motivo: val })}
-                  />
-                </View>
-
-                {/* Autorizado por */}
-                <View>
-                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Autorizado por</Text>
-                  <View className="rounded-lg border border-slate-200 bg-slate-50">
-                    <Picker
-                      selectedValue={formDesconto.autorizado_por}
-                      onValueChange={(val) => setFormDesconto({ ...formDesconto, autorizado_por: val })}
-                      style={{ height: 44, color: '#1e293b' }}
-                    >
-                      <Picker.Item label="Selecione (opcional)" value="" color="#94a3b8" />
-                      {adminsLista.map((adm) => (
-                        <Picker.Item key={adm.id} label={adm.nome} value={String(adm.id)} />
-                      ))}
-                    </Picker>
-                  </View>
-                </View>
-
-                {/* Vigência */}
-                <View className="flex-row gap-3">
-                  <View className="flex-1">
-                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Início vigência</Text>
-                    <Pressable
-                      onPress={() => {
-                        setCalendarDescontoCampo('inicio');
-                        setMesCalendarioDesconto(formDesconto.vigencia_inicio ? new Date(formDesconto.vigencia_inicio + 'T00:00:00') : new Date());
-                        setCalendarDescontoVisible(true);
-                      }}
-                      className="flex-row items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"
-                    >
-                      <Text className={`text-sm ${formDesconto.vigencia_inicio ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
-                        {formDesconto.vigencia_inicio ? formatarDataBRDesconto(formDesconto.vigencia_inicio) : 'dd/mm/aaaa'}
-                      </Text>
-                      <Feather name="calendar" size={16} color="#f97316" />
-                    </Pressable>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Fim vigência</Text>
-                    <Pressable
-                      onPress={() => {
-                        setCalendarDescontoCampo('fim');
-                        setMesCalendarioDesconto(formDesconto.vigencia_fim ? new Date(formDesconto.vigencia_fim + 'T00:00:00') : new Date());
-                        setCalendarDescontoVisible(true);
-                      }}
-                      className="flex-row items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"
-                    >
-                      <Text className={`text-sm ${formDesconto.vigencia_fim ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
-                        {formDesconto.vigencia_fim ? formatarDataBRDesconto(formDesconto.vigencia_fim) : 'Indefinido'}
-                      </Text>
-                      <Feather name="calendar" size={16} color="#f97316" />
-                    </Pressable>
-                    {formDesconto.vigencia_fim && (
-                      <Pressable onPress={() => setFormDesconto({ ...formDesconto, vigencia_fim: '' })}>
-                        <Text className="text-xs text-red-500 mt-1">Limpar</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                </View>
-
-                {/* Parcelas restantes */}
-                {formDesconto.tipo === 'recorrente' && (
-                  <View>
-                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Parcelas restantes (vazio = sem limite)</Text>
-                    <TextInput
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
-                      placeholder="Sem limite"
-                      value={formDesconto.parcelas_restantes}
-                      onChangeText={(val) => setFormDesconto({ ...formDesconto, parcelas_restantes: val.replace(/\D/g, '') })}
-                      keyboardType="numeric"
-                    />
-                  </View>
-                )}
-              </View>
-
-              {/* Botões */}
-              <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
-                <Pressable
-                  onPress={() => setModalDescontoVisible(false)}
-                  className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
-                  style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-                  disabled={salvandoDesconto}
-                >
-                  <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleSalvarDesconto}
-                  disabled={salvandoDesconto}
-                  className="flex-[2] flex-row items-center justify-center gap-2 rounded-lg bg-violet-500 py-3"
-                  style={({ pressed }) => [pressed && { opacity: 0.8 }, salvandoDesconto && { opacity: 0.6 }]}
-                >
-                  {salvandoDesconto ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Feather name="save" size={16} color="#fff" />
-                  )}
-                  <Text className="text-sm font-bold text-white">
-                    {salvandoDesconto ? 'Salvando...' : descontoEditando ? 'Salvar Alterações' : 'Criar Desconto'}
-                  </Text>
-                </Pressable>
-              </View>
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Desconto (novo + editar) */}
+      <DescontoModal
+        key={modalDescontoVisible ? descontoEditando?.id || 'novo' : 'fechado'}
+        open={modalDescontoVisible}
+        discount={descontoEditando ? descontoParaDs(descontoEditando) : { start: hojeISO }}
+        planAmount={Number(matricula.valor) || 0}
+        studentName={matricula.usuario_nome}
+        authorizers={adminsLista.map((adm) => ({ value: String(adm.id), label: adm.nome }))}
+        today={hojeISO}
+        onCancel={() => setModalDescontoVisible(false)}
+        onSave={handleSalvarDesconto}
+        onRemove={(d) => {
+          setModalDescontoVisible(false);
+          handleDesativarDesconto(d.id);
+        }}
+      />
 
       {/* Modal de Baixa de Pagamento */}
       <BaixaPagamentoPlanoModal
@@ -3534,104 +2623,6 @@ export default function MatriculaDetalheScreen() {
             </View>
           </View>
         </View>
-      </Modal>
-
-      {/* Modal Calendário Desconto */}
-      <Modal visible={calendarDescontoVisible} transparent animationType="fade" onRequestClose={() => setCalendarDescontoVisible(false)}>
-        <Pressable onPress={() => setCalendarDescontoVisible(false)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 20, width: isDesktop ? 340 : '90%' }}>
-            {/* Navegação mês */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <TouchableOpacity onPress={() => setMesCalendarioDesconto((prev) => { const d = new Date(prev); d.setMonth(d.getMonth() - 1); return d; })} style={{ padding: 6 }}>
-                <Feather name="chevron-left" size={20} color="#334155" />
-              </TouchableOpacity>
-              <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>
-                {mesCalendarioDesconto.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-              </Text>
-              <TouchableOpacity onPress={() => setMesCalendarioDesconto((prev) => { const d = new Date(prev); d.setMonth(d.getMonth() + 1); return d; })} style={{ padding: 6 }}>
-                <Feather name="chevron-right" size={20} color="#334155" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Cabeçalho dias da semana */}
-            <View style={{ flexDirection: 'row', marginBottom: 6 }}>
-              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
-                <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#94a3b8' }}>{d}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Grid dias */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-              {(() => {
-                const ano = mesCalendarioDesconto.getFullYear();
-                const mes = mesCalendarioDesconto.getMonth();
-                const primeiroDia = new Date(ano, mes, 1);
-                const ultimoDia = new Date(ano, mes + 1, 0);
-                const diasNoMes = ultimoDia.getDate();
-                const diaInicio = primeiroDia.getDay();
-                const dias = [];
-                for (let i = 0; i < diaInicio; i++) dias.push(null);
-                for (let i = 1; i <= diasNoMes; i++) dias.push(new Date(ano, mes, i));
-                return dias;
-              })().map((dia, idx) => {
-                if (!dia) return <View key={`e-${idx}`} style={{ width: '14.28%', height: 36 }} />;
-                const diaISO = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`;
-                const valorAtual = calendarDescontoCampo === 'inicio' ? formDesconto.vigencia_inicio : formDesconto.vigencia_fim;
-                const selecionado = valorAtual === diaISO;
-                const hoje = new Date();
-                const ehHoje = dia.getFullYear() === hoje.getFullYear() && dia.getMonth() === hoje.getMonth() && dia.getDate() === hoje.getDate();
-
-                // Desabilitar datas anteriores ao início quando selecionando fim
-                let desabilitado = false;
-                if (calendarDescontoCampo === 'fim' && formDesconto.vigencia_inicio && diaISO < formDesconto.vigencia_inicio) {
-                  desabilitado = true;
-                }
-
-                return (
-                  <TouchableOpacity
-                    key={diaISO}
-                    disabled={desabilitado}
-                    onPress={() => {
-                      if (calendarDescontoCampo === 'inicio') {
-                        setFormDesconto((prev) => {
-                          const novoForm = { ...prev, vigencia_inicio: diaISO };
-                          if (prev.vigencia_fim && diaISO > prev.vigencia_fim) novoForm.vigencia_fim = '';
-                          return novoForm;
-                        });
-                      } else {
-                        setFormDesconto((prev) => ({ ...prev, vigencia_fim: diaISO }));
-                      }
-                      setCalendarDescontoVisible(false);
-                    }}
-                    style={{ width: '14.28%', height: 36, justifyContent: 'center', alignItems: 'center' }}
-                  >
-                    <View
-                      style={{
-                        width: 30, height: 30, borderRadius: 15,
-                        justifyContent: 'center', alignItems: 'center',
-                        backgroundColor: selecionado ? '#f97316' : ehHoje ? '#fff7ed' : 'transparent',
-                        borderWidth: ehHoje && !selecionado ? 1 : 0,
-                        borderColor: '#fdba74',
-                        opacity: desabilitado ? 0.3 : 1,
-                      }}
-                    >
-                      <Text style={{ fontSize: 13, fontWeight: selecionado || ehHoje ? '700' : '400', color: selecionado ? '#fff' : '#0f172a' }}>
-                        {dia.getDate()}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Botão fechar */}
-            <TouchableOpacity onPress={() => setCalendarDescontoVisible(false)} style={{ marginTop: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748b' }}>Fechar</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
       </Modal>
 
       {/* Modal Bloquear Matrícula */}

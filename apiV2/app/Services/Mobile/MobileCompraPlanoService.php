@@ -494,6 +494,7 @@ class MobileCompraPlanoService
                 'descricao' => $descricaoCompra,
                 'valor' => $valorCompra,
                 'max_parcelas' => 12,
+                'installment_count' => (int) ($data['installment_count'] ?? $data['parcelas'] ?? 1),
                 'academia_nome' => $academiaNome,
                 'apenas_cartao' => $isRecorrente,
                 'metodo_pagamento' => $metodoPagamento,

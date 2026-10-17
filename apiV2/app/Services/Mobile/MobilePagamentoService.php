@@ -9,6 +9,7 @@ use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
+use App\Support\AsaasTarifaCartao;
 use App\Support\PaymentPixGateway;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -72,7 +73,17 @@ class MobilePagamentoService
                 $asaas = $escolha['instance'] instanceof AsaasService
                     ? $escolha['instance']
                     : new AsaasService($tenantId);
-                $payload = $this->payloadTaxaCartao($provider, $valor, $asaas->valorComTaxaCartaoRepassada($valor));
+                $opcoes = $asaas->simularOpcoesParcelasCartao($valor);
+                $parcelas = [];
+                foreach ($opcoes as $repasse) {
+                    $item = $this->payloadTaxaCartao($provider, $valor, $repasse);
+                    unset($item['parcelas']);
+                    $parcelas[] = $item;
+                }
+                if ($parcelas !== []) {
+                    $payload = $parcelas[0];
+                    $payload['parcelas'] = $parcelas;
+                }
             } catch (\Throwable $e) {
                 Log::warning('simularTaxaCartao: '.$e->getMessage(), ['tenant_id' => $tenantId]);
                 $payload['aviso'] = 'Não foi possível consultar a taxa agora. O valor do plano será usado.';
@@ -97,6 +108,10 @@ class MobilePagamentoService
         $valorPlano = round($valorPlano, 2);
         $cobrar = $repasse !== null ? round((float) ($repasse['valor_cobrar'] ?? $valorPlano), 2) : $valorPlano;
         $tarifa = $repasse !== null ? round((float) ($repasse['tarifa'] ?? max(0, $cobrar - $valorPlano)), 2) : 0.0;
+        $n = max(1, (int) (is_array($repasse) ? ($repasse['parcela_count'] ?? 1) : 1));
+        $valorParcela = is_array($repasse) && isset($repasse['valor_parcela'])
+            ? round((float) $repasse['valor_parcela'], 2)
+            : AsaasTarifaCartao::valorParcela($cobrar, $n);
 
         return [
             'provider' => $provider,
@@ -107,6 +122,10 @@ class MobilePagamentoService
             'tarifa_formatada' => 'R$ '.number_format($tarifa, 2, ',', '.'),
             'valor_cobrar' => $cobrar,
             'valor_cobrar_formatado' => 'R$ '.number_format($cobrar, 2, ',', '.'),
+            'parcela_count' => $n,
+            'valor_parcela' => $valorParcela,
+            'valor_parcela_formatado' => 'R$ '.number_format($valorParcela, 2, ',', '.'),
+            'rotulo_parcela' => AsaasTarifaCartao::rotulo($n, $valorParcela),
             'fee_percentage' => is_array($repasse) ? ($repasse['fee_percentage'] ?? null) : null,
             'operation_fee' => is_array($repasse) ? ($repasse['operation_fee'] ?? null) : null,
         ];

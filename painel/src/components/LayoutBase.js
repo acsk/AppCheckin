@@ -130,7 +130,7 @@ function findActive(sections, pathname) {
   return best;
 }
 
-export default function LayoutBase({ children, title = 'Dashboard', subtitle = '', noPadding = false }) {
+export default function LayoutBase({ children, title = 'Dashboard', subtitle = '', noPadding = false, pageHeader = true }) {
   const router = useRouter();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
@@ -226,7 +226,8 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
         header={header}
         className={noPadding ? 'ck-shell--flush' : undefined}
       >
-        <PageHeader title={title} description={subtitle || undefined} />
+        {/* Telas com cabeçalho próprio (ex.: Matricula) passam pageHeader={false} */}
+        {pageHeader ? <PageHeader title={title} description={subtitle || undefined} /> : null}
         {children}
       </AppShell>
 

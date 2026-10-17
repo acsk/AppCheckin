@@ -41,4 +41,13 @@ class AsaasTarifaCartaoTest extends TestCase
         $this->assertEqualsWithDelta(103.16, AsaasTarifaCartao::ajustarPeloLiquidoSimulado(103.06, 100.0, 99.90, 2.49), 0.01);
         $this->assertSame(103.06, AsaasTarifaCartao::ajustarPeloLiquidoSimulado(103.06, 100.0, 100.05, 2.49));
     }
+
+    public function test_valor_parcela_e_rotulo(): void
+    {
+        $this->assertSame(20.78, AsaasTarifaCartao::valorParcela(62.35, 3));
+        $this->assertSame('À vista · R$ 62,35', AsaasTarifaCartao::rotulo(1, 62.35));
+        $this->assertSame('3x de R$ 20,78', AsaasTarifaCartao::rotulo(3, 20.78));
+        $this->assertTrue(AsaasTarifaCartao::cabeEmParcelas(60.0, 12));
+        $this->assertFalse(AsaasTarifaCartao::cabeEmParcelas(20.0, 6));
+    }
 }

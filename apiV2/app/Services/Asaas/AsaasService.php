@@ -142,33 +142,49 @@ class AsaasService
         $valorPlano = round((float) $data['valor'], 2);
         $valorCobranca = $valorPlano;
         $tarifaCartao = null;
+        $parcelas = (int) ($data['installment_count'] ?? $data['parcelas'] ?? 1);
+        if ($parcelas < 1) {
+            $parcelas = 1;
+        }
+        if ($parcelas > 12) {
+            $parcelas = 12;
+        }
         $descricao = (string) ($data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento');
         if ($billingType === 'CREDIT_CARD') {
             try {
-                $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano);
+                $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano, $parcelas);
                 $valorCobranca = $tarifaCartao['valor_cobrar'];
+                $parcelas = (int) ($tarifaCartao['parcela_count'] ?? $parcelas);
                 if ($tarifaCartao['tarifa'] > 0) {
                     $descricao .= sprintf(
-                        ' (inclui taxa cartão Asaas R$ %s)',
-                        number_format($tarifaCartao['tarifa'], 2, ',', '.')
+                        ' (inclui taxa cartão Asaas R$ %s%s)',
+                        number_format($tarifaCartao['tarifa'], 2, ',', '.'),
+                        $parcelas > 1 ? ', '.$parcelas.'x' : ''
                     );
                 }
             } catch (\Throwable $e) {
                 Log::warning('Asaas: simulação de taxa de cartão falhou; cobrando valor do plano', [
                     'tenant_id' => $this->tenantId,
                     'valor' => $valorPlano,
+                    'parcelas' => $parcelas,
                     'error' => $e->getMessage(),
                 ]);
             }
         }
-        $payment = $this->request('POST', '/payments', [
+        $payloadPagamento = [
             'customer' => $customerId,
             'billingType' => $billingType,
-            'value' => $valorCobranca,
             'dueDate' => $dueDate,
             'description' => $descricao,
             'externalReference' => $externalReference,
-        ]);
+        ];
+        if ($billingType === 'CREDIT_CARD' && $parcelas > 1) {
+            $payloadPagamento['installmentCount'] = $parcelas;
+            $payloadPagamento['installmentValue'] = AsaasTarifaCartao::valorParcela($valorCobranca, $parcelas);
+        } else {
+            $payloadPagamento['value'] = $valorCobranca;
+        }
+        $payment = $this->request('POST', '/payments', $payloadPagamento);
 
         $paymentId = (string) ($payment['id'] ?? '');
         if ($paymentId === '') {
@@ -201,19 +217,20 @@ class AsaasService
      * Simula taxas Asaas (POST /payments/simulate) e devolve o valor a cobrar no cartão
      * para a academia receber o líquido do plano.
      *
-     * @return array{valor_plano: float, valor_cobrar: float, tarifa: float, fee_percentage: float, operation_fee: float, net_value_simulado: ?float}
+     * @return array{valor_plano: float, valor_cobrar: float, tarifa: float, fee_percentage: float, operation_fee: float, net_value_simulado: ?float, parcela_count: int, valor_parcela: float}
      */
-    public function valorComTaxaCartaoRepassada(float $valorLiquidoDesejado): array
+    public function valorComTaxaCartaoRepassada(float $valorLiquidoDesejado, int $parcelas = 1, bool $refinar = true): array
     {
         $valorLiquidoDesejado = round($valorLiquidoDesejado, 2);
-        $sim = $this->simularVenda($valorLiquidoDesejado, ['CREDIT_CARD']);
+        $parcelas = max(1, min(12, $parcelas));
+        $sim = $this->simularVenda($valorLiquidoDesejado, ['CREDIT_CARD'], $parcelas);
         $creditCard = is_array($sim['creditCard'] ?? null) ? $sim['creditCard'] : [];
         $repasse = AsaasTarifaCartao::aPartirDaSimulacao($valorLiquidoDesejado, $creditCard);
-        if ($repasse['tarifa'] <= 0) {
-            return $repasse;
+        if ($repasse['tarifa'] <= 0 || ! $refinar) {
+            return $this->anexarParcela($repasse, $parcelas);
         }
 
-        $sim2 = $this->simularVenda($repasse['valor_cobrar'], ['CREDIT_CARD']);
+        $sim2 = $this->simularVenda($repasse['valor_cobrar'], ['CREDIT_CARD'], $parcelas);
         $cc2 = is_array($sim2['creditCard'] ?? null) ? $sim2['creditCard'] : [];
         $net2 = isset($cc2['netValue']) ? round((float) $cc2['netValue'], 2) : null;
         if ($net2 !== null) {
@@ -229,6 +246,47 @@ class AsaasService
             $repasse['operation_fee'] = (float) ($cc2['operationFee'] ?? $repasse['operation_fee']);
         }
 
+        return $this->anexarParcela($repasse, $parcelas);
+    }
+
+    /**
+     * Uma simulação por opção (sem 2ª chamada de ajuste) para o app listar 1x–6x e 12x.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function simularOpcoesParcelasCartao(float $valorLiquidoDesejado): array
+    {
+        $valorLiquidoDesejado = round($valorLiquidoDesejado, 2);
+        $opcoes = [];
+        foreach (AsaasTarifaCartao::OPCOES_PARCELAS as $n) {
+            if (! AsaasTarifaCartao::cabeEmParcelas($valorLiquidoDesejado, $n)) {
+                continue;
+            }
+            try {
+                $opcoes[] = $this->valorComTaxaCartaoRepassada($valorLiquidoDesejado, $n, false);
+            } catch (\Throwable $e) {
+                Log::info('Asaas: opção de parcela indisponível na simulação', [
+                    'tenant_id' => $this->tenantId,
+                    'valor' => $valorLiquidoDesejado,
+                    'parcelas' => $n,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $opcoes;
+    }
+
+    /**
+     * @param  array<string, mixed>  $repasse
+     * @return array<string, mixed>
+     */
+    private function anexarParcela(array $repasse, int $parcelas): array
+    {
+        $total = (float) $repasse['valor_cobrar'];
+        $repasse['parcela_count'] = $parcelas;
+        $repasse['valor_parcela'] = AsaasTarifaCartao::valorParcela($total, $parcelas);
+
         return $repasse;
     }
 
@@ -236,14 +294,18 @@ class AsaasService
      * @param  list<string>  $billingTypes
      * @return array<string, mixed>
      */
-    public function simularVenda(float $valor, array $billingTypes = ['CREDIT_CARD']): array
+    public function simularVenda(float $valor, array $billingTypes = ['CREDIT_CARD'], int $parcelas = 1): array
     {
         $this->validarCredenciais();
-
-        return $this->request('POST', '/payments/simulate', [
+        $body = [
             'value' => round($valor, 2),
             'billingTypes' => $billingTypes,
-        ]);
+        ];
+        if ($parcelas > 1) {
+            $body['installmentCount'] = $parcelas;
+        }
+
+        return $this->request('POST', '/payments/simulate', $body);
     }
 
     /**

@@ -70,4 +70,34 @@ final class AsaasTarifaCartao
 
         return round($valorCobrar + $delta, 2);
     }
+
+    /** Parcelas simuladas no app (à vista + as mais usadas no cartão). */
+    public const OPCOES_PARCELAS = [1, 2, 3, 4, 5, 6, 12];
+
+    /** Asaas costuma recusar parcela menor que R$ 5. */
+    public const MIN_VALOR_PARCELA = 5.0;
+
+    public static function valorParcela(float $total, int $parcelas): float
+    {
+        return round($total / max(1, $parcelas), 2);
+    }
+
+    public static function cabeEmParcelas(float $total, int $parcelas): bool
+    {
+        if ($parcelas <= 1) {
+            return true;
+        }
+
+        return self::valorParcela($total, $parcelas) + 0.001 >= self::MIN_VALOR_PARCELA;
+    }
+
+    public static function rotulo(int $parcelas, float $valorParcela): string
+    {
+        $fmt = 'R$ '.number_format($valorParcela, 2, ',', '.');
+        if ($parcelas <= 1) {
+            return 'À vista · '.$fmt;
+        }
+
+        return $parcelas.'x de '.$fmt;
+    }
 }
