@@ -1039,6 +1039,15 @@ class AdminMatriculaRepository
             ->exists();
     }
 
+    public function countParcelasAbertas(int $matriculaId, int $tenantId): int
+    {
+        return (int) DB::table('pagamentos_plano')
+            ->where('matricula_id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->count();
+    }
+
     public function findParaAlterarPlano(int $id, int $tenantId): ?array
     {
         $row = DB::table('matriculas as m')

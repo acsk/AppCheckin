@@ -139,6 +139,16 @@ export const matriculaService = {
     }
   },
 
+  async simularAlterarPlano(matriculaId, dados) {
+    try {
+      const response = await api.post(`/admin/matriculas/${matriculaId}/simular-alterar-plano`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao simular alteração de plano:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async baixarPacoteContrato(contratoId) {
     try {
       const response = await api.post(`/admin/matriculas/pacote-contrato/${contratoId}/baixa`);

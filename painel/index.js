@@ -7,6 +7,7 @@ import './src/theme/ck.css';
 import './src/theme/ck-enrollments.css';
 import './src/theme/ck-painel.css';
 import './src/theme/ck-planos.css';
+import './src/theme/ck-troca-plano.css';
 import './src/theme/ck-financeiro.css';
 
 import 'expo-router/entry';

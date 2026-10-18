@@ -16,6 +16,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
+import TrocaPlanoModal from '../../components/ck/TrocaPlanoModal';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
@@ -81,11 +82,9 @@ export default function MatriculaDetalheScreen() {
   });
   const [saldoCreditosAluno, setSaldoCreditosAluno] = useState(null);
   const [loadingSaldoCreditos, setLoadingSaldoCreditos] = useState(false);
-  const [etapaAlterarPlano, setEtapaAlterarPlano] = useState('cancelamento'); // 'cancelamento' | 'plano'
-  const [simulacaoCancelamento, setSimulacaoCancelamento] = useState(null);
-  const [loadingSimulacao, setLoadingSimulacao] = useState(false);
-  const [gerarCreditoCancelamento, setGerarCreditoCancelamento] = useState(true);
-  const [cancelandoMatricula, setCancelandoMatricula] = useState(false);
+  const [etapaAlterarPlano, setEtapaAlterarPlano] = useState('plano');
+  const [previaAlteracao, setPreviaAlteracao] = useState(null);
+  const [loadingPreviaAlteracao, setLoadingPreviaAlteracao] = useState(false);
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
     desconto: '',
@@ -95,7 +94,6 @@ export default function MatriculaDetalheScreen() {
     status_pagamento_id: '1',
     observacoes: '',
   });
-  const [modalConfirmCancelamentoVisible, setModalConfirmCancelamentoVisible] = useState(false);
   const [modalConfirmAlteracaoVisible, setModalConfirmAlteracaoVisible] = useState(false);
   const [alterarPlanoErro, setAlterarPlanoErro] = useState('');
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
@@ -412,7 +410,7 @@ export default function MatriculaDetalheScreen() {
 
   const abrirFluxoRenovacaoMatricula = async (planoAtualId, planoCicloAtualId, diaVencimentoAtual) => {
     setEtapaAlterarPlano('plano');
-    setSimulacaoCancelamento(null);
+    setPreviaAlteracao(null);
     setModalAlterarPlanoVisible(true);
     setAlterarPlanoErro('');
 
@@ -472,89 +470,134 @@ export default function MatriculaDetalheScreen() {
       return;
     }
 
-    // Etapa 1: Simular cancelamento
-    setEtapaAlterarPlano('cancelamento');
-    setSimulacaoCancelamento(null);
-    setGerarCreditoCancelamento(true);
-    setCancelandoMatricula(false);
+    const temPagamentoPago = pagamentos.some((item) => Number(item.status_pagamento_id) === 2);
+    setEtapaAlterarPlano('plano');
+    setPreviaAlteracao(null);
     setModalAlterarPlanoVisible(true);
     setAlterarPlanoErro('');
+    setFormAlterarPlano({
+      plano_id: '',
+      plano_ciclo_id: '',
+      data_inicio: formatarDataParaInput(new Date()),
+      dia_vencimento: diaVencimentoAtual,
+      observacoes: '',
+      tipo_credito: temPagamentoPago ? 'abater' : 'nenhum',
+      usar_credito_existente: false,
+      credito: '',
+      motivo_credito: '',
+    });
+    setCiclosAlteracao([]);
+    await carregarPlanosAlteracao();
 
-    try {
-      setLoadingSimulacao(true);
-      const simulacao = await matriculaService.simularCancelamento(id);
-      setSimulacaoCancelamento(simulacao);
-    } catch (err) {
-      console.error('Erro ao simular cancelamento:', err);
-      const msg = obterMensagemErro(err, 'Não foi possível simular o cancelamento');
-      showAlert('Erro', msg);
-      setModalAlterarPlanoVisible(false);
-    } finally {
-      setLoadingSimulacao(false);
+    if (matricula?.aluno_id) {
+      try {
+        setLoadingSaldoCreditos(true);
+        const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
+        setSaldoCreditosAluno(saldoResp);
+        if (saldoResp?.saldo_total > 0) {
+          setFormAlterarPlano((prev) => ({ ...prev, usar_credito_existente: true }));
+        }
+      } catch (err) {
+        console.log('Saldo de créditos não disponível:', err);
+      } finally {
+        setLoadingSaldoCreditos(false);
+      }
     }
   };
 
-  const handleConfirmarCancelamentoEAvancar = async () => {
-    try {
-      setCancelandoMatricula(true);
-      const resultado = await matriculaService.cancelarComCredito(id, {
-        gerar_credito: gerarCreditoCancelamento,
-        motivo_cancelamento: 'Cancelado para alteração de plano',
-      });
-
-      const creditoMsg = resultado?.credito_gerado
-        ? ` Crédito de ${formatCurrency(resultado.credito_gerado.valor)} gerado.`
-        : '';
-      showToast(`Matrícula cancelada.${creditoMsg} Selecione o novo plano.`);
-
-      // Carregar dados atualizados e avançar para etapa 2
-      await carregarDados();
-      setEtapaAlterarPlano('plano');
-
-      // Preparar formulário do plano
-      const dataVencimentoAtual = matricula.proxima_data_vencimento || matricula.data_vencimento;
-      const diaVencimentoAtual = dataVencimentoAtual
-        ? String(Number(dataVencimentoAtual.split('-')[2] || 0) || '')
-        : String(new Date().getDate());
-
-      setFormAlterarPlano({
-        plano_id: '',
-        plano_ciclo_id: '',
-        data_inicio: formatarDataParaInput(new Date()),
-        dia_vencimento: diaVencimentoAtual,
-        observacoes: '',
-        tipo_credito: 'nenhum',
-        usar_credito_existente: resultado?.saldo_creditos_total > 0,
-        credito: '',
-        motivo_credito: '',
-      });
-      setCiclosAlteracao([]);
-      setSaldoCreditosAluno(
-        resultado?.saldo_creditos_total != null
-          ? { saldo_total: resultado.saldo_creditos_total }
-          : null
-      );
-      await carregarPlanosAlteracao();
-
-      // Buscar saldo de créditos atualizado
-      if (matricula?.aluno_id) {
-        try {
-          setLoadingSaldoCreditos(true);
-          const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
-          setSaldoCreditosAluno(saldoResp);
-        } catch (err) {
-          console.log('Saldo de créditos não disponível:', err);
-        } finally {
-          setLoadingSaldoCreditos(false);
+  const montarPayloadAlterarPlano = () => {
+    const diaVencimentoInformado = Number(formAlterarPlano.dia_vencimento);
+    const diaVencimentoDataInicio = Number((formAlterarPlano.data_inicio || '').split('-')[2] || 0);
+    const diaVencimento =
+      Number.isInteger(diaVencimentoInformado) && diaVencimentoInformado >= 1 && diaVencimentoInformado <= 31
+        ? diaVencimentoInformado
+        : diaVencimentoDataInicio;
+    const payload = {
+      plano_id: Number(formAlterarPlano.plano_id),
+      data_inicio: formAlterarPlano.data_inicio,
+      dia_vencimento: diaVencimento,
+      observacoes: formAlterarPlano.observacoes?.trim() || null,
+    };
+    if (formAlterarPlano.plano_ciclo_id) {
+      payload.plano_ciclo_id = Number(formAlterarPlano.plano_ciclo_id);
+    }
+    if (formAlterarPlano.tipo_credito === 'abater_plano') {
+      payload.abater_plano_anterior = true;
+    } else if (formAlterarPlano.tipo_credito === 'abater') {
+      payload.abater_pagamento_anterior = true;
+    } else if (formAlterarPlano.tipo_credito === 'manual') {
+      const creditoVal = parseFloat(formAlterarPlano.credito);
+      if (creditoVal > 0) {
+        payload.credito = creditoVal;
+        if (formAlterarPlano.motivo_credito?.trim()) {
+          payload.motivo_credito = formAlterarPlano.motivo_credito.trim();
         }
       }
-    } catch (error) {
-      const mensagem = obterMensagemErro(error, 'Não foi possível cancelar a matrícula');
-      showAlert('Erro', mensagem);
-    } finally {
-      setCancelandoMatricula(false);
     }
+    if (formAlterarPlano.usar_credito_existente) {
+      payload.usar_credito_existente = true;
+    }
+    return payload;
   };
+
+  useEffect(() => {
+    if (!modalAlterarPlanoVisible || etapaAlterarPlano !== 'plano' || !formAlterarPlano.plano_id) {
+      setPreviaAlteracao(null);
+      return undefined;
+    }
+    if (loadingCiclosAlteracao) {
+      return undefined;
+    }
+    if (ciclosAlteracao.length > 0 && !formAlterarPlano.plano_ciclo_id) {
+      setPreviaAlteracao(null);
+      return undefined;
+    }
+    if (!formAlterarPlano.data_inicio || !/^\d{4}-\d{2}-\d{2}$/.test(formAlterarPlano.data_inicio)) {
+      setPreviaAlteracao(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setLoadingPreviaAlteracao(true);
+        const previa = await matriculaService.simularAlterarPlano(id, montarPayloadAlterarPlano());
+        if (!cancelled) {
+          setPreviaAlteracao(previa);
+          setAlterarPlanoErro('');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPreviaAlteracao(null);
+          setAlterarPlanoErro(obterMensagemErro(err, 'Não foi possível simular a troca de plano'));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPreviaAlteracao(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    modalAlterarPlanoVisible,
+    etapaAlterarPlano,
+    formAlterarPlano.plano_id,
+    formAlterarPlano.plano_ciclo_id,
+    formAlterarPlano.data_inicio,
+    formAlterarPlano.dia_vencimento,
+    formAlterarPlano.tipo_credito,
+    formAlterarPlano.usar_credito_existente,
+    formAlterarPlano.credito,
+    formAlterarPlano.motivo_credito,
+    formAlterarPlano.observacoes,
+    ciclosAlteracao.length,
+    loadingCiclosAlteracao,
+    id,
+  ]);
 
   const handleConfirmarAlteracaoPlano = async () => {
     if (!formAlterarPlano.plano_id) {
@@ -589,34 +632,8 @@ export default function MatriculaDetalheScreen() {
     try {
       setSalvandoAlteracaoPlano(true);
       setAlterarPlanoErro('');
-      const payload = {
-        plano_id: Number(formAlterarPlano.plano_id),
-        data_inicio: formAlterarPlano.data_inicio,
-        dia_vencimento: diaVencimento,
-        observacoes: formAlterarPlano.observacoes?.trim() || null,
-      };
-
-      if (formAlterarPlano.plano_ciclo_id) {
-        payload.plano_ciclo_id = Number(formAlterarPlano.plano_ciclo_id);
-      }
-
-      if (formAlterarPlano.tipo_credito === 'abater_plano') {
-        payload.abater_plano_anterior = true;
-      } else if (formAlterarPlano.tipo_credito === 'abater') {
-        payload.abater_pagamento_anterior = true;
-      } else if (formAlterarPlano.tipo_credito === 'manual') {
-        const creditoVal = parseFloat(formAlterarPlano.credito);
-        if (creditoVal > 0) {
-          payload.credito = creditoVal;
-          if (formAlterarPlano.motivo_credito?.trim()) {
-            payload.motivo_credito = formAlterarPlano.motivo_credito.trim();
-          }
-        }
-      }
-
-      if (formAlterarPlano.usar_credito_existente) {
-        payload.usar_credito_existente = true;
-      }
+      const payload = montarPayloadAlterarPlano();
+      payload.dia_vencimento = diaVencimento;
 
       const response = await matriculaService.alterarPlano(id, payload);
 
@@ -1667,140 +1684,35 @@ export default function MatriculaDetalheScreen() {
         visible={modalAlterarPlanoVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setModalAlterarPlanoVisible(false)}
+        onRequestClose={() => { if (!salvandoAlteracaoPlano) setModalAlterarPlanoVisible(false); }}
       >
+        {Platform.OS === 'web' && etapaAlterarPlano === 'plano' ? (
+          <TrocaPlanoModal
+            open
+            matricula={matricula}
+            currentCycle={cicloInfo}
+            plans={planosAlteracao}
+            cycles={ciclosAlteracao}
+            payments={pagamentos}
+            form={formAlterarPlano}
+            onChange={setFormAlterarPlano}
+            loadingPlans={loadingPlanosAlteracao}
+            loadingCycles={loadingCiclosAlteracao}
+            loadingBalance={loadingSaldoCreditos}
+            balance={saldoCreditosAluno}
+            cancelled={isMatriculaCancelada}
+            saving={salvandoAlteracaoPlano}
+            error={alterarPlanoErro}
+            cycleLabel={getCicloLabel}
+            preview={previaAlteracao}
+            loadingPreview={loadingPreviaAlteracao}
+            onClose={() => setModalAlterarPlanoVisible(false)}
+            onConfirm={handleConfirmarAlteracaoPlano}
+          />
+        ) : (
         <View className="flex-1 items-center justify-center bg-black/50 px-4">
           <View className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
 
-            {/* ===== ETAPA 1: Cancelamento com crédito ===== */}
-            {etapaAlterarPlano === 'cancelamento' && (
-              <>
-                <View className="border-b border-slate-100 px-5 py-3">
-                  <View className="flex-row items-center gap-2">
-                    <Feather name="alert-circle" size={16} color="#94a3b8" />
-                    <View className="flex-1">
-                      <Text className="text-sm font-semibold text-slate-700">Cancelar matrícula atual</Text>
-                      <Text className="text-[10px] text-slate-400">
-                        A matrícula atual será cancelada para permitir a troca de plano.
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <ScrollView
-                  className="px-5 py-3"
-                  style={{ maxHeight: isDesktop ? 700 : 500 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {loadingSimulacao ? (
-                    <View className="items-center py-8">
-                      <ActivityIndicator size="large" color="#f97316" />
-                      <Text className="mt-2 text-xs text-slate-500">Simulando cancelamento...</Text>
-                    </View>
-                  ) : simulacaoCancelamento ? (
-                    <View className="gap-3">
-                      {/* Info do plano atual */}
-                      <View className="flex-row items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
-                        <View>
-                          <Text className="text-[10px] text-slate-400">Plano atual</Text>
-                          <Text className="text-xs font-medium text-slate-700">
-                            {simulacaoCancelamento.plano_nome}
-                          </Text>
-                        </View>
-                        <Text className="text-xs font-medium text-slate-500">
-                          {formatCurrency(simulacaoCancelamento.valor_plano)}
-                        </Text>
-                      </View>
-
-                      {/* Dias - inline */}
-                      <View className="flex-row items-center gap-4 px-1">
-                        <Text className="text-[10px] text-slate-400">
-                          Utilizados: <Text className="font-medium text-slate-600">{simulacaoCancelamento.dias_utilizados}</Text> de {simulacaoCancelamento.dias_totais} dias
-                        </Text>
-                        <Text className="text-[10px] text-slate-400">
-                          Restantes: <Text className="font-medium text-slate-600">{simulacaoCancelamento.dias_restantes}</Text>
-                        </Text>
-                      </View>
-
-                      {/* Crédito proporcional - destaque principal */}
-                      <View className="items-center rounded-lg border border-slate-200 bg-white px-4 py-4">
-                        <Text className="text-[10px] uppercase tracking-wide text-slate-400">Crédito proporcional</Text>
-                        <Text className="mt-1 text-2xl font-bold text-slate-800">
-                          {formatCurrency(simulacaoCancelamento.valor_proporcional_credito)}
-                        </Text>
-                        <Text className="mt-0.5 text-[10px] text-slate-400">
-                          {simulacaoCancelamento.dias_restantes} dias restantes
-                        </Text>
-                      </View>
-
-                      {/* Info adicional */}
-                      {simulacaoCancelamento.parcelas_pendentes > 0 && (
-                        <Text className="px-1 text-[10px] text-slate-400">
-                          {simulacaoCancelamento.parcelas_pendentes} parcela(s) pendente(s) serão cancelada(s).
-                        </Text>
-                      )}
-
-                      {simulacaoCancelamento.saldo_creditos_atual > 0 && (
-                        <Text className="px-1 text-[10px] text-slate-400">
-                          Saldo de créditos existente: {formatCurrency(simulacaoCancelamento.saldo_creditos_atual)}
-                        </Text>
-                      )}
-
-                      {/* Checkbox gerar crédito */}
-                      <Pressable
-                        className={`flex-row items-center gap-2 rounded-lg border px-3 py-2 ${
-                          gerarCreditoCancelamento ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'
-                        }`}
-                        onPress={() => setGerarCreditoCancelamento((prev) => !prev)}
-                        style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-                      >
-                        <View
-                          className={`h-4 w-4 items-center justify-center rounded border ${
-                            gerarCreditoCancelamento ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {gerarCreditoCancelamento ? <Feather name="check" size={10} color="#fff" /> : null}
-                        </View>
-                        <View className="flex-1">
-                          <Text className="text-xs font-medium text-slate-600">Gerar crédito proporcional</Text>
-                          <Text className="text-[10px] text-slate-400">
-                            {formatCurrency(simulacaoCancelamento.valor_proporcional_credito)} será creditado ao aluno
-                          </Text>
-                        </View>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                </ScrollView>
-
-                <View className="flex-row gap-3 border-t border-slate-100 px-5 py-3">
-                  <Pressable
-                    onPress={() => setModalAlterarPlanoVisible(false)}
-                    disabled={cancelandoMatricula}
-                    className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2"
-                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                  >
-                    <Text className="text-xs font-medium text-slate-500">Voltar</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setModalConfirmCancelamentoVisible(true)}
-                    disabled={cancelandoMatricula || loadingSimulacao || !simulacaoCancelamento}
-                    className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2"
-                    style={({ pressed }) => [
-                      pressed && { opacity: 0.8 },
-                      (cancelandoMatricula || loadingSimulacao || !simulacaoCancelamento) && { opacity: 0.6 },
-                    ]}
-                  >
-                    {cancelandoMatricula ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text className="text-xs font-medium text-white">Cancelar e continuar</Text>
-                    )}
-                  </Pressable>
-                </View>
-              </>
-            )}
-
-            {/* ===== ETAPA 2: Selecionar novo plano ===== */}
             {etapaAlterarPlano === 'plano' && (
               <>
             {!!alterarPlanoErro && (
@@ -1813,9 +1725,9 @@ export default function MatriculaDetalheScreen() {
               <View className="flex-row items-center gap-2">
                 <Feather name="repeat" size={16} color="#64748b" />
                 <View className="flex-1">
-                  <Text className="text-sm font-semibold text-slate-700">Selecionar novo plano</Text>
+                  <Text className="text-sm font-semibold text-slate-700">Alterar plano</Text>
                   <Text className="text-[10px] text-slate-400">
-                    Atualize plano, ciclo e regra de vencimento.
+                    Simule crédito e parcela nesta matrícula. Nada é alterado até confirmar.
                   </Text>
                 </View>
               </View>
@@ -1958,17 +1870,28 @@ export default function MatriculaDetalheScreen() {
                       width: '100%',
                     }}
                     value={formAlterarPlano.data_inicio}
-                    onChange={(e) =>
-                      setFormAlterarPlano((prev) => ({ ...prev, data_inicio: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const day = Number((value || '').split('-')[2] || 0);
+                      setFormAlterarPlano((prev) => ({
+                        ...prev,
+                        data_inicio: value,
+                        ...(day >= 1 && day <= 31 ? { dia_vencimento: String(day) } : {}),
+                      }));
+                    }}
                   />
                 ) : (
                   <TextInput
                     className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
                     value={formAlterarPlano.data_inicio}
-                    onChangeText={(text) =>
-                      setFormAlterarPlano((prev) => ({ ...prev, data_inicio: text }))
-                    }
+                    onChangeText={(text) => {
+                      const day = Number((text || '').split('-')[2] || 0);
+                      setFormAlterarPlano((prev) => ({
+                        ...prev,
+                        data_inicio: text,
+                        ...(day >= 1 && day <= 31 ? { dia_vencimento: String(day) } : {}),
+                      }));
+                    }}
                     placeholder="YYYY-MM-DD"
                     autoCapitalize="none"
                   />
@@ -1990,28 +1913,42 @@ export default function MatriculaDetalheScreen() {
                   ? parseFloat(cicloSelecionado.valor || 0)
                   : parseFloat(planoSelecionadoAlteracao?.valor || matricula?.valor || 0);
 
-                const creditoEstimado =
-                  formAlterarPlano.tipo_credito === 'abater_plano'
+                const geraCredito = previaAlteracao?.aptidao?.gera_credito !== false && !isMatriculaCancelada;
+                const creditoEstimado = previaAlteracao?.credito?.gerado != null
+                  ? parseFloat(previaAlteracao.credito.gerado || 0)
+                  : formAlterarPlano.tipo_credito === 'abater_plano'
                     ? valorPlanoAtual
                     : formAlterarPlano.tipo_credito === 'abater'
                     ? valorUltimoPago
                     : formAlterarPlano.tipo_credito === 'manual'
                     ? parseFloat(formAlterarPlano.credito) || 0
                     : 0;
-                const saldoExistente = formAlterarPlano.usar_credito_existente
-                  ? parseFloat(saldoCreditosAluno?.saldo_total || 0)
-                  : 0;
+                const saldoExistente = previaAlteracao?.credito?.existente != null
+                  ? parseFloat(previaAlteracao.credito.existente || 0)
+                  : formAlterarPlano.usar_credito_existente
+                    ? parseFloat(saldoCreditosAluno?.saldo_total || 0)
+                    : 0;
                 const totalCredito = creditoEstimado + saldoExistente;
-                const valorPrimeiraParcela = Math.max(0, valorNovoParcela - totalCredito);
-                const saldoRestanteEstimado = Math.max(0, totalCredito - valorNovoParcela);
+                const valorPrimeiraParcela = previaAlteracao?.valor_parcela != null
+                  ? parseFloat(previaAlteracao.valor_parcela)
+                  : Math.max(0, valorNovoParcela - totalCredito);
+                const saldoRestanteEstimado = previaAlteracao?.credito?.restante != null
+                  ? parseFloat(previaAlteracao.credito.restante || 0)
+                  : Math.max(0, totalCredito - valorNovoParcela);
 
                 const opcoes = [
                   { key: 'nenhum', label: 'Sem crédito', icon: 'x-circle' },
-                  ...(valorPlanoAtual > 0 && ultimoPagamentoPago && !isMatriculaCancelada
+                  ...(valorPlanoAtual > 0 && ultimoPagamentoPago && geraCredito
                     ? [{ key: 'abater_plano', label: `Valor cheio do plano (${formatCurrency(valorPlanoAtual)})`, icon: 'dollar-sign' }]
                     : []),
-                  ...(ultimoPagamentoPago && !isMatriculaCancelada
-                    ? [{ key: 'abater', label: `Proporcional (dias restantes)`, icon: 'refresh-cw' }]
+                  ...(ultimoPagamentoPago && geraCredito
+                    ? [{
+                        key: 'abater',
+                        label: previaAlteracao?.credito?.tipo === 'proporcional' && previaAlteracao.credito.gerado > 0
+                          ? `Proporcional (${formatCurrency(previaAlteracao.credito.gerado)})`
+                          : 'Proporcional (dias restantes)',
+                        icon: 'refresh-cw',
+                      }]
                     : []),
                   { key: 'manual', label: 'Crédito manual', icon: 'edit-3' },
                 ];
@@ -2191,6 +2128,17 @@ export default function MatriculaDetalheScreen() {
                 );
               })()}
 
+              {loadingPreviaAlteracao ? (
+                <Text className="mb-2 text-[10px] text-slate-400">Calculando o que ocorrerá na troca…</Text>
+              ) : previaAlteracao?.efeitos?.length ? (
+                <View className="mb-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <Text className="text-[10px] font-medium uppercase tracking-wide text-slate-400">O que vai ocorrer</Text>
+                  {previaAlteracao.efeitos.map((item) => (
+                    <Text key={item} className="mt-1 text-[11px] leading-4 text-slate-600">• {item}</Text>
+                  ))}
+                </View>
+              ) : null}
+
               <View>
                 <Text className="mb-1 text-[10px] font-medium text-slate-500">Observações</Text>
                 <TextInput
@@ -2217,11 +2165,11 @@ export default function MatriculaDetalheScreen() {
               </Pressable>
               <Pressable
                 onPress={() => setModalConfirmAlteracaoVisible(true)}
-                disabled={salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao}
+                disabled={salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao || loadingPreviaAlteracao || !previaAlteracao?.success}
                 className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2"
                 style={({ pressed }) => [
                   pressed && { opacity: 0.8 },
-                  (salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao) && { opacity: 0.6 },
+                  (salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao || loadingPreviaAlteracao || !previaAlteracao?.success) && { opacity: 0.6 },
                 ]}
               >
                 {salvandoAlteracaoPlano ? (
@@ -2236,47 +2184,7 @@ export default function MatriculaDetalheScreen() {
 
           </View>
         </View>
-      </Modal>
-
-      {/* Modal de Confirmação - Cancelar e continuar */}
-      <Modal
-        visible={modalConfirmCancelamentoVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setModalConfirmCancelamentoVisible(false)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/40 px-4">
-          <View className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
-            <View className="items-center border-b border-slate-200 px-6 py-5">
-              <View className="mb-3 h-12 w-12 items-center justify-center rounded-full bg-amber-100">
-                <Feather name="alert-triangle" size={24} color="#f59e0b" />
-              </View>
-              <Text className="text-base font-bold text-slate-800">Confirmar cancelamento</Text>
-              <Text className="mt-1 text-center text-xs text-slate-500">
-                A matrícula atual será cancelada e um crédito proporcional será gerado. Deseja continuar?
-              </Text>
-            </View>
-            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
-              <Pressable
-                onPress={() => setModalConfirmCancelamentoVisible(false)}
-                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2.5"
-                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-              >
-                <Text className="text-xs font-semibold text-slate-600">Não, voltar</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setModalConfirmCancelamentoVisible(false);
-                  handleConfirmarCancelamentoEAvancar();
-                }}
-                className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2.5"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-              >
-                <Text className="text-xs font-semibold text-white">Sim, cancelar e continuar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+        )}
       </Modal>
 
       {/* Modal de Confirmação - Alterar plano */}
@@ -2292,10 +2200,20 @@ export default function MatriculaDetalheScreen() {
               <View className="mb-3 h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
                 <Feather name="check-circle" size={24} color="#059669" />
               </View>
-              <Text className="text-base font-bold text-slate-800">Confirmar alteração de plano</Text>
+              <Text className="text-base font-bold text-slate-800">Confirmar troca de plano</Text>
               <Text className="mt-1 text-center text-xs text-slate-500">
-                O plano da matrícula será alterado. Essa ação não pode ser desfeita. Deseja continuar?
+                A matrícula não será cancelada. O plano será atualizado nela.
               </Text>
+              {previaAlteracao?.credito?.aplicado > 0 ? (
+                <Text className="mt-2 text-center text-xs font-medium text-emerald-700">
+                  Crédito de {formatCurrency(previaAlteracao.credito.aplicado)} na primeira parcela
+                  {previaAlteracao.valor_parcela != null ? ` · parcela ${formatCurrency(previaAlteracao.valor_parcela)}` : ''}.
+                </Text>
+              ) : (
+                <Text className="mt-2 text-center text-xs text-slate-500">
+                  {previaAlteracao?.aptidao?.message || 'Sem crédito nesta troca.'}
+                </Text>
+              )}
             </View>
             <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
               <Pressable

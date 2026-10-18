@@ -269,6 +269,7 @@ class AdminMatriculaServiceTest extends TestCase
             'saldo_total' => 0.0,
             'creditos_ativos' => [],
         ]);
+        $repo->shouldReceive('countParcelasAbertas')->once()->with(10, 3)->andReturn(0);
         $repo->shouldReceive('statusIdPorCodigo')->once()->with('pendente')->andReturn(2);
         $repo->shouldReceive('motivoIdPorCodigo')->once()->with('upgrade')->andReturn(1);
         $repo->shouldReceive('findUsuarioIdPorAluno')->once()->with(2)->andReturn(null);

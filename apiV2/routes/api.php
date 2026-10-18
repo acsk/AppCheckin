@@ -154,6 +154,7 @@ Route::prefix('v2')->group(function () {
             Route::post('/matriculas', [AdminMatriculaController::class, 'store']);
             Route::get('/matriculas/{id}/delete-preview', [AdminMatriculaController::class, 'deletePreview']);
             Route::post('/matriculas/{id}/alterar-plano', [AdminMatriculaController::class, 'alterarPlano']);
+            Route::post('/matriculas/{id}/simular-alterar-plano', [AdminMatriculaController::class, 'simularAlterarPlano']);
             Route::get('/matriculas/{id}/simular-cancelamento', [AdminMatriculaController::class, 'simularCancelamento']);
             Route::post('/matriculas/{id}/cancelar-com-credito', [AdminMatriculaController::class, 'cancelarComCredito']);
             Route::post('/matriculas/{matriculaId}/pagamentos/{pagamentoId}/confirmar', [AdminMatriculaController::class, 'confirmarPagamento']);

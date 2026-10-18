@@ -154,6 +154,13 @@ class V2AdminMatriculaRoutesTest extends TestCase
             ->assertJsonPath('code', 'MISSING_TOKEN');
     }
 
+    public function test_simular_alterar_plano_requires_jwt(): void
+    {
+        $this->postJson('/v2/admin/matriculas/1/simular-alterar-plano', ['plano_id' => 2])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
     public function test_cancelar_com_credito_requires_jwt(): void
     {
         $this->postJson('/v2/admin/matriculas/1/cancelar-com-credito', ['gerar_credito' => true])

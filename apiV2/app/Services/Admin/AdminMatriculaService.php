@@ -1026,174 +1026,57 @@ class AdminMatriculaService
     }
 
     /**
+     * Prévia da troca de plano sem gravar: crédito, parcela e efeitos na matrícula.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function simularAlterarPlano(int $id, int $tenantId, array $data): array
+    {
+        $previsto = $this->preverAlteracaoPlano($id, $tenantId, $data);
+        if ($previsto['status'] !== 200) {
+            return $previsto;
+        }
+
+        return [
+            'status' => 200,
+            'body' => $previsto['body'],
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
     public function alterarPlano(int $id, int $tenantId, ?int $adminId, array $data): array
     {
-        if (empty($data['plano_id'])) {
-            return $this->error('plano_id é obrigatório', 422);
+        $previsto = $this->preverAlteracaoPlano($id, $tenantId, $data);
+        if ($previsto['status'] !== 200) {
+            return $previsto;
         }
 
-        $this->syncParcelasAtrasadas($tenantId, $id);
-
-        $novoPlanoId = (int) $data['plano_id'];
-        $novoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
-
-        $matricula = $this->matriculas->findParaAlterarPlano($id, $tenantId);
-        if (! $matricula) {
-            return $this->error('Matrícula não encontrada', 404);
-        }
-
-        if (($matricula['status_codigo'] ?? '') === 'finalizada') {
-            return $this->error('Não é possível alterar plano de matrícula finalizada', 400, 'MATRICULA_FINALIZADA');
-        }
-
-        $statusCodigo = (string) ($matricula['status_codigo'] ?? '');
-        $vinculoPacoteId = (int) ($matricula['pacote_contrato_id'] ?? 0);
-        // Matrícula ativa/bloqueada com débito: exige quitar ou cancelar antes (fluxo do painel).
-        // Cancelada/vencida/pendente: alterar-plano já cancela parcelas abertas na transação.
-        $exigeQuitarAtraso = in_array($statusCodigo, ['ativa', 'bloqueada'], true);
-        if (
-            $vinculoPacoteId <= 0
-            && $exigeQuitarAtraso
-            && $this->matriculas->temParcelaAbertaAtrasada($id, $tenantId)
-        ) {
-            return $this->error(
-                'Há parcela em atraso. Quite o débito ou cancele a matrícula (com crédito) antes de alterar o plano.',
-                400,
-                'MATRICULA_EM_ATRASO'
-            );
-        }
-
-        $novoPlano = $this->matriculas->findPlano($novoPlanoId, $tenantId);
-        if (! $novoPlano) {
-            return $this->error('Novo plano não encontrado', 404);
-        }
-
-        $novoCiclo = null;
-        if ($novoCicloId) {
-            $novoCiclo = $this->matriculas->findCicloDoPlano($novoCicloId, $novoPlanoId, $tenantId);
-            if (! $novoCiclo) {
-                return $this->error('Ciclo não encontrado ou não pertence ao plano informado', 404);
-            }
-        }
-
-        $mesmoPlanoCiclo = (int) $matricula['plano_id'] === $novoPlanoId
-            && (int) ($matricula['plano_ciclo_id'] ?? 0) === ($novoCicloId ?? 0);
-        $podeRenovar = in_array($matricula['status_codigo'] ?? '', ['cancelada', 'vencida'], true);
-
-        if ($mesmoPlanoCiclo && ! $podeRenovar) {
-            return $this->error('O plano e ciclo selecionados são iguais aos atuais', 400, 'PLANO_IGUAL_ATUAL');
-        }
-
-        $ehRenovacao = $mesmoPlanoCiclo && $podeRenovar;
-
-        if ($novoCiclo) {
-            $valorNovo = $data['valor'] ?? $novoCiclo['valor'];
-            $mesesCiclo = (int) ($novoCiclo['meses'] ?? $novoCiclo['frequencia_meses'] ?? 1);
-            $duracaoDias = $mesesCiclo * 30;
-        } else {
-            $valorNovo = $data['valor'] ?? $novoPlano['valor'];
-            $duracaoDias = (int) $novoPlano['duracao_dias'];
-            $mesesCiclo = null;
-        }
-
-
-        $dataInicio = ! empty($data['data_inicio']) ? trim((string) $data['data_inicio']) : AcademyDateTime::today();
-        $dataInicioObj = AcademyDateTime::fromYmd($dataInicio);
-        if ($dataInicioObj === null) {
-            return $this->error('Formato de data inválido. Use YYYY-MM-DD', 422);
-        }
-        $proximaDataVencimento = clone $dataInicioObj;
-
-        if ($mesesCiclo) {
-            $proximaDataVencimento->modify("+{$mesesCiclo} months");
-        } else {
-            $proximaDataVencimento->modify("+{$duracaoDias} days");
-        }
-
-        $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
-        $diaVencimento = $data['dia_vencimento'] ?? $matricula['dia_vencimento'];
-
-        if ($ehRenovacao) {
-            $motivo = 'renovacao';
-        } else {
-            $valorAtual = (float) $matricula['valor'];
-            $valorNovoFloat = (float) $valorNovo;
-            if ($valorNovoFloat > $valorAtual) {
-                $motivo = 'upgrade';
-            } elseif ($valorNovoFloat < $valorAtual) {
-                $motivo = 'downgrade';
-            } else {
-                $motivo = 'renovacao';
-            }
-        }
-
-        $planoAnteriorId = (int) $matricula['plano_id'];
-        $alunoId = (int) $matricula['aluno_id'];
-
-        $creditosInfo = $this->matriculas->creditosAluno($tenantId, $alunoId);
-        $saldoCreditosExistentes = $creditosInfo['saldo_total'];
-        $creditosAtivosParaUsar = $creditosInfo['creditos_ativos'];
-
-        $creditoValor = 0.0;
-        $creditoMotivo = $data['motivo_credito'] ?? null;
-        $creditoId = null;
-        $pagamentoOrigemId = null;
-        $creditoGerado = false;
-        $diasRestantes = 0;
-
-        $aptidaoCredito = $this->migracaoAptidao->avaliarAptidaoMigracao($matricula, $tenantId);
-        $podeGerarCreditoMigracao = (bool) ($aptidaoCredito['gera_credito'] ?? false);
-
-        $usarCreditoExistente = ! empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
-
-        if ($podeGerarCreditoMigracao && ! empty($data['abater_plano_anterior'])) {
-            $creditoValor = (float) $matricula['valor'];
-            if ($creditoValor > 0) {
-                $creditoGerado = true;
-                $creditoMotivo = $creditoMotivo ?? ('Crédito do plano anterior ('.$matricula['plano_nome'].' - R$'.number_format($creditoValor, 2, ',', '.').')');
-            }
-        } elseif ($podeGerarCreditoMigracao && ! empty($data['abater_pagamento_anterior'])) {
-            $valorCicloAtual = (float) $matricula['valor'];
-            $hoje = AcademyDateTime::now();
-            $vencimentoAtualStr = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
-            $inicioAtualStr = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
-            $datasValidas = $vencimentoAtualStr !== null && $inicioAtualStr !== null;
-            $dataVencimentoAtual = AcademyDateTime::parse($vencimentoAtualStr ?? AcademyDateTime::today());
-            $dataInicioAtual = AcademyDateTime::parse($inicioAtualStr ?? AcademyDateTime::today());
-
-            $totalDiasCicloAtual = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
-            $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
-
-            // Ciclo vigente: só o proporcional dos dias restantes.
-            // Ciclo já encerrado ou datas inválidas: crédito zero — NÃO usar o pagamento cheio.
-            if ($datasValidas && $diasRestantes > 0 && $hoje <= $dataVencimentoAtual && $dataInicioAtual < $dataVencimentoAtual) {
-                $creditoValor = round(($valorCicloAtual / $totalDiasCicloAtual) * $diasRestantes, 2);
-            } else {
-                $creditoValor = 0.0;
-                $diasRestantes = 0;
-            }
-
-            if ($creditoValor > 0) {
-                $creditoGerado = true;
-                $creditoMotivo = $creditoMotivo ?? ("Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$".number_format($valorCicloAtual, 2, ',', '.').')');
-            }
-        } elseif ($podeGerarCreditoMigracao && isset($data['credito'])) {
-            $creditoValor = (float) $data['credito'];
-            $creditoGerado = true;
-            $creditoMotivo = $creditoMotivo ?? 'Crédito manual na alteração de plano';
-        }
-
-        $totalCredito = $creditoValor;
-        if ($usarCreditoExistente) {
-            $totalCredito += $saldoCreditosExistentes;
-        }
-
-        $creditoAplicado = min($totalCredito, (float) $valorNovo);
-        $valorParcela = max(0, (float) $valorNovo - $creditoAplicado);
-        $planoGratuito = $valorParcela <= 0.001 && (float) $valorNovo <= 0.001;
+        $ctx = $previsto['ctx'];
+        $matricula = $ctx['matricula'];
+        $novoPlano = $ctx['novo_plano'];
+        $novoPlanoId = $ctx['novo_plano_id'];
+        $novoCicloId = $ctx['novo_ciclo_id'];
+        $valorNovo = $ctx['valor_novo'];
+        $dataInicio = $ctx['data_inicio'];
+        $dataVencimento = $ctx['data_vencimento'];
+        $proximaDataVencimento = $ctx['proxima_data_vencimento'];
+        $diaVencimento = $ctx['dia_vencimento'];
+        $motivo = $ctx['motivo'];
+        $planoAnteriorId = $ctx['plano_anterior_id'];
+        $alunoId = $ctx['aluno_id'];
+        $creditosAtivosParaUsar = $ctx['creditos_ativos'];
+        $usarCreditoExistente = $ctx['usar_credito_existente'];
+        $creditoAplicado = $ctx['credito_aplicado'];
+        $creditoGerado = $ctx['credito_gerado'];
+        $creditoValor = $ctx['credito_valor'];
+        $creditoMotivo = $ctx['credito_motivo'];
+        $pagamentoOrigemId = $ctx['pagamento_origem_id'];
+        $planoGratuito = $ctx['plano_gratuito'];
+        $valorParcela = $ctx['valor_parcela'];
 
         if ($planoGratuito) {
             $statusNovoId = $this->matriculas->statusIdAtiva();
@@ -1212,6 +1095,7 @@ class AdminMatriculaService
             return $this->error('Aluno não encontrado', 404);
         }
 
+        $creditoId = null;
         $creditosUsados = [];
         $creditoExistenteUtilizado = 0.0;
         $parcelasCanceladas = 0;
@@ -1400,6 +1284,266 @@ class AdminMatriculaService
                     'motivo' => $creditoMotivo,
                 ] : null,
                 'motivo' => $motivo,
+            ],
+        ];
+    }
+
+    /**
+     * Calcula a troca de plano sem persistir. A matrícula não é cancelada.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body?: array<string, mixed>, ctx?: array<string, mixed>}
+     */
+    private function preverAlteracaoPlano(int $id, int $tenantId, array $data): array
+    {
+        if (empty($data['plano_id'])) {
+            return $this->error('plano_id é obrigatório', 422);
+        }
+
+        $this->syncParcelasAtrasadas($tenantId, $id);
+
+        $novoPlanoId = (int) $data['plano_id'];
+        $novoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
+
+        $matricula = $this->matriculas->findParaAlterarPlano($id, $tenantId);
+        if (! $matricula) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        if (($matricula['status_codigo'] ?? '') === 'finalizada') {
+            return $this->error('Não é possível alterar plano de matrícula finalizada', 400, 'MATRICULA_FINALIZADA');
+        }
+
+        $statusCodigo = (string) ($matricula['status_codigo'] ?? '');
+        $vinculoPacoteId = (int) ($matricula['pacote_contrato_id'] ?? 0);
+        $exigeQuitarAtraso = in_array($statusCodigo, ['ativa', 'bloqueada'], true);
+        if (
+            $vinculoPacoteId <= 0
+            && $exigeQuitarAtraso
+            && $this->matriculas->temParcelaAbertaAtrasada($id, $tenantId)
+        ) {
+            return $this->error(
+                'Há parcela em atraso. Quite o débito ou cancele a matrícula (com crédito) antes de alterar o plano.',
+                400,
+                'MATRICULA_EM_ATRASO'
+            );
+        }
+
+        $novoPlano = $this->matriculas->findPlano($novoPlanoId, $tenantId);
+        if (! $novoPlano) {
+            return $this->error('Novo plano não encontrado', 404);
+        }
+
+        $novoCiclo = null;
+        if ($novoCicloId) {
+            $novoCiclo = $this->matriculas->findCicloDoPlano($novoCicloId, $novoPlanoId, $tenantId);
+            if (! $novoCiclo) {
+                return $this->error('Ciclo não encontrado ou não pertence ao plano informado', 404);
+            }
+        }
+
+        $mesmoPlanoCiclo = (int) $matricula['plano_id'] === $novoPlanoId
+            && (int) ($matricula['plano_ciclo_id'] ?? 0) === ($novoCicloId ?? 0);
+        $podeRenovar = in_array($matricula['status_codigo'] ?? '', ['cancelada', 'vencida'], true);
+
+        if ($mesmoPlanoCiclo && ! $podeRenovar) {
+            return $this->error('O plano e ciclo selecionados são iguais aos atuais', 400, 'PLANO_IGUAL_ATUAL');
+        }
+
+        $ehRenovacao = $mesmoPlanoCiclo && $podeRenovar;
+
+        if ($novoCiclo) {
+            $valorNovo = $data['valor'] ?? $novoCiclo['valor'];
+            $mesesCiclo = (int) ($novoCiclo['meses'] ?? $novoCiclo['frequencia_meses'] ?? 1);
+            $duracaoDias = $mesesCiclo * 30;
+        } else {
+            $valorNovo = $data['valor'] ?? $novoPlano['valor'];
+            $duracaoDias = (int) $novoPlano['duracao_dias'];
+            $mesesCiclo = null;
+        }
+
+        $dataInicio = ! empty($data['data_inicio']) ? trim((string) $data['data_inicio']) : AcademyDateTime::today();
+        $dataInicioObj = AcademyDateTime::fromYmd($dataInicio);
+        if ($dataInicioObj === null) {
+            return $this->error('Formato de data inválido. Use YYYY-MM-DD', 422);
+        }
+        $proximaDataVencimento = clone $dataInicioObj;
+        if ($mesesCiclo) {
+            $proximaDataVencimento->modify("+{$mesesCiclo} months");
+        } else {
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+        }
+
+        $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
+        $diaVencimento = $data['dia_vencimento'] ?? $matricula['dia_vencimento'];
+
+        $valorAtual = (float) $matricula['valor'];
+        $valorNovoFloat = (float) $valorNovo;
+        if ($ehRenovacao) {
+            $motivo = 'renovacao';
+        } elseif ($valorNovoFloat > $valorAtual) {
+            $motivo = 'upgrade';
+        } elseif ($valorNovoFloat < $valorAtual) {
+            $motivo = 'downgrade';
+        } else {
+            $motivo = 'renovacao';
+        }
+
+        $alunoId = (int) $matricula['aluno_id'];
+        $creditosInfo = $this->matriculas->creditosAluno($tenantId, $alunoId);
+        $saldoCreditosExistentes = (float) $creditosInfo['saldo_total'];
+        $creditosAtivosParaUsar = $creditosInfo['creditos_ativos'];
+
+        $creditoValor = 0.0;
+        $creditoMotivo = $data['motivo_credito'] ?? null;
+        $creditoGerado = false;
+        $diasRestantes = 0;
+        $diasTotais = 0;
+        $tipoCredito = 'nenhum';
+
+        $aptidaoCredito = $this->migracaoAptidao->avaliarAptidaoMigracao($matricula, $tenantId);
+        $podeGerarCreditoMigracao = (bool) ($aptidaoCredito['gera_credito'] ?? false);
+
+        $usarCreditoExistente = ! empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
+
+        if ($podeGerarCreditoMigracao && ! empty($data['abater_plano_anterior'])) {
+            $tipoCredito = 'plano_atual';
+            $creditoValor = $valorAtual;
+            if ($creditoValor > 0) {
+                $creditoGerado = true;
+                $creditoMotivo = $creditoMotivo ?? ('Crédito do plano anterior ('.$matricula['plano_nome'].' - R$'.number_format($creditoValor, 2, ',', '.').')');
+            }
+        } elseif ($podeGerarCreditoMigracao && ! empty($data['abater_pagamento_anterior'])) {
+            $tipoCredito = 'proporcional';
+            $hoje = AcademyDateTime::now();
+            $vencimentoAtualStr = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
+            $inicioAtualStr = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
+            $datasValidas = $vencimentoAtualStr !== null && $inicioAtualStr !== null;
+            $dataVencimentoAtual = AcademyDateTime::parse($vencimentoAtualStr ?? AcademyDateTime::today());
+            $dataInicioAtual = AcademyDateTime::parse($inicioAtualStr ?? AcademyDateTime::today());
+            $diasTotais = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
+            $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
+            if ($datasValidas && $diasRestantes > 0 && $hoje <= $dataVencimentoAtual && $dataInicioAtual < $dataVencimentoAtual) {
+                $creditoValor = round(($valorAtual / $diasTotais) * $diasRestantes, 2);
+            } else {
+                $creditoValor = 0.0;
+                $diasRestantes = 0;
+            }
+            if ($creditoValor > 0) {
+                $creditoGerado = true;
+                $creditoMotivo = $creditoMotivo ?? ("Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$".number_format($valorAtual, 2, ',', '.').')');
+            }
+        } elseif ($podeGerarCreditoMigracao && isset($data['credito'])) {
+            $tipoCredito = 'manual';
+            $creditoValor = (float) $data['credito'];
+            $creditoGerado = true;
+            $creditoMotivo = $creditoMotivo ?? 'Crédito manual na alteração de plano';
+        }
+
+        $totalCredito = $creditoValor;
+        if ($usarCreditoExistente) {
+            $totalCredito += $saldoCreditosExistentes;
+        }
+
+        $creditoAplicado = min($totalCredito, $valorNovoFloat);
+        $valorParcela = max(0, $valorNovoFloat - $creditoAplicado);
+        $saldoRestante = max(0, $totalCredito - $creditoAplicado);
+        $planoGratuito = $valorParcela <= 0.001 && $valorNovoFloat <= 0.001;
+        $statusNovo = $planoGratuito ? 'ativa' : 'pendente';
+
+        $parcelasAbertas = $this->matriculas->countParcelasAbertas($id, $tenantId);
+
+        $efeitos = [
+            'A matrícula #'.$id.' permanece. O plano é atualizado nela; a matrícula não é cancelada.',
+        ];
+        if ($parcelasAbertas > 0) {
+            $efeitos[] = $parcelasAbertas === 1
+                ? '1 parcela em aberto será cancelada.'
+                : $parcelasAbertas.' parcelas em aberto serão canceladas.';
+        }
+        if ($creditoGerado && $creditoValor > 0) {
+            $efeitos[] = 'Será gerado crédito de R$ '.number_format($creditoValor, 2, ',', '.').'.';
+        } elseif (! $podeGerarCreditoMigracao) {
+            $efeitos[] = (string) ($aptidaoCredito['message'] ?? 'Esta troca não gera crédito do plano atual.');
+        } else {
+            $efeitos[] = 'Não haverá crédito do plano atual nesta troca.';
+        }
+        if ($usarCreditoExistente && $saldoCreditosExistentes > 0) {
+            $efeitos[] = 'O saldo de créditos do aluno (R$ '.number_format($saldoCreditosExistentes, 2, ',', '.').') será usado na primeira parcela.';
+        }
+        if ($planoGratuito) {
+            $efeitos[] = 'A matrícula permanece ativa, sem nova cobrança.';
+        } else {
+            $efeitos[] = 'A primeira parcela fica em R$ '.number_format($valorParcela, 2, ',', '.').' (aguardando pagamento) e a matrícula vai para pendente até a baixa.';
+        }
+
+        $body = [
+            'success' => true,
+            'cancela_matricula' => false,
+            'matricula_id' => $id,
+            'status_atual' => $statusCodigo,
+            'status_novo' => $statusNovo,
+            'motivo' => $motivo,
+            'plano_atual' => [
+                'id' => (int) $matricula['plano_id'],
+                'nome' => $matricula['plano_nome'] ?? '',
+                'valor' => $valorAtual,
+            ],
+            'plano_novo' => [
+                'id' => $novoPlanoId,
+                'nome' => $novoPlano['nome'] ?? '',
+                'valor' => $valorNovoFloat,
+                'ciclo_id' => $novoCicloId,
+            ],
+            'data_inicio' => $dataInicio,
+            'data_vencimento' => $dataVencimento,
+            'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+            'aptidao' => [
+                'apto' => (bool) ($aptidaoCredito['apto'] ?? false),
+                'gera_credito' => $podeGerarCreditoMigracao,
+                'message' => $aptidaoCredito['message'] ?? null,
+            ],
+            'credito' => [
+                'tipo' => $tipoCredito,
+                'gerado' => $creditoGerado ? $creditoValor : 0.0,
+                'existente' => $usarCreditoExistente ? $saldoCreditosExistentes : 0.0,
+                'aplicado' => $creditoAplicado,
+                'restante' => $saldoRestante,
+                'dias_restantes' => $diasRestantes,
+                'dias_totais' => $diasTotais,
+                'motivo' => $creditoMotivo,
+            ],
+            'valor_plano_novo' => $valorNovoFloat,
+            'valor_parcela' => $valorParcela,
+            'parcelas_abertas' => $parcelasAbertas,
+            'efeitos' => $efeitos,
+        ];
+
+        return [
+            'status' => 200,
+            'body' => $body,
+            'ctx' => [
+                'matricula' => $matricula,
+                'novo_plano' => $novoPlano,
+                'novo_plano_id' => $novoPlanoId,
+                'novo_ciclo_id' => $novoCicloId,
+                'valor_novo' => $valorNovo,
+                'data_inicio' => $dataInicio,
+                'data_vencimento' => $dataVencimento,
+                'proxima_data_vencimento' => $proximaDataVencimento,
+                'dia_vencimento' => $diaVencimento,
+                'motivo' => $motivo,
+                'plano_anterior_id' => (int) $matricula['plano_id'],
+                'aluno_id' => $alunoId,
+                'creditos_ativos' => $creditosAtivosParaUsar,
+                'usar_credito_existente' => $usarCreditoExistente,
+                'credito_aplicado' => $creditoAplicado,
+                'credito_gerado' => $creditoGerado,
+                'credito_valor' => $creditoValor,
+                'credito_motivo' => $creditoMotivo,
+                'pagamento_origem_id' => null,
+                'plano_gratuito' => $planoGratuito,
+                'valor_parcela' => $valorParcela,
             ],
         ];
     }

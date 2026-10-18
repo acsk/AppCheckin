@@ -193,6 +193,18 @@ class MatriculaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function simularAlterarPlano(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->simularAlterarPlano($id, $tenantId, $request->all());
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function deletePreview(Request $request, int $id): JsonResponse
     {
         $tenantId = $this->requireTenant($request);
