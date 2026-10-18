@@ -38,6 +38,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     'message-circle': [P('M7.9 20A9 9 0 1 0 4 16.1L2 22Z')],
     'shield-check': [P('M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'), P('m9 12 2 2 4-4')],
     'chevron-down': [P('m6 9 6 6 6-6')],
+    'chevron-left': [P('m15 18-6-6 6-6')],
     'chevron-right': [P('m9 18 6-6-6-6')],
     'panel-left': [R(3, 3, 18, 18, 2), P('M9 3v18')],
     'eye': [P('M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z'), Ci(12, 12, 3)],

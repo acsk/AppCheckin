@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Assinaturas do tenant (painel admin).
@@ -12,63 +13,15 @@ use Illuminate\Support\Facades\DB;
 class AdminAssinaturaRepository
 {
     /**
-     * @param  array{status?: string, tipo_cobranca?: string, busca?: string, tenant_id?: int|string}  $filtros
+     * @param  array{status?: string, tipo_cobranca?: string, busca?: string, gateway?: string, tenant_id?: int|string}  $filtros
      * @return array{total: int, rows: list<array<string, mixed>>}
      */
     public function listar(?int $tenantId, array $filtros, int $page, int $perPage): array
     {
-        $where = 'WHERE 1=1';
-        $binds = [];
+        [$where, $binds] = $this->montarWhere($tenantId, $filtros);
+        $from = $this->sqlFromListagem($tenantId === null && empty($filtros['tenant_id']));
 
-        if ($tenantId !== null) {
-            $where .= ' AND a.tenant_id = ?';
-            $binds[] = $tenantId;
-        } elseif (! empty($filtros['tenant_id'])) {
-            $where .= ' AND a.tenant_id = ?';
-            $binds[] = (int) $filtros['tenant_id'];
-        }
-
-        $statusFiltro = trim($filtros['status'] ?? '');
-        if ($statusFiltro !== '') {
-            $where .= ' AND s.codigo = ?';
-            $binds[] = $statusFiltro;
-        }
-
-        $tipoCobranca = trim($filtros['tipo_cobranca'] ?? '');
-        if ($tipoCobranca !== '') {
-            $where .= ' AND a.tipo_cobranca = ?';
-            $binds[] = $tipoCobranca;
-        }
-
-        $busca = trim($filtros['busca'] ?? '');
-        if ($busca !== '') {
-            if ($tenantId === null && empty($filtros['tenant_id'])) {
-                $where .= ' AND (al.nome LIKE ? OR u.nome LIKE ? OR tn.nome LIKE ?)';
-                $binds[] = "%{$busca}%";
-                $binds[] = "%{$busca}%";
-                $binds[] = "%{$busca}%";
-            } else {
-                $where .= ' AND (al.nome LIKE ? OR u.nome LIKE ?)';
-                $binds[] = "%{$busca}%";
-                $binds[] = "%{$busca}%";
-            }
-        }
-
-        $joinTenants = ($tenantId === null && empty($filtros['tenant_id']))
-            ? ' LEFT JOIN tenants tn ON tn.id = a.tenant_id'
-            : '';
-
-        $totalRow = DB::selectOne(
-            "SELECT COUNT(*) as total
-             FROM assinaturas a
-             LEFT JOIN assinatura_status s ON s.id = a.status_id
-             LEFT JOIN alunos al ON al.id = a.aluno_id
-             LEFT JOIN usuarios u ON u.id = al.usuario_id
-             {$joinTenants}
-             {$where}",
-            $binds
-        );
-        $total = (int) ($totalRow->total ?? 0);
+        $total = (int) (DB::selectOne("SELECT COUNT(*) as total {$from} {$where}", $binds)->total ?? 0);
 
         $offset = ($page - 1) * $perPage;
         $sql = $this->sqlListagem($tenantId === null && empty($filtros['tenant_id']));
@@ -82,6 +35,106 @@ class AdminAssinaturaRepository
         return [
             'total' => $total,
             'rows' => array_map(fn ($row) => (array) $row, $rows),
+        ];
+    }
+
+    /**
+     * Contagens por status (mesmos filtros da listagem, sem o recorte de status).
+     *
+     * @param  array<string, mixed>  $filtros
+     * @return array<string, int>
+     */
+    public function contagensPorStatus(?int $tenantId, array $filtros): array
+    {
+        $filtrosSemStatus = $filtros;
+        $filtrosSemStatus['status'] = '';
+        [$where, $binds] = $this->montarWhere($tenantId, $filtrosSemStatus);
+        $from = $this->sqlFromListagem($tenantId === null && empty($filtros['tenant_id']));
+
+        $rows = DB::select(
+            "SELECT COALESCE(s.codigo, '') as codigo, COUNT(*) as total {$from} {$where} GROUP BY s.codigo",
+            $binds
+        );
+
+        $counts = ['todas' => 0];
+        foreach ($rows as $row) {
+            $codigo = (string) ($row->codigo ?? '');
+            $total = (int) ($row->total ?? 0);
+            $counts[$codigo] = $total;
+            $counts['todas'] += $total;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * KPIs da tela de assinaturas (independentes dos chips de status).
+     *
+     * @return array<string, mixed>
+     */
+    public function resumoPainel(?int $tenantId): array
+    {
+        $tenantSql = $tenantId !== null ? ' AND a.tenant_id = ?' : '';
+        $binds = $tenantId !== null ? [$tenantId] : [];
+
+        $recorrentes = DB::selectOne(
+            "SELECT COUNT(*) as total, COALESCE(SUM(a.valor), 0) as valor
+             FROM assinaturas a
+             LEFT JOIN assinatura_status s ON s.id = a.status_id
+             WHERE a.tipo_cobranca = 'recorrente' AND s.codigo = 'ativa'{$tenantSql}",
+            $binds
+        );
+
+        $pendentes = DB::selectOne(
+            "SELECT COUNT(*) as total, COALESCE(SUM(a.valor), 0) as valor
+             FROM assinaturas a
+             LEFT JOIN assinatura_status s ON s.id = a.status_id
+             WHERE s.codigo = 'pendente'{$tenantSql}",
+            $binds
+        );
+
+        $pagasMes = ['total' => 0, 'valor' => 0.0];
+        $webhooksErro = 0;
+        if ($tenantId !== null) {
+            $pagasRow = DB::selectOne(
+                'SELECT COUNT(*) as total, COALESCE(SUM(valor), 0) as valor
+                 FROM pagamentos_plano
+                 WHERE tenant_id = ?
+                   AND status_pagamento_id = 2
+                   AND data_pagamento >= DATE_FORMAT(CURDATE(), \'%Y-%m-01\')',
+                [$tenantId]
+            );
+            $pagasMes = [
+                'total' => (int) ($pagasRow->total ?? 0),
+                'valor' => (float) ($pagasRow->valor ?? 0),
+            ];
+
+            if (Schema::hasTable('webhook_payloads_mercadopago')) {
+                $webhooksErro = (int) (DB::selectOne(
+                    "SELECT COUNT(*) as total FROM webhook_payloads_mercadopago
+                     WHERE tenant_id = ?
+                       AND erro_processamento IS NOT NULL
+                       AND TRIM(erro_processamento) <> ''",
+                    [$tenantId]
+                )->total ?? 0);
+            }
+        }
+
+        return [
+            'recorrentes_ativas' => [
+                'total' => (int) ($recorrentes->total ?? 0),
+                'valor' => (float) ($recorrentes->valor ?? 0),
+            ],
+            'pagas_este_mes' => $pagasMes,
+            'pendentes' => [
+                'total' => (int) ($pendentes->total ?? 0),
+                'valor' => (float) ($pendentes->valor ?? 0),
+            ],
+            'problemas' => [
+                'total' => $webhooksErro,
+                'webhooks_erro' => $webhooksErro,
+                'valores_divergentes' => 0,
+            ],
         ];
     }
 
@@ -345,6 +398,7 @@ class AdminAssinaturaRepository
             'status_gateway' => $row['status_gateway'],
             'plano_nome' => $row['plano_nome'] ?? '',
             'modalidade_nome' => $row['modalidade_nome'] ?? '',
+            'plano_checkins' => isset($row['plano_checkins']) ? (int) $row['plano_checkins'] : null,
             'ciclo' => [
                 'nome' => $row['ciclo_nome'] ?? 'Mensal',
                 'meses' => (int) ($row['ciclo_meses'] ?? 1),
@@ -364,10 +418,74 @@ class AdminAssinaturaRepository
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $filtros
+     * @return array{0: string, 1: list<mixed>}
+     */
+    private function montarWhere(?int $tenantId, array $filtros): array
+    {
+        $where = 'WHERE 1=1';
+        $binds = [];
+
+        if ($tenantId !== null) {
+            $where .= ' AND a.tenant_id = ?';
+            $binds[] = $tenantId;
+        } elseif (! empty($filtros['tenant_id'])) {
+            $where .= ' AND a.tenant_id = ?';
+            $binds[] = (int) $filtros['tenant_id'];
+        }
+
+        $statusFiltro = trim((string) ($filtros['status'] ?? ''));
+        if ($statusFiltro !== '') {
+            $where .= ' AND s.codigo = ?';
+            $binds[] = $statusFiltro;
+        }
+
+        $tipoCobranca = trim((string) ($filtros['tipo_cobranca'] ?? ''));
+        if ($tipoCobranca !== '') {
+            $where .= ' AND a.tipo_cobranca = ?';
+            $binds[] = $tipoCobranca;
+        }
+
+        $gateway = strtolower(trim((string) ($filtros['gateway'] ?? '')));
+        if ($gateway === 'asaas') {
+            $where .= ' AND (LOWER(COALESCE(g.codigo, \'\')) LIKE \'%asaas%\' OR a.gateway_preference_id LIKE \'pay_%\')';
+        } elseif ($gateway === 'mercadopago') {
+            $where .= ' AND NOT (LOWER(COALESCE(g.codigo, \'\')) LIKE \'%asaas%\' OR a.gateway_preference_id LIKE \'pay_%\')';
+        }
+
+        $busca = trim((string) ($filtros['busca'] ?? ''));
+        if ($busca !== '') {
+            $like = "%{$busca}%";
+            if ($tenantId === null && empty($filtros['tenant_id'])) {
+                $where .= ' AND (al.nome LIKE ? OR u.nome LIKE ? OR p.nome LIKE ? OR tn.nome LIKE ?)';
+                array_push($binds, $like, $like, $like, $like);
+            } else {
+                $where .= ' AND (al.nome LIKE ? OR u.nome LIKE ? OR p.nome LIKE ?)';
+                array_push($binds, $like, $like, $like);
+            }
+        }
+
+        return [$where, $binds];
+    }
+
+    private function sqlFromListagem(bool $incluirTenant = false): string
+    {
+        $tenantJoin = $incluirTenant ? ' LEFT JOIN tenants tn ON tn.id = a.tenant_id' : '';
+
+        return "FROM assinaturas a
+             LEFT JOIN assinatura_status s ON s.id = a.status_id
+             LEFT JOIN alunos al ON al.id = a.aluno_id
+             LEFT JOIN usuarios u ON u.id = al.usuario_id
+             LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
+             LEFT JOIN planos p ON p.id = a.plano_id
+             {$tenantJoin}";
+    }
+
     private function sqlListagem(bool $incluirTenant = false): string
     {
         $tenantSelect = $incluirTenant ? ', tn.nome as tenant_nome' : '';
-        $tenantJoin = $incluirTenant ? ' LEFT JOIN tenants tn ON tn.id = a.tenant_id' : '';
+        $from = $this->sqlFromListagem($incluirTenant);
 
         return 'SELECT a.id, a.tenant_id, a.aluno_id, a.plano_id, a.matricula_id, a.valor, a.tipo_cobranca,
                     a.data_inicio, a.data_fim, a.proxima_cobranca, a.ultima_cobranca,
@@ -379,16 +497,12 @@ class AdminAssinaturaRepository
                     f.nome as ciclo_nome, f.meses as ciclo_meses,
                     g.nome as gateway_nome, g.codigo as gateway_codigo,
                     p.nome as plano_nome,
+                    p.checkins_semanais as plano_checkins,
                     mo.nome as modalidade_nome,
                     COALESCE(al.nome, u.nome) as aluno_nome,
                     u.email as aluno_email'.$tenantSelect.'
-             FROM assinaturas a
-             LEFT JOIN assinatura_status s ON s.id = a.status_id
+             '.$from.'
              LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
-             LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
-             LEFT JOIN planos p ON p.id = a.plano_id
-             LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
-             LEFT JOIN alunos al ON al.id = a.aluno_id
-             LEFT JOIN usuarios u ON u.id = al.usuario_id'.$tenantJoin;
+             LEFT JOIN modalidades mo ON mo.id = p.modalidade_id';
     }
 }

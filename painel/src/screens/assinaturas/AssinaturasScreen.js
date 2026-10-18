@@ -1,110 +1,139 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Modal,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import React, { useEffect, useMemo, useState } from 'react';
 import LayoutBase from '../../components/LayoutBase';
+import {
+  Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, ProviderLogo, Tabs,
+} from '../../components/ck';
+import { KpiCard, money } from '../../components/ck/financeiro';
+import { LOGO_ASAAS, LOGO_MERCADO_PAGO } from '../../components/ck/providerLogos';
 import assinaturaService from '../../services/assinaturaService';
-import { showError, showSuccess } from '../../utils/toast';
 import { authService } from '../../services/authService';
+import { matriculaService } from '../../services/matriculaService';
 import { superAdminService } from '../../services/superAdminService';
+import { showError } from '../../utils/toast';
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'Todos' },
-  { value: 'ativa', label: 'Ativa' },
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'cancelada', label: 'Cancelada' },
-  { value: 'pausada', label: 'Pausada' },
-  { value: 'expirada', label: 'Expirada' },
-  { value: 'paga', label: 'Paga' },
+const PER_PAGE = 20;
+const STATUS_CHIPS = [
+  ['', 'Todas', null],
+  ['ativa', 'Ativas', 'success'],
+  ['pendente', 'Pendentes', 'warning'],
+  ['paga', 'Pagas', 'success'],
+  ['pausada', 'Pausadas', 'outline'],
+  ['cancelada', 'Canceladas', 'danger'],
+  ['expirada', 'Expiradas', 'outline'],
 ];
-
-const TIPO_COBRANCA_OPTIONS = [
+const GATEWAYS = [
+  { value: '', label: 'Todos' },
+  { value: 'asaas', label: 'ASAAS' },
+  { value: 'mercadopago', label: 'Mercado Pago' },
+];
+const TIPOS = [
   { value: '', label: 'Todos' },
   { value: 'recorrente', label: 'Recorrente' },
   { value: 'avulso', label: 'Avulso' },
 ];
 
-const formatCurrency = (value) => {
-  if (value == null || Number.isNaN(Number(value))) return '-';
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(Number(value));
-};
+const titleCase = (n) => String(n || '').toLowerCase()
+  .replace(/(^|\s)(\p{L})/gu, (m, s, c) => s + c.toUpperCase())
+  .replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
 
 const formatDate = (date) => {
-  if (!date) return '-';
-  // YYYY-MM-DD: parse local para evitar shift UTC (ex.: 02/06 virando 01/06).
+  if (!date) return '—';
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date));
-  if (match) {
-    const [, y, m, d] = match;
-    return `${d}/${m}/${y}`;
-  }
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return '-';
-  return parsed.toLocaleDateString('pt-BR');
+  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleDateString('pt-BR');
 };
 
 const formatDateTime = (date) => {
-  if (!date) return '-';
-  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(date));
-  if (match) {
-    const [, y, m, d, hh, mm] = match;
-    return `${d}/${m}/${y}, ${hh}:${mm}`;
-  }
+  if (!date) return '—';
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(date));
+  if (match) return `${match[3]}/${match[2]}/${match[1]} às ${match[4]}:${match[5]}`;
   const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return '-';
-  return parsed.toLocaleString('pt-BR');
+  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString('pt-BR');
 };
 
-const getProximaCobrancaLabel = (assinatura) => {
-  const data = assinatura?.proxima_cobranca || assinatura?.data_fim;
-  return formatDate(data);
+const codigoStatus = (assinatura) => (
+  assinatura?.status?.codigo || assinatura?.status_codigo || ''
+).toLowerCase();
+
+const nomeStatus = (assinatura) => assinatura?.status?.nome
+  || { ativa: 'Ativa', pendente: 'Pendente', paga: 'Paga', pausada: 'Pausada', cancelada: 'Cancelada', expirada: 'Expirada' }[codigoStatus(assinatura)]
+  || codigoStatus(assinatura)
+  || '—';
+
+const toneStatus = (codigo) => ({
+  ativa: 'success',
+  paga: 'success',
+  pendente: 'warning',
+  pausada: 'warning',
+  cancelada: 'danger',
+  expirada: 'neutral',
+}[codigo] || 'neutral');
+
+const codigoGateway = (assinatura) => {
+  const raw = String(assinatura?.gateway_codigo || assinatura?.gateway?.codigo || '').toLowerCase();
+  const pref = String(assinatura?.preference_id || assinatura?.provedor_id || '');
+  if (raw.includes('asaas') || pref.startsWith('pay_')) return 'asaas';
+  if (raw.includes('mercado')) return 'mercadopago';
+  const nome = String(assinatura?.gateway?.nome || assinatura?.gateway || '').toLowerCase();
+  if (nome.includes('asaas')) return 'asaas';
+  if (nome.includes('mercado')) return 'mercadopago';
+  return raw || 'mercadopago';
 };
 
-const getStatusColor = (codigo) => {
-  switch ((codigo || '').toLowerCase()) {
-    case 'ativa':
-      return '#10b981';
-    case 'pendente':
-      return '#f59e0b';
-    case 'cancelada':
-      return '#ef4444';
-    case 'pausada':
-    case 'suspensa':
-      return '#f97316';
-    case 'expirada':
-    case 'vencida':
-      return '#6b7280';
-    default:
-      return '#94a3b8';
-  }
-};
-
-const getStatusInfo = (assinatura) => {
-  const status = assinatura?.status || {};
-  const codigo = status.codigo || assinatura?.status_codigo || assinatura?.status_gateway || assinatura?.status || 'pendente';
-  const nome = status.nome || assinatura?.status_nome || codigo;
-  const cor = status.cor || getStatusColor(codigo);
-  return { codigo, nome, cor };
-};
-
+const logoGateway = (codigo) => (codigo === 'asaas' ? LOGO_ASAAS : LOGO_MERCADO_PAGO);
 const nomeGateway = (assinatura) => {
-  const gw = assinatura?.gateway;
-  if (gw && typeof gw === 'object') return gw.nome || gw.codigo || '-';
-  if (typeof gw === 'string' && gw.trim()) return gw;
-  return '-';
+  const codigo = codigoGateway(assinatura);
+  if (assinatura?.gateway?.nome) return assinatura.gateway.nome;
+  if (typeof assinatura?.gateway === 'string' && assinatura.gateway.trim()) return assinatura.gateway;
+  return codigo === 'asaas' ? 'Asaas' : 'Mercado Pago';
 };
 
-const idProvedor = (assinatura) =>
-  assinatura?.provedor_id || assinatura?.preference_id || assinatura?.mp_preapproval_id || '-';
+const planoSub = (assinatura) => {
+  const parts = [assinatura?.modalidade_nome || assinatura?.plano_nome].filter(Boolean);
+  const n = Number(assinatura?.plano_checkins);
+  if (n > 0) parts.push(`${n}x por semana`);
+  return parts.join(', ') || '—';
+};
+
+const periodoLinha = (assinatura) => {
+  const inicio = formatDate(assinatura?.data_inicio);
+  const fim = assinatura?.data_fim ? formatDate(assinatura.data_fim) : null;
+  const proxima = assinatura?.proxima_cobranca ? formatDate(assinatura.proxima_cobranca) : null;
+  if (assinatura?.tipo_cobranca === 'recorrente') {
+    return { principal: inicio, extra: proxima ? `Próxima cobrança em ${proxima}` : 'Sem próxima cobrança' };
+  }
+  if (fim) return { principal: `${inicio} a ${fim}`, extra: null };
+  return { principal: inicio, extra: 'Sem data de fim' };
+};
+
+const downloadCsv = (filename, rows) => {
+  const csv = rows.map((r) => r.map((v) => {
+    const s = String(v ?? '');
+    return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(';')).join('\n');
+  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+const relativo = (iso) => {
+  if (!iso) return 'agora';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return 'agora';
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return 'há instantes';
+  if (min === 1) return 'há 1 minuto';
+  if (min < 60) return `há ${min} minutos`;
+  const h = Math.round(min / 60);
+  return h === 1 ? 'há 1 hora' : `há ${h} horas`;
+};
 
 export default function AssinaturasScreen() {
   const [assinaturas, setAssinaturas] = useState([]);
@@ -112,110 +141,70 @@ export default function AssinaturasScreen() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [selectedTenant, setSelectedTenant] = useState(null);
-  const [loadingTenants, setLoadingTenants] = useState(false);
-  const [showTenantDropdown, setShowTenantDropdown] = useState(false);
+  const [tenantQuery, setTenantQuery] = useState('');
 
   const [statusFilter, setStatusFilter] = useState('');
   const [tipoCobrancaFilter, setTipoCobrancaFilter] = useState('');
+  const [gatewayFilter, setGatewayFilter] = useState('');
   const [searchText, setSearchText] = useState('');
   const [serverSearch, setServerSearch] = useState('');
 
   const [page, setPage] = useState(1);
-  const [perPage] = useState(20);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [contagens, setContagens] = useState({ todas: 0 });
+  const [resumo, setResumo] = useState(null);
 
   const [showCobrancasModal, setShowCobrancasModal] = useState(false);
   const [cobrancasAssinatura, setCobrancasAssinatura] = useState(null);
   const [cobrancas, setCobrancas] = useState(null);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [tab, setTab] = useState('conciliacao');
 
   useEffect(() => {
-    const init = async () => {
+    authService.getCurrentUser().then(async (user) => {
+      const superAdmin = user?.papel_id === 4;
+      setIsSuperAdmin(superAdmin);
+      if (!superAdmin) return;
       try {
-        const user = await authService.getCurrentUser();
-        const superAdmin = user?.papel_id === 4;
-        setIsSuperAdmin(superAdmin);
-        if (superAdmin) {
-          await loadTenants();
-        }
+        const response = await superAdminService.listarAcademias();
+        const lista = response?.academias || response?.data?.academias || response || [];
+        setTenants(Array.isArray(lista) ? lista : []);
+        if (lista[0]) setSelectedTenant(lista[0]);
       } catch (error) {
-        console.error('Erro ao carregar usuário:', error);
+        showError(error.error || 'Erro ao carregar academias');
       }
-    };
-    init();
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!isSuperAdmin || selectedTenant) {
-      loadAssinaturas(1, serverSearch);
-    }
-  }, [statusFilter, tipoCobrancaFilter, selectedTenant]);
+    const t = setTimeout(() => setServerSearch(searchText.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchText]);
 
-  const loadTenants = async () => {
-    try {
-      setLoadingTenants(true);
-      const response = await superAdminService.listarAcademias();
-      const lista = response?.academias || response?.data?.academias || response || [];
-      setTenants(lista);
-      if (lista.length > 0) {
-        setSelectedTenant(lista[0]);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar academias:', error);
-      showError(error.error || 'Erro ao carregar academias');
-    } finally {
-      setLoadingTenants(false);
-    }
-  };
-
-  const normalizeResponse = (response) => {
-    if (!response) return { lista: [], total: 0, totalPages: 1, page: 1, perPage };
-    const lista = response.assinaturas || response.data?.assinaturas || response.data || [];
-    const totalItems = response.total || response.data?.total || lista.length;
-    const totalPagesValue = response.total_pages || response.data?.total_pages || 1;
-    const pageValue = response.page || response.data?.page || 1;
-    const perPageValue = response.per_page || response.data?.per_page || perPage;
-    return {
-      lista,
-      total: totalItems,
-      totalPages: totalPagesValue,
-      page: pageValue,
-      perPage: perPageValue,
-    };
-  };
-
-  const loadAssinaturas = async (pageParam = page, buscaParam = serverSearch, overrides = {}) => {
+  const loadAssinaturas = async (pageParam = 1) => {
     try {
       setLoading(true);
-      const statusValue = Object.prototype.hasOwnProperty.call(overrides, 'status')
-        ? overrides.status
-        : statusFilter;
-      const tipoCobrancaValue = Object.prototype.hasOwnProperty.call(overrides, 'tipo_cobranca')
-        ? overrides.tipo_cobranca
-        : tipoCobrancaFilter;
       const filtros = {
-        status: statusValue || undefined,
-        tipo_cobranca: tipoCobrancaValue || undefined,
-        busca: buscaParam || undefined,
+        status: statusFilter || undefined,
+        tipo_cobranca: tipoCobrancaFilter || undefined,
+        gateway: gatewayFilter || undefined,
+        busca: serverSearch || undefined,
         page: pageParam,
-        per_page: perPage,
+        per_page: PER_PAGE,
       };
-
-      let response;
-      if (isSuperAdmin && selectedTenant) {
-        response = await assinaturaService.listarTodas(selectedTenant.id, filtros);
-      } else {
-        response = await assinaturaService.listar(filtros);
-      }
-
-      const normalized = normalizeResponse(response);
-      setAssinaturas(normalized.lista);
-      setTotal(normalized.total || 0);
-      setTotalPages(normalized.totalPages || 1);
-      setPage(normalized.page || pageParam);
+      const response = isSuperAdmin && selectedTenant
+        ? await assinaturaService.listarTodas(selectedTenant.id, filtros)
+        : await assinaturaService.listar(filtros);
+      const lista = response?.assinaturas || response?.data?.assinaturas || [];
+      setAssinaturas(Array.isArray(lista) ? lista : []);
+      setTotal(response?.total || response?.data?.total || 0);
+      setTotalPages(response?.total_pages || response?.data?.total_pages || 1);
+      setPage(response?.page || pageParam);
+      setContagens(response?.contagens || response?.data?.contagens || { todas: 0 });
+      setResumo(response?.resumo || response?.data?.resumo || null);
     } catch (error) {
-      console.error('Erro ao listar assinaturas:', error);
       showError(error.error || 'Erro ao carregar assinaturas');
       setAssinaturas([]);
     } finally {
@@ -223,415 +212,454 @@ export default function AssinaturasScreen() {
     }
   };
 
-  const handlePesquisar = async () => {
-    const termo = searchText.trim();
-    setServerSearch(termo);
-    setPage(1);
-    await loadAssinaturas(1, termo);
-  };
-
-  const handleClearFilters = async () => {
-    setStatusFilter('');
-    setTipoCobrancaFilter('');
-    setSearchText('');
-    setServerSearch('');
-    setPage(1);
-    await loadAssinaturas(1, '', { status: '', tipo_cobranca: '' });
-  };
-
-  const handlePageChange = (novaPagina) => {
-    if (novaPagina < 1 || novaPagina > totalPages || loading) return;
-    setPage(novaPagina);
-    loadAssinaturas(novaPagina, serverSearch);
-  };
+  useEffect(() => {
+    if (isSuperAdmin && !selectedTenant) return undefined;
+    loadAssinaturas(1);
+    return undefined;
+  }, [statusFilter, tipoCobrancaFilter, gatewayFilter, serverSearch, selectedTenant, isSuperAdmin]);
 
   const fetchCobrancas = async (assinatura) => {
     if (!assinatura?.id) return;
     try {
       setLoadingCobrancas(true);
+      setCobrancasAssinatura(assinatura);
+      setShowCobrancasModal(true);
+      setTab('conciliacao');
       const tenantId = isSuperAdmin ? selectedTenant?.id : null;
       const response = await assinaturaService.consultarCobrancas(assinatura.id, tenantId);
-      setCobrancasAssinatura(assinatura);
       setCobrancas(response);
-      setShowCobrancasModal(true);
-      showSuccess('Cobranças carregadas');
     } catch (error) {
-      console.error('Erro ao consultar cobranças:', error);
       showError(error.error || 'Erro ao consultar cobranças');
+      setCobrancas(null);
     } finally {
       setLoadingCobrancas(false);
     }
   };
 
+  const sincronizar = async () => {
+    const matriculaId = cobrancasAssinatura?.matricula_id;
+    if (!matriculaId) {
+      showError('Esta assinatura não tem matrícula para sincronizar.');
+      return;
+    }
+    try {
+      setSyncing(true);
+      if (codigoGateway(cobrancasAssinatura) === 'asaas') {
+        await matriculaService.sincronizarAsaas(matriculaId);
+      }
+      await fetchCobrancas(cobrancasAssinatura);
+    } catch (error) {
+      showError(error.error || 'Não foi possível sincronizar agora.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const exportar = async () => {
+    try {
+      const filtros = {
+        status: statusFilter || undefined,
+        tipo_cobranca: tipoCobrancaFilter || undefined,
+        gateway: gatewayFilter || undefined,
+        busca: serverSearch || undefined,
+        page: 1,
+        per_page: 500,
+      };
+      const response = isSuperAdmin && selectedTenant
+        ? await assinaturaService.listarTodas(selectedTenant.id, filtros)
+        : await assinaturaService.listar(filtros);
+      const lista = response?.assinaturas || [];
+      downloadCsv('assinaturas.csv', [
+        ['Aluno', 'Plano', 'Provedor', 'Tipo', 'Valor', 'Início', 'Fim', 'Próxima cobrança', 'Status'],
+        ...lista.map((a) => [
+          titleCase(a.aluno_nome),
+          a.plano_nome,
+          nomeGateway(a),
+          a.tipo_cobranca,
+          (Number(a.valor) || 0).toFixed(2).replace('.', ','),
+          formatDate(a.data_inicio),
+          formatDate(a.data_fim),
+          formatDate(a.proxima_cobranca),
+          nomeStatus(a),
+        ]),
+      ]);
+    } catch (error) {
+      showError(error.error || 'Não foi possível exportar.');
+    }
+  };
+
+  const tenantResults = tenantQuery
+    ? tenants.filter((t) => String(t.nome || '').toLowerCase().includes(tenantQuery.toLowerCase())).slice(0, 8)
+    : [];
+
+  const from = total === 0 ? 0 : ((page - 1) * PER_PAGE) + 1;
+  const to = Math.min(page * PER_PAGE, total);
+  const problemas = resumo?.problemas || { total: 0, webhooks_erro: 0, valores_divergentes: 0 };
+  const problemaHint = [
+    problemas.webhooks_erro ? `${problemas.webhooks_erro} webhook${problemas.webhooks_erro === 1 ? '' : 's'} com erro` : null,
+    problemas.valores_divergentes ? `${problemas.valores_divergentes} valor divergente` : null,
+  ].filter(Boolean).join(', ') || 'Nenhum problema detectado';
+
   const cobrancasProvedor = useMemo(() => {
     const lista = cobrancas?.provedor?.pagamentos || cobrancas?.mercadopago?.pagamentos;
     return Array.isArray(lista) ? lista : [];
   }, [cobrancas]);
+  const pagamentosPlano = cobrancas?.local?.pagamentos_plano || [];
+  const webhookPayloads = cobrancas?.local?.webhook_payloads || cobrancas?.local?.webhook_payloads_mercadopago || [];
+  const conciliacao = cobrancas?.conciliacao;
+  const gwModal = codigoGateway(cobrancasAssinatura || {});
+  const invoiceUrl = cobrancas?.provedor?.invoice_url || cobrancasAssinatura?.payment_url;
 
-  const pagamentosPlano = useMemo(() => {
-    const lista = cobrancas?.local?.pagamentos_plano;
-    return Array.isArray(lista) ? lista : [];
-  }, [cobrancas]);
-
-  const pagamentosMpLocal = useMemo(() => {
-    const lista = cobrancas?.local?.pagamentos_mercadopago;
-    return Array.isArray(lista) ? lista : [];
-  }, [cobrancas]);
-
-  const webhookPayloads = useMemo(() => {
-    const lista = cobrancas?.local?.webhook_payloads || cobrancas?.local?.webhook_payloads_mercadopago;
-    return Array.isArray(lista) ? lista : [];
-  }, [cobrancas]);
+  const formatLinha = (linha) => {
+    if (linha.campo === 'valor') {
+      return {
+        provedor: linha.provedor == null ? '—' : money(linha.provedor),
+        checkin: linha.checkin == null ? '—' : money(linha.checkin),
+      };
+    }
+    if (linha.campo === 'vencimento') {
+      return { provedor: formatDate(linha.provedor), checkin: formatDate(linha.checkin) };
+    }
+    return { provedor: linha.provedor || '—', checkin: linha.checkin || '—' };
+  };
 
   return (
-    <LayoutBase title="Assinaturas" subtitle="Cobranças de planos (Asaas, Mercado Pago e demais provedores)">
-      <ScrollView className="flex-1">
-        <View className="px-5 pb-4">
-          {isSuperAdmin && (
-            <View className="mb-4">
-              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Academia</Text>
-              <TouchableOpacity
-                className="flex-row items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-                onPress={() => setShowTenantDropdown(!showTenantDropdown)}
-              >
-                <Text className="text-sm text-slate-700">
-                  {selectedTenant?.nome || (loadingTenants ? 'Carregando...' : 'Selecione uma academia')}
-                </Text>
-                <Feather name="chevron-down" size={16} color="#94a3b8" />
-              </TouchableOpacity>
+    <LayoutBase title="Assinaturas" pageHeader={false}>
+      <div className="ck-fin ck-as">
+        <PageHeader
+          title="Assinaturas"
+          description="Cobranças de planos geradas nos provedores de pagamento e na academia."
+          actions={<Button icon="download" disabled={loading || !total} onClick={exportar}>Exportar</Button>}
+        />
 
-              {showTenantDropdown && (
-                <View className="mt-2 rounded-lg border border-slate-200 bg-white overflow-hidden">
-                  {tenants.map((tenant) => (
-                    <TouchableOpacity
-                      key={tenant.id}
-                      className="px-3 py-2 border-b border-slate-100"
-                      onPress={() => {
-                        setSelectedTenant(tenant);
-                        setShowTenantDropdown(false);
-                      }}
-                    >
-                      <Text className="text-sm text-slate-700">{tenant.nome}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
+        {isSuperAdmin ? (
+          <section className="ck-card ck-pl__tenant" aria-label="Academia">
+            {selectedTenant ? (
+              <div className="ck-nm__student">
+                <span className="ck-ml__mod" aria-hidden><Icon name="building-2" size={16} /></span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong>{selectedTenant.nome}</strong>
+                  <span>{[selectedTenant.cidade, selectedTenant.estado].filter(Boolean).join('/') || 'Academia selecionada'}</span>
+                </span>
+                <Button size="sm" variant="ghost" icon="repeat" onClick={() => { setSelectedTenant(null); setAssinaturas([]); }}>Trocar</Button>
+              </div>
+            ) : (
+              <div className="ck-nm__combo">
+                <div className="ck-control">
+                  <Icon name="search" size={18} className="ck-control__icon" />
+                  <input className="ck-control__input" placeholder="Buscar academia pelo nome" value={tenantQuery} aria-label="Buscar academia" onChange={(e) => setTenantQuery(e.target.value)} />
+                  {tenantQuery ? <IconButton icon="x" label="Limpar busca" size="sm" onClick={() => setTenantQuery('')} /> : null}
+                </div>
+                {tenantQuery ? (
+                  <ul className="ck-nm__results" role="listbox">
+                    {tenantResults.length ? tenantResults.map((t) => (
+                      <li key={t.id}>
+                        <button type="button" role="option" onClick={() => { setSelectedTenant(t); setTenantQuery(''); }}>
+                          <span className="ck-ml__mod" aria-hidden><Icon name="building-2" size={16} /></span>
+                          <span><strong>{t.nome}</strong><span>{[t.cidade, t.estado].filter(Boolean).join('/')}</span></span>
+                        </button>
+                      </li>
+                    )) : <li className="ck-nm__noresult">Nenhuma academia com esse nome.</li>}
+                  </ul>
+                ) : null}
+              </div>
+            )}
+          </section>
+        ) : null}
 
-          <View className="rounded-xl border border-slate-200 bg-white p-3">
-            <View className="flex-row items-center gap-2">
-              <TextInput
-                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                placeholder="Buscar por aluno"
+        <div className="ck-kpis">
+          <KpiCard
+            icon="repeat"
+            label="Recorrentes ativas"
+            value={loading ? '—' : String(resumo?.recorrentes_ativas?.total ?? 0)}
+            hint={`${money(resumo?.recorrentes_ativas?.valor || 0)} por mês`}
+            onClick={() => { setTipoCobrancaFilter('recorrente'); setStatusFilter('ativa'); }}
+          />
+          <KpiCard
+            tone="success"
+            icon="check-circle"
+            label="Pagas este mês"
+            value={loading ? '—' : money(resumo?.pagas_este_mes?.valor || 0)}
+            hint={`${resumo?.pagas_este_mes?.total ?? 0} cobranças`}
+            onClick={() => setStatusFilter('paga')}
+          />
+          <KpiCard
+            tone="warning"
+            icon="clock"
+            label="Pendentes"
+            value={loading ? '—' : money(resumo?.pendentes?.valor || 0)}
+            hint={`${resumo?.pendentes?.total ?? 0} aguardando pagamento`}
+            onClick={() => setStatusFilter('pendente')}
+          />
+          <KpiCard
+            tone={problemas.total ? 'danger' : 'neutral'}
+            icon="alert-triangle"
+            label="Com problema"
+            value={loading ? '—' : String(problemas.total ?? 0)}
+            hint={problemaHint}
+          />
+        </div>
+
+        <section className="ck-card ck-ml__panel" aria-label="Assinaturas">
+          <div className="ck-ml__toolbar ck-as__toolbar">
+            <div className="ck-control ck-ml__search">
+              <Icon name="search" size={18} className="ck-control__icon" />
+              <input
+                type="search"
+                className="ck-control__input"
                 value={searchText}
-                onChangeText={setSearchText}
+                placeholder="Buscar aluno ou plano"
+                aria-label="Buscar aluno ou plano"
+                onChange={(e) => setSearchText(e.target.value)}
               />
-              <TouchableOpacity
-                className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-2"
-                onPress={handlePesquisar}
-              >
-                <Feather name="search" size={14} color="#fff" />
-                <Text className="text-sm font-semibold text-white">Buscar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-row items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
-                onPress={handleClearFilters}
-              >
-                <Feather name="x" size={14} color="#64748b" />
-                <Text className="text-sm font-semibold text-slate-600">Limpar</Text>
-              </TouchableOpacity>
-            </View>
+              {searchText ? <IconButton icon="x" label="Limpar busca" size="sm" onClick={() => setSearchText('')} /> : null}
+            </div>
+            <div className="ck-as__segs" role="group" aria-label="Provedor">
+              {GATEWAYS.map((g) => (
+                <button key={g.value || 'gw'} type="button" className={`ck-as__seg${gatewayFilter === g.value ? ' is-on' : ''}`} aria-pressed={gatewayFilter === g.value} onClick={() => setGatewayFilter(g.value)}>
+                  {g.value === 'asaas' ? <ProviderLogo src={LOGO_ASAAS} name="Asaas" size="sm" /> : null}
+                  {g.value === 'mercadopago' ? <ProviderLogo src={LOGO_MERCADO_PAGO} name="Mercado Pago" size="sm" /> : null}
+                  {g.label}
+                </button>
+              ))}
+            </div>
+            <div className="ck-as__segs" role="group" aria-label="Tipo">
+              {TIPOS.map((t) => (
+                <button key={t.value || 'tipo'} type="button" className={`ck-as__seg${tipoCobrancaFilter === t.value ? ' is-on' : ''}`} aria-pressed={tipoCobrancaFilter === t.value} onClick={() => setTipoCobrancaFilter(t.value)}>
+                  {t.value === 'recorrente' ? <Icon name="repeat" size={14} /> : null}
+                  {t.value === 'avulso' ? <Icon name="receipt" size={14} /> : null}
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            <Text className="mt-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Filtros</Text>
-            <View className="mt-2 flex-row flex-wrap gap-2">
-              {STATUS_OPTIONS.map((status) => {
-                const selected = statusFilter === status.value;
-                return (
-                  <TouchableOpacity
-                    key={status.value || 'todos'}
-                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-orange-500' : 'bg-slate-100'}`}
-                    onPress={() => setStatusFilter(status.value)}
-                  >
-                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
-                      {status.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-              {TIPO_COBRANCA_OPTIONS.map((tipo) => {
-                const selected = tipoCobrancaFilter === tipo.value;
-                return (
-                  <TouchableOpacity
-                    key={`tipo-${tipo.value || 'todos'}`}
-                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-slate-900' : 'bg-slate-100'}`}
-                    onPress={() => setTipoCobrancaFilter(tipo.value)}
-                  >
-                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
-                      {tipo.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        </View>
+          <div className="ck-ml__filters ck-as__status" role="radiogroup" aria-label="Filtrar por status">
+            {STATUS_CHIPS.map(([key, label, tone]) => (
+              <button key={key || 'todas'} type="button" role="radio" aria-checked={statusFilter === key} className="ck-ml__chip" onClick={() => setStatusFilter(key)}>
+                {tone ? <span className={`ck-ml__chipdot ck-ml__chipdot--${tone}`} aria-hidden /> : null}
+                {label}<span className="ck-ml__count">{contagens[key || 'todas'] ?? 0}</span>
+              </button>
+            ))}
+          </div>
 
-        <View className="px-5 pb-6">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-sm font-semibold text-slate-700">Resultado</Text>
-            <Text className="text-xs text-slate-400">Total: {total}</Text>
-          </View>
+          {loading ? <p role="status" className="ck-enrollment-state">Carregando assinaturas…</p>
+            : assinaturas.length ? (
+              <div className="ck-mt-table-wrap">
+                <table className="ck-mt-table ck-ml__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Aluno</th>
+                      <th scope="col">Provedor</th>
+                      <th scope="col">Tipo</th>
+                      <th scope="col" className="is-num">Valor</th>
+                      <th scope="col">Período</th>
+                      <th scope="col">Status</th>
+                      <th scope="col"><span className="ck-sr">Cobranças</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {assinaturas.map((assinatura) => {
+                      const st = codigoStatus(assinatura);
+                      const gw = codigoGateway(assinatura);
+                      const periodo = periodoLinha(assinatura);
+                      const avulso = assinatura.tipo_cobranca === 'avulso';
+                      return (
+                        <tr key={assinatura.id} className="ck-ml__row" onClick={(e) => { if (!e.target.closest('button, a')) fetchCobrancas(assinatura); }}>
+                          <td>
+                            <div className="ck-ml__who">
+                              <Avatar name={assinatura.aluno_nome} size="sm" decorative />
+                              <span>
+                                <button type="button" className="ck-ml__name" onClick={() => fetchCobrancas(assinatura)}>{titleCase(assinatura.aluno_nome)}</button>
+                                <span className="ck-as__sub">{planoSub(assinatura)}</span>
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="ck-as__prov">
+                              <ProviderLogo src={logoGateway(gw)} name={nomeGateway(assinatura)} size="sm" />
+                              <span>{gw === 'asaas' ? 'ASAAS' : 'Mercado Pago'}</span>
+                            </span>
+                          </td>
+                          <td>
+                            <Badge icon={avulso ? 'receipt' : 'repeat'}>{avulso ? 'Avulso' : 'Recorrente'}</Badge>
+                          </td>
+                          <td className="is-num">
+                            <strong>{money(assinatura.valor)}</strong>
+                            <span className="ck-as__sub">{avulso ? 'cobrança única' : 'por ciclo'}</span>
+                          </td>
+                          <td>
+                            <strong>{periodo.principal}</strong>
+                            {periodo.extra ? <span className="ck-as__sub">{periodo.extra}</span> : null}
+                          </td>
+                          <td><Badge tone={toneStatus(st)} dot>{nomeStatus(assinatura)}</Badge></td>
+                          <td>
+                            <Button size="sm" icon="receipt" onClick={() => fetchCobrancas(assinatura)}>Cobranças</Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="ck-ml__empty">
+                <strong>Nenhuma assinatura encontrada</strong>
+                <p>Ajuste os filtros ou a busca e tente novamente.</p>
+              </div>
+            )}
 
-          {loading ? (
-            <View className="items-center justify-center py-10">
-              <ActivityIndicator size="large" color="#f97316" />
-            </View>
-          ) : assinaturas.length === 0 ? (
-            <View className="items-center rounded-xl border border-slate-200 bg-white py-12">
-              <Feather name="inbox" size={42} color="#cbd5f5" />
-              <Text className="mt-3 text-sm font-semibold text-slate-600">Nenhuma assinatura encontrada</Text>
-              <Text className="text-xs text-slate-400">Ajuste os filtros e tente novamente</Text>
-            </View>
-          ) : (
-            <View className="gap-2">
-              {assinaturas.map((assinatura) => {
-                const statusInfo = getStatusInfo(assinatura);
-                return (
-                  <View
-                    key={assinatura.id}
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                  >
-                    <View className="flex-row items-start justify-between">
-                      <View className="flex-1">
-                        <Text className="text-sm font-semibold text-slate-800">{assinatura.aluno_nome || '-'}</Text>
-                        <Text className="text-xs text-slate-500">
-                          {assinatura.plano_nome || '-'} {assinatura.modalidade_nome ? `• ${assinatura.modalidade_nome}` : ''}
-                        </Text>
-                      </View>
-                      <View className="items-end">
-                        <Text className="text-sm font-semibold text-orange-500">{formatCurrency(assinatura.valor)}</Text>
-                        <Text className="text-[11px] text-slate-400">{assinatura.tipo_cobranca || '-'}</Text>
-                      </View>
-                    </View>
-
-                    <View className="flex-row items-center justify-between mt-2">
-                      <View className="flex-row items-center gap-2">
-                        <View
-                          className="rounded-full px-2 py-0.5"
-                          style={{ backgroundColor: `${statusInfo.cor}20` }}
-                        >
-                          <Text className="text-[11px] font-semibold" style={{ color: statusInfo.cor }}>
-                            {statusInfo.nome}
-                          </Text>
-                        </View>
-                        <Text className="text-[11px] text-slate-400">
-                          {nomeGateway(assinatura)}
-                          {assinatura.status_gateway ? ` · ${assinatura.status_gateway}` : ''}
-                        </Text>
-                      </View>
-                      <Text className="text-[11px] text-slate-400">
-                        Próx. cobrança: {getProximaCobrancaLabel(assinatura)}
-                      </Text>
-                    </View>
-
-                    <View className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2">
-                      <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Dados da assinatura</Text>
-                      <View className="flex-row flex-wrap gap-2">
-                        <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Tipo</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{assinatura.tipo_cobranca || '-'}</Text>
-                        </View>
-                        <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Início</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{formatDate(assinatura.data_inicio)}</Text>
-                        </View>
-                        <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Fim</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{formatDate(assinatura.data_fim)}</Text>
-                        </View>
-                        <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Criado</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{formatDateTime(assinatura.criado_em)}</Text>
-                        </View>
-                        <View className="min-w-[180px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">External ref</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{assinatura.external_reference || '-'}</Text>
-                        </View>
-                        <View className="min-w-[180px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">ID no provedor</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{idProvedor(assinatura)}</Text>
-                        </View>
-                        <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Provedor</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{nomeGateway(assinatura)}</Text>
-                        </View>
-                      </View>
-
-                      <View className="mt-2 flex-row items-center justify-end">
-                        <TouchableOpacity
-                          className="flex-row items-center gap-2 rounded-lg px-3 py-1.5 bg-orange-500"
-                          onPress={() => fetchCobrancas(assinatura)}
-                          disabled={loadingCobrancas}
-                        >
-                          {loadingCobrancas ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <>
-                              <Feather name="search" size={12} color="#fff" />
-                              <Text className="text-xs font-semibold text-white">
-                                Cobranças
-                              </Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          <View className="flex-row items-center justify-between mt-5">
-            <TouchableOpacity
-              className={`rounded-lg border px-3 py-2 ${page <= 1 ? 'border-slate-200 bg-slate-100' : 'border-slate-200 bg-white'}`}
-              onPress={() => handlePageChange(page - 1)}
-              disabled={page <= 1}
-            >
-              <Text className={`text-xs font-semibold ${page <= 1 ? 'text-slate-400' : 'text-slate-700'}`}>
-                Anterior
-              </Text>
-            </TouchableOpacity>
-            <Text className="text-xs text-slate-500">
-              Página {page} de {totalPages}
-            </Text>
-            <TouchableOpacity
-              className={`rounded-lg border px-3 py-2 ${page >= totalPages ? 'border-slate-200 bg-slate-100' : 'border-slate-200 bg-white'}`}
-              onPress={() => handlePageChange(page + 1)}
-              disabled={page >= totalPages}
-            >
-              <Text className={`text-xs font-semibold ${page >= totalPages ? 'text-slate-400' : 'text-slate-700'}`}>
-                Próxima
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
+          {!loading && total ? (
+            <div className="ck-ml__foot">
+              <span>Mostrando {from} a {to} de {total}</span>
+              <div className="ck-ml__pager">
+                <IconButton icon="chevron-left" label="Página anterior" size="sm" variant="secondary" disabled={page <= 1} onClick={() => loadAssinaturas(page - 1)} />
+                <span className="ck-ml__pageinfo">Página {page} de {totalPages}</span>
+                <IconButton icon="chevron-right" label="Próxima página" size="sm" variant="secondary" disabled={page >= totalPages} onClick={() => loadAssinaturas(page + 1)} />
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
 
       <Modal
-        visible={showCobrancasModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowCobrancasModal(false)}
+        open={showCobrancasModal}
+        size="lg"
+        title={cobrancasAssinatura ? `Cobranças de ${titleCase(cobrancasAssinatura.aluno_nome)}` : 'Cobranças'}
+        description={cobrancasAssinatura ? `${planoSub(cobrancasAssinatura)}${cobrancasAssinatura.matricula_id ? `, matrícula #${cobrancasAssinatura.matricula_id}` : ''}` : undefined}
+        leading={cobrancasAssinatura ? <ProviderLogo src={logoGateway(gwModal)} name={nomeGateway(cobrancasAssinatura)} /> : null}
+        onClose={() => setShowCobrancasModal(false)}
+        footer={(
+          <>
+            <span className="ck-as-modal__sync"><Icon name="refresh-cw" size={14} /> Sincronizado {relativo(cobrancas?.sincronizado_em)}</span>
+            <span style={{ flex: 1 }} />
+            {invoiceUrl ? (
+              <Button variant="ghost" icon="arrow-right" onClick={() => window.open(invoiceUrl, '_blank', 'noopener')}>
+                Abrir no {gwModal === 'asaas' ? 'Asaas' : 'Mercado Pago'}
+              </Button>
+            ) : null}
+            <Button icon="refresh-cw" loading={syncing} onClick={sincronizar}>Sincronizar agora</Button>
+          </>
+        )}
       >
-        <View className="flex-1 bg-slate-50 px-5 pt-10">
-          <View className="flex-row items-center justify-between mb-4">
-            <View>
-              <Text className="text-lg font-semibold text-slate-800">Cobranças</Text>
-              <Text className="text-xs text-slate-500">
-                {cobrancasAssinatura?.aluno_nome || '-'}
-                {cobrancas?.gateway?.nome ? ` • ${cobrancas.gateway.nome}` : ''}
-                {cobrancasAssinatura?.external_reference ? ` • ${cobrancasAssinatura.external_reference}` : ''}
-              </Text>
-            </View>
-            <TouchableOpacity
-              className="h-9 w-9 items-center justify-center rounded-full bg-white border border-slate-200"
-              onPress={() => setShowCobrancasModal(false)}
-            >
-              <Feather name="x" size={18} color="#0f172a" />
-            </TouchableOpacity>
-          </View>
+        <div className="ck-as-modal">
+          <Tabs
+            label="Detalhe da cobrança"
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { value: 'conciliacao', label: 'Conciliação', status: conciliacao?.ok ? 'success' : (conciliacao ? 'warning' : undefined) },
+              { value: 'cobrancas', label: `Cobranças ${cobrancasProvedor.length}` },
+              { value: 'webhooks', label: `Webhooks ${webhookPayloads.length}` },
+              { value: 'tecnico', label: 'Dados técnicos' },
+            ]}
+          />
 
-          <ScrollView>
-            {!cobrancas ? (
-              <View className="items-center justify-center py-10">
-                <Text className="text-sm text-slate-500">Nenhum resultado carregado.</Text>
-              </View>
-            ) : (
-              <View className="gap-4">
-                <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">
-                    {cobrancas?.provedor?.nome || cobrancas?.gateway?.nome || 'Provedor'}
-                  </Text>
-                  {cobrancas?.provedor?.erro ? (
-                    <Text className="text-xs text-amber-600 mb-2">{cobrancas.provedor.erro}</Text>
-                  ) : null}
-                  {cobrancasProvedor.length === 0 ? (
-                    <Text className="text-xs text-slate-400">Nenhuma cobrança no provedor.</Text>
-                  ) : (
-                    cobrancasProvedor.map((pagamento) => (
-                      <View key={pagamento.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 mb-2">
-                        <Text className="text-xs text-slate-500">ID: {pagamento.id}</Text>
-                        <Text className="text-xs text-slate-500">Status: {pagamento.status}</Text>
-                        {pagamento.status_detail ? (
-                          <Text className="text-xs text-slate-500">Detalhe: {pagamento.status_detail}</Text>
-                        ) : null}
-                        <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.transaction_amount)}</Text>
-                        <Text className="text-xs text-slate-500">Método: {pagamento.payment_method_id || '-'}</Text>
-                        <Text className="text-xs text-slate-500">Criado: {formatDateTime(pagamento.date_created)}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
+          {loadingCobrancas ? <p role="status">Carregando cobranças…</p> : null}
 
-                <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">Pagamentos do plano</Text>
-                  {pagamentosPlano.length === 0 ? (
-                    <Text className="text-xs text-slate-400">Nenhum pagamento local encontrado.</Text>
-                  ) : (
-                    pagamentosPlano.map((pagamento) => (
-                      <View key={pagamento.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 mb-2">
-                        <Text className="text-xs text-slate-500">ID: {pagamento.id}</Text>
-                        <Text className="text-xs text-slate-500">Matrícula: {pagamento.matricula_id}</Text>
-                        <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.valor)}</Text>
-                        <Text className="text-xs text-slate-500">Status: {pagamento.status || pagamento.status_pagamento_id}</Text>
-                        <Text className="text-xs text-slate-500">Forma: {pagamento.forma_pagamento_nome || '-'}</Text>
-                        <Text className="text-xs text-slate-500">
-                          Baixado por: {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
-                        </Text>
-                        <Text className="text-xs text-slate-500">Vencimento: {formatDate(pagamento.data_vencimento)}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
+          {!loadingCobrancas && tab === 'conciliacao' ? (
+            <>
+              {conciliacao ? (
+                <Callout tone={conciliacao.ok ? 'success' : 'warning'} title={conciliacao.titulo}>{conciliacao.detalhe}</Callout>
+              ) : (
+                <Callout tone="neutral" title="Sem conciliação">Ainda não há cobrança no provedor e parcela local para comparar.</Callout>
+              )}
+              {conciliacao ? (
+                <table className="ck-as-cmp">
+                  <thead>
+                    <tr>
+                      <th />
+                      <th><span className="ck-as__prov"><ProviderLogo src={logoGateway(gwModal)} name={conciliacao.provedor_nome} size="sm" /> No {conciliacao.provedor_nome}</span></th>
+                      <th><span className="ck-as__prov">No Check-in</span></th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(conciliacao.linhas || []).map((linha) => {
+                      const v = formatLinha(linha);
+                      return (
+                        <tr key={linha.campo}>
+                          <th scope="row">{linha.label}</th>
+                          <td>
+                            {v.provedor}
+                            {linha.campo === 'situacao' && linha.provedor_codigo ? <Badge className="ck-as-cmp__code">{linha.provedor_codigo}</Badge> : null}
+                          </td>
+                          <td>{v.checkin}</td>
+                          <td>{linha.ok ? <Icon name="check-circle" size={18} className="ck-as-cmp__ok" /> : <Icon name="alert-triangle" size={18} className="ck-as-cmp__warn" />}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : null}
+              {conciliacao?.parcela ? (
+                <div className="ck-as-facts">
+                  <div>
+                    <span>Parcela no Check-in</span>
+                    <strong>Nº {conciliacao.parcela.id}</strong>
+                  </div>
+                  <div>
+                    <span>Baixa</span>
+                    <strong>{conciliacao.parcela.baixa}</strong>
+                  </div>
+                  <div>
+                    <span>Pago em</span>
+                    <strong>{formatDateTime(conciliacao.parcela.pago_em)}</strong>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
 
-                <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">Espelho local do provedor</Text>
-                  {pagamentosMpLocal.length === 0 ? (
-                    <Text className="text-xs text-slate-400">Nenhum espelho local encontrado.</Text>
-                  ) : (
-                    pagamentosMpLocal.map((pagamento) => (
-                      <View key={pagamento.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 mb-2">
-                        <Text className="text-xs text-slate-500">ID: {pagamento.id}</Text>
-                        <Text className="text-xs text-slate-500">Payment ID: {pagamento.payment_id}</Text>
-                        <Text className="text-xs text-slate-500">Status: {pagamento.status}</Text>
-                        <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.transaction_amount)}</Text>
-                        <Text className="text-xs text-slate-500">Criado: {formatDateTime(pagamento.created_at)}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
+          {!loadingCobrancas && tab === 'cobrancas' ? (
+            cobrancasProvedor.length === 0 ? <p className="ck-as__muted">Nenhuma cobrança no provedor.</p> : (
+              <ul className="ck-as-list">
+                {cobrancasProvedor.map((pagamento) => (
+                  <li key={pagamento.id}>
+                    <strong>{money(pagamento.transaction_amount)}</strong>
+                    <span>{pagamento.status} · {pagamento.payment_method_id || '—'} · {formatDateTime(pagamento.date_created)}</span>
+                    <span className="ck-as__muted">{pagamento.id}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
 
-                <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">Webhooks recebidos</Text>
-                  {webhookPayloads.length === 0 ? (
-                    <Text className="text-xs text-slate-400">Nenhum webhook encontrado.</Text>
-                  ) : (
-                    webhookPayloads.map((payload) => (
-                      <View key={payload.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 mb-2">
-                        <Text className="text-xs text-slate-500">ID: {payload.id}</Text>
-                        <Text className="text-xs text-slate-500">Tipo: {payload.tipo}</Text>
-                        <Text className="text-xs text-slate-500">Status: {payload.status}</Text>
-                        <Text className="text-xs text-slate-500">Criado: {formatDateTime(payload.created_at)}</Text>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </View>
-            )}
-          </ScrollView>
-        </View>
+          {!loadingCobrancas && tab === 'webhooks' ? (
+            webhookPayloads.length === 0 ? <p className="ck-as__muted">Nenhum webhook encontrado.</p> : (
+              <ul className="ck-as-list">
+                {webhookPayloads.map((payload) => (
+                  <li key={payload.id}>
+                    <strong>{payload.tipo || payload.event || 'Webhook'}</strong>
+                    <span>{payload.status || '—'} · {formatDateTime(payload.created_at)}</span>
+                    {payload.erro_processamento ? <span className="ck-as__warn">{payload.erro_processamento}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
+
+          {!loadingCobrancas && tab === 'tecnico' ? (
+            <dl className="ck-as-tech">
+              {[
+                ['Assinatura', cobrancas?.dados_tecnicos?.assinatura_id],
+                ['Matrícula', cobrancas?.dados_tecnicos?.matricula_id],
+                ['External reference', cobrancas?.dados_tecnicos?.external_reference],
+                ['ID no provedor', cobrancas?.dados_tecnicos?.preference_id || cobrancas?.dados_tecnicos?.gateway_assinatura_id],
+                ['Status no gateway', cobrancas?.dados_tecnicos?.status_gateway],
+                ['URL de pagamento', cobrancas?.dados_tecnicos?.payment_url],
+              ].map(([label, value]) => (
+                <div key={label}><dt>{label}</dt><dd>{value || '—'}</dd></div>
+              ))}
+              {pagamentosPlano.length ? (
+                <div>
+                  <dt>Parcelas locais</dt>
+                  <dd>{pagamentosPlano.map((p) => `#${p.id} ${p.status || ''} ${money(p.valor)}`).join(' · ')}</dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
+        </div>
       </Modal>
     </LayoutBase>
   );

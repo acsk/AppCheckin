@@ -76,6 +76,7 @@ class V2AdminAssinaturaRoutesTest extends TestCase
             ->with(3, Mockery::subset([
                 'status' => 'ativa',
                 'tipo_cobranca' => 'recorrente',
+                'gateway' => 'asaas',
                 'busca' => 'joao',
             ]))
             ->andReturn([
@@ -91,7 +92,7 @@ class V2AdminAssinaturaRoutesTest extends TestCase
             ]);
         $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
 
-        $this->getJson('/v2/admin/assinaturas?status=ativa&tipo_cobranca=recorrente&busca=joao', [
+        $this->getJson('/v2/admin/assinaturas?status=ativa&tipo_cobranca=recorrente&gateway=asaas&busca=joao', [
             'Authorization' => 'Bearer '.$token,
         ])
             ->assertOk()

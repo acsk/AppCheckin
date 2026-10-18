@@ -71,12 +71,27 @@ class AdminAssinaturaService
         $pagamentosPlano = $matriculaId > 0 ? $this->pagamentosPlanoDaMatricula($tenantId, $matriculaId) : [];
         $pagamentosMp = $externalReference !== '' ? $this->pagamentosMercadoPagoLocais($tenantId, $externalReference, $matriculaId) : [];
         $pagamentosPix = $matriculaId > 0 ? $this->pagamentosPixLocais($tenantId, $matriculaId) : [];
+        $webhooks = $this->webhooksLocais($tenantId, $externalReference, $provedorPagamentos);
+        $conciliacao = $this->montarConciliacao($ehAsaas, $gatewayNome, $provedorPagamentos, $pagamentosPlano);
+
+        $invoiceUrl = null;
+        foreach ($provedorPagamentos as $pagamento) {
+            $url = trim((string) ($pagamento['invoice_url'] ?? ''));
+            if ($url !== '') {
+                $invoiceUrl = $url;
+                break;
+            }
+        }
+        if ($invoiceUrl === null) {
+            $invoiceUrl = trim((string) ($row['payment_url'] ?? '')) ?: null;
+        }
 
         return [
             'status' => 200,
             'body' => [
                 'success' => true,
                 'external_reference' => $externalReference !== '' ? $externalReference : null,
+                'sincronizado_em' => date('c'),
                 'gateway' => [
                     'codigo' => $ehAsaas ? 'asaas' : ($gatewayCodigo !== '' ? $gatewayCodigo : 'mercadopago'),
                     'nome' => $gatewayNome,
@@ -85,6 +100,7 @@ class AdminAssinaturaService
                     'nome' => $gatewayNome,
                     'pagamentos' => $provedorPagamentos,
                     'erro' => $erroProvedor,
+                    'invoice_url' => $invoiceUrl,
                 ],
                 'mercadopago' => [
                     'total' => $ehAsaas ? 0 : count($provedorPagamentos),
@@ -94,6 +110,19 @@ class AdminAssinaturaService
                     'pagamentos_plano' => $pagamentosPlano,
                     'pagamentos_mercadopago' => $pagamentosMp,
                     'pagamentos_pix' => $pagamentosPix,
+                    'webhook_payloads' => $webhooks,
+                    'webhook_payloads_mercadopago' => $webhooks,
+                ],
+                'conciliacao' => $conciliacao,
+                'dados_tecnicos' => [
+                    'assinatura_id' => (int) $row['id'],
+                    'matricula_id' => $matriculaId > 0 ? $matriculaId : null,
+                    'aluno_id' => (int) ($row['aluno_id'] ?? 0),
+                    'external_reference' => $externalReference !== '' ? $externalReference : null,
+                    'preference_id' => $preferenceId !== '' ? $preferenceId : null,
+                    'gateway_assinatura_id' => $row['mp_preapproval_id'] ?? null,
+                    'status_gateway' => $row['status_gateway'] ?? null,
+                    'payment_url' => $row['payment_url'] ?? null,
                 ],
             ],
         ];
@@ -510,10 +539,11 @@ class AdminAssinaturaService
                 'status' => $params['status'] ?? '',
                 'tipo_cobranca' => $params['tipo_cobranca'] ?? '',
                 'busca' => $params['busca'] ?? '',
+                'gateway' => $params['gateway'] ?? '',
             ];
 
             $result = $this->assinaturas->listar($tenantId, $filtros, $page, $perPage);
-            $totalPages = (int) ceil($result['total'] / $perPage);
+            $totalPages = (int) ceil($result['total'] / max(1, $perPage));
 
             return [
                 'status' => 200,
@@ -524,6 +554,8 @@ class AdminAssinaturaService
                     'per_page' => $perPage,
                     'total_pages' => $totalPages,
                     'assinaturas' => array_map(fn (array $row) => $this->mapearLinha($row), $result['rows']),
+                    'contagens' => $this->assinaturas->contagensPorStatus($tenantId, $filtros),
+                    'resumo' => $this->assinaturas->resumoPainel($tenantId),
                 ],
             ];
         } catch (Throwable $e) {
@@ -644,6 +676,7 @@ class AdminAssinaturaService
             'payment_method_id' => $pagamento['billingType'] ?? null,
             'date_created' => $pagamento['dateCreated'] ?? null,
             'date_approved' => $pagamento['confirmedDate'] ?? $pagamento['paymentDate'] ?? null,
+            'due_date' => $pagamento['dueDate'] ?? null,
             'invoice_url' => $pagamento['invoiceUrl'] ?? $pagamento['bankSlipUrl'] ?? null,
         ];
     }
@@ -704,6 +737,220 @@ class AdminAssinaturaService
                 ->get()
                 ->all()
         );
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $provedorPagamentos
+     * @param  list<array<string, mixed>>  $pagamentosPlano
+     * @return array<string, mixed>
+     */
+    private function montarConciliacao(bool $ehAsaas, string $gatewayNome, array $provedorPagamentos, array $pagamentosPlano): array
+    {
+        $provedor = $this->escolherPagamentoProvedor($provedorPagamentos);
+        $local = $this->escolherParcelaLocal($pagamentosPlano, $provedor);
+
+        $provedorValor = $provedor === null ? null : (float) ($provedor['transaction_amount'] ?? 0);
+        $localValor = $local === null ? null : (float) ($local['valor'] ?? 0);
+        $provedorStatus = $provedor === null ? null : strtoupper((string) ($provedor['status'] ?? ''));
+        $localStatusId = $local === null ? null : (int) ($local['status_pagamento_id'] ?? 0);
+        $provedorForma = $this->normalizarForma((string) ($provedor['payment_method_id'] ?? ''));
+        $localForma = $this->normalizarForma((string) ($local['forma_pagamento_nome'] ?? ''));
+        $provedorVenc = $this->soData((string) ($provedor['due_date'] ?? $provedor['date_created'] ?? ''));
+        $localVenc = $this->soData((string) ($local['data_vencimento'] ?? ''));
+
+        $provedorPago = $this->statusProvedorPago($provedorStatus);
+        $localPago = $localStatusId === 2;
+        $valorOk = $provedor !== null && $local !== null && abs($provedorValor - $localValor) < 0.02;
+        $situacaoOk = $provedor !== null && $local !== null && $provedorPago === $localPago;
+        $formaOk = $provedor !== null && $local !== null && $provedorForma !== '' && $provedorForma === $localForma;
+        $vencOk = $provedor !== null && $local !== null && $provedorVenc !== '' && $provedorVenc === $localVenc;
+        $ok = $valorOk && $situacaoOk && $formaOk && $vencOk;
+
+        $parcelaId = $local === null ? null : (int) $local['id'];
+        $titulo = $ok ? 'Tudo conferido' : ($provedor === null || $local === null ? 'Sem par para conferir' : 'Há divergência');
+        $detalhe = $ok
+            ? sprintf('A cobrança no %s bate com a parcela %s da matrícula.', $gatewayNome, $parcelaId ? (string) $parcelaId : 'local')
+            : 'Compare os valores do provedor com a parcela no Check-in.';
+
+        $obs = strtolower((string) ($local['observacoes'] ?? ''));
+        $baixa = 'Manual';
+        if (str_contains($obs, 'asaas') || str_contains($obs, 'pay_') || str_contains($obs, 'automatic')) {
+            $baixa = $ehAsaas ? 'Automática, pelo Asaas' : 'Automática, pelo provedor';
+        } elseif (str_contains($obs, 'mercado')) {
+            $baixa = 'Automática, pelo Mercado Pago';
+        }
+
+        return [
+            'ok' => $ok,
+            'titulo' => $titulo,
+            'detalhe' => $detalhe,
+            'provedor_nome' => $gatewayNome,
+            'linhas' => [
+                [
+                    'campo' => 'valor',
+                    'label' => 'Valor',
+                    'provedor' => $provedor === null ? null : $provedorValor,
+                    'checkin' => $local === null ? null : $localValor,
+                    'ok' => $valorOk,
+                ],
+                [
+                    'campo' => 'situacao',
+                    'label' => 'Situação',
+                    'provedor' => $provedor === null ? null : $this->rotuloStatusProvedor($provedorStatus, $ehAsaas),
+                    'provedor_codigo' => $provedorStatus,
+                    'checkin' => $local === null ? null : (string) ($local['status'] ?? ''),
+                    'ok' => $situacaoOk,
+                ],
+                [
+                    'campo' => 'forma',
+                    'label' => 'Forma',
+                    'provedor' => $provedorForma !== '' ? $provedorForma : null,
+                    'checkin' => $localForma !== '' ? $localForma : null,
+                    'ok' => $formaOk,
+                ],
+                [
+                    'campo' => 'vencimento',
+                    'label' => 'Vencimento',
+                    'provedor' => $provedorVenc !== '' ? $provedorVenc : null,
+                    'checkin' => $localVenc !== '' ? $localVenc : null,
+                    'ok' => $vencOk,
+                ],
+            ],
+            'parcela' => $local === null ? null : [
+                'id' => $parcelaId,
+                'baixa' => $baixa,
+                'pago_em' => $local['data_pagamento'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return array<string, mixed>|null
+     */
+    private function escolherPagamentoProvedor(array $pagamentos): ?array
+    {
+        if ($pagamentos === []) {
+            return null;
+        }
+        foreach ($pagamentos as $pagamento) {
+            if ($this->statusProvedorPago(strtoupper((string) ($pagamento['status'] ?? '')))) {
+                return $pagamento;
+            }
+        }
+
+        return $pagamentos[0];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $parcelas
+     * @param  array<string, mixed>|null  $provedor
+     * @return array<string, mixed>|null
+     */
+    private function escolherParcelaLocal(array $parcelas, ?array $provedor): ?array
+    {
+        if ($parcelas === []) {
+            return null;
+        }
+        $due = $this->soData((string) ($provedor['due_date'] ?? ''));
+        if ($due !== '') {
+            foreach ($parcelas as $parcela) {
+                if ($this->soData((string) ($parcela['data_vencimento'] ?? '')) === $due) {
+                    return $parcela;
+                }
+            }
+        }
+        foreach ($parcelas as $parcela) {
+            if ((int) ($parcela['status_pagamento_id'] ?? 0) === 2) {
+                return $parcela;
+            }
+        }
+
+        return $parcelas[0];
+    }
+
+    private function statusProvedorPago(string $status): bool
+    {
+        $s = strtoupper($status);
+
+        return in_array($s, ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'APPROVED', 'ACCREDITED', 'PAID'], true);
+    }
+
+    private function rotuloStatusProvedor(string $status, bool $ehAsaas): string
+    {
+        return match (strtoupper($status)) {
+            'RECEIVED', 'RECEIVED_IN_CASH' => 'Recebido',
+            'CONFIRMED' => 'Confirmado',
+            'PENDING', 'AWAITING_PAYMENT' => 'Pendente',
+            'OVERDUE' => 'Vencido',
+            'APPROVED', 'ACCREDITED' => 'Aprovado',
+            'REJECTED' => 'Rejeitado',
+            'CANCELLED', 'CANCELED' => 'Cancelado',
+            default => $status !== '' ? $status : ($ehAsaas ? '—' : '—'),
+        };
+    }
+
+    private function normalizarForma(string $raw): string
+    {
+        $s = strtolower(trim($raw));
+        if ($s === '') {
+            return '';
+        }
+        if (str_contains($s, 'pix')) {
+            return 'Pix';
+        }
+        if (str_contains($s, 'boleto') || str_contains($s, 'bolbradesco') || $s === 'boleto') {
+            return 'Boleto';
+        }
+        if (str_contains($s, 'card') || str_contains($s, 'cart') || str_contains($s, 'visa') || str_contains($s, 'master')) {
+            return 'Cartão';
+        }
+
+        return ucfirst($raw);
+    }
+
+    private function soData(string $value): string
+    {
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})/', $value, $m)) {
+            return $m[1];
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $provedorPagamentos
+     * @return list<array<string, mixed>>
+     */
+    private function webhooksLocais(int $tenantId, string $externalReference, array $provedorPagamentos): array
+    {
+        if (! Schema::hasTable('webhook_payloads_mercadopago')) {
+            return [];
+        }
+
+        $ids = [];
+        foreach ($provedorPagamentos as $pagamento) {
+            $id = trim((string) ($pagamento['id'] ?? ''));
+            if ($id !== '') {
+                $ids[] = $id;
+            }
+        }
+        if ($externalReference === '' && $ids === []) {
+            return [];
+        }
+
+        $q = DB::table('webhook_payloads_mercadopago')->where('tenant_id', $tenantId);
+        $q->where(function ($inner) use ($externalReference, $ids) {
+            if ($externalReference !== '') {
+                $inner->where('external_reference', $externalReference);
+            }
+            if ($ids !== []) {
+                $method = $externalReference !== '' ? 'orWhereIn' : 'whereIn';
+                $inner->{$method}('payment_id', $ids);
+            }
+        });
+
+        return array_map(static fn ($row) => (array) $row, $q->orderByDesc('id')->limit(50)->get()->all());
     }
 
     /**
