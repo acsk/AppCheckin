@@ -46,10 +46,15 @@ const formatDate = (date) => {
 
 const formatDateTime = (date) => {
   if (!date) return '—';
-  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(date));
-  if (match) return `${match[3]}/${match[2]}/${match[1]} às ${match[4]}:${match[5]}`;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(date));
+  if (match) {
+    const [, y, m, d, hh, mm] = match;
+    if (!hh || (hh === '00' && mm === '00')) return `${d}/${m}/${y}`;
+    return `${d}/${m}/${y} às ${hh}:${mm}`;
+  }
   const parsed = new Date(date);
-  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString('pt-BR');
+  if (Number.isNaN(parsed.getTime())) return '—';
+  return parsed.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
 const codigoStatus = (assinatura) => (
@@ -527,7 +532,7 @@ export default function AssinaturasScreen() {
         size="lg"
         title={cobrancasAssinatura ? `Cobranças de ${titleCase(cobrancasAssinatura.aluno_nome)}` : 'Cobranças'}
         description={cobrancasAssinatura ? `${planoSub(cobrancasAssinatura)}${cobrancasAssinatura.matricula_id ? `, matrícula #${cobrancasAssinatura.matricula_id}` : ''}` : undefined}
-        leading={cobrancasAssinatura ? <ProviderLogo src={logoGateway(gwModal)} name={nomeGateway(cobrancasAssinatura)} /> : null}
+        leading={cobrancasAssinatura ? <ProviderLogo src={logoGateway(gwModal)} name={nomeGateway(cobrancasAssinatura)} size="sm" /> : null}
         onClose={() => setShowCobrancasModal(false)}
         footer={(
           <>
@@ -569,8 +574,20 @@ export default function AssinaturasScreen() {
                   <thead>
                     <tr>
                       <th />
-                      <th><span className="ck-as__prov"><ProviderLogo src={logoGateway(gwModal)} name={conciliacao.provedor_nome} size="sm" /> No {conciliacao.provedor_nome}</span></th>
-                      <th><span className="ck-as__prov">No Check-in</span></th>
+                      <th>
+                        <span className="ck-as-cmp__head">
+                          <span className="ck-as-mark ck-as-mark--gw">
+                            <img src={logoGateway(gwModal)} alt="" />
+                          </span>
+                          No {conciliacao.provedor_nome}
+                        </span>
+                      </th>
+                      <th>
+                        <span className="ck-as-cmp__head">
+                          <span className="ck-as-mark ck-as-mark--ck" aria-hidden><Icon name="activity" size={13} strokeWidth={2.4} /></span>
+                          No Check-in
+                        </span>
+                      </th>
                       <th />
                     </tr>
                   </thead>
