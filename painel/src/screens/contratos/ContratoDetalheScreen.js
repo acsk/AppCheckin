@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity
 import { useLocalSearchParams, router } from 'expo-router';
 import api from '../../services/api';
 import { formatarData, formatarValorMonetario } from '../../utils/formatadores';
+import { formatarPrecoPlano } from '../../services/planosSistemaService';
 import BaixaPagamentoModal from '../../components/BaixaPagamentoModal';
 import LayoutBase from '../../components/LayoutBase';
 import { showSuccess, showError } from '../../utils/toast';
@@ -19,6 +20,7 @@ export default function ContratoDetalheScreen() {
   const [pagamentos, setPagamentos] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
+  const [estimativa, setEstimativa] = useState(null);
 
   useEffect(() => {
     checkAccess();
@@ -47,6 +49,18 @@ export default function ContratoDetalheScreen() {
       const responsePagamentos = await api.get(`/superadmin/contratos/${id}/pagamentos-contrato`);
       const dadosPagamentos = responsePagamentos.data.pagamentos || responsePagamentos.data.data || [];
       setPagamentos(dadosPagamentos);
+
+      setEstimativa(null);
+      if (dadosContrato?.tipo_cobranca === 'por_aluno' && dadosContrato.status_id !== 3) {
+        try {
+          const responseEstimativa = await api.get(`/superadmin/academias/${dadosContrato.tenant_id}/estimativa-cobranca`);
+          if (responseEstimativa.data?.contrato?.id === dadosContrato.id) {
+            setEstimativa(responseEstimativa.data.estimativa);
+          }
+        } catch (errorEstimativa) {
+          console.error('Erro ao carregar estimativa de cobrança:', errorEstimativa);
+        }
+      }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       showError('Não foi possível carregar os dados do contrato');
@@ -223,7 +237,7 @@ export default function ContratoDetalheScreen() {
               <View style={styles.infoGridContent}>
                 <Text style={styles.infoGridLabel}>Valor</Text>
                 <Text style={[styles.infoGridValue, styles.infoGridValueDestaque]}>
-                  {formatarValorMonetario(contrato.plano_valor)}
+                  {formatarPrecoPlano({ ...contrato, valor: contrato.plano_valor })}
                 </Text>
               </View>
             </View>
@@ -235,6 +249,33 @@ export default function ContratoDetalheScreen() {
                 <Text style={styles.infoGridValue}>{formatarData(contrato.data_inicio)}</Text>
               </View>
             </View>
+
+            <View style={styles.infoGridItem}>
+              <Feather name="flag" size={16} color="#6b7280" />
+              <View style={styles.infoGridContent}>
+                <Text style={styles.infoGridLabel}>Fim</Text>
+                <Text style={styles.infoGridValue}>
+                  {contrato.data_fim ? formatarData(contrato.data_fim) : 'Indeterminado'}
+                </Text>
+              </View>
+            </View>
+
+            {estimativa && (
+              <View style={styles.infoGridItem}>
+                <Feather name="users" size={16} color="#f97316" />
+                <View style={styles.infoGridContent}>
+                  <Text style={styles.infoGridLabel}>Estimativa do mês</Text>
+                  <Text style={[styles.infoGridValue, styles.infoGridValueDestaque]}>
+                    {formatarValorMonetario(estimativa.total_estimado)}
+                  </Text>
+                  <Text style={styles.infoGridLabel}>
+                    {estimativa.alunos_ativos} {estimativa.alunos_ativos === 1 ? 'aluno ativo' : 'alunos ativos'}
+                    {estimativa.max_alunos ? ` de ${estimativa.max_alunos}` : ''}
+                    {estimativa.acima_do_limite ? ' (acima do limite)' : ''}
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
           
           {contrato.observacoes && (

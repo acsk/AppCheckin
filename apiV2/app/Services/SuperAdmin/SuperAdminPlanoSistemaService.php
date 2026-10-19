@@ -3,6 +3,7 @@
 namespace App\Services\SuperAdmin;
 
 use App\Repositories\PlanoSistemaRepository;
+use App\Support\TipoCobrancaPlanoSistema;
 
 class SuperAdminPlanoSistemaService
 {
@@ -86,13 +87,14 @@ class SuperAdminPlanoSistemaService
      */
     public function create(array $data): array
     {
+        $data['tipo_cobranca'] ??= TipoCobrancaPlanoSistema::FIXO;
+        $data = $this->normalizarCobranca($data);
+
         $errors = [];
         if (empty($data['nome'])) {
             $errors[] = 'Nome é obrigatório';
         }
-        if (! isset($data['valor']) || $data['valor'] < 0) {
-            $errors[] = 'Valor deve ser maior ou igual a zero';
-        }
+        $errors = array_merge($errors, $this->validarCobranca($data));
         if ($errors !== []) {
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
@@ -123,6 +125,15 @@ class SuperAdminPlanoSistemaService
             return [
                 'status' => 404,
                 'body' => ['type' => 'error', 'message' => 'Plano não encontrado'],
+            ];
+        }
+
+        $data = $this->normalizarCobranca($data);
+        $errors = $this->validarCobranca(array_merge($plano, $data));
+        if ($errors !== []) {
+            return [
+                'status' => 422,
+                'body' => ['type' => 'error', 'message' => implode('. ', $errors), 'errors' => $errors],
             ];
         }
 
@@ -180,5 +191,54 @@ class SuperAdminPlanoSistemaService
         } catch (\Throwable $e) {
             return ['status' => 400, 'body' => ['error' => $e->getMessage()]];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizarCobranca(array $data): array
+    {
+        foreach (['valor_por_aluno', 'max_alunos', 'codigo'] as $campo) {
+            if (array_key_exists($campo, $data) && ($data[$campo] === '' || $data[$campo] === null)) {
+                $data[$campo] = null;
+            }
+        }
+
+        $tipo = $data['tipo_cobranca'] ?? null;
+        if ($tipo === TipoCobrancaPlanoSistema::GRATUITO) {
+            $data['valor'] = 0;
+            $data['valor_por_aluno'] = null;
+        } elseif ($tipo === TipoCobrancaPlanoSistema::POR_ALUNO) {
+            $data['valor'] = 0;
+        } elseif ($tipo === TipoCobrancaPlanoSistema::FIXO) {
+            $data['valor_por_aluno'] = null;
+        }
+
+        return $data;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plano  Plano completo (atual + alterações) ou payload de criação
+     * @return list<string>
+     */
+    private function validarCobranca(array $plano): array
+    {
+        $tipo = $plano['tipo_cobranca'] ?? TipoCobrancaPlanoSistema::FIXO;
+        if (! TipoCobrancaPlanoSistema::valido($tipo)) {
+            return [TipoCobrancaPlanoSistema::mensagemInvalido()];
+        }
+
+        $errors = [];
+        if ($tipo === TipoCobrancaPlanoSistema::FIXO
+            && (! isset($plano['valor']) || ! is_numeric($plano['valor']) || $plano['valor'] < 0)) {
+            $errors[] = 'Valor deve ser maior ou igual a zero';
+        }
+        if ($tipo === TipoCobrancaPlanoSistema::POR_ALUNO
+            && (! isset($plano['valor_por_aluno']) || ! is_numeric($plano['valor_por_aluno']) || $plano['valor_por_aluno'] <= 0)) {
+            $errors[] = 'Valor por aluno deve ser maior que zero';
+        }
+
+        return $errors;
     }
 }

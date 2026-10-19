@@ -17,7 +17,7 @@ class PagamentoContratoRepository
             'data_vencimento' => $dados['data_vencimento'],
             'data_pagamento' => $dados['data_pagamento'] ?? null,
             'status_pagamento_id' => $dados['status_pagamento_id'] ?? 1,
-            'forma_pagamento_id' => $dados['forma_pagamento_id'],
+            'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
             'comprovante' => $dados['comprovante'] ?? null,
             'observacoes' => $dados['observacoes'] ?? null,
         ]);
@@ -87,7 +87,8 @@ class PagamentoContratoRepository
                 't.nome as academia_nome',
                 'ps.nome as plano_nome',
                 'c.data_inicio as contrato_inicio',
-                'c.data_vencimento as contrato_vencimento',
+                'c.data_fim as contrato_vencimento',
+                'c.data_fim as contrato_fim',
             ])
             ->map(fn ($row) => (array) $row)
             ->all();

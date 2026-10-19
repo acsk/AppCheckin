@@ -4,12 +4,14 @@ namespace App\Services\SuperAdmin;
 
 use App\Repositories\PagamentoContratoRepository;
 use App\Repositories\TenantPlanoRepository;
+use App\Support\TipoCobrancaPlanoSistema;
 
 class SuperAdminPagamentoContratoService
 {
     public function __construct(
         private readonly PagamentoContratoRepository $pagamentos,
         private readonly TenantPlanoRepository $contratos,
+        private readonly CobrancaTenantService $cobranca,
     ) {}
 
     /**
@@ -141,10 +143,24 @@ class SuperAdminPagamentoContratoService
                 }
             }
 
-            if (! $jaExistePendente) {
+            $dataFim = $contrato['data_fim'] ?? null;
+            $encerraAntes = $dataFim !== null && $proximaData->format('Y-m-d') > $dataFim;
+            $tipo = TipoCobrancaPlanoSistema::doPlano([
+                'tipo_cobranca' => $contrato['tipo_cobranca'] ?? null,
+                'valor' => $contrato['plano_valor'] ?? $pagamento['valor'],
+            ]);
+
+            if (! $jaExistePendente && ! $encerraAntes && $tipo !== TipoCobrancaPlanoSistema::GRATUITO) {
+                $valor = $tipo === TipoCobrancaPlanoSistema::POR_ALUNO
+                    ? $this->cobranca->valorMensal([
+                        'tipo_cobranca' => $tipo,
+                        'valor_por_aluno' => $contrato['valor_por_aluno'] ?? 0,
+                    ], (int) $contrato['tenant_id'])
+                    : $pagamento['valor'];
+
                 $this->pagamentos->criar([
                     'tenant_plano_id' => $contratoId,
-                    'valor' => $pagamento['valor'],
+                    'valor' => $valor,
                     'data_vencimento' => $proximaData->format('Y-m-d'),
                     'status_pagamento_id' => 1,
                     'forma_pagamento_id' => $pagamento['forma_pagamento_id'],

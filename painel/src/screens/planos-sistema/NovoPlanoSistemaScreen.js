@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import planosSistemaService from '../../services/planosSistemaService';
+import planosSistemaService, { TIPOS_COBRANCA } from '../../services/planosSistemaService';
 import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { showSuccess, showError } from '../../utils/toast';
@@ -42,7 +42,9 @@ export default function NovoPlanoSistemaScreen() {
   const [formData, setFormData] = useState({
     nome: '',
     descricao: '',
+    tipo_cobranca: 'por_aluno',
     valor: '',
+    valor_por_aluno: '',
     duracao_dias: '30',
     max_alunos: '',
     max_admins: '1',
@@ -65,10 +67,21 @@ export default function NovoPlanoSistemaScreen() {
       newErrors.nome = 'Nome do plano é obrigatório';
     }
 
-    if (!formData.valor.trim()) {
-      newErrors.valor = 'Valor mensal é obrigatório';
-    } else if (isNaN(parseFloat(formData.valor))) {
-      newErrors.valor = 'Valor deve ser um número válido';
+    if (formData.tipo_cobranca === 'fixo') {
+      if (!formData.valor.trim()) {
+        newErrors.valor = 'Valor mensal é obrigatório';
+      } else if (isNaN(parseFloat(formData.valor))) {
+        newErrors.valor = 'Valor deve ser um número válido';
+      }
+    }
+
+    if (formData.tipo_cobranca === 'por_aluno') {
+      const valorPorAluno = parseFloat(String(formData.valor_por_aluno).replace(',', '.'));
+      if (!formData.valor_por_aluno.trim()) {
+        newErrors.valor_por_aluno = 'Valor por aluno é obrigatório';
+      } else if (isNaN(valorPorAluno) || valorPorAluno <= 0) {
+        newErrors.valor_por_aluno = 'Valor por aluno deve ser maior que zero';
+      }
     }
 
     if (formData.max_alunos && isNaN(parseInt(formData.max_alunos))) {
@@ -91,10 +104,13 @@ export default function NovoPlanoSistemaScreen() {
 
     setSaving(true);
     try {
+      const tipo = formData.tipo_cobranca;
       const data = {
         nome: formData.nome,
         descricao: formData.descricao || null,
-        valor: parseFloat(formData.valor),
+        tipo_cobranca: tipo,
+        valor: tipo === 'fixo' ? parseFloat(String(formData.valor).replace(',', '.')) : 0,
+        valor_por_aluno: tipo === 'por_aluno' ? parseFloat(String(formData.valor_por_aluno).replace(',', '.')) : null,
         duracao_dias: formData.duracao_dias ? parseInt(formData.duracao_dias) : null,
         max_alunos: formData.max_alunos ? parseInt(formData.max_alunos) : null,
         max_admins: formData.max_admins ? parseInt(formData.max_admins) : 1,
@@ -189,21 +205,69 @@ export default function NovoPlanoSistemaScreen() {
                 />
               </View>
 
+              {/* Tipo de cobrança */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Tipo de Cobrança *</Text>
+                <View style={styles.tipoRow}>
+                  {TIPOS_COBRANCA.map((tipo) => {
+                    const ativo = formData.tipo_cobranca === tipo.value;
+                    return (
+                      <TouchableOpacity
+                        key={tipo.value}
+                        style={[styles.tipoChip, ativo && styles.tipoChipAtivo]}
+                        onPress={() => handleChange('tipo_cobranca', tipo.value)}
+                        disabled={saving}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.tipoChipText, ativo && styles.tipoChipTextAtivo]}>
+                          {tipo.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={styles.switchSubtext}>
+                  {formData.tipo_cobranca === 'gratuito' && 'Sem cobrança. Contrato pode ficar por tempo indeterminado.'}
+                  {formData.tipo_cobranca === 'fixo' && 'Mesmo valor todo mês, independente do número de alunos.'}
+                  {formData.tipo_cobranca === 'por_aluno' && 'Mensalidade = alunos com matrícula ativa x valor por aluno.'}
+                </Text>
+              </View>
+
               {/* Valor e Duração */}
               <View style={styles.row}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
-                  <Text style={styles.label}>Valor Mensal (R$) *</Text>
-                  <TextInput
-                    style={[styles.input, errors.valor && styles.inputError]}
-                    placeholder="199.90"
-                    placeholderTextColor="#9ca3af"
-                    value={formData.valor}
-                    onChangeText={(value) => handleChange('valor', value)}
-                    keyboardType="decimal-pad"
-                    editable={!saving}
-                  />
-                  {errors.valor && <Text style={styles.errorText}>{errors.valor}</Text>}
-                </View>
+                {formData.tipo_cobranca === 'fixo' && (
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
+                    <Text style={styles.label}>Valor Mensal (R$) *</Text>
+                    <TextInput
+                      style={[styles.input, errors.valor && styles.inputError]}
+                      placeholder="199.90"
+                      placeholderTextColor="#9ca3af"
+                      value={formData.valor}
+                      onChangeText={(value) => handleChange('valor', value)}
+                      keyboardType="decimal-pad"
+                      editable={!saving}
+                    />
+                    {errors.valor && <Text style={styles.errorText}>{errors.valor}</Text>}
+                  </View>
+                )}
+
+                {formData.tipo_cobranca === 'por_aluno' && (
+                  <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
+                    <Text style={styles.label}>Valor por Aluno Ativo (R$) *</Text>
+                    <TextInput
+                      style={[styles.input, errors.valor_por_aluno && styles.inputError]}
+                      placeholder="3.50"
+                      placeholderTextColor="#9ca3af"
+                      value={formData.valor_por_aluno}
+                      onChangeText={(value) => handleChange('valor_por_aluno', value)}
+                      keyboardType="decimal-pad"
+                      editable={!saving}
+                    />
+                    {errors.valor_por_aluno && (
+                      <Text style={styles.errorText}>{errors.valor_por_aluno}</Text>
+                    )}
+                  </View>
+                )}
 
                 <View style={[styles.inputGroup, { flex: 1 }]}>
                   <Text style={styles.label}>Duração (dias)</Text>
@@ -222,10 +286,10 @@ export default function NovoPlanoSistemaScreen() {
               {/* Capacidades */}
               <View style={styles.row}>
                 <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
-                  <Text style={styles.label}>Capacidade de Alunos *</Text>
+                  <Text style={styles.label}>Limite de Alunos Ativos</Text>
                   <TextInput
                     style={[styles.input, errors.max_alunos && styles.inputError]}
-                    placeholder="Ex: 50, 100, 200"
+                    placeholder="Vazio = ilimitado"
                     placeholderTextColor="#9ca3af"
                     value={formData.max_alunos}
                     onChangeText={(value) => handleChange('max_alunos', value)}
@@ -503,6 +567,31 @@ const styles = StyleSheet.create({
   switchRowContainer: {
     flexDirection: 'row',
     gap: 12,
+  },
+  tipoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tipoChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+  },
+  tipoChipAtivo: {
+    borderColor: '#f97316',
+    backgroundColor: '#fff7ed',
+  },
+  tipoChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4b5563',
+  },
+  tipoChipTextAtivo: {
+    color: '#c2410c',
   },
   switchRow: {
     flexDirection: 'row',

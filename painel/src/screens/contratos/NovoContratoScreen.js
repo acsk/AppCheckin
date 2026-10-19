@@ -16,7 +16,7 @@ import SearchableDropdown from '../../components/SearchableDropdown';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError, showWarning } from '../../utils/toast';
 import { associarPlano, buscarContratoAtivo } from '../../services/contratoService';
-import planosSistemaService from '../../services/planosSistemaService';
+import planosSistemaService, { formatarPrecoPlano, tipoCobrancaDoPlano } from '../../services/planosSistemaService';
 import api from '../../services/api';
 import { authService } from '../../services/authService';
 
@@ -49,9 +49,12 @@ export default function NovoContratoScreen() {
     plano_sistema_id: '',
     forma_pagamento_id: '',
     data_inicio: '',
-    data_vencimento: '',
+    data_fim: '',
     observacoes: '',
   });
+
+  const planoSelecionado = planos.find((p) => String(p.id) === String(formData.plano_sistema_id));
+  const planoGratuito = planoSelecionado ? tipoCobrancaDoPlano(planoSelecionado) === 'gratuito' : false;
 
   useEffect(() => {
     loadData();
@@ -135,8 +138,21 @@ export default function NovoContratoScreen() {
       newErrors.plano_sistema_id = 'Selecione um plano';
     }
 
-    if (!formData.forma_pagamento_id) {
+    if (!planoGratuito && !formData.forma_pagamento_id) {
       newErrors.forma_pagamento_id = 'Selecione a forma de pagamento';
+    }
+
+    const dataRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (formData.data_inicio && !dataRegex.test(formData.data_inicio)) {
+      newErrors.data_inicio = 'Use o formato AAAA-MM-DD';
+    }
+    if (formData.data_fim && !dataRegex.test(formData.data_fim)) {
+      newErrors.data_fim = 'Use o formato AAAA-MM-DD';
+    } else if (formData.data_fim) {
+      const inicio = formData.data_inicio || new Date().toISOString().slice(0, 10);
+      if (formData.data_fim < inicio) {
+        newErrors.data_fim = 'O fim do contrato não pode ser antes do início';
+      }
     }
 
     setErrors(newErrors);
@@ -158,9 +174,9 @@ export default function NovoContratoScreen() {
     try {
       const dataToSend = {
         plano_sistema_id: parseInt(formData.plano_sistema_id),
-        forma_pagamento_id: parseInt(formData.forma_pagamento_id),
+        forma_pagamento_id: formData.forma_pagamento_id ? parseInt(formData.forma_pagamento_id) : undefined,
         data_inicio: formData.data_inicio || undefined,
-        data_vencimento: formData.data_vencimento || undefined,
+        data_fim: formData.data_fim || null,
         observacoes: formData.observacoes || null,
       };
 
@@ -246,57 +262,72 @@ export default function NovoContratoScreen() {
                   <option value="">Selecione um plano</option>
                   {planos.map((plano) => (
                     <option key={plano.id} value={plano.id}>
-                      {plano.nome} - R$ {parseFloat(plano.valor).toFixed(2)} / {plano.duracao_dias} dias
+                      {plano.nome} - {formatarPrecoPlano(plano)}
                     </option>
                   ))}
                 </select>
               </View>
               {errors.plano_sistema_id && <Text style={styles.errorText}>{errors.plano_sistema_id}</Text>}
+              {planoSelecionado && (
+                <Text style={styles.helpText}>
+                  {planoGratuito
+                    ? 'Plano gratuito: o contrato já começa ativo e não gera cobranças.'
+                    : tipoCobrancaDoPlano(planoSelecionado) === 'por_aluno'
+                      ? 'A primeira cobrança é calculada pelos alunos com matrícula ativa na academia (mínimo de 1).'
+                      : 'A primeira cobrança é gerada com vencimento na data de início.'}
+                </Text>
+              )}
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Forma de Pagamento *</Text>
-              <View style={[styles.pickerContainer, errors.forma_pagamento_id && styles.inputError]}>
-                <select
-                  style={styles.picker}
-                  value={formData.forma_pagamento_id}
-                  onChange={(e) => handleChange('forma_pagamento_id', e.target.value)}
-                  disabled={saving || !!contratoAtivo}
-                >
-                  <option value="">Selecione uma forma de pagamento</option>
-                  {formasPagamento.map((forma) => (
-                    <option key={forma.id} value={forma.id}>
-                      {forma.nome}
-                    </option>
-                  ))}
-                </select>
+            {!planoGratuito && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Forma de Pagamento *</Text>
+                <View style={[styles.pickerContainer, errors.forma_pagamento_id && styles.inputError]}>
+                  <select
+                    style={styles.picker}
+                    value={formData.forma_pagamento_id}
+                    onChange={(e) => handleChange('forma_pagamento_id', e.target.value)}
+                    disabled={saving || !!contratoAtivo}
+                  >
+                    <option value="">Selecione uma forma de pagamento</option>
+                    {formasPagamento.map((forma) => (
+                      <option key={forma.id} value={forma.id}>
+                        {forma.nome}
+                      </option>
+                    ))}
+                  </select>
+                </View>
+                {errors.forma_pagamento_id && <Text style={styles.errorText}>{errors.forma_pagamento_id}</Text>}
               </View>
-              {errors.forma_pagamento_id && <Text style={styles.errorText}>{errors.forma_pagamento_id}</Text>}
-            </View>
+            )}
 
             <View style={styles.row}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: 12 }]}>
-                <Text style={styles.label}>Data de Início (opcional)</Text>
+                <Text style={styles.label}>Início do Contrato (opcional)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, errors.data_inicio && styles.inputError]}
                   placeholder="AAAA-MM-DD"
                   value={formData.data_inicio}
                   onChangeText={(value) => handleChange('data_inicio', value)}
                   editable={!saving && !contratoAtivo}
                 />
-                <Text style={styles.helpText}>Deixe vazio para usar a data atual</Text>
+                {errors.data_inicio
+                  ? <Text style={styles.errorText}>{errors.data_inicio}</Text>
+                  : <Text style={styles.helpText}>Deixe vazio para usar a data atual</Text>}
               </View>
 
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.label}>Data de Vencimento (opcional)</Text>
+                <Text style={styles.label}>Fim do Contrato (opcional)</Text>
                 <TextInput
-                  style={styles.input}
+                  style={[styles.input, errors.data_fim && styles.inputError]}
                   placeholder="AAAA-MM-DD"
-                  value={formData.data_vencimento}
-                  onChangeText={(value) => handleChange('data_vencimento', value)}
+                  value={formData.data_fim}
+                  onChangeText={(value) => handleChange('data_fim', value)}
                   editable={!saving && !contratoAtivo}
                 />
-                <Text style={styles.helpText}>Calculado automaticamente se vazio</Text>
+                {errors.data_fim
+                  ? <Text style={styles.errorText}>{errors.data_fim}</Text>
+                  : <Text style={styles.helpText}>Deixe vazio para prazo indeterminado</Text>}
               </View>
             </View>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import planosSistemaService from '../../services/planosSistemaService';
+import planosSistemaService, { formatarPrecoPlano } from '../../services/planosSistemaService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
@@ -67,13 +67,6 @@ export default function PlanosSistemaScreen() {
     setConfirmDelete({ visible: false, id: null, nome: '' });
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
-  };
-
   const renderMobileCard = (plano) => (
     <View key={plano.id} style={styles.card}>
       <View style={styles.cardHeader}>
@@ -111,7 +104,7 @@ export default function PlanosSistemaScreen() {
         <View style={styles.cardRow}>
           <Feather name="dollar-sign" size={14} color="#666" />
           <Text style={styles.cardLabel}>Valor:</Text>
-          <Text style={styles.cardValue}>{formatCurrency(plano.valor)}</Text>
+          <Text style={styles.cardValue}>{formatarPrecoPlano(plano)}</Text>
         </View>
 
         <View style={styles.cardRow}>
@@ -147,7 +140,7 @@ export default function PlanosSistemaScreen() {
               {plano.nome}
             </Text>
             <Text style={[styles.cellText, styles.colValor]} numberOfLines={1}>
-              {formatCurrency(plano.valor)}
+              {formatarPrecoPlano(plano)}
             </Text>
             <Text style={[styles.cellText, styles.colCapacidade]} numberOfLines={1}>
               {!plano.max_alunos || plano.max_alunos >= 9999 

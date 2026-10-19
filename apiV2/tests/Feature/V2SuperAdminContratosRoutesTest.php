@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Repositories\UsuarioRepository;
+use App\Services\JwtService;
+use App\Services\SuperAdmin\SuperAdminContratoService;
 use Mockery;
 use Tests\TestCase;
 
@@ -24,14 +27,14 @@ class V2SuperAdminContratosRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(4);
 
-        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminContratoService::class);
+        $service = Mockery::mock(SuperAdminContratoService::class);
         $service->shouldReceive('index')
             ->once()
             ->andReturn([
                 'status' => 200,
                 'body' => ['contratos' => [['id' => 1]], 'total' => 1],
             ]);
-        $this->app->instance(\App\Services\SuperAdmin\SuperAdminContratoService::class, $service);
+        $this->app->instance(SuperAdminContratoService::class, $service);
 
         $this->getJson('/v2/superadmin/contratos', [
             'Authorization' => 'Bearer '.$token,
@@ -44,7 +47,7 @@ class V2SuperAdminContratosRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(4);
 
-        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminContratoService::class);
+        $service = Mockery::mock(SuperAdminContratoService::class);
         $service->shouldReceive('proximosVencimento')
             ->once()
             ->with(['dias' => '7'])
@@ -52,7 +55,7 @@ class V2SuperAdminContratosRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['contratos' => [], 'total' => 0, 'dias' => 7],
             ]);
-        $this->app->instance(\App\Services\SuperAdmin\SuperAdminContratoService::class, $service);
+        $this->app->instance(SuperAdminContratoService::class, $service);
 
         $this->getJson('/v2/superadmin/contratos/proximos-vencimento?dias=7', [
             'Authorization' => 'Bearer '.$token,
@@ -61,11 +64,32 @@ class V2SuperAdminContratosRoutesTest extends TestCase
             ->assertJsonPath('dias', 7);
     }
 
+    public function test_estimativa_cobranca(): void
+    {
+        $token = $this->tokenParaPapel(4);
+
+        $service = Mockery::mock(SuperAdminContratoService::class);
+        $service->shouldReceive('estimativaCobranca')
+            ->once()
+            ->with(7)
+            ->andReturn([
+                'status' => 200,
+                'body' => ['contrato' => ['id' => 31], 'estimativa' => ['total_estimado' => 259.0, 'alunos_ativos' => 74]],
+            ]);
+        $this->app->instance(SuperAdminContratoService::class, $service);
+
+        $this->getJson('/v2/superadmin/academias/7/estimativa-cobranca', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('estimativa.alunos_ativos', 74);
+    }
+
     private function tokenParaPapel(int $papelId): string
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
 
-        $usuarios = Mockery::mock(\App\Repositories\UsuarioRepository::class);
+        $usuarios = Mockery::mock(UsuarioRepository::class);
         $usuarios->shouldReceive('findAuthContext')
             ->with(5)
             ->andReturn([
@@ -75,9 +99,9 @@ class V2SuperAdminContratosRoutesTest extends TestCase
                 'tenant_id' => 1,
                 'papel_id' => $papelId,
             ]);
-        $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
+        $this->app->instance(UsuarioRepository::class, $usuarios);
 
-        return app(\App\Services\JwtService::class)->encode([
+        return app(JwtService::class)->encode([
             'user_id' => 5,
             'email' => 'super@example.com',
             'tenant_id' => 1,

@@ -46,14 +46,27 @@ class PlanoSistemaRepository
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function buscarPorCodigo(string $codigo): ?array
+    {
+        $row = DB::table('planos_sistema')->where('codigo', $codigo)->where('ativo', 1)->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function criar(array $data): int
     {
         return (int) DB::table('planos_sistema')->insertGetId([
+            'codigo' => $data['codigo'] ?? null,
             'nome' => $data['nome'],
             'descricao' => $data['descricao'] ?? null,
-            'valor' => $data['valor'],
+            'tipo_cobranca' => $data['tipo_cobranca'] ?? 'fixo',
+            'valor' => $data['valor'] ?? 0,
+            'valor_por_aluno' => $data['valor_por_aluno'] ?? null,
             'duracao_dias' => $data['duracao_dias'] ?? 30,
             'max_alunos' => $data['max_alunos'] ?? null,
             'max_admins' => $data['max_admins'] ?? 1,
@@ -106,9 +119,14 @@ class PlanoSistemaRepository
         }
 
         $update = [];
-        foreach (['nome', 'descricao', 'valor', 'duracao_dias', 'max_alunos', 'max_admins', 'ordem'] as $campo) {
+        foreach (['codigo', 'nome', 'descricao', 'tipo_cobranca', 'valor', 'duracao_dias', 'max_admins', 'ordem'] as $campo) {
             if (isset($data[$campo])) {
                 $update[$campo] = $data[$campo];
+            }
+        }
+        foreach (['valor_por_aluno', 'max_alunos'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $update[$campo] = $data[$campo] === '' ? null : $data[$campo];
             }
         }
         if (isset($data['features'])) {

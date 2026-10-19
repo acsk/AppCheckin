@@ -25,6 +25,7 @@ class TenantPlanoRepository
             'plano_sistema_id' => $planoSistemaId,
             'status_id' => $dados['status_id'] ?? 1,
             'data_inicio' => $dados['data_inicio'],
+            'data_fim' => $dados['data_fim'] ?? null,
             'observacoes' => $dados['observacoes'] ?? null,
         ]);
     }
@@ -42,7 +43,10 @@ class TenantPlanoRepository
             ->select([
                 'tp.*',
                 'ps.nome as plano_nome',
+                'ps.codigo as plano_codigo',
+                'ps.tipo_cobranca',
                 'ps.valor',
+                'ps.valor_por_aluno',
                 'ps.max_alunos',
                 'ps.max_admins',
                 'ps.features',
@@ -52,6 +56,23 @@ class TenantPlanoRepository
             ->first();
 
         return $row ? (array) $row : null;
+    }
+
+    /**
+     * Contrato não cancelado mais relevante do tenant (Ativo primeiro, depois Pendente/Bloqueado mais recente).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function buscarContratoVigente(int $tenantId): ?array
+    {
+        $id = DB::table('tenant_planos_sistema')
+            ->where('tenant_id', $tenantId)
+            ->where('status_id', '!=', 3)
+            ->orderByRaw('CASE WHEN status_id = 1 THEN 0 ELSE 1 END')
+            ->orderByDesc('id')
+            ->value('id');
+
+        return $id ? $this->buscarPorId((int) $id) : null;
     }
 
     /**
@@ -70,7 +91,11 @@ class TenantPlanoRepository
                 't.nome as tenant_nome',
                 'ps.id as plano_sistema_id',
                 'ps.nome as plano_nome',
+                'ps.codigo as plano_codigo',
+                'ps.tipo_cobranca',
                 'ps.valor as plano_valor',
+                'ps.valor_por_aluno',
+                'ps.max_alunos',
                 'ps.descricao as plano_descricao',
                 'ps.duracao_dias',
                 'sc.id as status_id',
@@ -96,7 +121,9 @@ class TenantPlanoRepository
                 't.nome as academia_nome',
                 't.id as academia_id',
                 'ps.nome as plano_nome',
+                'ps.tipo_cobranca',
                 'ps.valor',
+                'ps.valor_por_aluno',
                 'ps.duracao_dias',
                 'ps.max_alunos',
                 'ps.max_admins',
@@ -121,7 +148,9 @@ class TenantPlanoRepository
             ->get([
                 'tp.*',
                 'ps.nome as plano_nome',
+                'ps.tipo_cobranca',
                 'ps.valor',
+                'ps.valor_por_aluno',
                 'ps.duracao_dias',
                 'ps.max_alunos',
                 'ps.max_admins',
@@ -144,20 +173,33 @@ class TenantPlanoRepository
     /**
      * @return array<string, mixed>
      */
-    public function trocarPlano(int $tenantId, int $novoPlanoSistemaId, int $formaPagamentoId, ?string $observacoes = null): array
-    {
-        return DB::transaction(function () use ($tenantId, $novoPlanoSistemaId, $formaPagamentoId, $observacoes) {
+    /**
+     * @param  callable(int $contratoId): void|null  $aposCriar  Roda dentro da transação (ex.: primeiro pagamento)
+     * @return array<string, mixed>
+     */
+    public function trocarPlano(
+        int $tenantId,
+        int $novoPlanoSistemaId,
+        int $statusId = 2,
+        ?string $dataFim = null,
+        ?string $observacoes = null,
+        ?callable $aposCriar = null,
+    ): array {
+        return DB::transaction(function () use ($tenantId, $novoPlanoSistemaId, $statusId, $dataFim, $observacoes, $aposCriar) {
             $this->desativarContratoAtivo($tenantId);
-
-            $dataInicio = date('Y-m-d');
 
             $contratoId = $this->criar([
                 'tenant_id' => $tenantId,
                 'plano_sistema_id' => $novoPlanoSistemaId,
-                'status_id' => 2,
-                'data_inicio' => $dataInicio,
+                'status_id' => $statusId,
+                'data_inicio' => date('Y-m-d'),
+                'data_fim' => $dataFim,
                 'observacoes' => $observacoes ?? 'Troca de plano',
             ]);
+
+            if ($aposCriar) {
+                $aposCriar($contratoId);
+            }
 
             return $this->buscarPorId($contratoId) ?? [
                 'id' => $contratoId,
@@ -174,12 +216,12 @@ class TenantPlanoRepository
             ->update(['status_id' => 3, 'updated_at' => DB::raw('NOW()')]) >= 0;
     }
 
-    public function renovar(int $contratoId, string $novaDataVencimento): bool
+    public function renovar(int $contratoId, string $novaDataFim): bool
     {
         return DB::table('tenant_planos_sistema')
             ->where('id', $contratoId)
             ->update([
-                'data_vencimento' => $novaDataVencimento,
+                'data_fim' => $novaDataFim,
                 'updated_at' => DB::raw('NOW()'),
             ]) >= 0;
     }

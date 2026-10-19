@@ -55,6 +55,13 @@ class ContratoController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function estimativaCobranca(int $tenantId): JsonResponse
+    {
+        $result = $this->service->estimativaCobranca($tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function associarPlano(Request $request, int $tenantId): JsonResponse
     {
         $result = $this->service->associarPlano($tenantId, $request->all());

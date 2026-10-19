@@ -1,162 +1,86 @@
-import axios from 'axios';
-import { authService } from './authService';
-import { API_BASE_URL } from '../config/api';
+import api from './api';
 
-const API_URL = `${API_BASE_URL}/superadmin/planos-sistema`;
+const BASE = '/superadmin/planos-sistema';
+
+export const TIPOS_COBRANCA = [
+  { value: 'gratuito', label: 'Gratuito' },
+  { value: 'fixo', label: 'Valor fixo' },
+  { value: 'por_aluno', label: 'Por aluno ativo' },
+];
+
+const formatBRL = (valor) =>
+  `R$ ${Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Planos gravados antes de tipo_cobranca existir: valor 0 = gratuito, senão fixo. */
+export const tipoCobrancaDoPlano = (plano) => {
+  if (plano?.tipo_cobranca && TIPOS_COBRANCA.some((t) => t.value === plano.tipo_cobranca)) {
+    return plano.tipo_cobranca;
+  }
+  return Number(plano?.valor || 0) > 0 ? 'fixo' : 'gratuito';
+};
+
+export const formatarPrecoPlano = (plano) => {
+  switch (tipoCobrancaDoPlano(plano)) {
+    case 'gratuito':
+      return 'Grátis';
+    case 'por_aluno':
+      return `${formatBRL(plano.valor_por_aluno)} por aluno/mês`;
+    default:
+      return `${formatBRL(plano.valor)}/mês`;
+  }
+};
+
+const normalizarErro = (error, fallback) => {
+  const data = error.response?.data;
+  if (!data) return { error: error.message || fallback, message: error.message || fallback };
+  const message = data.message || data.error || (Array.isArray(data.errors) ? data.errors.join(', ') : null) || fallback;
+  return { ...data, message, error: data.error || message };
+};
+
+const request = async (fn, fallback) => {
+  try {
+    const response = await fn();
+    return response.data;
+  } catch (error) {
+    console.error(fallback, error);
+    throw normalizarErro(error, fallback);
+  }
+};
 
 class PlanosSistemaService {
-  async listar(apenasAtivos = false, apenasAtuais = false) {
-    try {
-      const token = await authService.getToken();
-      const params = {};
-      
-      if (apenasAtivos) {
-        params.ativos = 'true';
-      }
-      
-      if (apenasAtuais) {
-        params.apenas_atuais = 'true';
-      }
-      
-      const response = await axios.get(API_URL, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        params
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao listar planos do sistema:', error);
-      throw error.response?.data || { error: 'Erro ao listar planos do sistema' };
-    }
+  listar(apenasAtivos = false, apenasAtuais = false) {
+    const params = {};
+    if (apenasAtivos) params.ativos = 'true';
+    if (apenasAtuais) params.apenas_atuais = 'true';
+    return request(() => api.get(BASE, { params }), 'Erro ao listar planos do sistema');
   }
 
-  async listarDisponiveis() {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.get(`${API_URL}/disponiveis`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao listar planos disponíveis:', error);
-      throw error.response?.data || { error: 'Erro ao listar planos disponíveis' };
-    }
+  listarDisponiveis() {
+    return request(() => api.get(`${BASE}/disponiveis`), 'Erro ao listar planos disponíveis');
   }
 
-  async buscarPorId(id) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.get(`${API_URL}/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao buscar plano:', error);
-      throw error.response?.data || { error: 'Erro ao buscar plano' };
-    }
+  buscarPorId(id) {
+    return request(() => api.get(`${BASE}/${id}`), 'Erro ao buscar plano');
   }
 
-  async criar(planoData) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.post(API_URL, planoData, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao criar plano:', error);
-      throw error.response?.data || { error: 'Erro ao criar plano' };
-    }
+  criar(planoData) {
+    return request(() => api.post(BASE, planoData), 'Erro ao criar plano');
   }
 
-  async atualizar(id, planoData) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.put(`${API_URL}/${id}`, planoData, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao atualizar plano:', error);
-      throw error.response?.data || { error: 'Erro ao atualizar plano' };
-    }
+  atualizar(id, planoData) {
+    return request(() => api.put(`${BASE}/${id}`, planoData), 'Erro ao atualizar plano');
   }
 
-  async marcarHistorico(id) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.post(`${API_URL}/${id}/marcar-historico`, {}, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao marcar plano como histórico:', error);
-      throw error.response?.data || { error: 'Erro ao marcar plano como histórico' };
-    }
+  marcarHistorico(id) {
+    return request(() => api.post(`${BASE}/${id}/marcar-historico`, {}), 'Erro ao marcar plano como histórico');
   }
 
-  async desativar(id) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.delete(`${API_URL}/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao desativar plano:', error);
-      throw error.response?.data || { error: 'Erro ao desativar plano' };
-    }
+  desativar(id) {
+    return request(() => api.delete(`${BASE}/${id}`), 'Erro ao desativar plano');
   }
 
-  async listarAcademias(id) {
-    try {
-      const token = await authService.getToken();
-      
-      const response = await axios.get(`${API_URL}/${id}/academias`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao listar academias do plano:', error);
-      throw error.response?.data || { error: 'Erro ao listar academias do plano' };
-    }
+  listarAcademias(id) {
+    return request(() => api.get(`${BASE}/${id}/academias`), 'Erro ao listar academias do plano');
   }
 }
 

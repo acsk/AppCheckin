@@ -12,5 +12,6 @@ Route::get('/contratos', [ContratoController::class, 'index']);
 
 Route::get('/academias/{tenantId}/contratos', [ContratoController::class, 'porAcademia'])->where('tenantId', '[0-9]+');
 Route::get('/academias/{tenantId}/contrato-ativo', [ContratoController::class, 'contratoAtivo'])->where('tenantId', '[0-9]+');
+Route::get('/academias/{tenantId}/estimativa-cobranca', [ContratoController::class, 'estimativaCobranca'])->where('tenantId', '[0-9]+');
 Route::post('/academias/{tenantId}/contratos', [ContratoController::class, 'associarPlano'])->where('tenantId', '[0-9]+');
 Route::post('/academias/{tenantId}/trocar-plano', [ContratoController::class, 'trocarPlano'])->where('tenantId', '[0-9]+');

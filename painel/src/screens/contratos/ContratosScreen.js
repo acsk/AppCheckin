@@ -6,6 +6,7 @@ import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 import api from '../../services/api';
+import { formatarPrecoPlano } from '../../services/planosSistemaService';
 import { authService } from '../../services/authService';
 
 export default function ContratosScreen() {
@@ -64,10 +65,6 @@ export default function ContratosScreen() {
     if (!data) return '-';
     const [ano, mes, dia] = data.split('-');
     return `${dia}/${mes}/${ano}`;
-  };
-
-  const formatarValor = (valor) => {
-    return parseFloat(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
   const getStatusColor = (status) => {
@@ -144,12 +141,12 @@ export default function ContratosScreen() {
             <View style={styles.infoRow}>
               <Feather name="calendar" size={14} color="#6b7280" />
               <Text style={styles.infoText}>
-                {formatarData(contrato.data_inicio)} → {formatarData(contrato.data_vencimento)}
+                {formatarData(contrato.data_inicio)} → {contrato.data_fim ? formatarData(contrato.data_fim) : 'Indeterminado'}
               </Text>
             </View>
             <View style={styles.infoRow}>
               <Feather name="dollar-sign" size={14} color="#10b981" />
-              <Text style={styles.cardValor}>{formatarValor(contrato.valor)}</Text>
+              <Text style={styles.cardValor}>{formatarPrecoPlano(contrato)}</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -188,10 +185,10 @@ export default function ContratosScreen() {
             </View>
             <View style={[styles.tableCell, { flex: 1.5 }]}>
               <Text style={styles.cellTextSmall}>{formatarData(contrato.data_inicio)}</Text>
-              <Text style={styles.cellTextSmall}>{formatarData(contrato.data_vencimento)}</Text>
+              <Text style={styles.cellTextSmall}>{contrato.data_fim ? formatarData(contrato.data_fim) : 'Indeterminado'}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1 }]}>
-              <Text style={styles.cellTextValor}>{formatarValor(contrato.valor)}</Text>
+              <Text style={styles.cellTextValor}>{formatarPrecoPlano(contrato)}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1.2 }]}>
               <View style={[styles.statusBadgeNew, { backgroundColor: getStatusBgColor(contrato.status_nome) }]}>

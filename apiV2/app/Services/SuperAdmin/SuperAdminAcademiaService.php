@@ -2,10 +2,12 @@
 
 namespace App\Services\SuperAdmin;
 
+use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
 use App\Support\TenantWhatsappLinks;
+use App\Support\TipoCobrancaPlanoSistema;
 use Illuminate\Support\Facades\DB;
 
 class SuperAdminAcademiaService
@@ -15,6 +17,7 @@ class SuperAdminAcademiaService
         private readonly TenantPlanoRepository $contratos,
         private readonly UsuarioRepository $usuarios,
         private readonly SuperAdminPapelService $papeis,
+        private readonly PlanoSistemaRepository $planosSistema,
     ) {}
 
     /**
@@ -156,22 +159,7 @@ class SuperAdminAcademiaService
             ];
         }
 
-        if (! empty($data['plano_sistema_id'])) {
-            $contratoData = [
-                'tenant_id' => $tenantId,
-                'plano_sistema_id' => $data['plano_sistema_id'],
-                'data_inicio' => date('Y-m-d'),
-                'data_vencimento' => date('Y-m-d', strtotime('+1 month')),
-                'forma_pagamento' => $data['forma_pagamento'] ?? 'pix',
-                'observacoes' => 'Contrato criado junto com a academia',
-            ];
-
-            try {
-                $this->contratos->criar($contratoData);
-            } catch (\Exception $e) {
-                error_log('Erro ao criar contrato inicial: '.$e->getMessage());
-            }
-        }
+        $contratoId = $this->criarContratoInicial($tenantId, $data);
 
         $adminData = [
             'nome' => $data['responsavel_nome'] ?? $data['nome'],
@@ -211,8 +199,47 @@ class SuperAdminAcademiaService
                     'email' => $adminData['email'],
                     'papel_id' => 3,
                 ],
+                'contrato' => $contratoId ? $this->contratos->buscarPorId($contratoId) : null,
             ],
         ];
+    }
+
+    /**
+     * Toda academia nasce com contrato: o plano informado ou, por padrão, o Free (prazo indeterminado).
+     * Planos pagos começam Pendente até a primeira cobrança ser registrada em Contratos.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function criarContratoInicial(int $tenantId, array $data): ?int
+    {
+        $plano = ! empty($data['plano_sistema_id'])
+            ? $this->planosSistema->buscarPorId((int) $data['plano_sistema_id'])
+            : $this->planosSistema->buscarPorCodigo(TipoCobrancaPlanoSistema::CODIGO_FREE);
+
+        if (! $plano) {
+            error_log('Contrato inicial não criado: plano do sistema não encontrado para o tenant '.$tenantId);
+
+            return null;
+        }
+
+        $gratuito = TipoCobrancaPlanoSistema::isGratuito($plano);
+
+        try {
+            return $this->contratos->criar([
+                'tenant_id' => $tenantId,
+                'plano_sistema_id' => $plano['id'],
+                'status_id' => $gratuito ? 1 : 2,
+                'data_inicio' => date('Y-m-d'),
+                'data_fim' => ! empty($data['data_fim']) ? $data['data_fim'] : null,
+                'observacoes' => $gratuito
+                    ? 'Contrato Free criado junto com a academia'
+                    : 'Contrato criado junto com a academia',
+            ]);
+        } catch (\Throwable $e) {
+            error_log('Erro ao criar contrato inicial: '.$e->getMessage());
+
+            return null;
+        }
     }
 
     /**
