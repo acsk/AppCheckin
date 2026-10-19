@@ -77,6 +77,20 @@
 .ck-ct-admins__empty span { display: block; font-size: 13px; line-height: 18px; color: var(--ink-muted); }
 .ck-ct-admins__emptyicon { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: var(--radius-md); background: var(--surface); color: var(--ink-muted); }
 
+/* Modal de administrador: papéis */
+.ck-ct-dlgicon { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary); }
+.ck-ct-roles { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.ck-ct-roles legend { padding: 0; margin-bottom: var(--space-2); }
+.ck-ct-role { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--line-strong, var(--line)); border-radius: var(--radius-lg); cursor: pointer; transition: border-color .15s, background .15s; }
+.ck-ct-role:hover { background: var(--surface-hover); }
+.ck-ct-role.is-on { border-color: var(--primary); background: var(--primary-soft); }
+.ck-ct-role.is-locked { cursor: default; }
+.ck-ct-role .ck-check input:disabled + .ck-check__box { opacity: .75; }
+.ck-ct-role__text { flex: 1; min-width: 0; }
+.ck-ct-role__text strong { display: block; font-size: 14px; line-height: 20px; font-weight: 600; }
+.ck-ct-role__text span { display: block; font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+.ck-ct-role__lock { display: inline-flex; align-items: center; gap: 4px; flex: none; font-size: 12px; font-weight: 600; color: var(--ink-muted); }
+
 /* Resumo escuro */
 .ck-ct-form .ck-al-sum { min-width: 0; }
 .ck-ct-form .ck-al-sum .ck-btn--lg { height: auto; min-height: 48px; padding-top: 10px; padding-bottom: 10px; white-space: normal; line-height: 20px; text-align: center; }

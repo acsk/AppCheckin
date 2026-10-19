@@ -6,18 +6,26 @@ use Illuminate\Support\Facades\DB;
 
 class PlanoSistemaRepository
 {
+    /** Com contratos vinculados, só estes campos ficam travados. */
+    private const CAMPOS_DE_PRECO = ['tipo_cobranca', 'valor', 'valor_por_aluno', 'duracao_dias'];
+
     /**
      * @return list<array<string, mixed>>
      */
     public function listarTodos(bool $apenasAtivos = false): array
     {
-        $query = DB::table('planos_sistema');
+        $query = DB::table('planos_sistema as ps')
+            ->select('ps.*')
+            ->selectSub(
+                DB::table('tenant_planos_sistema')->selectRaw('COUNT(*)')->whereColumn('plano_sistema_id', 'ps.id')->where('status_id', 1),
+                'contratos_ativos',
+            );
 
         if ($apenasAtivos) {
-            $query->where('ativo', 1);
+            $query->where('ps.ativo', 1);
         }
 
-        return $query->orderBy('ordem')->orderBy('valor')->get()->map(fn ($row) => (array) $row)->all();
+        return $query->orderBy('ps.ordem')->orderBy('ps.valor')->get()->map(fn ($row) => (array) $row)->all();
     }
 
     /**
@@ -68,8 +76,9 @@ class PlanoSistemaRepository
             'valor' => $data['valor'] ?? 0,
             'valor_por_aluno' => $data['valor_por_aluno'] ?? null,
             'duracao_dias' => $data['duracao_dias'] ?? 30,
+            'prazo_dias' => $data['prazo_dias'] ?? null,
             'max_alunos' => $data['max_alunos'] ?? null,
-            'max_admins' => $data['max_admins'] ?? 1,
+            'max_admins' => array_key_exists('max_admins', $data) ? $data['max_admins'] : 1,
             'features' => isset($data['features']) ? json_encode($data['features']) : null,
             'ativo' => $data['ativo'] ?? true,
             'atual' => $data['atual'] ?? true,
@@ -110,21 +119,21 @@ class PlanoSistemaRepository
                 }
             }
 
-            $camposProibidos = array_diff($camposMudados, ['atual']);
+            $camposProibidos = array_intersect($camposMudados, self::CAMPOS_DE_PRECO);
             if ($camposProibidos !== []) {
                 throw new \RuntimeException(
-                    'Não é possível modificar este plano pois existem contratos vinculados a ele. Apenas o campo "Plano Atual" pode ser alterado. Para outras alterações, marque como histórico e crie um novo plano.',
+                    'O preço deste plano não pode mudar porque há academias com contrato nele. Limites, prazo e textos podem ser alterados. Para mudar o preço, crie um novo plano.',
                 );
             }
         }
 
         $update = [];
-        foreach (['codigo', 'nome', 'descricao', 'tipo_cobranca', 'valor', 'duracao_dias', 'max_admins', 'ordem'] as $campo) {
+        foreach (['codigo', 'nome', 'descricao', 'tipo_cobranca', 'valor', 'duracao_dias', 'ordem'] as $campo) {
             if (isset($data[$campo])) {
                 $update[$campo] = $data[$campo];
             }
         }
-        foreach (['valor_por_aluno', 'max_alunos'] as $campo) {
+        foreach (['valor_por_aluno', 'max_alunos', 'max_admins', 'prazo_dias'] as $campo) {
             if (array_key_exists($campo, $data)) {
                 $update[$campo] = $data[$campo] === '' ? null : $data[$campo];
             }
@@ -144,6 +153,14 @@ class PlanoSistemaRepository
         }
 
         return DB::table('planos_sistema')->where('id', $id)->update($update) >= 0;
+    }
+
+    public function codigoEmUso(string $codigo, ?int $ignorarId = null): bool
+    {
+        return DB::table('planos_sistema')
+            ->where('codigo', $codigo)
+            ->when($ignorarId, fn ($q) => $q->where('id', '!=', $ignorarId))
+            ->exists();
     }
 
     public function possuiContratos(int $id): bool

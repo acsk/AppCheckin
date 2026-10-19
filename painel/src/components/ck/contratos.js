@@ -131,45 +131,64 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     };
   }
 
+  var ROLE_OPTIONS = [
+    { id: 3, label: 'Admin', description: 'Acessa o painel administrativo da academia.', locked: true },
+    { id: 2, label: 'Professor', description: 'Marca presença e gerencia turmas.' },
+    { id: 1, label: 'Aluno', description: 'Usa o app e faz check-in.' },
+  ];
   function AdminDialog(p) {
     var a = p.admin, isNew = !a;
     var fm = useState(function () {
-      return { name: (a && a.name) || '', email: (a && a.email) || '', phone: maskPhone(a && a.phone), cpf: maskCpf(a && a.cpf), password: '', teacher: !!(a && (a.roles || []).indexOf(2) >= 0) };
+      var roles = (a && a.roles) || [];
+      return { name: (a && a.name) || '', email: (a && a.email) || '', phone: maskPhone(a && a.phone), cpf: maskCpf(a && a.cpf), password: '', roles: [3].concat(roles.filter(function (r) { return r !== 3; })) };
     }), f = fm[0];
     var tried = useState(false), sh = useState(false);
     function set(k, v) { var n = Object.assign({}, f); n[k] = v; fm[1](n); }
-    var needPw = isNew;
+    function toggleRole(id) { set('roles', f.roles.indexOf(id) >= 0 ? f.roles.filter(function (r) { return r !== id; }) : f.roles.concat([id])); }
     var err = {};
     if (!f.name.trim()) err.name = 'Informe o nome.';
     if (!f.email.trim()) err.email = 'Informe o e-mail. É o login no painel.';
     else if (!emailOk(f.email)) err.email = 'Confira o e-mail.';
     if (f.cpf && digits(f.cpf).length !== 11) err.cpf = 'O CPF tem 11 números.';
     if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
-    if (needPw && f.password.length < 6) err.password = 'Crie uma senha com pelo menos 6 caracteres.';
-    else if (!needPw && f.password && f.password.length < 6) err.password = 'A nova senha precisa de pelo menos 6 caracteres.';
+    if (isNew && f.password.length < 6) err.password = 'Crie uma senha com pelo menos 6 caracteres.';
+    else if (!isNew && f.password && f.password.length < 6) err.password = 'A nova senha precisa de pelo menos 6 caracteres.';
     var show = tried[0] ? err : {};
     function save() {
       tried[1](true);
       if (Object.keys(err).length) return;
-      p.onSave({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null, password: f.password || null, roles: f.teacher ? [3, 2] : [3] });
+      var roles = ROLE_OPTIONS.map(function (o) { return o.id; }).filter(function (id) { return f.roles.indexOf(id) >= 0; });
+      p.onSave({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null, password: f.password || null, roles: roles });
     }
-    return h(Modal, { open: true, onClose: p.onClose, size: 'md', title: isNew ? 'Adicionar administrador' : 'Editar administrador',
-      description: 'Entra no painel desta academia com o e-mail e a senha abaixo.',
+    var where = p.academyName ? ' de ' + p.academyName : ' desta academia';
+    return h(Modal, { open: true, onClose: p.onClose, size: 'md',
+      leading: h('span', { className: 'ck-ct-dlgicon', 'aria-hidden': true }, h(Icon, { name: isNew ? 'user-plus' : 'pencil', size: 18 })),
+      title: isNew ? 'Novo administrador' : 'Editar administrador',
+      description: (isNew ? 'Vai acessar o painel' : 'Acessa o painel') + where + '.',
       footer: h(React.Fragment, null,
         h(Button, { variant: 'ghost', onClick: p.onClose }, 'Cancelar'),
-        h(Button, { variant: 'primary', icon: isNew ? 'user-plus' : 'save', loading: p.saving, onClick: save }, isNew ? 'Adicionar' : 'Salvar')) },
+        h(Button, { variant: 'primary', icon: isNew ? 'check' : 'save', loading: p.saving, onClick: save }, isNew ? 'Adicionar administrador' : 'Salvar alterações')) },
       h('div', { className: 'ck-al-grid' },
         h(TextField, { className: 'is-wide', label: 'Nome completo', value: f.name, error: show.name, onChange: function (e) { set('name', e.target.value); } }),
-        h(TextField, { className: 'is-wide', label: 'E-mail', type: 'email', icon: 'mail', value: f.email, placeholder: 'nome@academia.com.br', error: show.email, autoComplete: 'off', onChange: function (e) { set('email', e.target.value); } }),
-        h(TextField, { label: 'Telefone', type: 'tel', icon: 'phone', inputMode: 'numeric', value: f.phone, placeholder: '(00) 00000-0000', error: show.phone, onChange: function (e) { set('phone', maskPhone(e.target.value)); } }),
-        h(TextField, { label: 'CPF', inputMode: 'numeric', value: f.cpf, placeholder: '000.000.000-00', error: show.cpf, onChange: function (e) { set('cpf', maskCpf(e.target.value)); } }),
-        h(TextField, { className: 'is-wide', label: needPw ? 'Senha' : 'Nova senha', type: sh[0] ? 'text' : 'password', icon: 'lock', value: f.password, autoComplete: 'new-password',
-          placeholder: needPw ? 'Mínimo de 6 caracteres' : 'Deixe em branco para manter', error: show.password,
-          hint: !show.password && needPw ? 'Se o e-mail já tiver acesso ao Check-in, a senha atual dele continua valendo.' : null,
+        h(TextField, { className: 'is-wide', label: 'E-mail', type: 'email', icon: 'mail', value: f.email, placeholder: 'nome@academia.com.br', error: show.email, autoComplete: 'off',
+          hint: !show.email ? 'É o login no painel.' : null, onChange: function (e) { set('email', e.target.value); } }),
+        h(TextField, { className: 'is-wide', label: isNew ? 'Senha' : 'Nova senha', type: sh[0] ? 'text' : 'password', icon: 'lock', value: f.password, autoComplete: 'new-password',
+          placeholder: isNew ? 'Mínimo de 6 caracteres' : 'Deixe em branco para manter', error: show.password,
           suffix: h(IconButton, { icon: sh[0] ? 'eye-off' : 'eye', label: sh[0] ? 'Ocultar senha' : 'Mostrar senha', size: 'sm', onClick: function () { sh[1](!sh[0]); } }),
           onChange: function (e) { set('password', e.target.value); } }),
-        h('div', { className: 'is-wide ck-al-active' },
-          h(Switch, { label: 'Também é professor', description: 'Marca presença e acompanha as turmas pelo app.', checked: f.teacher, onChange: function (v) { set('teacher', v); } }))));
+        h(TextField, { label: 'Telefone', type: 'tel', inputMode: 'numeric', value: f.phone, placeholder: '(00) 00000-0000', error: show.phone, onChange: function (e) { set('phone', maskPhone(e.target.value)); } }),
+        h(TextField, { label: 'CPF', inputMode: 'numeric', value: f.cpf, placeholder: '000.000.000-00', error: show.cpf, onChange: function (e) { set('cpf', maskCpf(e.target.value)); } }),
+        h('fieldset', { className: 'is-wide ck-ct-roles' },
+          h('legend', { className: 'ck-field__label' }, 'Papéis'),
+          ROLE_OPTIONS.map(function (o) {
+            var on = f.roles.indexOf(o.id) >= 0;
+            return h('label', { key: o.id, className: cx('ck-ct-role', on && 'is-on', o.locked && 'is-locked') },
+              h('span', { className: 'ck-check' },
+                h('input', { type: 'checkbox', checked: on, disabled: o.locked, onChange: function () { if (!o.locked) toggleRole(o.id); } }),
+                h('span', { className: 'ck-check__box', 'aria-hidden': true }, h(Icon, { name: 'check', size: 13, strokeWidth: 3 }))),
+              h('span', { className: 'ck-ct-role__text' }, h('strong', null, o.label), h('span', null, o.description)),
+              o.locked ? h('span', { className: 'ck-ct-role__lock' }, h(Icon, { name: 'lock', size: 13 }), 'Sempre incluído') : null);
+          }))));
   }
 
   function AcademiaForm(p) {
@@ -256,7 +275,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
         h(Avatar, { name: a.name, size: 'md', decorative: true }),
         h('div', { className: 'ck-ct-admin__who' }, h('strong', null, a.name), h('span', null, a.email)),
         h('div', { className: 'ck-ct-admin__roles' },
-          off ? h(Badge, { tone: 'outline' }, 'Inativo') : (a.roles || [3]).filter(function (r) { return r !== 1; }).sort(function (x, y) { return y - x; }).map(function (r) { return h(Badge, { key: r, tone: 'neutral' }, ROLE_NAMES[r] || 'Papel ' + r); })),
+          off ? h(Badge, { tone: 'outline' }, 'Inativo') : (a.roles || [3]).slice().sort(function (x, y) { return y - x; }).map(function (r) { return h(Badge, { key: r, tone: 'neutral' }, ROLE_NAMES[r] || 'Papel ' + r); })),
         h('div', { className: 'ck-mt-actions' },
           off ? null : h(IconButton, { icon: 'pencil', label: 'Editar ' + a.name, size: 'sm', onClick: function () { dlg[1]({ admin: a }); } }),
           p.onToggleAdmin ? h(ActionMenu, { label: 'Mais ações para ' + a.name, items: [
@@ -335,7 +354,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
           h(Button, { type: 'submit', variant: 'primary', size: 'lg', block: true, icon: edit ? 'save' : 'plus', loading: p.saving, disabled: edit && !dirty }, p.saving ? 'Salvando…' : primary),
           edit && !dirty ? h('span', { className: 'ck-al-sum__note' }, 'Nenhuma alteração ainda.') : null,
           p.onCancel ? h('button', { type: 'button', className: 'ck-al-sum__cancel', onClick: p.onCancel }, 'Cancelar') : null)),
-      dlg[0] ? h(AdminDialog, { admin: dlg[0].admin, saving: dlgSaving[0], onClose: function () { dlg[1](null); }, onSave: saveAdmin }) : null);
+      dlg[0] ? h(AdminDialog, { admin: dlg[0].admin, academyName: f.name.trim() || null, saving: dlgSaving[0], onClose: function () { dlg[1](null); }, onSave: saveAdmin }) : null);
   }
 
   /* ---------- ContratosLista ---------- */

@@ -13,6 +13,7 @@ const SECTIONS = [
       { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4] },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
+      { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
     ],
   },
   {
@@ -23,13 +24,13 @@ const SECTIONS = [
         label: 'Manutenção',
         icon: 'wrench',
         children: [
-          { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3, 4] },
-          { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3, 4] },
-          { id: 'professores', label: 'Professores', path: '/professores', roles: [3, 4] },
-          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3, 4] },
-          { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3, 4] },
-          { id: 'planos', label: 'Planos', path: '/planos', roles: [3, 4] },
-          { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3, 4] },
+          { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3] },
+          { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3] },
+          { id: 'professores', label: 'Professores', path: '/professores', roles: [3] },
+          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3] },
+          { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3] },
+          { id: 'planos', label: 'Planos', path: '/planos', roles: [3] },
+          { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3] },
         ],
       },
       {
@@ -37,10 +38,10 @@ const SECTIONS = [
         label: 'Financeiro',
         icon: 'wallet',
         children: [
-          { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3, 4] },
-          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3, 4] },
-          { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3, 4] },
-          { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3, 4] },
+          { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3] },
+          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3] },
+          { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3] },
+          { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3] },
         ],
       },
       {
@@ -48,9 +49,9 @@ const SECTIONS = [
         label: 'Academia',
         icon: 'dumbbell',
         children: [
-          { id: 'wods', label: 'WOD', path: '/wods', roles: [3, 4] },
-          { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3, 4] },
-          { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3, 4] },
+          { id: 'wods', label: 'WOD', path: '/wods', roles: [3] },
+          { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3] },
+          { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3] },
         ],
       },
       {
@@ -58,7 +59,7 @@ const SECTIONS = [
         label: 'Mercado Pago',
         icon: 'credit-card',
         children: [
-          { id: 'pagamentos-mp', label: 'Pagamentos', path: '/pagamentos-mp', roles: [3, 4] },
+          { id: 'pagamentos-mp', label: 'Pagamentos', path: '/pagamentos-mp', roles: [3] },
         ],
       },
     ],
@@ -66,14 +67,14 @@ const SECTIONS = [
   {
     label: 'Sistema',
     items: [
+      { id: 'sa-pagamentos', label: 'Recebimentos', path: '/configuracoes-pagamento', icon: 'credit-card', roles: [4] },
       {
         id: 'config',
         label: 'Configurações',
         icon: 'settings',
         children: [
-          { id: 'planos-sistema', label: 'Planos do sistema', path: '/planos-sistema', roles: [4] },
-          { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3, 4] },
-          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3, 4] },
+          { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3] },
+          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3] },
         ],
       },
       {
@@ -81,13 +82,13 @@ const SECTIONS = [
         label: 'Auditoria',
         icon: 'shield-check',
         children: [
-          { id: 'logs', label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', roles: [3, 4] },
-          { id: 'credito', label: 'Crédito e migração de plano', path: '/auditoria/credito-migracao-plano', roles: [3, 4] },
-          { id: 'anomalias', label: 'Anomalias de datas', path: '/auditoria/anomalias-datas', roles: [3, 4] },
-          { id: 'duplicados', label: 'Pagamentos duplicados', path: '/auditoria/pagamentos-duplicados', roles: [3, 4] },
-          { id: 'reparar', label: 'Reparar próxima data', path: '/auditoria/reparar-proxima-data-vencimento', roles: [3, 4] },
-          { id: 'acima-limite', label: 'Check-ins acima do limite', path: '/auditoria/checkins-acima-do-limite', roles: [3, 4] },
-          { id: 'multiplos', label: 'Check-ins múltiplos no dia', path: '/auditoria/checkins-multiplos-no-dia', roles: [3, 4] },
+          { id: 'logs', label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', roles: [3] },
+          { id: 'credito', label: 'Crédito e migração de plano', path: '/auditoria/credito-migracao-plano', roles: [3] },
+          { id: 'anomalias', label: 'Anomalias de datas', path: '/auditoria/anomalias-datas', roles: [3] },
+          { id: 'duplicados', label: 'Pagamentos duplicados', path: '/auditoria/pagamentos-duplicados', roles: [3] },
+          { id: 'reparar', label: 'Reparar próxima data', path: '/auditoria/reparar-proxima-data-vencimento', roles: [3] },
+          { id: 'acima-limite', label: 'Check-ins acima do limite', path: '/auditoria/checkins-acima-do-limite', roles: [3] },
+          { id: 'multiplos', label: 'Check-ins múltiplos no dia', path: '/auditoria/checkins-multiplos-no-dia', roles: [3] },
         ],
       },
     ],
@@ -184,7 +185,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   };
 
   const nome = usuarioInfo?.nome || 'Usuário';
-  const canAccessParametros = usuarioInfo?.papel_id === 4 || usuarioInfo?.papel_id === 3;
+  const canAccessParametros = role === 3;
 
   // Trilha: seção/grupo → página atual.
   const breadcrumbs = [];

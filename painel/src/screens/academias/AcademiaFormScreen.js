@@ -34,7 +34,7 @@ const toAdmin = (a) => ({
   phone: a.telefone || '',
   cpf: a.cpf || '',
   active: bool(a.ativo),
-  roles: (a.papeis || []).map((p) => (typeof p === 'object' ? Number(p.id) : Number(p))).filter((r) => r !== 1),
+  roles: (a.papeis || []).map((p) => (typeof p === 'object' ? Number(p.id) : Number(p))),
 });
 
 const contractSummary = (c) => {
@@ -218,7 +218,7 @@ export default function AcademiaFormScreen() {
       const novoId = res.academia?.id;
       const pendencias = [];
       if (novoId) {
-        if (res.admin?.id && first.roles.includes(2)) {
+        if (res.admin?.id && first.roles.some((r) => r !== 3)) {
           pendencias.push(superAdminService.atualizarAdmin(novoId, res.admin.id, adminPayload({ ...first, password: null })));
         }
         rest.forEach((a) => pendencias.push(superAdminService.criarAdmin(novoId, adminPayload(a))));

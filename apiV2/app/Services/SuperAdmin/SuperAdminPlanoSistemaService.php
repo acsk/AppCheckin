@@ -95,6 +95,9 @@ class SuperAdminPlanoSistemaService
             $errors[] = 'Nome é obrigatório';
         }
         $errors = array_merge($errors, $this->validarCobranca($data));
+        if (! empty($data['codigo']) && $this->planos->codigoEmUso((string) $data['codigo'])) {
+            $errors[] = 'Já existe um plano com este código';
+        }
         if ($errors !== []) {
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
@@ -130,6 +133,9 @@ class SuperAdminPlanoSistemaService
 
         $data = $this->normalizarCobranca($data);
         $errors = $this->validarCobranca(array_merge($plano, $data));
+        if (! empty($data['codigo']) && $this->planos->codigoEmUso((string) $data['codigo'], $id)) {
+            $errors[] = 'Já existe um plano com este código';
+        }
         if ($errors !== []) {
             return [
                 'status' => 422,
@@ -199,7 +205,7 @@ class SuperAdminPlanoSistemaService
      */
     private function normalizarCobranca(array $data): array
     {
-        foreach (['valor_por_aluno', 'max_alunos', 'codigo'] as $campo) {
+        foreach (['valor_por_aluno', 'max_alunos', 'max_admins', 'prazo_dias', 'codigo'] as $campo) {
             if (array_key_exists($campo, $data) && ($data[$campo] === '' || $data[$campo] === null)) {
                 $data[$campo] = null;
             }
@@ -230,6 +236,18 @@ class SuperAdminPlanoSistemaService
         }
 
         $errors = [];
+        foreach (['max_alunos' => 'Limite de alunos', 'max_admins' => 'Limite de administradores', 'prazo_dias' => 'Prazo do contrato'] as $campo => $rotulo) {
+            $v = $plano[$campo] ?? null;
+            if ($v !== null && (! is_numeric($v) || (int) $v < 1 || (float) $v != (int) $v)) {
+                $errors[] = $rotulo.' deve ser um número inteiro maior que zero, ou vazio para sem limite';
+            }
+        }
+        if (isset($plano['duracao_dias']) && (! is_numeric($plano['duracao_dias']) || (int) $plano['duracao_dias'] < 1)) {
+            $errors[] = 'Ciclo de cobrança deve ter pelo menos 1 dia';
+        }
+        if (! empty($plano['codigo']) && preg_match('/^[a-z0-9_-]{2,30}$/', (string) $plano['codigo']) !== 1) {
+            $errors[] = 'Código deve ter de 2 a 30 letras minúsculas, números, - ou _';
+        }
         if ($tipo === TipoCobrancaPlanoSistema::FIXO
             && (! isset($plano['valor']) || ! is_numeric($plano['valor']) || $plano['valor'] < 0)) {
             $errors[] = 'Valor deve ser maior ou igual a zero';

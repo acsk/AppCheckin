@@ -14321,3 +14321,5 @@
 [2026-07-24 14:59:05] POST /mobile/simular-migracao
 [2026-10-15 20:48:18] GET /
 [2026-10-15 20:48:19] GET /mobile/planos-disponiveis
+[2026-10-19 18:45:04] OPTIONS /api/webhooks/mercadopago/list
+[2026-10-19 18:45:05] GET /api/webhooks/mercadopago/list
