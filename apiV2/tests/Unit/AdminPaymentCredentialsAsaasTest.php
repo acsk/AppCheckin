@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Repositories\TenantPaymentCredentialsRepository;
 use App\Services\Admin\AdminPaymentCredentialsService;
+use App\Services\Asaas\AsaasService;
 use App\Services\EncryptionService;
 use Mockery;
 use Tests\TestCase;
@@ -81,31 +82,119 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
 
     public function test_asaas_salva_sobretaxa_de_antecipacao(): void
     {
+        $repo = $this->repoNovo(fn ($dados) => $dados['enable_antecipacao_automatica'] === 1
+            && $dados['enable_sobretaxa_antecipacao'] === 1
+            && (float) $dados['sobretaxa_antecipacao_avista_percentual'] === 1.15
+            && (float) $dados['sobretaxa_antecipacao_parcelada_percentual'] === 1.6);
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldReceive('configurarAntecipacaoAutomatica')->once()->with(true)->andReturn(true);
+
+        $result = $this->service($repo, $asaas)->salvar(1, $this->bodyAsaas([
+            'enable_antecipacao_automatica' => true,
+            'enable_sobretaxa_antecipacao' => true,
+            'sobretaxa_antecipacao_avista_percentual' => 1.15,
+            'sobretaxa_antecipacao_parcelada_percentual' => 1.6,
+        ]));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertArrayNotHasKey('aviso', $result['body']);
+    }
+
+    public function test_sobretaxa_exige_antecipacao_automatica(): void
+    {
+        $repo = $this->repoNovo(fn ($dados) => $dados['enable_antecipacao_automatica'] === 0
+            && $dados['enable_sobretaxa_antecipacao'] === 0);
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldNotReceive('configurarAntecipacaoAutomatica');
+
+        $result = $this->service($repo, $asaas)->salvar(1, $this->bodyAsaas(['enable_sobretaxa_antecipacao' => true]));
+
+        $this->assertSame(200, $result['status']);
+    }
+
+    public function test_asaas_recusa_antecipacao_volta_a_flag_e_avisa(): void
+    {
+        $repo = $this->repoNovo(fn ($dados) => $dados['enable_antecipacao_automatica'] === 1);
+        $repo->shouldReceive('definirAntecipacaoAutomatica')->once()->with(1, 'asaas', false);
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldReceive('configurarAntecipacaoAutomatica')->once()->with(true)
+            ->andThrow(new \RuntimeException('Asaas: Sua conta ainda não está aprovada'));
+
+        $result = $this->service($repo, $asaas)->salvar(1, $this->bodyAsaas(['enable_antecipacao_automatica' => true]));
+
+        $this->assertSame(200, $result['status']);
+        $this->assertStringContainsString('não foi ligada no Asaas: Sua conta ainda não está aprovada', $result['body']['aviso']);
+    }
+
+    public function test_desliga_antecipacao_no_asaas(): void
+    {
+        $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn([
+            'provider' => 'asaas', 'environment' => 'sandbox', 'is_active' => 1, 'has_token_test' => true,
+            'enable_antecipacao_automatica' => 1, 'enable_sobretaxa_antecipacao' => 1,
+        ]);
+        $repo->shouldReceive('temTokenAmbiente')->andReturn(true);
+        $repo->shouldReceive('existePorTenantProvider')->once()->andReturn(true);
+        $repo->shouldReceive('listarPorTenant')->andReturn([]);
+        $repo->shouldReceive('atualizar')->once()->with(1, 'asaas', Mockery::on(fn ($d) => $d['enable_antecipacao_automatica'] === 0
+            && $d['enable_sobretaxa_antecipacao'] === 0));
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldReceive('garantirWebhook');
+        $asaas->shouldReceive('configurarAntecipacaoAutomatica')->once()->with(false)->andReturn(false);
+
+        $result = $this->service($repo, $asaas)->salvar(1, [
+            'provider' => 'asaas', 'environment' => 'sandbox', 'is_active' => true, 'enable_antecipacao_automatica' => false,
+        ]);
+
+        $this->assertSame(200, $result['status']);
+    }
+
+    public function test_obter_usa_o_estado_da_antecipacao_na_conta_asaas(): void
+    {
+        $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
+        $repo->shouldReceive('listarPorTenant')->once()->with(1)->andReturn([[
+            'provider' => 'asaas', 'environment' => 'sandbox', 'is_active' => 1, 'has_token_test' => 1,
+            'enable_antecipacao_automatica' => 1, 'enable_sobretaxa_antecipacao' => 1,
+        ]]);
+        $repo->shouldReceive('definirAntecipacaoAutomatica')->once()->with(1, 'asaas', false);
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldReceive('antecipacaoAutomaticaNaConta')->once()->andReturn(false);
+
+        $result = $this->service($repo, $asaas)->obter(1);
+
+        $asaasRow = collect($result['body']['data']['providers'])->firstWhere('provider', 'asaas');
+        $this->assertFalse($asaasRow['enable_antecipacao_automatica']);
+    }
+
+    private function repoNovo(\Closure $confere): Mockery\MockInterface
+    {
         $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
         $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
         $repo->shouldReceive('existePorTenantProvider')->once()->with(1, 'asaas')->andReturn(false);
         $repo->shouldReceive('listarPorTenant')->andReturn([]);
-        $repo->shouldReceive('inserir')->once()->with(1, Mockery::on(function ($dados) {
-            return ($dados['enable_sobretaxa_antecipacao'] ?? null) === 1
-                && (float) $dados['sobretaxa_antecipacao_avista_percentual'] === 1.15
-                && (float) $dados['sobretaxa_antecipacao_parcelada_percentual'] === 1.6;
-        }));
+        $repo->shouldReceive('inserir')->once()->with(1, Mockery::on($confere));
 
+        return $repo;
+    }
+
+    private function service(Mockery\MockInterface $repo, Mockery\MockInterface $asaas): AdminPaymentCredentialsService
+    {
         $encryption = Mockery::mock(EncryptionService::class);
-        $encryption->shouldReceive('encrypt')->once()->with('$aact_hmlg_xxxxxxxx')->andReturn('cipher');
+        $encryption->shouldReceive('encrypt')->andReturn('cipher');
+        $asaas->shouldReceive('garantirWebhook')->byDefault();
 
-        $service = new AdminPaymentCredentialsService($repo, $encryption);
-        $result = $service->salvar(1, [
+        return new AdminPaymentCredentialsService($repo, $encryption, fn () => $asaas);
+    }
+
+    /** @return array<string, mixed> */
+    private function bodyAsaas(array $extra): array
+    {
+        return array_merge([
             'provider' => 'asaas',
             'environment' => 'sandbox',
             'access_token_test' => '$aact_hmlg_xxxxxxxx',
             'is_active' => true,
-            'enable_sobretaxa_antecipacao' => true,
-            'sobretaxa_antecipacao_avista_percentual' => 1.15,
-            'sobretaxa_antecipacao_parcelada_percentual' => 1.6,
-        ]);
-
-        $this->assertSame(200, $result['status']);
+        ], $extra);
     }
 
     public function test_alterar_ambiente_keeps_encrypted_keys(): void

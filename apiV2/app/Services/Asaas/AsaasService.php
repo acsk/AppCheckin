@@ -31,6 +31,8 @@ class AsaasService
 
     private bool $enableSobretaxaAntecipacao = false;
 
+    private bool $enableAntecipacaoAutomatica = false;
+
     private float $sobretaxaAvistaPercentual = AsaasSobretaxaAntecipacao::AVISTA_PADRAO;
 
     private float $sobretaxaParceladaPercentual = AsaasSobretaxaAntecipacao::PARCELADA_PADRAO;
@@ -487,6 +489,37 @@ class AsaasService
     }
 
     /**
+     * Liga ou desliga a antecipação automática das vendas no cartão na conta Asaas.
+     * Devolve o estado que o Asaas confirmou.
+     */
+    public function configurarAntecipacaoAutomatica(bool $ligar): bool
+    {
+        $this->validarCredenciais();
+        $res = $this->request('PUT', '/anticipations/configurations', ['creditCardAutomaticEnabled' => $ligar]);
+
+        return $this->boolCredencial($res['creditCardAutomaticEnabled'] ?? $ligar);
+    }
+
+    /**
+     * Estado da antecipação automática do cartão na conta Asaas (null se não der para consultar).
+     */
+    public function antecipacaoAutomaticaNaConta(): ?bool
+    {
+        if ($this->accessToken === '') {
+            return null;
+        }
+        try {
+            $res = $this->request('GET', '/anticipations/configurations');
+
+            return array_key_exists('creditCardAutomaticEnabled', $res) ? $this->boolCredencial($res['creditCardAutomaticEnabled']) : null;
+        } catch (\Throwable $e) {
+            Log::info('Asaas: configuração de antecipação indisponível', ['error' => $e->getMessage()]);
+
+            return null;
+        }
+    }
+
+    /**
      * Antecipação ativa (em análise, agendada ou creditada) da cobrança.
      *
      * @return array<string, mixed>|null
@@ -690,6 +723,9 @@ class AsaasService
         $this->enableBoleto = $this->flagCredencial($flags['enable_boleto'] ?? true);
         $this->enableCreditCard = $this->flagCredencial($flags['enable_credit_card'] ?? true);
         $this->enableSobretaxaAntecipacao = $this->boolCredencial($flags['enable_sobretaxa_antecipacao'] ?? false);
+        $this->enableAntecipacaoAutomatica = $this->boolCredencial(
+            $flags['enable_antecipacao_automatica'] ?? $flags['enable_sobretaxa_antecipacao'] ?? false
+        );
         if (isset($flags['sobretaxa_antecipacao_avista_percentual']) && is_numeric($flags['sobretaxa_antecipacao_avista_percentual'])) {
             $v = round((float) $flags['sobretaxa_antecipacao_avista_percentual'], 2);
             if ($v >= 0 && $v <= 30) {
@@ -710,7 +746,7 @@ class AsaasService
     private function configSobretaxa(): array
     {
         return [
-            'habilitada' => $this->enableSobretaxaAntecipacao,
+            'habilitada' => $this->enableAntecipacaoAutomatica && $this->enableSobretaxaAntecipacao,
             'avista' => $this->sobretaxaAvistaPercentual,
             'parcelada' => $this->sobretaxaParceladaPercentual,
         ];
@@ -726,7 +762,7 @@ class AsaasService
         if ($this->taxasContaCache !== null) {
             return $this->taxasContaCache;
         }
-        if ($this->accessToken === '' || ! $this->enableSobretaxaAntecipacao) {
+        if ($this->accessToken === '' || ! $this->configSobretaxa()['habilitada']) {
             $this->taxasContaCache = [];
 
             return $this->taxasContaCache;

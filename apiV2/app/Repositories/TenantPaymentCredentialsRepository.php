@@ -74,11 +74,29 @@ class TenantPaymentCredentialsRepository
         return Schema::hasColumn('tenant_payment_credentials', 'enable_sobretaxa_antecipacao');
     }
 
+    private function temColunaAntecipacaoAutomatica(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'enable_antecipacao_automatica');
+    }
+
     private function sqlSelectAntecipacao(): string
     {
-        return $this->temColunasAntecipacao()
+        $sql = $this->temColunasAntecipacao()
             ? ', enable_sobretaxa_antecipacao, sobretaxa_antecipacao_avista_percentual, sobretaxa_antecipacao_parcelada_percentual'
             : '';
+
+        return $sql.($this->temColunaAntecipacaoAutomatica() ? ', enable_antecipacao_automatica' : '');
+    }
+
+    public function definirAntecipacaoAutomatica(int $tenantId, string $provider, bool $ligada): void
+    {
+        if (! $this->temColunaAntecipacaoAutomatica()) {
+            return;
+        }
+        DB::update(
+            'UPDATE tenant_payment_credentials SET enable_antecipacao_automatica = ?, updated_at = NOW() WHERE tenant_id = ? AND provider = ?',
+            [$ligada ? 1 : 0, $tenantId, $provider]
+        );
     }
 
     public function existePorTenantProvider(int $tenantId, string $provider): bool
@@ -117,6 +135,10 @@ class TenantPaymentCredentialsRepository
             $params[] = $dados['sobretaxa_antecipacao_avista_percentual'] ?? 1.15;
             $params[] = $dados['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60;
         }
+        if ($this->temColunaAntecipacaoAutomatica()) {
+            $cols .= ', enable_antecipacao_automatica';
+            $params[] = $dados['enable_antecipacao_automatica'] ?? 0;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -150,6 +172,10 @@ class TenantPaymentCredentialsRepository
             $params[] = $dados['enable_sobretaxa_antecipacao'] ?? 0;
             $params[] = $dados['sobretaxa_antecipacao_avista_percentual'] ?? 1.15;
             $params[] = $dados['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60;
+        }
+        if ($this->temColunaAntecipacaoAutomatica() && array_key_exists('enable_antecipacao_automatica', $dados)) {
+            $sql .= ', enable_antecipacao_automatica = ?';
+            $params[] = $dados['enable_antecipacao_automatica'];
         }
         $sql .= ', updated_at = NOW()';
 

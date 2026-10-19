@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\Parametro;
 use App\Repositories\TenantPaymentCredentialsRepository;
+use App\Services\Asaas\AsaasService;
 use App\Services\EncryptionService;
 use App\Services\MercadoPagoService;
 use App\Support\AsaasApiKey;
@@ -18,10 +19,16 @@ class AdminPaymentCredentialsService
     /** @var list<string> */
     private const PROVIDERS = ['mercadopago', 'asaas'];
 
+    /** @var \Closure(int): AsaasService */
+    private readonly \Closure $asaas;
+
     public function __construct(
         private readonly TenantPaymentCredentialsRepository $credentials,
         private readonly EncryptionService $encryption,
-    ) {}
+        ?\Closure $asaas = null,
+    ) {
+        $this->asaas = $asaas ?? fn (int $tenantId) => new AsaasService($tenantId);
+    }
 
     /**
      * @return array{status: int, body: array<string, mixed>}
@@ -32,6 +39,9 @@ class AdminPaymentCredentialsService
             $porCodigo = [];
             foreach ($this->credentials->listarPorTenant($tenantId) as $row) {
                 $codigo = strtolower((string) ($row['provider'] ?? ''));
+                if ($codigo === 'asaas') {
+                    $row = $this->antecipacaoDaConta($tenantId, $row);
+                }
                 $porCodigo[$codigo] = $this->mascararLinha($row);
             }
 
@@ -160,6 +170,7 @@ class AdminPaymentCredentialsService
                 'enable_sobretaxa_antecipacao' => $sobretaxa['enable_sobretaxa_antecipacao'],
                 'sobretaxa_antecipacao_avista_percentual' => $sobretaxa['sobretaxa_antecipacao_avista_percentual'],
                 'sobretaxa_antecipacao_parcelada_percentual' => $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'],
+                'enable_antecipacao_automatica' => $sobretaxa['enable_antecipacao_automatica'],
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -190,6 +201,7 @@ class AdminPaymentCredentialsService
                 $update['enable_sobretaxa_antecipacao'] = $sobretaxa['enable_sobretaxa_antecipacao'];
                 $update['sobretaxa_antecipacao_avista_percentual'] = $sobretaxa['sobretaxa_antecipacao_avista_percentual'];
                 $update['sobretaxa_antecipacao_parcelada_percentual'] = $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'];
+                $update['enable_antecipacao_automatica'] = $sobretaxa['enable_antecipacao_automatica'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -204,12 +216,17 @@ class AdminPaymentCredentialsService
 
             $this->sincronizarParametrosMetodos($tenantId);
 
+            $aviso = $provider === 'asaas'
+                ? $this->aplicarAntecipacaoNoAsaas($tenantId, $existente, (bool) $sobretaxa['enable_antecipacao_automatica'])
+                : null;
+
             return [
                 'status' => 200,
-                'body' => [
+                'body' => array_filter([
                     'success' => true,
                     'message' => $message,
-                ],
+                    'aviso' => $aviso,
+                ], fn ($v) => $v !== null),
             ];
         } catch (Throwable $e) {
             error_log('[PaymentCredentials] Erro ao salvar: '.$e->getMessage());
@@ -334,7 +351,7 @@ class AdminPaymentCredentialsService
             }
 
             if ($provider === 'asaas') {
-                $asaas = new \App\Services\Asaas\AsaasService($tenantId);
+                $asaas = new AsaasService($tenantId);
                 $resultado = $asaas->testarConexao();
                 $this->garantirWebhookAsaas($tenantId);
 
@@ -394,6 +411,7 @@ class AdminPaymentCredentialsService
         $row['enable_pix'] = $this->boolish($row['enable_pix'] ?? true);
         $row['enable_boleto'] = $this->boolish($row['enable_boleto'] ?? true);
         $row['enable_credit_card'] = $this->boolish($row['enable_credit_card'] ?? true);
+        $row['enable_antecipacao_automatica'] = $this->boolish($row['enable_antecipacao_automatica'] ?? $row['enable_sobretaxa_antecipacao'] ?? false);
         $row['enable_sobretaxa_antecipacao'] = $this->boolish($row['enable_sobretaxa_antecipacao'] ?? false);
         $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
@@ -419,6 +437,7 @@ class AdminPaymentCredentialsService
             'enable_pix' => true,
             'enable_boleto' => true,
             'enable_credit_card' => true,
+            'enable_antecipacao_automatica' => false,
             'enable_sobretaxa_antecipacao' => false,
             'sobretaxa_antecipacao_avista_percentual' => 1.15,
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
@@ -432,7 +451,7 @@ class AdminPaymentCredentialsService
     /**
      * @param  array<string, mixed>  $body
      * @param  array<string, mixed>|null  $existente
-     * @return array{enable_sobretaxa_antecipacao: int, sobretaxa_antecipacao_avista_percentual: float, sobretaxa_antecipacao_parcelada_percentual: float}
+     * @return array{enable_antecipacao_automatica: int, enable_sobretaxa_antecipacao: int, sobretaxa_antecipacao_avista_percentual: float, sobretaxa_antecipacao_parcelada_percentual: float}
      */
     private function sobretaxaDoBody(string $provider, array $body, ?array $existente): array
     {
@@ -444,10 +463,13 @@ class AdminPaymentCredentialsService
             $body['sobretaxa_antecipacao_parcelada_percentual'] ?? $existente['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60,
             1.60
         );
-        $habilitada = $provider === 'asaas'
+        $antecipacao = $provider === 'asaas'
+            && $this->boolish($body['enable_antecipacao_automatica'] ?? $existente['enable_antecipacao_automatica'] ?? false);
+        $habilitada = $antecipacao
             && $this->boolish($body['enable_sobretaxa_antecipacao'] ?? $existente['enable_sobretaxa_antecipacao'] ?? false);
 
         return [
+            'enable_antecipacao_automatica' => $antecipacao ? 1 : 0,
             'enable_sobretaxa_antecipacao' => $habilitada ? 1 : 0,
             'sobretaxa_antecipacao_avista_percentual' => $avista,
             'sobretaxa_antecipacao_parcelada_percentual' => $parcelada,
@@ -510,10 +532,67 @@ class AdminPaymentCredentialsService
         }
     }
 
+    /**
+     * A antecipação pode ser ligada ou desligada direto no Asaas: o estado da conta prevalece.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function antecipacaoDaConta(int $tenantId, array $row): array
+    {
+        $ambiente = ($row['environment'] ?? 'sandbox') === 'production' ? 'has_token_prod' : 'has_token_test';
+        if (! $this->boolish($row['is_active'] ?? false) || ! $this->boolish($row[$ambiente] ?? false)) {
+            return $row;
+        }
+
+        try {
+            $naConta = ($this->asaas)($tenantId)->antecipacaoAutomaticaNaConta();
+        } catch (Throwable) {
+            $naConta = null;
+        }
+        $local = $this->boolish($row['enable_antecipacao_automatica'] ?? false);
+        if ($naConta !== null && $naConta !== $local) {
+            $this->credentials->definirAntecipacaoAutomatica($tenantId, 'asaas', $naConta);
+            $row['enable_antecipacao_automatica'] = $naConta;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Leva a escolha da antecipação automática para a conta Asaas. Se o Asaas recusar,
+     * volta a flag para o valor anterior e devolve o aviso para o painel.
+     *
+     * @param  array<string, mixed>|null  $existente
+     */
+    private function aplicarAntecipacaoNoAsaas(int $tenantId, ?array $existente, bool $ligar): ?string
+    {
+        $antes = $this->boolish($existente['enable_antecipacao_automatica'] ?? false);
+        if ($ligar === $antes) {
+            return null;
+        }
+
+        try {
+            $confirmado = ($this->asaas)($tenantId)->configurarAntecipacaoAutomatica($ligar);
+            if ($confirmado === $ligar) {
+                return null;
+            }
+            $motivo = 'o Asaas não confirmou a alteração';
+        } catch (Throwable $e) {
+            $motivo = preg_replace('/^Asaas:\s*/', '', $e->getMessage());
+        }
+
+        $this->credentials->definirAntecipacaoAutomatica($tenantId, 'asaas', $antes);
+
+        return ($ligar
+            ? 'As outras alterações foram salvas, mas a antecipação automática não foi ligada no Asaas: '
+            : 'As outras alterações foram salvas, mas a antecipação automática não foi desligada no Asaas: ').$motivo.'.';
+    }
+
     private function garantirWebhookAsaas(int $tenantId): void
     {
         try {
-            (new \App\Services\Asaas\AsaasService($tenantId))->garantirWebhook();
+            (new AsaasService($tenantId))->garantirWebhook();
         } catch (Throwable $e) {
             error_log('[PaymentCredentials] Webhook Asaas: '.$e->getMessage());
         }

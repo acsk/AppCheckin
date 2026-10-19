@@ -33,6 +33,8 @@ const METODOS = [
   { campo: 'enable_credit_card', label: 'Cartão', description: 'Crédito, à vista ou recorrente.' },
 ];
 
+const ligado = (v) => v === true || v === 1 || v === '1';
+
 function formDe(provider, row) {
   return {
     provider,
@@ -41,11 +43,8 @@ function formDe(provider, row) {
     enable_pix: row ? row.enable_pix !== false && row.enable_pix !== 0 : true,
     enable_boleto: row ? row.enable_boleto !== false && row.enable_boleto !== 0 : true,
     enable_credit_card: row ? row.enable_credit_card !== false && row.enable_credit_card !== 0 : true,
-    enable_sobretaxa_antecipacao: row
-      ? row.enable_sobretaxa_antecipacao === true
-        || row.enable_sobretaxa_antecipacao === 1
-        || row.enable_sobretaxa_antecipacao === '1'
-      : false,
+    enable_antecipacao_automatica: ligado(row?.enable_antecipacao_automatica),
+    enable_sobretaxa_antecipacao: ligado(row?.enable_sobretaxa_antecipacao),
     sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
     access_token_test: '',
@@ -154,7 +153,8 @@ export default function PaymentCredentialsScreen() {
       enable_pix: !!f.enable_pix,
       enable_boleto: !!f.enable_boleto,
       enable_credit_card: !!f.enable_credit_card,
-      enable_sobretaxa_antecipacao: !!f.enable_sobretaxa_antecipacao,
+      enable_antecipacao_automatica: !!f.enable_antecipacao_automatica,
+      enable_sobretaxa_antecipacao: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao,
       sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
       sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
     };
@@ -178,10 +178,13 @@ export default function PaymentCredentialsScreen() {
     }
     try {
       setSalvando(true);
+      const avisos = [];
       for (const p of alterados) {
-        await paymentCredentialsService.salvarCredenciais(montarPayload(p.id));
+        const res = await paymentCredentialsService.salvarCredenciais(montarPayload(p.id));
+        if (res?.aviso) avisos.push(res.aviso);
       }
-      showSuccess(alterados.length > 1 ? 'Alterações salvas nos dois provedores' : 'Alterações salvas');
+      if (avisos.length) showError(avisos.join(' '));
+      else showSuccess(alterados.length > 1 ? 'Alterações salvas nos dois provedores' : 'Alterações salvas');
       await carregarCredenciais();
     } catch (error) {
       showError(error.response?.data?.message || 'Não foi possível salvar. Tente de novo.');
@@ -371,45 +374,60 @@ export default function PaymentCredentialsScreen() {
               <div className="ck-section">
                 <h3 className="ck-section__title">Antecipação automática (cartão)</h3>
                 <p className="ck-section__desc">
-                  Com a antecipação automática, o Asaas credita o cartão em até 2 dias úteis.
-                  As taxas comerciais atuais são 1,15% ao mês à vista e 1,6% ao mês no parcelado.
-                  O app soma essa sobretaxa à tarifa de cartão que o Asaas já calcula, para o líquido
-                  da academia não ficar abaixo do valor do plano.
+                  Com a antecipação automática, o Asaas credita o cartão em até 2 dias úteis em vez de
+                  esperar o prazo normal (30 dias por parcela). Ela é ligada na conta Asaas da academia
+                  quando você salva.
                 </p>
                 <Switch
-                  label="Repassar sobretaxa de antecipação"
-                  description="Liga o acréscimo complementar no checkout de cartão. A tarifa do Asaas continua a da simulação oficial."
-                  checked={!!form.enable_sobretaxa_antecipacao}
-                  onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
+                  label="Antecipação automática"
+                  description="Antecipa todas as vendas no cartão. O Asaas cobra 1,15% ao mês à vista e 1,6% ao mês no parcelado."
+                  checked={!!form.enable_antecipacao_automatica}
+                  onChange={(v) => atualizar(selecionado, { enable_antecipacao_automatica: v })}
                 />
-                <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-4)' }}>
-                  <TextField
-                    label="Taxa à vista (% ao mês)"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="30"
-                    inputMode="decimal"
-                    value={String(form.sobretaxa_antecipacao_avista_percentual ?? 1.15)}
-                    onChange={(e) => atualizar(selecionado, {
-                      sobretaxa_antecipacao_avista_percentual: e?.target ? e.target.value : e,
-                    })}
-                    hint="Asaas: 1,15% ao mês nas cobranças à vista (D+2)."
-                  />
-                  <TextField
-                    label="Taxa parcelada (% ao mês)"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="30"
-                    inputMode="decimal"
-                    value={String(form.sobretaxa_antecipacao_parcelada_percentual ?? 1.6)}
-                    onChange={(e) => atualizar(selecionado, {
-                      sobretaxa_antecipacao_parcelada_percentual: e?.target ? e.target.value : e,
-                    })}
-                    hint="Asaas: 1,6% ao mês nas cobranças parceladas (D+2)."
-                  />
-                </div>
+                {form.enable_antecipacao_automatica ? (
+                  <>
+                    <Switch
+                      label="Repassar sobretaxa de antecipação"
+                      description="Soma a taxa de antecipação à tarifa de cartão que o Asaas já calcula, para o líquido da academia não ficar abaixo do valor do plano."
+                      checked={!!form.enable_sobretaxa_antecipacao}
+                      onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
+                    />
+                    {form.enable_sobretaxa_antecipacao ? (
+                      <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-2)' }}>
+                        <TextField
+                          label="Taxa à vista (% ao mês)"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="30"
+                          inputMode="decimal"
+                          value={String(form.sobretaxa_antecipacao_avista_percentual ?? 1.15)}
+                          onChange={(e) => atualizar(selecionado, {
+                            sobretaxa_antecipacao_avista_percentual: e?.target ? e.target.value : e,
+                          })}
+                          hint="Asaas: 1,15% ao mês nas cobranças à vista (D+2)."
+                        />
+                        <TextField
+                          label="Taxa parcelada (% ao mês)"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="30"
+                          inputMode="decimal"
+                          value={String(form.sobretaxa_antecipacao_parcelada_percentual ?? 1.6)}
+                          onChange={(e) => atualizar(selecionado, {
+                            sobretaxa_antecipacao_parcelada_percentual: e?.target ? e.target.value : e,
+                          })}
+                          hint="Asaas: 1,6% ao mês nas cobranças parceladas (D+2)."
+                        />
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <Callout tone="neutral" title="Cartão no prazo normal">
+                    Sem antecipação, o Asaas libera cada parcela do cartão 30 dias depois do pagamento e nada é somado ao valor do aluno.
+                  </Callout>
+                )}
               </div>
             ) : null}
 
