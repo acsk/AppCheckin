@@ -130,6 +130,10 @@ class TenantPlanoRepository
                 'ps.features',
                 'sc.nome as status_nome',
                 'sc.id as status_id',
+                DB::raw('(SELECT fp.nome FROM pagamentos_contrato pc JOIN formas_pagamento fp ON fp.id = pc.forma_pagamento_id
+                    WHERE pc.tenant_plano_id = tp.id ORDER BY pc.id DESC LIMIT 1) as forma_pagamento_nome'),
+                DB::raw('(SELECT pc.valor FROM pagamentos_contrato pc
+                    WHERE pc.tenant_plano_id = tp.id ORDER BY pc.id DESC LIMIT 1) as ultimo_pagamento_valor'),
             ])
             ->map(fn ($row) => (array) $row)
             ->all();
