@@ -5,7 +5,7 @@ import { authService } from '../../services/authService';
 import superAdminService from '../../services/superAdminService';
 import planosSistemaService from '../../services/planosSistemaService';
 import LayoutBase from '../../components/LayoutBase';
-import { NovoContrato, payKind, planFromApi } from '../../components/ck/contratos';
+import { NovoContrato, pickPaymentMethods, planFromApi } from '../../components/ck/contratos';
 import { showSuccess, showError } from '../../utils/toast';
 
 const ativa = (a) => a.ativo === undefined || a.ativo === true || a.ativo === 1 || a.ativo === '1';
@@ -17,20 +17,6 @@ const apiError = (error, fallback) => {
   const d = error?.response?.data || error || {};
   if (Array.isArray(d.errors) && d.errors.length) return d.errors.join(', ');
   return d.message || d.error || fallback;
-};
-
-// Uma opção por tipo (Pix, boleto, cartão); as demais formas ficam de fora da escolha
-const pickPaymentMethods = (formas) => {
-  const byKind = {};
-  formas.forEach((f) => {
-    const k = payKind(f.nome);
-    if (!k) return;
-    const exact = ['pix', 'boleto', 'cartão'].includes(String(f.nome).toLowerCase());
-    if (!byKind[k] || exact) byKind[k] = f;
-  });
-  const picked = ['pix', 'boleto', 'cartao'].map((k) => byKind[k]).filter(Boolean);
-  const list = picked.length ? picked : formas;
-  return list.map((f) => ({ id: f.id, name: payKind(f.nome) === 'cartao' && picked.length ? 'Cartão de crédito' : f.nome }));
 };
 
 export default function NovoContratoScreen() {

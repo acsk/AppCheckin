@@ -107,7 +107,7 @@ export default function AcademiasScreen() {
           onNew={() => router.push('/academias/novo')}
           onOpen={(r) => router.push(`/academias/${r.id}`)}
           onEdit={(r) => router.push(`/academias/${r.id}`)}
-          onContract={(r) => router.push(`/contratos/academia?id=${r.id}&nome=${encodeURIComponent(r.name)}`)}
+          onContract={(r) => router.push(`/contratos?academia=${r.id}`)}
           onToggleActive={(r) => setConfirm(r)}
         />
       </div>

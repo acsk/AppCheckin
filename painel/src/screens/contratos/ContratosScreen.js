@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import api from '../../services/api';
 import { authService } from '../../services/authService';
 import superAdminService from '../../services/superAdminService';
 import LayoutBase from '../../components/LayoutBase';
-import { Button, Modal } from '../../components/ck';
+import { Button, Callout, Modal } from '../../components/ck';
 import { ContratosLista } from '../../components/ck/contratos';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -38,6 +38,9 @@ const toRow = (c) => ({
 
 export default function ContratosScreen() {
   const router = useRouter();
+  // ?academia=<id> mostra só os contratos de uma academia (vem do "Ver contrato" da lista de academias)
+  const { academia } = useLocalSearchParams();
+  const academiaId = academia ? parseInt(academia, 10) : null;
   const [rows, setRows] = useState([]);
   const [academias, setAcademias] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -108,10 +111,25 @@ export default function ContratosScreen() {
     }
   };
 
+  const shownRows = academiaId ? rows.filter((r) => Number(r.academyId) === academiaId) : rows;
+  const academiaNome = academiaId
+    ? ((academias || []).find((a) => a.id === academiaId)?.nome || shownRows[0]?.academy || `Academia #${academiaId}`)
+    : null;
+
   return (
     <LayoutBase title="Contratos" pageHeader={false}>
+      {academiaId && !loading ? (
+        <Callout
+          tone="info"
+          className="ck-ct-scope"
+          title={`Contratos de ${academiaNome}`}
+          action={<Button size="sm" onClick={() => router.replace('/contratos')}>Ver todos</Button>}
+        >
+          {shownRows.length ? 'Mostrando só os contratos desta academia.' : 'Esta academia ainda não tem contrato.'}
+        </Callout>
+      ) : null}
       <ContratosLista
-        rows={rows}
+        rows={shownRows}
         loading={loading}
         today={today()}
         summary={summary}

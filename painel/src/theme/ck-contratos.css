@@ -116,3 +116,17 @@
 .ck-ct__pay { display: inline-flex; align-items: center; gap: 4px; }
 .ck-ct__warn { color: var(--warning-ink, var(--warning)); font-weight: 600; }
 .ck-ct__free { color: var(--success); font-weight: 700; }
+
+/* TrocarPlanoContrato (src/components/ck/contratos.js), portado do design system */
+.ck-ct-plan.is-current { cursor: default; background: var(--bg); border-style: dashed; }
+.ck-ct-plan.is-current:hover { border-color: var(--line-strong); }
+.ck-tp-cmp { display: grid; grid-template-columns: 1fr; align-items: center; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--sidebar-line); }
+.ck-tp-cmp > .ck-icon { color: var(--sidebar-muted); }
+.ck-tp-cmp > div { display: grid; gap: 2px; min-width: 0; padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--sidebar-line); }
+.ck-tp-cmp > div.is-new { border-color: var(--brand); background: rgba(242, 101, 34, .12); }
+.ck-tp-cmp span { font-size: 12px; line-height: 16px; color: var(--sidebar-subtle); font-weight: 600; }
+.ck-tp-cmp strong { font-family: var(--font-display); font-size: 18px; line-height: 22px; overflow-wrap: anywhere; }
+.ck-tp-cmp em { font-style: normal; font-size: 12px; line-height: 16px; color: var(--sidebar-muted); }
+.ck-tp-note { margin: 0; font-size: 13px; line-height: 19px; color: var(--sidebar-muted); }
+.ck-tp-arrow { justify-self: center; transform: rotate(90deg); margin: -4px 0; }
+.ck-ct-scope { margin-bottom: var(--space-6); }

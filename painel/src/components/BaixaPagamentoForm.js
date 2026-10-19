@@ -30,7 +30,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         const formas = data.formas || [];
         setMethods(formas.map((forma) => ({
           value: String(forma.id),
-          label: plano ? forma.nome : forma.forma_pagamento_nome,
+          label: plano ? forma.nome : forma.forma_pagamento_nome || forma.nome,
           icon: /pix/i.test(forma.nome || forma.forma_pagamento_nome) ? 'qr-code' : 'wallet',
         })));
         if (!formas.length) setError('Nenhuma forma de pagamento disponível.');

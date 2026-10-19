@@ -1,5 +1,6 @@
 /* AppCheckin — Academia (novo e editar), Contratos e Novo contrato do super admin.
-   Estilos: src/theme/ck-contratos.css (reaproveita ck-al-*, ck-ml* e ck-stat de ck-pessoas.css). Primitivas de ./index. */
+   Estilos: src/theme/ck-contratos.css (reaproveita ck-al-*, ck-ml* e ck-stat de ck-pessoas.css). Primitivas de ./index.
+   TrocarPlanoContrato (troca de plano do contrato) também mora aqui e usa as mesmas peças do Novo contrato. */
 import React from 'react';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch,
@@ -93,8 +94,8 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
   }
   function PlanCard(p) {
     var pl = p.plan, feats = planFeatures(pl);
-    return h('button', { type: 'button', role: 'radio', 'aria-checked': !!p.checked, className: 'ck-ct-plan', onClick: p.onSelect },
-      h('span', { className: 'ck-ct-plan__top' }, h('span', { className: 'ck-ct-plan__name' }, pl.name), h('span', { className: 'ck-choice__radio ck-ct-radio', 'aria-hidden': true })),
+    return h('button', { type: 'button', role: 'radio', 'aria-checked': !!p.checked, disabled: p.current || undefined, 'aria-label': p.current ? pl.name + ', plano atual' : undefined, className: cx('ck-ct-plan', p.current && 'is-current'), onClick: p.onSelect },
+      h('span', { className: 'ck-ct-plan__top' }, h('span', { className: 'ck-ct-plan__name' }, pl.name), p.current ? h(Badge, { tone: 'neutral' }, 'Atual') : h('span', { className: 'ck-choice__radio ck-ct-radio', 'aria-hidden': true })),
       h(PlanPrice, { plan: pl }),
       feats.length ? h('ul', { className: 'ck-ct-plan__feats' }, feats.map(function (f, i) { return h('li', { key: i }, h(Icon, { name: 'check', size: 13, strokeWidth: 2.5 }), f); })) : null);
   }
@@ -108,6 +109,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       type: x.tipo_cobranca || (Number(x.valor) > 0 ? 'fixo' : 'gratuito'),
       price: Number(x.valor || 0), perStudent: Number(x.valor_por_aluno || 0),
       cycle: dias === 30 ? 'por mês' : dias === 365 ? 'por ano' : 'a cada ' + dias + ' dias',
+      durationDays: dias,
       maxStudents: x.max_alunos ? Number(x.max_alunos) : null, maxAdmins: x.max_admins ? Number(x.max_admins) : null,
       termDays: x.prazo_dias ? Number(x.prazo_dias) : null, features: keys, description: x.descricao || null,
     };
@@ -582,4 +584,107 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
           p.onCancel ? h('button', { type: 'button', className: 'ck-al-sum__cancel', onClick: p.onCancel }, 'Cancelar') : null)));
   }
 
-export { AcademiaForm, ContratosLista, NovoContrato, payKind, planFromApi };
+  // Uma opção por tipo (Pix, boleto, cartão); as demais formas ficam de fora da escolha
+  function pickPaymentMethods(formas) {
+    var byKind = {};
+    (formas || []).forEach(function (f) {
+      var k = payKind(f.nome);
+      if (!k) return;
+      var exact = ['pix', 'boleto', 'cartão'].indexOf(String(f.nome).toLowerCase()) >= 0;
+      if (!byKind[k] || exact) byKind[k] = f;
+    });
+    var picked = ['pix', 'boleto', 'cartao'].map(function (k) { return byKind[k]; }).filter(Boolean);
+    var list = picked.length ? picked : (formas || []);
+    return list.map(function (f) { return { id: f.id, name: payKind(f.nome) === 'cartao' && picked.length ? 'Cartão de crédito' : f.nome }; });
+  }
+
+  /* ---------- TrocarPlanoContrato ----------
+     Portado do design system. Adaptado à API: o novo plano sempre começa hoje (a troca não aceita data futura),
+     forma de pagamento por id, e plano no formato de planFromApi (gratuito, fixo ou por_aluno). */
+  function monthlyOf(pl, students) {
+    if (!pl || pl.type === 'gratuito') return 0;
+    if (pl.type === 'por_aluno') return (pl.perStudent || 0) * Math.max(1, students || 0);
+    var days = pl.durationDays || 30;
+    return (pl.price || 0) * (30 / days);
+  }
+  function priceText(pl) {
+    if (!pl) return '—';
+    if (pl.type === 'gratuito') return 'Grátis';
+    if (pl.type === 'por_aluno') return money(pl.perStudent) + ' por aluno ativo';
+    return money(pl.price) + ' ' + (pl.cycle || 'por mês');
+  }
+  function TrocarPlanoContrato(p) {
+    var c = p.contract || {}, cur = p.currentPlan || { id: null, name: c.plan, type: 'gratuito' };
+    var pays = p.paymentMethods || [];
+    var plans = (p.plans || []).slice();
+    if (cur.id != null && !plans.some(function (x) { return x.id === cur.id; })) plans.unshift(cur);
+    var pl = useState(null), pay = useState(null), notes = useState(''), tried = useState(false);
+    var rootRef = useRef(null);
+    var plan = plans.filter(function (x) { return x.id === pl[0]; })[0];
+    var free = plan && plan.type === 'gratuito';
+    var students = p.activeStudents;
+    var over = plan && plan.maxStudents && students != null && students > plan.maxStudents;
+    var diff = plan ? monthlyOf(plan, students) - monthlyOf(cur, students) : 0;
+    var payName = (pays.filter(function (x) { return x.id === pay[0]; })[0] || {}).name;
+
+    var err = {};
+    if (!plan) err.plan = 'Escolha o novo plano.';
+    if (plan && !free && !pay[0]) err.pay = 'Escolha como a academia paga.';
+    var show = tried[0] ? err : {};
+    var nErr = Object.keys(err).length;
+
+    function submit(e) {
+      if (e) e.preventDefault();
+      tried[1](true);
+      if (nErr) { focusFirstInvalid(rootRef.current); return; }
+      p.onSave && p.onSave({ contractId: c.id, planId: plan.id, paymentId: free ? null : pay[0], notes: notes[0].trim() || null });
+    }
+
+    var curNote = cur.type === 'gratuito' ? null : ' Cobranças em aberto do contrato atual continuam valendo.';
+
+    return h('form', { className: 'ck-al-form ck-ct-form', onSubmit: submit, noValidate: true, ref: rootRef },
+      h('div', null,
+        h(BackLink, { onClick: p.onBack }, c.id ? 'Contrato #' + c.id : 'Contratos'),
+        h(PageHeader, { title: 'Trocar plano', description: c.academy + ' passa para outro plano do Check-in. O histórico de pagamentos continua no contrato atual.' })),
+      h('div', { className: 'ck-al-form__grid' },
+        h('div', { className: 'ck-card ck-al-form__main' },
+          h(Section, { id: 'tp-s1', icon: 'layers', title: 'Novo plano', done: !!plan },
+            h('div', { className: cx('ck-ct-plans ck-ct-pick', show.plan && 'is-error'), role: 'radiogroup', 'aria-label': 'Novo plano' },
+              plans.map(function (x) { return h(PlanCard, { key: x.id, plan: x, current: x.id === cur.id, checked: pl[0] === x.id, onSelect: function () { if (x.id !== cur.id) pl[1](x.id); } }); })),
+            show.plan ? h('p', { className: 'ck-ct-err' }, h(Icon, { name: 'alert-triangle', size: 14 }), show.plan) : null,
+            over ? h(Callout, { tone: 'warning', title: c.academy + ' tem ' + num(students) + ' alunos ativos' },
+              'O ' + plan.name + ' aceita até ' + num(plan.maxStudents) + '. Depois da troca, a academia não consegue matricular ninguém até ficar abaixo do limite.') : null,
+            plan && plan.type === 'por_aluno' ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'A cobrança de cada mês soma os alunos com matrícula ativa' + (plan.maxStudents ? ', até ' + num(plan.maxStudents) + '.' : '.')) : null),
+          h(Section, { id: 'tp-s2', icon: 'wallet', title: 'Forma de pagamento', description: free ? 'Plano grátis: não há cobrança.' : 'Como a academia paga o novo plano.', done: !!plan && (free || !!pay[0]) },
+            free ? h('div', { className: 'ck-al-pwrow' }, h('div', null, h('strong', null, 'Cortesia'), h('span', null, 'Nenhuma cobrança é gerada no plano ' + plan.name + '.')))
+              : h('div', { className: cx('ck-ct-pays ck-ct-pick', show.pay && 'is-error'), role: 'radiogroup', 'aria-label': 'Forma de pagamento' }, pays.map(function (x) {
+                return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': pay[0] === x.id, className: 'ck-ct-pay', onClick: function () { pay[1](x.id); } },
+                  h('span', { className: 'ck-ct-pay__icon', 'aria-hidden': true }, h(Icon, { name: PAY_ICON[payKind(x.name)] || 'wallet', size: 16 })),
+                  h('strong', null, x.name),
+                  h('span', { className: 'ck-choice__radio ck-ct-radio', 'aria-hidden': true }));
+              })),
+            show.pay ? h('p', { className: 'ck-ct-err' }, h(Icon, { name: 'alert-triangle', size: 14 }), show.pay) : null),
+          h(Section, { id: 'tp-s3', icon: 'calendar', title: 'Quando vale', done: true },
+            h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'O novo plano começa hoje, ' + fdate(p.today || todayIso()) + '. O contrato atual é encerrado na mesma hora.'),
+            h(TextAreaField, { label: 'Motivo da troca', value: notes[0], placeholder: 'Ex.: academia passou de 100 alunos', hint: 'Fica no histórico do contrato.', onChange: function (e) { notes[1](e.target.value); } }))),
+        h('aside', { className: 'ck-al-sum', 'aria-label': 'Resumo da troca' },
+          h('div', { className: 'ck-al-sum__who' },
+            h('span', { className: 'ck-ct-sumlogo', 'aria-hidden': true }, initialsOf(c.academy)),
+            h('div', { style: { minWidth: 0 } }, h('strong', null, c.academy), h('span', null, (c.id ? 'Contrato #' + c.id : 'Contrato atual') + (students != null ? ', ' + plural(students, 'aluno ativo', 'alunos ativos') : '')))),
+          h('div', { className: 'ck-tp-cmp' },
+            h('div', null, h('span', null, 'Hoje'), h('strong', null, cur.name || '—'), h('em', null, priceText(cur))),
+            h(Icon, { name: 'arrow-right', size: 16, className: 'ck-tp-arrow' }),
+            h('div', { className: plan ? 'is-new' : undefined }, h('span', null, 'Depois'), h('strong', null, plan ? plan.name : 'Escolha o plano'), h('em', null, plan ? priceText(plan) : '—'))),
+          plan ? h('dl', { className: 'ck-ct-sumfacts' },
+            h('div', null, h('dt', null, 'Por mês'), h('dd', null, Math.abs(diff) < 0.005 ? 'Sem mudança' : (diff > 0 ? '+' : '−') + money(Math.abs(diff)),
+              (plan.type === 'por_aluno' || cur.type === 'por_aluno') && students != null ? h('span', null, 'com ' + plural(students, 'aluno ativo', 'alunos ativos')) : null)),
+            h('div', null, h('dt', null, 'Pagamento'), h('dd', null, free ? 'Cortesia' : payName || '—')),
+            h('div', null, h('dt', null, 'Começa'), h('dd', null, 'Hoje'))) : null,
+          plan ? h('p', { className: 'ck-tp-note' }, (c.id ? 'O contrato #' + c.id : 'O contrato atual') + ' é encerrado hoje e um novo começa com o ' + plan.name + '.'
+            + (free ? '' : ' A primeira cobrança vence hoje.') + (curNote || '')) : null,
+          tried[0] && nErr ? h('p', { className: 'ck-al-sum__err', role: 'alert' }, errCount(nErr)) : null,
+          h(Button, { type: 'submit', variant: 'primary', size: 'lg', block: true, icon: 'repeat', loading: p.saving }, p.saving ? 'Trocando…' : 'Trocar plano'),
+          p.onCancel ? h('button', { type: 'button', className: 'ck-al-sum__cancel', onClick: p.onCancel }, 'Cancelar') : null)));
+  }
+
+export { AcademiaForm, ContratosLista, NovoContrato, TrocarPlanoContrato, payKind, planFromApi, pickPaymentMethods };
