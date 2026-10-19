@@ -261,6 +261,70 @@ class PlanosSaasContratoTest extends TestCase
         $this->assertSame('Free', $result['body']['contrato']['plano_nome']);
     }
 
+    public function test_criar_academia_com_plano_inativo_ou_data_fim_passada_retorna_422(): void
+    {
+        $tenants = Mockery::mock(TenantRepository::class);
+        $tenants->shouldReceive('findBySlug')->andReturn(null);
+        $tenants->shouldNotReceive('create');
+
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('emailExists')->andReturn(false);
+
+        $planos = Mockery::mock(PlanoSistemaRepository::class);
+        $planos->shouldReceive('buscarPorId')->with(7)->andReturn(['id' => 7, 'ativo' => 0]);
+
+        $service = new SuperAdminAcademiaService(
+            $tenants,
+            Mockery::mock(TenantPlanoRepository::class),
+            $usuarios,
+            Mockery::mock(SuperAdminPapelService::class),
+            $planos,
+        );
+
+        $result = $service->criarAcademia([
+            'nome' => 'Box Teste',
+            'email' => 'box@example.com',
+            'senha_admin' => 'segredo123',
+            'plano_sistema_id' => 7,
+            'data_fim' => '2000-01-01',
+        ]);
+
+        $this->assertSame(422, $result['status']);
+        $this->assertContains('Plano do sistema não encontrado ou inativo', $result['body']['errors']);
+        $this->assertContains('Data de fim do contrato não pode ser anterior a hoje', $result['body']['errors']);
+    }
+
+    public function test_listar_academias_inclui_contrato_vigente(): void
+    {
+        $tenants = Mockery::mock(TenantRepository::class);
+        $tenants->shouldReceive('getAll')->andReturn([
+            ['id' => 9, 'nome' => 'Box Teste'],
+            ['id' => 10, 'nome' => 'Sem Contrato'],
+        ]);
+
+        $contratos = Mockery::mock(TenantPlanoRepository::class);
+        $contratos->shouldReceive('buscarContratoVigente')->with(9)->andReturn([
+            'id' => 40, 'plano_sistema_id' => 4, 'plano_nome' => 'Free', 'plano_codigo' => 'free',
+            'tipo_cobranca' => 'gratuito', 'status_id' => 1, 'status_nome' => 'Ativo',
+            'data_inicio' => '2026-10-19', 'data_fim' => null,
+        ]);
+        $contratos->shouldReceive('buscarContratoVigente')->with(10)->andReturn(null);
+
+        $service = new SuperAdminAcademiaService(
+            $tenants,
+            $contratos,
+            Mockery::mock(UsuarioRepository::class),
+            Mockery::mock(SuperAdminPapelService::class),
+            Mockery::mock(PlanoSistemaRepository::class),
+        );
+
+        $academias = $service->listarAcademias([])['body']['academias'];
+
+        $this->assertSame('Free', $academias[0]['contrato']['plano_nome']);
+        $this->assertNull($academias[0]['contrato']['data_fim']);
+        $this->assertNull($academias[1]['contrato']);
+    }
+
     /**
      * @param  array<string, mixed>  $plano
      * @return array{0: SuperAdminContratoService, 1: TenantPlanoRepository&MockInterface, 2: PagamentoContratoRepository&MockInterface}

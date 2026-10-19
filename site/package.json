@@ -1,12 +1,19 @@
 {
   "name": "site",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "vite",
     "dev": "vite",
     "web": "vite",
     "build": "vite build",
+    "web:build": "vite build",
+    "web:pack": "bash scripts/pack-dist.sh",
+    "preweb:build": "node scripts/increment-version.js patch",
+    "bump:patch": "node scripts/increment-version.js patch",
+    "bump:minor": "node scripts/increment-version.js minor",
+    "bump:major": "node scripts/increment-version.js major",
     "lint": "oxlint",
     "preview": "vite preview"
   },

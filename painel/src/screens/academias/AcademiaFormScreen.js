@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { superAdminService } from '../../services/superAdminService';
+import planosSistemaService, { formatarPrecoPlano, tipoCobrancaDoPlano } from '../../services/planosSistemaService';
 import cepService from '../../services/cepService';
 import estadosService from '../../services/estadosService';
 import LayoutBase from '../../components/LayoutBase';
@@ -35,6 +36,12 @@ import {
   apenasNumeros,
   validarCPF 
 } from '../../utils/masks';
+
+const formatarData = (data) => {
+  if (!data) return '-';
+  const [ano, mes, dia] = String(data).slice(0, 10).split('-');
+  return dia && mes && ano ? `${dia}/${mes}/${ano}` : data;
+};
 
 export default function AcademiaFormScreen() {
   const router = useRouter();
@@ -76,6 +83,12 @@ export default function AcademiaFormScreen() {
     { nome: '', url: '' },
   ]);
 
+  const [planos, setPlanos] = useState([]);
+  const [loadingPlanos, setLoadingPlanos] = useState(false);
+  const [planoId, setPlanoId] = useState(null);
+  const [dataFim, setDataFim] = useState('');
+  const [contratoAtual, setContratoAtual] = useState(null);
+
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -116,6 +129,25 @@ export default function AcademiaFormScreen() {
       loadData();
     } else {
       loadEstados();
+      loadPlanos();
+    }
+  };
+
+  const loadPlanos = async () => {
+    try {
+      setLoadingPlanos(true);
+      const response = await planosSistemaService.listarDisponiveis();
+      const lista = response.planos || [];
+      setPlanos(lista);
+      const padrao =
+        lista.find((p) => p.codigo === 'free') ||
+        lista.find((p) => tipoCobrancaDoPlano(p) === 'gratuito') ||
+        lista[0];
+      setPlanoId(padrao ? padrao.id : null);
+    } catch (error) {
+      showError(error.message || 'Erro ao carregar planos do sistema');
+    } finally {
+      setLoadingPlanos(false);
     }
   };
 
@@ -164,6 +196,7 @@ export default function AcademiaFormScreen() {
             }))
           : [{ nome: '', url: '' }],
       );
+      setContratoAtual(academia.contrato || null);
       
       // Carregar admins da academia
       loadAdmins();
@@ -588,6 +621,20 @@ export default function AcademiaFormScreen() {
       showError('E-mail do responsável inválido');
       return false;
     }
+    if (!isEdit) {
+      if (!planoId) {
+        showError('Selecione o plano do sistema');
+        return false;
+      }
+      if (dataFim && !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+        showError('Fim do contrato: use o formato AAAA-MM-DD');
+        return false;
+      }
+      if (dataFim && dataFim < new Date().toISOString().slice(0, 10)) {
+        showError('O fim do contrato não pode ser anterior a hoje');
+        return false;
+      }
+    }
     return true;
   };
 
@@ -649,6 +696,11 @@ export default function AcademiaFormScreen() {
       if (isEdit && !dadosParaEnviar.senha_admin) {
         delete dadosParaEnviar.senha_admin;
       }
+
+      if (!isEdit) {
+        dadosParaEnviar.plano_sistema_id = planoId;
+        dadosParaEnviar.data_fim = dataFim || null;
+      }
       
       if (isEdit) {
         const result = await superAdminService.atualizarAcademia(academiaId, dadosParaEnviar);
@@ -660,7 +712,8 @@ export default function AcademiaFormScreen() {
       
       router.push('/academias');
     } catch (error) {
-      showError(error.response?.data?.error || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} a academia`);
+      const mensagem = Array.isArray(error?.errors) ? error.errors.join('\n') : error?.error || error?.response?.data?.error;
+      showError(mensagem || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} a academia`);
     } finally {
       setSaving(false);
     }
@@ -803,6 +856,108 @@ export default function AcademiaFormScreen() {
                   />
                 </View>
               </View>
+            </View>
+          </View>
+
+          {/* Card: Plano e contrato */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="file-text" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Plano e contrato</Text>
+              {isEdit && (
+                <TouchableOpacity style={styles.addButton} onPress={() => router.push('/contratos')} disabled={saving}>
+                  <Feather name="external-link" size={14} color="#fff" />
+                  <Text style={styles.addButtonText}>Contratos</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.cardBody}>
+              {isEdit ? (
+                contratoAtual ? (
+                  <View style={styles.contratoResumo}>
+                    <View style={styles.contratoResumoItem}>
+                      <Text style={styles.contratoResumoLabel}>Plano</Text>
+                      <Text style={styles.contratoResumoValor}>{contratoAtual.plano_nome}</Text>
+                    </View>
+                    <View style={styles.contratoResumoItem}>
+                      <Text style={styles.contratoResumoLabel}>Status</Text>
+                      <Text style={styles.contratoResumoValor}>{contratoAtual.status_nome || '-'}</Text>
+                    </View>
+                    <View style={styles.contratoResumoItem}>
+                      <Text style={styles.contratoResumoLabel}>Início</Text>
+                      <Text style={styles.contratoResumoValor}>{formatarData(contratoAtual.data_inicio)}</Text>
+                    </View>
+                    <View style={styles.contratoResumoItem}>
+                      <Text style={styles.contratoResumoLabel}>Fim</Text>
+                      <Text style={styles.contratoResumoValor}>
+                        {contratoAtual.data_fim ? formatarData(contratoAtual.data_fim) : 'Indeterminado'}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={styles.helperText}>
+                    Esta academia não tem contrato vigente. Crie um em Contratos.
+                  </Text>
+                )
+              ) : loadingPlanos ? (
+                <View style={styles.loadingAdmins}>
+                  <ActivityIndicator size="small" color="#f97316" />
+                  <Text style={styles.loadingAdminsText}>Carregando planos...</Text>
+                </View>
+              ) : planos.length === 0 ? (
+                <Text style={styles.helperText}>
+                  Nenhum plano disponível. Cadastre um em Planos do Sistema.
+                </Text>
+              ) : (
+                <>
+                  <Text style={styles.helperText}>
+                    A academia nasce com este contrato. Planos gratuitos já começam ativos; planos pagos ficam pendentes até a primeira cobrança.
+                  </Text>
+                  <View style={styles.planosGrid}>
+                    {planos.map((plano) => {
+                      const selecionado = plano.id === planoId;
+                      return (
+                        <TouchableOpacity
+                          key={plano.id}
+                          style={[styles.planoOpcao, selecionado && styles.planoOpcaoSelecionada]}
+                          onPress={() => setPlanoId(plano.id)}
+                          disabled={saving}
+                        >
+                          <View style={styles.planoOpcaoTopo}>
+                            <Text style={styles.planoOpcaoNome}>{plano.nome}</Text>
+                            <Feather
+                              name={selecionado ? 'check-circle' : 'circle'}
+                              size={18}
+                              color={selecionado ? '#f97316' : '#d1d5db'}
+                            />
+                          </View>
+                          <Text style={styles.planoOpcaoPreco}>{formatarPrecoPlano(plano)}</Text>
+                          <Text style={styles.planoOpcaoDetalhe}>
+                            {plano.max_alunos ? `Até ${plano.max_alunos} alunos` : 'Alunos ilimitados'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <View style={[styles.inputGroup, { marginTop: 16, marginBottom: 0 }]}>
+                    <Text style={styles.label}>Fim do contrato</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="AAAA-MM-DD"
+                      placeholderTextColor="#999"
+                      value={dataFim}
+                      onChangeText={setDataFim}
+                      maxLength={10}
+                      editable={!saving}
+                    />
+                    <Text style={styles.fieldHint}>Deixe vazio para prazo indeterminado. O início é hoje.</Text>
+                  </View>
+                </>
+              )}
             </View>
           </View>
 
@@ -1796,6 +1951,75 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 16,
     lineHeight: 18,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  planosGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  planoOpcao: {
+    flexGrow: 1,
+    flexBasis: 200,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+  },
+  planoOpcaoSelecionada: {
+    borderColor: '#f97316',
+    borderWidth: 2,
+    backgroundColor: '#fff7ed',
+  },
+  planoOpcaoTopo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  planoOpcaoNome: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    flexShrink: 1,
+  },
+  planoOpcaoPreco: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#c2410c',
+    marginTop: 6,
+  },
+  planoOpcaoDetalhe: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  contratoResumo: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  contratoResumoItem: {
+    flexGrow: 1,
+    flexBasis: 140,
+  },
+  contratoResumoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  contratoResumoValor: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 4,
   },
   whatsappLinkRow: {
     marginBottom: 16,

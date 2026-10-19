@@ -8,8 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist é commitado: o .htaccess da raiz serve site/dist em https://appcheckin.com.br/
 dist-ssr
+deploy-site-dist.zip
 *.local
 
 # Editor directories and files

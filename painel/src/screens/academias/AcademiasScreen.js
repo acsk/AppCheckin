@@ -17,6 +17,13 @@ import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
 
+const descreverContrato = (contrato) => {
+  const fim = contrato.data_fim
+    ? `até ${String(contrato.data_fim).slice(0, 10).split('-').reverse().join('/')}`
+    : 'prazo indeterminado';
+  return contrato.status_id === 1 ? fim : `${contrato.status_nome || 'Pendente'} · ${fim}`;
+};
+
 export default function AcademiasScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -150,6 +157,14 @@ export default function AcademiasScreen() {
           <Text style={styles.cardLabel}>Telefone:</Text>
           <Text style={styles.cardValue}>{item.telefone || '-'}</Text>
         </View>
+
+        <View style={styles.cardRow}>
+          <Feather name="file-text" size={14} color="#666" />
+          <Text style={styles.cardLabel}>Plano:</Text>
+          <Text style={styles.cardValue}>
+            {item.contrato ? `${item.contrato.plano_nome} · ${descreverContrato(item.contrato)}` : 'Sem contrato'}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -161,6 +176,7 @@ export default function AcademiasScreen() {
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colEmail}>EMAIL</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colTelefone}>TELEFONE</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colPlano}>PLANO</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={styles.colAcoes}>AÇÕES</Text>
       </View>
@@ -185,6 +201,16 @@ export default function AcademiasScreen() {
             <Text className="text-[13px] text-slate-600" style={styles.colTelefone} numberOfLines={1}>
               {item.telefone || '-'}
             </Text>
+            <View style={styles.colPlano}>
+              {item.contrato ? (
+                <>
+                  <Text className="text-[13px] font-semibold text-slate-800" numberOfLines={1}>{item.contrato.plano_nome}</Text>
+                  <Text className="text-[11px] text-slate-500" numberOfLines={1}>{descreverContrato(item.contrato)}</Text>
+                </>
+              ) : (
+                <Text className="text-[12px] font-semibold text-amber-600">Sem contrato</Text>
+              )}
+            </View>
             <View style={styles.colStatus}>
               <View className={`self-start rounded-full px-2.5 py-1 ${item.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
                 <Text className={`text-[11px] font-bold ${item.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -685,6 +711,7 @@ const styles = StyleSheet.create({
   colNome: { flex: 2, minWidth: 150 },
   colEmail: { flex: 2.5, minWidth: 180 },
   colTelefone: { flex: 1.5, minWidth: 120 },
+  colPlano: { flex: 1.8, minWidth: 140 },
   colStatus: { flex: 1, minWidth: 100 },
   colAcoes: { flex: 0.8, minWidth: 80 },
   colAcoesCenter: {

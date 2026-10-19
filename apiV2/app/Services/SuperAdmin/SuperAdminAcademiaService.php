@@ -37,7 +37,9 @@ class SuperAdminAcademiaService
         }
 
         $academias = array_map(
-            fn (array $academia) => TenantWhatsappLinks::attachToTenant($academia),
+            fn (array $academia) => TenantWhatsappLinks::attachToTenant($academia) + [
+                'contrato' => $this->resumoContrato($this->contratos->buscarContratoVigente((int) $academia['id'])),
+            ],
             $this->tenants->getAll($filtros),
         );
 
@@ -51,6 +53,29 @@ class SuperAdminAcademiaService
         return [
             'status' => 200,
             'body' => ['academias' => $academias],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $contrato
+     * @return array<string, mixed>|null
+     */
+    private function resumoContrato(?array $contrato): ?array
+    {
+        if (! $contrato) {
+            return null;
+        }
+
+        return [
+            'id' => (int) $contrato['id'],
+            'plano_sistema_id' => (int) $contrato['plano_sistema_id'],
+            'plano_nome' => $contrato['plano_nome'] ?? null,
+            'plano_codigo' => $contrato['plano_codigo'] ?? null,
+            'tipo_cobranca' => $contrato['tipo_cobranca'] ?? null,
+            'status_id' => (int) $contrato['status_id'],
+            'status_nome' => $contrato['status_nome'] ?? null,
+            'data_inicio' => $contrato['data_inicio'] ?? null,
+            'data_fim' => $contrato['data_fim'] ?? null,
         ];
     }
 
@@ -70,7 +95,9 @@ class SuperAdminAcademiaService
 
         return [
             'status' => 200,
-            'body' => ['academia' => TenantWhatsappLinks::attachToTenant($academia)],
+            'body' => ['academia' => TenantWhatsappLinks::attachToTenant($academia) + [
+                'contrato' => $this->resumoContrato($this->contratos->buscarContratoVigente($id)),
+            ]],
         ];
     }
 
@@ -115,6 +142,8 @@ class SuperAdminAcademiaService
         if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
             $errors[] = $whatsappError;
         }
+
+        $errors = array_merge($errors, $this->validarContratoInicial($data));
 
         if ($errors !== []) {
             return ['status' => 422, 'body' => ['errors' => $errors]];
@@ -202,6 +231,33 @@ class SuperAdminAcademiaService
                 'contrato' => $contratoId ? $this->contratos->buscarPorId($contratoId) : null,
             ],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private function validarContratoInicial(array $data): array
+    {
+        $errors = [];
+
+        if (! empty($data['plano_sistema_id'])) {
+            $plano = $this->planosSistema->buscarPorId((int) $data['plano_sistema_id']);
+            if (! $plano || ! (int) ($plano['ativo'] ?? 0)) {
+                $errors[] = 'Plano do sistema não encontrado ou inativo';
+            }
+        }
+
+        if (! empty($data['data_fim'])) {
+            $dataFim = \DateTime::createFromFormat('!Y-m-d', (string) $data['data_fim']);
+            if (! $dataFim || $dataFim->format('Y-m-d') !== $data['data_fim']) {
+                $errors[] = 'Data de fim do contrato inválida (use AAAA-MM-DD)';
+            } elseif ($data['data_fim'] < date('Y-m-d')) {
+                $errors[] = 'Data de fim do contrato não pode ser anterior a hoje';
+            }
+        }
+
+        return $errors;
     }
 
     /**
