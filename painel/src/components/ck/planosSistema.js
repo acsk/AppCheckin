@@ -56,6 +56,7 @@ export function systemPlanFromApi(x) {
     maxAdmins: x.max_admins ? Number(x.max_admins) : null,
     active: Number(x.ativo) === 1 || x.ativo === true,
     onSale: Number(x.atual) === 1 || x.atual === true,
+    onSite: Number(x.exibir_site) === 1 || x.exibir_site === true,
     order: Number(x.ordem || 0),
     contracts: Number(x.contratos_ativos || 0),
   };
@@ -122,6 +123,7 @@ function PlanCard({ plan, onEdit, onNewContract, onToggleSale, onToggleActive })
         {sample ? <p>{sample}</p> : null}
       </div>
       <FactList facts={planFacts(plan, { usage: true })} />
+      {plan.active && plan.onSale && plan.onSite ? <span className="ck-ps-card__site"><Icon name="web" size={14} />Aparece no site</span> : null}
       <footer className="ck-ps-card__foot">
         <Button size="sm" icon="pencil" onClick={() => onEdit?.(plan)}>Editar</Button>
         {items.length ? <ActionMenu label={`Ações do plano ${plan.name}`} items={items} /> : null}
@@ -230,6 +232,7 @@ function fromPlan(pl) {
     maxAdmins: pl ? (pl.maxAdmins ? String(pl.maxAdmins) : '') : '1',
     termDays: pl?.termDays ? String(pl.termDays) : '',
     onSale: pl ? pl.onSale : true,
+    onSite: pl ? pl.onSite : false,
     active: pl ? pl.active : true,
     order: String(pl?.order ?? 0),
   };
@@ -311,6 +314,7 @@ export function PlanoSistemaForm({ mode, plan, saving, onSave, onBack, onCancel 
       max_admins: maxAdmins,
       prazo_dias: termDays,
       atual: f.onSale ? 1 : 0,
+      exibir_site: f.onSite ? 1 : 0,
       ativo: f.active ? 1 : 0,
       ordem: order,
     };
@@ -383,6 +387,7 @@ export function PlanoSistemaForm({ mode, plan, saving, onSave, onBack, onCancel 
           <Section id="ps-s4" icon="eye" title="Disponibilidade" done={!err.order}>
             <div className="ck-ps-switches">
               <Switch label="À venda" description="Aparece na tela de novo contrato." checked={f.onSale} onChange={(v) => set('onSale', v)} />
+              <Switch label="Mostrar no site" description={f.onSale ? 'Aparece na página de planos do site, com preço e limites.' : 'Só aparece no site quando estiver à venda.'} checked={f.onSite} onChange={(v) => set('onSite', v)} />
               <Switch label="Plano ativo" description={f.active ? 'Pode ser usado em contratos.' : 'Não pode ser usado em contratos novos nem em trocas.'} checked={f.active} onChange={(v) => set('active', v)} />
             </div>
             {f.onSale && !f.active ? <Callout tone="warning">Plano inativo não aparece para venda, mesmo marcado como à venda.</Callout> : null}

@@ -1,7 +1,6 @@
-export const PRECO_POR_ALUNO = 3.5;
-export const LIMITE_ALUNOS = 100;
-
 const env = import.meta.env;
+
+export const API_URL = (env.VITE_API_URL || (env.PROD ? 'https://apiv2.appcheckin.com.br/v2' : 'http://localhost:9090/v2')).replace(/\/$/, '');
 
 export const LINKS = {
   entrar: env.VITE_LINK_ENTRAR || '#contato',

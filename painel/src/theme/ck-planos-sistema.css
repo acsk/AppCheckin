@@ -61,3 +61,4 @@
 .ck-ps-preview__per { font-size: 13px; line-height: 18px; color: var(--sidebar-muted); }
 .ck-ps-preview .ck-ps-facts { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--sidebar-line); }
 .ck-ps-form .ck-al-sum { min-width: 0; }
+.ck-ps-card__site { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--info, var(--primary)); }

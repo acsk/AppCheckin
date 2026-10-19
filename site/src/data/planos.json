@@ -1,0 +1,32 @@
+[
+  {
+    "id": 4,
+    "codigo": "free",
+    "nome": "Free",
+    "descricao": "Plano gratuito por tempo indeterminado.",
+    "tipo_cobranca": "gratuito",
+    "valor": 0,
+    "valor_por_aluno": null,
+    "duracao_dias": 30,
+    "prazo_dias": 30,
+    "max_alunos": 100,
+    "max_admins": 1,
+    "features": [],
+    "ordem": 0
+  },
+  {
+    "id": 5,
+    "codigo": "completo",
+    "nome": "AppCheckin Completo",
+    "descricao": "App do aluno, modo professor e painel de gestão. Cobrança por aluno ativo.",
+    "tipo_cobranca": "fixo",
+    "valor": 299.9,
+    "valor_por_aluno": null,
+    "duracao_dias": 30,
+    "prazo_dias": null,
+    "max_alunos": 100,
+    "max_admins": 1,
+    "features": [],
+    "ordem": 1
+  }
+]

@@ -44,6 +44,25 @@ class PlanoSistemaRepository
     }
 
     /**
+     * Planos à venda marcados para o site, só com os campos públicos.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarPublicos(): array
+    {
+        return DB::table('planos_sistema')
+            ->select(['id', 'codigo', 'nome', 'descricao', 'tipo_cobranca', 'valor', 'valor_por_aluno', 'duracao_dias', 'prazo_dias', 'max_alunos', 'max_admins', 'features', 'ordem'])
+            ->where('ativo', 1)
+            ->where('atual', 1)
+            ->where('exibir_site', 1)
+            ->orderBy('ordem')
+            ->orderBy('valor')
+            ->get()
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function buscarPorId(int $id): ?array
@@ -82,6 +101,7 @@ class PlanoSistemaRepository
             'features' => isset($data['features']) ? json_encode($data['features']) : null,
             'ativo' => $data['ativo'] ?? true,
             'atual' => $data['atual'] ?? true,
+            'exibir_site' => $data['exibir_site'] ?? false,
             'ordem' => $data['ordem'] ?? 0,
         ]);
     }
@@ -146,6 +166,9 @@ class PlanoSistemaRepository
         }
         if (isset($data['atual'])) {
             $update['atual'] = is_bool($data['atual']) ? ($data['atual'] ? 1 : 0) : $data['atual'];
+        }
+        if (isset($data['exibir_site'])) {
+            $update['exibir_site'] = is_bool($data['exibir_site']) ? ($data['exibir_site'] ? 1 : 0) : $data['exibir_site'];
         }
 
         if ($update === []) {

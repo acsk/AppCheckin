@@ -51,6 +51,26 @@ class SuperAdminPlanoSistemaService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
+    public function publicos(): array
+    {
+        $planos = array_map(function (array $plano) {
+            $features = is_string($plano['features']) ? json_decode($plano['features'], true) : $plano['features'];
+            $plano['features'] = is_array($features)
+                ? (array_is_list($features) ? $features : array_keys(array_filter($features)))
+                : [];
+            foreach (['valor', 'valor_por_aluno'] as $campo) {
+                $plano[$campo] = $plano[$campo] === null ? null : (float) $plano[$campo];
+            }
+
+            return $plano;
+        }, $this->planos->listarPublicos());
+
+        return ['status' => 200, 'body' => ['planos' => $planos, 'total' => count($planos)]];
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
     public function show(int $id): array
     {
         $plano = $this->planos->buscarPorId($id);

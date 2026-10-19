@@ -7,15 +7,16 @@
     "start": "vite",
     "dev": "vite",
     "web": "vite",
-    "build": "vite build",
+    "build": "node scripts/fetch-planos.js && vite build",
     "web:build": "vite build",
     "web:pack": "bash scripts/pack-dist.sh",
-    "preweb:build": "node scripts/increment-version.js patch",
+    "preweb:build": "node scripts/increment-version.js patch && node scripts/fetch-planos.js",
     "bump:patch": "node scripts/increment-version.js patch",
     "bump:minor": "node scripts/increment-version.js minor",
     "bump:major": "node scripts/increment-version.js major",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "planos": "node scripts/fetch-planos.js"
   },
   "dependencies": {
     "react": "^19.3.1",

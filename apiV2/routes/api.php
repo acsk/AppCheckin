@@ -1,22 +1,23 @@
 <?php
 
-use App\Http\Controllers\Api\V2\CepController;
-use App\Http\Controllers\Api\V2\StatusController;
-use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
-use App\Http\Controllers\Api\V2\SuperAdmin\PapelController as SuperAdminPapelController;
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
 use App\Http\Controllers\Api\V2\Admin\PlanoCicloController as AdminPlanoCicloController;
 use App\Http\Controllers\Api\V2\Admin\PlanoController as AdminPlanoController;
-use App\Http\Controllers\Api\V2\AsaasWebhookController;
 use App\Http\Controllers\Api\V2\AppVersionController;
+use App\Http\Controllers\Api\V2\AsaasWebhookController;
 use App\Http\Controllers\Api\V2\AuthController;
+use App\Http\Controllers\Api\V2\CepController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
 use App\Http\Controllers\Api\V2\MobileController;
 use App\Http\Controllers\Api\V2\NotificationController;
+use App\Http\Controllers\Api\V2\StatusController;
+use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
+use App\Http\Controllers\Api\V2\SuperAdmin\PapelController as SuperAdminPapelController;
+use App\Http\Controllers\Api\V2\SuperAdmin\PlanoSistemaController as SuperAdminPlanoSistemaController;
 use App\Http\Controllers\Api\V2\UploadsController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,9 @@ Route::prefix('v2')->group(function () {
     Route::get('/version/mobile', [AppVersionController::class, 'mobile']);
     Route::post('/version/mobile', [AppVersionController::class, 'updateMobile']);
     Route::post('/webhooks/asaas', [AsaasWebhookController::class, 'handle']);
+
+    // Planos do sistema exibidos no site (público)
+    Route::get('/site/planos', [SuperAdminPlanoSistemaController::class, 'publicos']);
 
     // Rotas públicas (paridade Slim)
     Route::get('/cep/{cep}', [CepController::class, 'buscar'])->where('cep', '[0-9\\-]+');
