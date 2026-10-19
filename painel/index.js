@@ -9,5 +9,6 @@ import './src/theme/ck-painel.css';
 import './src/theme/ck-planos.css';
 import './src/theme/ck-troca-plano.css';
 import './src/theme/ck-financeiro.css';
+import './src/theme/ck-pessoas.css';
 
 import 'expo-router/entry';

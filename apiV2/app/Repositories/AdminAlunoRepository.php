@@ -256,11 +256,12 @@ class AdminAlunoRepository
         $row = DB::table('matriculas as m')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
             ->where('m.aluno_id', $alunoId)
             ->where('m.tenant_id', $tenantId)
             ->where('sm.codigo', 'ativa')
             ->orderByDesc('m.created_at')
-            ->select('m.*', 'p.nome as plano_nome', 'p.valor as plano_valor')
+            ->select('m.*', 'p.nome as plano_nome', 'p.valor as plano_valor', 'mo.nome as modalidade_nome', 'mo.icone as modalidade_icone')
             ->first();
 
         return $row ? (array) $row : null;
@@ -271,10 +272,12 @@ class AdminAlunoRepository
         return DB::table('matriculas as m')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
             ->where('a.usuario_id', $usuarioId)
             ->where('m.tenant_id', $tenantId)
             ->orderByDesc('m.created_at')
-            ->select('m.*', 'p.nome as plano_nome', 'p.valor as plano_valor')
+            ->select('m.*', 'p.nome as plano_nome', 'p.valor as plano_valor', 'sm.codigo as status_codigo', 'sm.nome as status_nome', 'mo.nome as modalidade_nome', 'mo.icone as modalidade_icone')
             ->get()
             ->map(fn ($r) => (array) $r)
             ->all();

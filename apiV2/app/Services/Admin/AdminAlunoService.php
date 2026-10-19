@@ -488,12 +488,18 @@ class AdminAlunoService
                 'id' => $matricula['plano_id'],
                 'nome' => $matricula['plano_nome'],
                 'valor' => $matricula['plano_valor'],
+                'modalidade_nome' => $matricula['modalidade_nome'] ?? null,
+                'modalidade_icone' => $matricula['modalidade_icone'] ?? null,
             ];
             $aluno['matricula_id'] = $matricula['id'];
+            $aluno['matricula_valor'] = $matricula['valor'] ?? null;
+            $aluno['acesso_ate'] = $matricula['proxima_data_vencimento'] ?? ($matricula['data_fim'] ?? null);
             $aluno['pagamento_ativo'] = $this->alunos->temPagamentoAtivo($alunoId, $tenantId);
         } else {
             $aluno['plano'] = null;
             $aluno['matricula_id'] = null;
+            $aluno['matricula_valor'] = null;
+            $aluno['acesso_ate'] = null;
             $aluno['pagamento_ativo'] = null;
         }
 

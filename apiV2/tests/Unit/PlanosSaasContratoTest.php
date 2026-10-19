@@ -301,6 +301,7 @@ class PlanosSaasContratoTest extends TestCase
             ['id' => 9, 'nome' => 'Box Teste'],
             ['id' => 10, 'nome' => 'Sem Contrato'],
         ]);
+        $tenants->shouldReceive('resumoUsoPorTenant')->andReturn([9 => ['alunos_ativos' => 12, 'checkins_mes' => 30]]);
 
         $contratos = Mockery::mock(TenantPlanoRepository::class);
         $contratos->shouldReceive('buscarContratoVigente')->with(9)->andReturn([
@@ -323,6 +324,9 @@ class PlanosSaasContratoTest extends TestCase
         $this->assertSame('Free', $academias[0]['contrato']['plano_nome']);
         $this->assertNull($academias[0]['contrato']['data_fim']);
         $this->assertNull($academias[1]['contrato']);
+        $this->assertSame(12, $academias[0]['alunos_ativos']);
+        $this->assertSame(30, $academias[0]['checkins_mes']);
+        $this->assertSame(0, $academias[1]['alunos_ativos']);
     }
 
     /**

@@ -106,6 +106,15 @@ export const authService = {
     }
   },
 
+  async requestPasswordRecovery(email) {
+    try {
+      const response = await api.post('/auth/password-recovery/request', { email });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || error;
+    }
+  },
+
   async logout() {
     await AsyncStorage.removeItem('@appcheckin:token');
     await AsyncStorage.removeItem('@appcheckin:user');

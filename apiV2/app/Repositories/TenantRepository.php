@@ -74,6 +74,41 @@ class TenantRepository
     }
 
     /**
+     * Uso de cada academia para a lista do super admin. "Aluno ativo" segue a mesma regra da cobrança:
+     * aluno com matrícula ativa (status_id = 1).
+     *
+     * @return array<int, array{alunos_ativos: int, checkins_mes: int}>
+     */
+    public function resumoUsoPorTenant(): array
+    {
+        $resumo = [];
+
+        $alunos = DB::table('matriculas')
+            ->where('status_id', 1)
+            ->groupBy('tenant_id')
+            ->selectRaw('tenant_id, COUNT(DISTINCT aluno_id) as total')
+            ->get();
+        foreach ($alunos as $row) {
+            $resumo[(int) $row->tenant_id]['alunos_ativos'] = (int) $row->total;
+        }
+
+        $inicioMes = date('Y-m-01');
+        $checkins = DB::table('checkins')
+            ->whereRaw('COALESCE(data_checkin_date, DATE(data_checkin), DATE(created_at)) >= ?', [$inicioMes])
+            ->groupBy('tenant_id')
+            ->selectRaw('tenant_id, COUNT(*) as total')
+            ->get();
+        foreach ($checkins as $row) {
+            $resumo[(int) $row->tenant_id]['checkins_mes'] = (int) $row->total;
+        }
+
+        return array_map(fn (array $r) => [
+            'alunos_ativos' => $r['alunos_ativos'] ?? 0,
+            'checkins_mes' => $r['checkins_mes'] ?? 0,
+        ], $resumo);
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function create(array $data): int

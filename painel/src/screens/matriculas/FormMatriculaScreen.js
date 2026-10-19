@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { NovaMatricula, Button, Modal, TextField } from '../../components/ck';
 import { matriculaService } from '../../services/matriculaService';
@@ -17,6 +17,8 @@ const initialForm = { usuario_id: '', modalidade_id: '', plano_id: '', plano_cic
 
 export default function FormMatriculaScreen() {
   const router = useRouter();
+  // ?usuario_id= vem do atalho "Matricular" da lista e do detalhe do aluno
+  const { usuario_id: usuarioParam } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -34,7 +36,7 @@ export default function FormMatriculaScreen() {
   const [loadingCycles, setLoadingCycles] = useState(false);
   const [tipo, setTipo] = useState('plano');
   const [searchDependentes, setSearchDependentes] = useState('');
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(() => ({ ...initialForm, usuario_id: usuarioParam ? String(usuarioParam) : '' }));
   const busy = useRef(false);
   const today = new Date();
   const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;

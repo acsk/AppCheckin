@@ -1,377 +1,161 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  Image,
-  Modal,
-  ScrollView,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Feather, FontAwesome } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import toast from 'react-hot-toast';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../../services/authService';
-import styles from './styles';
+import { showError } from '../../utils/toast';
+import { Button, Icon, Modal } from '../../components/ck';
+import { LoginScreen as CkLoginScreen } from '../../components/ck/pessoas';
+
+const CREDENTIALS_KEY = '@appcheckin:login_credentials';
 
 export default function LoginScreen() {
   const router = useRouter();
-  
-  // Detectar se está em localhost e pré-preencher credenciais de teste
-  const isLocalhost = typeof window !== 'undefined' && 
-    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  
-  const [email, setEmail] = useState(isLocalhost ? 'sa@appcheckin.com.br' : '');
-  const [senha, setSenha] = useState(isLocalhost ? '123456' : '');
+
+  // Em localhost, pré-preenche as credenciais de teste
+  const isLocalhost = typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  const [saved, setSaved] = useState(isLocalhost ? { email: 'sa@appcheckin.com.br', senha: '123456' } : null);
+  const [ready, setReady] = useState(isLocalhost);
   const [loading, setLoading] = useState(false);
-  const [secure, setSecure] = useState(true);
+  const [error, setError] = useState(null);
+  const [errorTitle, setErrorTitle] = useState(null);
   const [remember, setRemember] = useState(true);
-  const [showTenantModal, setShowTenantModal] = useState(false);
+  const [credentials, setCredentials] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [user, setUser] = useState(null);
-  const [selectingTenant, setSelectingTenant] = useState(false);
+  const [selectingTenant, setSelectingTenant] = useState(null);
 
   useEffect(() => {
-    const loadSavedCredentials = async () => {
+    if (isLocalhost) return;
+    (async () => {
       try {
-        const saved = await AsyncStorage.getItem('@appcheckin:login_credentials');
-        if (saved) {
-          const data = JSON.parse(saved);
-          if (data?.email) setEmail(data.email);
-          if (data?.senha) setSenha(data.senha);
-          setRemember(true);
-        }
-      } catch (error) {
-        console.error('Erro ao carregar credenciais salvas:', error);
+        const raw = await AsyncStorage.getItem(CREDENTIALS_KEY);
+        const data = raw ? JSON.parse(raw) : null;
+        if (data?.email) setSaved(data);
+      } catch (err) {
+        console.error('Erro ao carregar credenciais salvas:', err);
+      } finally {
+        setReady(true);
       }
-    };
-
-    if (!isLocalhost) {
-      loadSavedCredentials();
-    }
+    })();
   }, [isLocalhost]);
 
-  const isDisabled = useMemo(() => email.trim().length === 0 || senha.trim().length === 0, [email, senha]);
-
-  const handleLogin = async () => {
-    if (isDisabled) {
-      toast.error('Preencha email e senha', {
-        style: {
-          background: '#ef4444',
-          color: '#fff',
-          padding: '16px',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: '500',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        },
-      });
-      return;
+  const persistCredentials = async (creds, keep) => {
+    if (keep) {
+      await AsyncStorage.setItem(CREDENTIALS_KEY, JSON.stringify({ email: creds.email, senha: creds.senha }));
+    } else {
+      await AsyncStorage.removeItem(CREDENTIALS_KEY);
     }
+  };
 
+  const goToDashboard = () => {
+    setTimeout(() => router.replace('/dashboard/'), 100);
+  };
+
+  const handleSubmit = async ({ email, password, remember: keep }) => {
     setLoading(true);
+    setError(null);
+    setErrorTitle(null);
+    const creds = { email, senha: password };
     try {
-      const response = await authService.login(email, senha);
-      console.log('✅ Login response:', response);
+      const response = await authService.login(email, password);
 
-      // Verificar se o usuário tem permissão para acessar o painel
-      // roles permitidos: 3 = Admin, 4 = Super Admin
+      // Só administradores (3) e super admins (4) acessam o painel
       if (![3, 4].includes(response.user?.papel_id)) {
-        toast.error('Acesso não permitido. Este painel é exclusivo para administradores.', {
-          duration: 5000,
-          position: 'top-center',
-          style: {
-            background: '#ef4444',
-            color: '#fff',
-            padding: '16px',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: '500',
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-          },
-        });
         await authService.logout();
+        setErrorTitle('Acesso não permitido');
+        setError('Este painel é exclusivo para administradores da academia. Alunos usam o app do Check-in.');
         return;
       }
 
-      // Se requer seleção de tenant, exibir modal
-      if (response.requires_tenant_selection && response.tenants && response.tenants.length > 0) {
+      if (response.requires_tenant_selection && response.tenants?.length > 0) {
         setUser(response.user);
         setTenants(response.tenants);
-        setShowTenantModal(true);
+        setCredentials(creds);
+        setRemember(keep);
       } else if (response.token) {
-        if (remember) {
-          await AsyncStorage.setItem(
-            '@appcheckin:login_credentials',
-            JSON.stringify({ email: email.trim(), senha: senha })
-          );
-        } else {
-          await AsyncStorage.removeItem('@appcheckin:login_credentials');
-        }
-        // Login único, ir para dashboard
-        console.log('🚀 Redirecionando para dashboard...');
-        setTimeout(() => {
-          console.log('⏱️ Executando router.replace("/dashboard/")');
-          router.replace('/dashboard/');
-        }, 100);
+        await persistCredentials(creds, keep);
+        goToDashboard();
       }
-    } catch (error) {
-      const mensagemErro = error.error || error.message || 'Credenciais inválidas';
-      toast.error(mensagemErro, {
-        duration: 5000,
-        position: 'top-center',
-        style: {
-          background: '#ef4444',
-          color: '#fff',
-          padding: '16px',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: '500',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        },
-        iconTheme: {
-          primary: '#fff',
-          secondary: '#ef4444',
-        },
-      });
+    } catch (err) {
+      setError(err?.error || err?.message || 'E-mail ou senha incorretos. Confira e tente de novo, ou use "Esqueci minha senha".');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSelectTenant = async (tenantId) => {
-    setSelectingTenant(true);
+    setSelectingTenant(tenantId);
     try {
       const response = await authService.selectTenant(tenantId);
-      console.log('✅ Select tenant response:', response);
-      
       if (response.token) {
-        setShowTenantModal(false);
-        if (remember) {
-          await AsyncStorage.setItem(
-            '@appcheckin:login_credentials',
-            JSON.stringify({ email: email.trim(), senha: senha })
-          );
-        } else {
-          await AsyncStorage.removeItem('@appcheckin:login_credentials');
-        }
-        console.log('🚀 Redirecionando para dashboard...');
-        setTimeout(() => {
-          console.log('⏱️ Executando router.replace("/dashboard/")');
-          router.replace('/dashboard/');
-        }, 100);
+        setTenants([]);
+        if (credentials) await persistCredentials(credentials, remember);
+        goToDashboard();
       }
-    } catch (error) {
-      const mensagemErro = error.error || error.message || 'Erro ao selecionar academia';
-      toast.error(mensagemErro, {
-        duration: 5000,
-        position: 'top-center',
-        style: {
-          background: '#ef4444',
-          color: '#fff',
-          padding: '16px',
-          borderRadius: '8px',
-          fontSize: '14px',
-          fontWeight: '500',
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-        },
-      });
+    } catch (err) {
+      showError(err?.error || err?.message || 'Não foi possível entrar nesta academia');
     } finally {
-      setSelectingTenant(false);
+      setSelectingTenant(null);
     }
   };
 
+  const handleForgot = async (email) => {
+    try {
+      await authService.requestPasswordRecovery(email);
+    } catch (err) {
+      // A API responde igual exista ou não o e-mail; só limite de tentativas e reCAPTCHA impedem o envio
+      if (['RATE_LIMIT_EXCEEDED', 'RECAPTCHA_REQUIRED', 'RECAPTCHA_VALIDATION_FAILED'].includes(err?.code)) {
+        showError(err.message || 'Não foi possível enviar o link agora. Tente de novo em alguns minutos.');
+        throw err;
+      }
+    }
+  };
+
+  if (!ready) return <div className="ck-login" style={{ minHeight: '100vh' }} />;
+
   return (
-    <LinearGradient colors={['#0b0f10', '#1a1d24']} style={StyleSheet.absoluteFill}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.container}
-      >
-        <View style={styles.card}>
-          <View style={styles.header}>
-            <Image
-              source={require('../../../assets/img/logo.png')}
-              style={styles.logo}
-              resizeMode="contain"
-            />
-            <Text style={styles.title}>Faça seu login</Text>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.inputWrap}>
-              <Feather name="mail" size={18} color="#dcdcdc" />
-              <TextInput
-                value={email}
-                onChangeText={setEmail}
-                placeholder="E-mail"
-                placeholderTextColor="rgba(255,255,255,0.65)"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-              />
-            </View>
-
-            <View style={styles.inputWrap}>
-              <Feather name="lock" size={18} color="#dcdcdc" />
-              <TextInput
-                value={senha}
-                onChangeText={setSenha}
-                placeholder="Senha"
-                placeholderTextColor="rgba(255,255,255,0.65)"
-                secureTextEntry={secure}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={styles.input}
-              />
-              <Pressable onPress={() => setSecure((v) => !v)} hitSlop={10}>
-                <Feather name={secure ? 'eye-off' : 'eye'} size={18} color="rgba(255,255,255,0.7)" />
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={() => setRemember((prev) => !prev)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}
-            >
-              <View
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 4,
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.5)',
-                  backgroundColor: remember ? '#f97316' : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {remember && <Feather name="check" size={12} color="#fff" />}
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' }}>
-                Manter e-mail e senha
-              </Text>
-            </Pressable>
-
-            <TouchableOpacity
-              activeOpacity={0.9}
-              disabled={isDisabled || loading}
-              onPress={handleLogin}
-              style={[styles.btnWrap, (isDisabled || loading) && styles.btnDisabled]}
-            >
-              <LinearGradient
-                colors={['#BF1F5A', '#F25D39', '#FF9A3D']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.btn}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>ENTRAR</Text>}
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <Pressable onPress={() => {}} hitSlop={10}>
-              <Text style={styles.link}>Esqueceu sua senha?</Text>
-            </Pressable>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>ou continue com</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <View style={styles.socialRow}>
-              <Pressable onPress={() => {}} style={styles.socialBtn}>
-                <FontAwesome name="facebook-f" size={18} color="#fff" />
-              </Pressable>
-              <Pressable onPress={() => {}} style={styles.socialBtn}>
-                <FontAwesome name="google" size={18} color="#fff" />
-              </Pressable>
-            </View>
-
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Não tem conta? </Text>
-              <Pressable onPress={() => {}} hitSlop={10}>
-                <Text style={[styles.footerText, styles.footerLink]}>Cadastre-se</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-
-      {/* Modal de Seleção de Tenant */}
+    <>
+      <CkLoginScreen
+        height="100vh"
+        defaultEmail={saved?.email || ''}
+        defaultPassword={saved?.senha || ''}
+        defaultRemember
+        loading={loading}
+        error={error}
+        errorTitle={errorTitle}
+        onSubmit={handleSubmit}
+        onForgot={handleForgot}
+      />
       <Modal
-        visible={showTenantModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowTenantModal(false)}
+        open={tenants.length > 0}
+        size="sm"
+        title="Escolha a academia"
+        description={user?.nome || user?.name ? `${user.nome || user.name} tem acesso a mais de uma academia.` : 'Seu acesso vale para mais de uma academia.'}
+        dismissable={!selectingTenant}
+        onClose={() => setTenants([])}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={!!selectingTenant} onClick={() => setTenants([])}>Cancelar</Button>
+          </>
+        )}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{
-            width: '90%',
-            maxWidth: 400,
-            backgroundColor: '#fff',
-            borderRadius: 12,
-            padding: 24,
-          }}>
-            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>
-              Selecione sua Academia
-            </Text>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 20, textAlign: 'center' }}>
-              {user?.name} tem acesso a múltiplas academias
-            </Text>
-            
-            <ScrollView style={{ maxHeight: 300, marginBottom: 16 }}>
-              {tenants.map((tenant, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => handleSelectTenant(tenant.tenant.id)}
-                  disabled={selectingTenant}
-                  style={{
-                    padding: 12,
-                    marginVertical: 8,
-                    backgroundColor: '#f5f5f5',
-                    borderRadius: 8,
-                    borderLeftWidth: 4,
-                    borderLeftColor: '#3b82f6',
-                    opacity: selectingTenant ? 0.5 : 1,
-                  }}
-                >
-                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>
-                    {tenant.tenant.nome}
-                  </Text>
-                  {tenant.tenant.cnpj && (
-                    <Text style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
-                      CNPJ: {tenant.tenant.cnpj}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <TouchableOpacity
-              onPress={() => setShowTenantModal(false)}
-              disabled={selectingTenant}
-              style={{
-                padding: 12,
-                backgroundColor: '#e5e7eb',
-                borderRadius: 8,
-                marginTop: 8,
-                opacity: selectingTenant ? 0.5 : 1,
-              }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#666', textAlign: 'center' }}>
-                Cancelar
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ul className="ck-nm__results ck-login__tenants" role="listbox" aria-label="Academias">
+          {tenants.map((t) => (
+            <li key={t.tenant.id}>
+              <button type="button" role="option" aria-selected={false} disabled={!!selectingTenant} onClick={() => handleSelectTenant(t.tenant.id)}>
+                <span className="ck-ml__mod" aria-hidden><Icon name={selectingTenant === t.tenant.id ? 'loader' : 'building-2'} size={16} className={selectingTenant === t.tenant.id ? 'ck-spin' : undefined} /></span>
+                <span>
+                  <strong>{t.tenant.nome}</strong>
+                  <span>{t.tenant.cnpj ? `CNPJ ${t.tenant.cnpj}` : 'Academia'}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       </Modal>
-    </LinearGradient>
+    </>
   );
 }

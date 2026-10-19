@@ -36,9 +36,13 @@ class SuperAdminAcademiaService
             $filtros['ativo'] = $query['ativo'] === 'true' || $query['ativo'] === '1';
         }
 
+        $uso = $this->tenants->resumoUsoPorTenant();
+
         $academias = array_map(
             fn (array $academia) => TenantWhatsappLinks::attachToTenant($academia) + [
                 'contrato' => $this->resumoContrato($this->contratos->buscarContratoVigente((int) $academia['id'])),
+                'alunos_ativos' => $uso[(int) $academia['id']]['alunos_ativos'] ?? 0,
+                'checkins_mes' => $uso[(int) $academia['id']]['checkins_mes'] ?? 0,
             ],
             $this->tenants->getAll($filtros),
         );
