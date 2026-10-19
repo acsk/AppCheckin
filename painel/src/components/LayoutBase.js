@@ -132,7 +132,7 @@ function findActive(sections, pathname) {
   return best;
 }
 
-export default function LayoutBase({ children, title = 'Dashboard', subtitle = '', noPadding = false, pageHeader = true }) {
+export default function LayoutBase({ children, title = 'Dashboard', subtitle = '', noPadding = false, pageHeader = true, parent = null }) {
   const router = useRouter();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
@@ -191,6 +191,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const breadcrumbs = [];
   if (active?.parent) breadcrumbs.push({ label: active.parent.label });
   else if (active?.section && active.node.id !== 'dashboard') breadcrumbs.push({ label: active.section.label });
+  if (parent) breadcrumbs.push({ label: parent.label, href: parent.path, onClick: () => router.push(parent.path) });
   breadcrumbs.push({ label: title });
 
   const sidebar = (

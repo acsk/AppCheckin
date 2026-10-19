@@ -11,5 +11,6 @@ import './src/theme/ck-troca-plano.css';
 import './src/theme/ck-financeiro.css';
 import './src/theme/ck-pessoas.css';
 import './src/theme/ck-contratos.css';
+import './src/theme/ck-planos-sistema.css';
 
 import 'expo-router/entry';

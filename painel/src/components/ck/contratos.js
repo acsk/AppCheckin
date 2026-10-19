@@ -29,6 +29,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
     return iso(d);
   }
+  function addDays(v, n) { var d = pd(v); d.setDate(d.getDate() + n); return iso(d); }
   function monthsBetween(a, b) {
     if (!a || !b) return null;
     for (var n = 1; n <= 60; n++) if (addMonths(a, n) === b) return n;
@@ -80,6 +81,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     if (pl.type === 'por_aluno' && pl.maxStudents) out.push('Até ' + num(pl.maxStudents) + ' alunos ativos');
     else out.push(pl.maxStudents ? 'Até ' + num(pl.maxStudents) + ' alunos' : 'Alunos ilimitados');
     if (pl.maxAdmins) out.push(plural(pl.maxAdmins, 'administrador', 'administradores'));
+    if (pl.termDays) out.push('Contrato de ' + plural(pl.termDays, 'dia', 'dias'));
     (pl.features || []).forEach(function (k) { if (FEATURE_LABELS[k]) out.push(FEATURE_LABELS[k]); });
     return out.slice(0, 4);
   }
@@ -107,7 +109,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       price: Number(x.valor || 0), perStudent: Number(x.valor_por_aluno || 0),
       cycle: dias === 30 ? 'por mês' : dias === 365 ? 'por ano' : 'a cada ' + dias + ' dias',
       maxStudents: x.max_alunos ? Number(x.max_alunos) : null, maxAdmins: x.max_admins ? Number(x.max_admins) : null,
-      features: keys, description: x.descricao || null,
+      termDays: x.prazo_dias ? Number(x.prazo_dias) : null, features: keys, description: x.descricao || null,
     };
   }
   function planSummary(pl, end) {
@@ -471,7 +473,8 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     var ac = useState(p.academyId != null ? p.academyId : (academies.length === 1 ? academies[0].id : null));
     var pl = useState(p.planId != null ? p.planId : null);
     var pay = useState(null);
-    var start = useState(today), endMode = useState('sem'), end = useState(addMonths(today, 12));
+    var initTerm = (plans.filter(function (x) { return x.id === p.planId; })[0] || {}).termDays;
+    var start = useState(today), endMode = useState(initTerm ? 'ate' : 'sem'), end = useState(initTerm ? addDays(today, initTerm) : addMonths(today, 12));
     var notes = useState(''), tried = useState(false), aq = useState('');
     var rootRef = useRef(null);
 
@@ -499,6 +502,10 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     var payOptions = pays;
     var payName = (pays.filter(function (x) { return x.id === pay[0]; })[0] || {}).name;
 
+    function selectPlan(x) {
+      pl[1](x.id);
+      if (x.termDays) { endMode[1]('ate'); end[1](addDays(startVal, x.termDays)); }
+    }
     function submit(e) {
       if (e) e.preventDefault();
       tried[1](true);
@@ -532,7 +539,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
               'O contrato ' + academy.currentPlan + ' é encerrado e o novo começa hoje. O histórico de pagamentos continua guardado.') : null),
           h(Section, { id: 'nc-s2', icon: 'package', title: 'Plano do sistema', done: !!plan },
             h('div', { className: cx('ck-ct-plans ck-ct-pick', show.plan && 'is-error'), role: 'radiogroup', 'aria-label': 'Plano do sistema' },
-              plans.map(function (x) { return h(PlanCard, { key: x.id, plan: x, checked: pl[0] === x.id, onSelect: function () { pl[1](x.id); } }); })),
+              plans.map(function (x) { return h(PlanCard, { key: x.id, plan: x, checked: pl[0] === x.id, onSelect: function () { selectPlan(x); } }); })),
             show.plan ? h('p', { className: 'ck-ct-err' }, h(Icon, { name: 'alert-triangle', size: 14 }), show.plan) : null,
             plan && plan.type === 'por_aluno' ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'A cobrança de cada mês soma os alunos com matrícula ativa' + (plan.maxStudents ? ', até ' + num(plan.maxStudents) + '.' : '.')) : null),
           !free ? h(Section, { id: 'nc-s3', icon: 'wallet', title: 'Forma de pagamento', description: 'Como a academia paga o Check-in.', done: !!pay[0] },

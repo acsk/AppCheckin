@@ -35,7 +35,7 @@ const pickPaymentMethods = (formas) => {
 
 export default function NovoContratoScreen() {
   const router = useRouter();
-  const { academiaId } = useLocalSearchParams();
+  const { academiaId, planoId } = useLocalSearchParams();
   const [academies, setAcademies] = useState([]);
   const [plans, setPlans] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -111,6 +111,7 @@ export default function NovoContratoScreen() {
           plans={plans}
           paymentMethods={paymentMethods}
           academyId={initialId}
+          planId={planoId ? parseInt(planoId, 10) : undefined}
           today={today()}
           saving={saving}
           onSubmit={submit}

@@ -128,12 +128,12 @@ class PlanoSistemaRepository
         }
 
         $update = [];
-        foreach (['codigo', 'nome', 'descricao', 'tipo_cobranca', 'valor', 'duracao_dias', 'ordem'] as $campo) {
+        foreach (['codigo', 'nome', 'tipo_cobranca', 'valor', 'duracao_dias', 'ordem'] as $campo) {
             if (isset($data[$campo])) {
                 $update[$campo] = $data[$campo];
             }
         }
-        foreach (['valor_por_aluno', 'max_alunos', 'max_admins', 'prazo_dias'] as $campo) {
+        foreach (['descricao', 'valor_por_aluno', 'max_alunos', 'max_admins', 'prazo_dias'] as $campo) {
             if (array_key_exists($campo, $data)) {
                 $update[$campo] = $data[$campo] === '' ? null : $data[$campo];
             }
