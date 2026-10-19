@@ -23,6 +23,18 @@ class CobrancaContratoService
         $this->asaasFactory = $asaasFactory ?? static fn (int $tenantId) => new AsaasService($tenantId);
     }
 
+    public const BILLING_TYPES = ['PIX', 'BOLETO', 'CREDIT_CARD'];
+
+    private const FORMA_PAGAMENTO_NOME = ['PIX' => 'Pix', 'BOLETO' => 'Boleto', 'CREDIT_CARD' => 'Cartão'];
+
+    /** formas_pagamento.id do PIX, BOLETO ou CREDIT_CARD (pelo nome do catálogo). */
+    public static function formaPagamentoId(string $billingType): ?int
+    {
+        $id = DB::table('formas_pagamento')->where('nome', self::FORMA_PAGAMENTO_NOME[strtoupper($billingType)] ?? '')->value('id');
+
+        return $id ? (int) $id : null;
+    }
+
     public static function sistemaTenantId(): int
     {
         return (int) config('appcheckin.sistema_tenant_id', 1);

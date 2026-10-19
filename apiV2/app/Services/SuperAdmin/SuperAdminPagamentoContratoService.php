@@ -125,11 +125,24 @@ class SuperAdminPagamentoContratoService
             );
 
             $contratoId = (int) $pagamento['tenant_plano_id'];
+            $contrato = $this->contratos->buscarPorId($contratoId);
+
+            // Cobrança antiga paga depois de uma troca de plano: quita a dívida, mas o contrato
+            // cancelado continua cancelado (senão a academia ficaria com dois contratos ativos).
+            if ((int) ($contrato['status_id'] ?? 0) === 3) {
+                return [
+                    'status' => 200,
+                    'body' => [
+                        'type' => 'success',
+                        'message' => 'Pagamento confirmado. O contrato já estava cancelado e continua assim.',
+                        'pagamento' => $this->pagamentos->buscarPorId($id),
+                    ],
+                ];
+            }
+
             if (! $this->pagamentos->temPagamentosPendentes($contratoId)) {
                 $this->contratos->atualizarStatus($contratoId, 1);
             }
-
-            $contrato = $this->contratos->buscarPorId($contratoId);
             $duracaoDias = (int) ($contrato['duracao_dias'] ?? 30);
 
             $dataVencimentoAtual = new \DateTime((string) $pagamento['data_vencimento']);

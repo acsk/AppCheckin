@@ -457,6 +457,17 @@ class AsaasService
     /**
      * @return list<array<string, mixed>>
      */
+    /**
+     * Remove uma cobrança ainda não paga (o link deixa de aceitar pagamento).
+     */
+    public function cancelarCobranca(string $paymentId): bool
+    {
+        $this->validarCredenciais();
+        $res = $this->request('DELETE', '/payments/'.rawurlencode($paymentId));
+
+        return (bool) ($res['deleted'] ?? true);
+    }
+
     public function listarPagamentosPorReferenciaExterna(string $externalReference): array
     {
         $this->validarCredenciais();
@@ -861,9 +872,11 @@ class AsaasService
             $response = Http::withHeaders($headers)->timeout(30)->get($url, $query);
         } else {
             $pending = Http::withHeaders($headers)->asJson()->timeout(30);
-            $response = $method === 'PUT'
-                ? $pending->put($url, $body ?? [])
-                : $pending->post($url, $body ?? []);
+            $response = match ($method) {
+                'PUT' => $pending->put($url, $body ?? []),
+                'DELETE' => $pending->delete($url),
+                default => $pending->post($url, $body ?? []),
+            };
         }
 
         $json = $response->json();

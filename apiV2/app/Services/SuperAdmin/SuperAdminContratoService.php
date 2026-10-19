@@ -7,6 +7,8 @@ use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\TenantRepository;
 use App\Support\TipoCobrancaPlanoSistema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SuperAdminContratoService
 {
@@ -16,6 +18,7 @@ class SuperAdminContratoService
         private readonly PlanoSistemaRepository $planosSistema,
         private readonly PagamentoContratoRepository $pagamentos,
         private readonly CobrancaTenantService $cobranca,
+        private readonly ?CobrancaContratoService $cobrancasGateway = null,
     ) {}
 
     /**
@@ -97,13 +100,13 @@ class SuperAdminContratoService
             return ['status' => 404, 'body' => ['type' => 'error', 'message' => 'Academia não encontrada']];
         }
 
-        $contratoAtivo = $this->contratos->buscarContratoAtivo($tenantId);
+        $contratoAtivo = $this->contratos->buscarContratoVigente($tenantId);
         if ($contratoAtivo) {
             return [
                 'status' => 409,
                 'body' => [
                     'type' => 'error',
-                    'message' => 'Esta academia já possui um contrato ativo',
+                    'message' => 'Esta academia já possui um contrato vigente. Use a troca de plano para mudar o plano.',
                     'contrato_ativo' => [
                         'id' => $contratoAtivo['id'],
                         'plano' => $contratoAtivo['plano_nome'],
@@ -178,6 +181,7 @@ class SuperAdminContratoService
 
         try {
             $gratuito = TipoCobrancaPlanoSistema::isGratuito($plano);
+            $aguardando = $this->cobrancasAguardando($tenantId);
 
             $resultado = $this->contratos->trocarPlano(
                 $tenantId,
@@ -194,12 +198,15 @@ class SuperAdminContratoService
                 ),
             );
 
+            $canceladas = $this->cancelarCobrancasSubstituidas($aguardando);
+
             return [
                 'status' => 200,
                 'body' => [
                     'type' => 'success',
                     'message' => 'Plano trocado com sucesso',
                     'contrato' => $resultado,
+                    'cobrancas_canceladas' => $canceladas,
                 ],
             ];
         } catch (\Throwable $e) {
@@ -208,6 +215,47 @@ class SuperAdminContratoService
                 'body' => ['type' => 'error', 'message' => 'Erro ao trocar plano: '.$e->getMessage()],
             ];
         }
+    }
+
+    /**
+     * Cobranças "Aguardando" dos contratos vigentes da academia (as que a troca de plano substitui).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function cobrancasAguardando(int $tenantId): array
+    {
+        return DB::table('pagamentos_contrato as p')
+            ->join('tenant_planos_sistema as c', 'c.id', '=', 'p.tenant_plano_id')
+            ->where('c.tenant_id', $tenantId)
+            ->where('c.status_id', '!=', 3)
+            ->where('p.status_pagamento_id', 1)
+            ->get(['p.id', 'p.gateway_payment_id'])
+            ->map(fn ($r) => (array) $r)
+            ->all();
+    }
+
+    /**
+     * Na troca, a cobrança que ainda aguardava pagamento era do plano antigo: é cancelada aqui e no Asaas,
+     * para o link antigo não aceitar mais pagamento. Cobranças atrasadas são de período já usado e continuam devidas.
+     *
+     * @param  list<array<string, mixed>>  $cobrancas
+     */
+    private function cancelarCobrancasSubstituidas(array $cobrancas): int
+    {
+        $total = 0;
+        foreach ($cobrancas as $c) {
+            $this->pagamentos->cancelar((int) $c['id'], 'Cancelada na troca de plano');
+            $total++;
+            if (! empty($c['gateway_payment_id'])) {
+                try {
+                    ($this->cobrancasGateway ?? app(CobrancaContratoService::class))->asaas()->cancelarCobranca((string) $c['gateway_payment_id']);
+                } catch (\Throwable $e) {
+                    Log::warning('Troca de plano: cobrança não cancelada no Asaas', ['pagamento_id' => $c['id'], 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return $total;
     }
 
     /**

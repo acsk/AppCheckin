@@ -53,18 +53,25 @@ export default function TrocarPlanoScreen() {
         api.get('/formas-pagamento').catch(() => ({ data: {} })),
         superAdminService.listarAcademias().catch(() => null),
       ]);
-      const c = ct.data;
+      const academia = (ac?.academias || []).find((a) => a.id === tenantId);
+      // contrato-ativo só acha status Ativo; um contrato Pendente (aguardando o 1º pagamento) também pode ser trocado
+      let c = ct.data && ct.data.id ? ct.data : null;
+      if (!c && academia?.contrato?.id) {
+        const det = await api.get(`/superadmin/contratos/${academia.contrato.id}`);
+        c = det.data?.contrato || null;
+      }
       if (!c || !c.id) {
         setMissing(true);
         return;
       }
-      const academia = (ac?.academias || []).find((a) => a.id === tenantId);
-      setContract({ id: c.id, academy: academia?.nome || academiaNome || `Academia #${tenantId}`, plan: c.plano_nome, start: c.data_inicio });
-      setCurrentPlan(planFromApi({
+      const available = (pl.planos || []).map(planFromApi);
+      const listed = available.find((x) => x.id === Number(c.plano_sistema_id));
+      setContract({ id: c.id, academy: academia?.nome || c.tenant_nome || academiaNome || `Academia #${tenantId}`, plan: c.plano_nome, start: c.data_inicio, pending: Number(c.status_id) === 2 });
+      setCurrentPlan(listed || planFromApi({
         id: c.plano_sistema_id, nome: c.plano_nome, codigo: c.plano_codigo, tipo_cobranca: c.tipo_cobranca,
-        valor: c.valor, valor_por_aluno: c.valor_por_aluno, duracao_dias: c.duracao_dias, max_alunos: c.max_alunos, features: c.features,
+        valor: c.valor ?? c.plano_valor, valor_por_aluno: c.valor_por_aluno, duracao_dias: c.duracao_dias, max_alunos: c.max_alunos, features: c.features,
       }));
-      setPlans((pl.planos || []).map(planFromApi));
+      setPlans(available);
       setPaymentMethods(pickPaymentMethods((fp.data.formas || fp.data.formas_pagamento || []).filter((f) => f.ativo === undefined || Number(f.ativo) === 1)));
       setActiveStudents(academia && academia.alunos_ativos != null ? Number(academia.alunos_ativos) : undefined);
     } catch (error) {

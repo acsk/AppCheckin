@@ -74,6 +74,7 @@ const SECTIONS = [
         icon: 'settings',
         children: [
           { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3] },
+          { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', roles: [3] },
           { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3] },
         ],
       },

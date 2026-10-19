@@ -336,7 +336,7 @@ class PlanosSaasContratoTest extends TestCase
     private function contratoService(array $plano, int $alunosAtivos = 0): array
     {
         $contratos = Mockery::mock(TenantPlanoRepository::class);
-        $contratos->shouldReceive('buscarContratoAtivo')->andReturn(null)->byDefault();
+        $contratos->shouldReceive('buscarContratoVigente')->andReturn(null)->byDefault();
 
         $tenants = Mockery::mock(TenantRepository::class);
         $tenants->shouldReceive('findById')->andReturn(['id' => 7, 'nome' => 'Academia']);

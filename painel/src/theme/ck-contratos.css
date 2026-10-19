@@ -130,3 +130,16 @@
 .ck-tp-note { margin: 0; font-size: 13px; line-height: 19px; color: var(--sidebar-muted); }
 .ck-tp-arrow { justify-self: center; transform: rotate(90deg); margin: -4px 0; }
 .ck-ct-scope { margin-bottom: var(--space-6); }
+
+/* Plano do Check-in, visto pelo admin da academia (src/components/ck/meuPlano.js) */
+.ck-mp { display: grid; gap: var(--space-5); max-width: 1240px; }
+.ck-mp > .ck-pagehead { margin-bottom: var(--space-1); }
+.ck-mp__status { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 0; font-size: 13px; color: var(--ink-muted); }
+.ck-mp-formas { display: grid; gap: var(--space-2); grid-template-columns: 1fr; }
+.ck-mp-forma { display: grid; flex: 1; min-width: 0; text-align: left; }
+.ck-mp-forma span { font-size: 13px; line-height: 18px; color: var(--ink-muted); font-weight: 500; }
+.ck-mp-pix { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: var(--space-4); min-width: 0; }
+.ck-mp-pix img { border-radius: var(--radius-md); background: #fff; padding: 8px; border: 1px solid var(--line); }
+.ck-mp-pix__code { box-sizing: border-box; min-width: 0; display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); }
+.ck-mp-pix__code code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px; }
+.ck-mp-pix > .ck-al-hint { justify-self: stretch; }

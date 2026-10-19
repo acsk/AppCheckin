@@ -11,9 +11,10 @@ class TenantPlanoRepository
      */
     public function criar(array $dados): int
     {
-        if ($this->buscarContratoAtivo((int) $dados['tenant_id'])) {
+        // Pendente e bloqueado também contam: uma academia tem no máximo um contrato não cancelado
+        if ($this->buscarContratoVigente((int) $dados['tenant_id'])) {
             throw new \RuntimeException(
-                'Esta academia já possui um contrato ativo. Desative ou cancele o contrato atual antes de criar um novo.',
+                'Esta academia já possui um contrato vigente. Cancele o contrato atual ou use a troca de plano.',
             );
         }
 
@@ -166,12 +167,16 @@ class TenantPlanoRepository
             ->all();
     }
 
-    public function desativarContratoAtivo(int $tenantId): bool
+    /**
+     * Cancela todo contrato não cancelado da academia (ativo, pendente ou bloqueado).
+     * Usado na troca de plano: o contrato anterior sai de cena mesmo se ainda aguardava o primeiro pagamento.
+     */
+    public function cancelarContratosVigentes(int $tenantId): int
     {
         return DB::table('tenant_planos_sistema')
             ->where('tenant_id', $tenantId)
-            ->where('status_id', 1)
-            ->update(['status_id' => 3]) >= 0;
+            ->where('status_id', '!=', 3)
+            ->update(['status_id' => 3, 'updated_at' => DB::raw('NOW()')]);
     }
 
     /**
@@ -190,7 +195,7 @@ class TenantPlanoRepository
         ?callable $aposCriar = null,
     ): array {
         return DB::transaction(function () use ($tenantId, $novoPlanoSistemaId, $statusId, $dataFim, $observacoes, $aposCriar) {
-            $this->desativarContratoAtivo($tenantId);
+            $this->cancelarContratosVigentes($tenantId);
 
             $contratoId = $this->criar([
                 'tenant_id' => $tenantId,

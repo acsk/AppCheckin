@@ -22,8 +22,6 @@ class CheckoutService
 {
     public const FORMAS = ['PIX', 'BOLETO', 'CREDIT_CARD'];
 
-    private const FORMA_PAGAMENTO_NOME = ['PIX' => 'Pix', 'BOLETO' => 'Boleto', 'CREDIT_CARD' => 'Cartão'];
-
     public function __construct(
         private readonly PlanoSistemaRepository $planos,
         private readonly UsuarioRepository $usuarios,
@@ -264,8 +262,6 @@ class CheckoutService
 
     private function formaPagamentoId(string $forma): ?int
     {
-        $id = DB::table('formas_pagamento')->where('nome', self::FORMA_PAGAMENTO_NOME[$forma] ?? '')->value('id');
-
-        return $id ? (int) $id : null;
+        return CobrancaContratoService::formaPagamentoId($forma);
     }
 }
