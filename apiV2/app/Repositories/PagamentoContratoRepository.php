@@ -24,6 +24,21 @@ class PagamentoContratoRepository
     }
 
     /**
+     * @param  array{gateway: string, gateway_payment_id: string, gateway_billing_type: ?string, gateway_url: ?string}  $dados
+     */
+    public function salvarGateway(int $id, array $dados): void
+    {
+        DB::table('pagamentos_contrato')->where('id', $id)->update($dados);
+    }
+
+    public function buscarPorGatewayId(string $gatewayPaymentId): ?array
+    {
+        $row = DB::table('pagamentos_contrato')->where('gateway_payment_id', $gatewayPaymentId)->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function buscarPorId(int $id): ?array

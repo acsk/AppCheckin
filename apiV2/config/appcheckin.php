@@ -56,6 +56,9 @@ return [
     */
     'uploads_legacy_dir' => env('UPLOADS_LEGACY_DIR', ''),
 
+    // Tenant do próprio AppCheckin: a conta Asaas dele cobra os contratos das academias.
+    'sistema_tenant_id' => (int) env('APPCHECKIN_SISTEMA_TENANT_ID', 1),
+
     'asaas' => [
         'sandbox_url' => env('ASAAS_SANDBOX_URL', 'https://api-sandbox.asaas.com/v3'),
         'production_url' => env('ASAAS_PRODUCTION_URL', 'https://api.asaas.com/v3'),

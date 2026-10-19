@@ -1,7 +1,10 @@
 import logo from '../assets/logo.png';
 import { LINKS } from '../config';
+import { assinarHref, usePlanosPrincipais } from '../planos';
 
 export default function Nav() {
+  const { free, pago } = usePlanosPrincipais();
+
   return (
     <header className="nav">
       <div className="wrap nav-in">
@@ -19,7 +22,7 @@ export default function Nav() {
         </nav>
         <div className="nav-cta">
           <a className="btn btn-line btn-sm" href={LINKS.entrar}>Entrar</a>
-          <a className="btn btn-dark btn-sm" href="#contato">Agendar demonstração</a>
+          <a className="btn btn-dark btn-sm" href={assinarHref(free || pago)}>{free ? 'Começar grátis' : 'Assinar'}</a>
         </div>
       </div>
     </header>

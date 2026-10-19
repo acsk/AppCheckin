@@ -4,7 +4,9 @@ namespace App\Services\Asaas;
 
 use App\Services\EncryptionService;
 use App\Services\PagamentoPlanoService;
+use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Support\AsaasPagamentoStatus;
+use App\Support\ReferenciaExterna;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -45,6 +47,16 @@ class AsaasWebhookService
 
         if ($event === '' || $paymentId === '') {
             return ['status' => 400, 'body' => ['success' => false, 'received' => false, 'error' => 'Webhook Asaas inválido']];
+        }
+
+        $pagamentoContratoId = ReferenciaExterna::pagamentoContrato((string) ($payment['externalReference'] ?? ''));
+        if ($pagamentoContratoId !== null
+            || (Schema::hasColumn('pagamentos_contrato', 'gateway_payment_id') && DB::table('pagamentos_contrato')->where('gateway_payment_id', $paymentId)->exists())) {
+            if (! $this->tokenWebhookValido(CobrancaContratoService::sistemaTenantId(), $accessTokenHeader)) {
+                return ['status' => 401, 'body' => ['success' => false, 'error' => 'Webhook token inválido']];
+            }
+
+            return app(AsaasContratoWebhook::class)->processar($event, $payment, $pagamentoContratoId, $this->pagamentoEstaPago($event, $payment));
         }
 
         $pix = DB::table('pagamentos_pix')->where('payment_id', $paymentId)->first();

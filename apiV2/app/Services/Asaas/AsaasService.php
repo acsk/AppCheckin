@@ -16,15 +16,25 @@ use Illuminate\Support\Facades\Log;
 class AsaasService
 {
     private string $accessToken = '';
+
     private string $baseUrl;
+
     private bool $productionMode = false;
+
     private ?int $tenantId = null;
+
     private bool $enablePix = true;
+
     private bool $enableBoleto = true;
+
     private bool $enableCreditCard = true;
+
     private bool $enableSobretaxaAntecipacao = false;
+
     private float $sobretaxaAvistaPercentual = AsaasSobretaxaAntecipacao::AVISTA_PADRAO;
+
     private float $sobretaxaParceladaPercentual = AsaasSobretaxaAntecipacao::PARCELADA_PADRAO;
+
     /** @var array<string, mixed>|null */
     private ?array $taxasContaCache = null;
 
@@ -97,6 +107,102 @@ class AsaasService
             'qr_code_base64' => $encoded !== '' ? $encoded : null,
             'ticket_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
             'raw' => ['payment' => $payment, 'qr' => $qr],
+        ];
+    }
+
+    public function configurada(): bool
+    {
+        try {
+            $this->validarCredenciais();
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Formas que a conta aceita (PIX, BOLETO, CREDIT_CARD), ou nenhuma sem credenciais válidas.
+     *
+     * @return list<string>
+     */
+    public function formasHabilitadas(): array
+    {
+        return $this->configurada() ? $this->billingTypesHabilitados() : [];
+    }
+
+    /**
+     * Cobrança de um pagamento de contrato do SaaS, na conta Asaas do sistema.
+     * O cliente recebe as notificações do Asaas (e-mail e SMS) desta e das próximas cobranças.
+     *
+     * @param  array{pagamento_id: int, valor: float, billing_type: string, vencimento?: string, descricao?: string, cliente: array{name: string, cpfCnpj: string, email?: ?string, mobilePhone?: ?string}}  $data
+     * @return array{id: string, status: string, billing_type: string, vencimento: ?string, url: ?string, boleto_url: ?string, pix_payload: ?string, pix_qr_code: ?string, external_reference: string}
+     */
+    public function criarCobrancaContrato(array $data): array
+    {
+        $this->validarCredenciais();
+
+        $billingType = strtoupper((string) $data['billing_type']);
+        if (! in_array($billingType, $this->billingTypesHabilitados(), true)) {
+            throw new \RuntimeException('Forma de pagamento não habilitada na conta Asaas do sistema.');
+        }
+
+        $doc = preg_replace('/[^0-9]/', '', (string) ($data['cliente']['cpfCnpj'] ?? ''));
+        if (! in_array(strlen($doc), [11, 14], true)) {
+            throw new \RuntimeException('CPF ou CNPJ válido é obrigatório para a cobrança');
+        }
+
+        $externalReference = ReferenciaExterna::contrato((int) $data['pagamento_id']);
+        $customerId = $this->encontrarOuCriarCliente([
+            'name' => trim((string) ($data['cliente']['name'] ?? '')),
+            'cpfCnpj' => $doc,
+            'email' => $data['cliente']['email'] ?? null,
+            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['cliente']['mobilePhone'] ?? '')) ?: null,
+        ], true);
+
+        $payment = $this->request('POST', '/payments', [
+            'customer' => $customerId,
+            'billingType' => $billingType,
+            'value' => round((float) $data['valor'], 2),
+            'dueDate' => $data['vencimento'] ?? AcademyDateTime::today(),
+            'description' => $data['descricao'] ?? 'AppCheckin',
+            'externalReference' => $externalReference,
+        ]);
+
+        $paymentId = (string) ($payment['id'] ?? '');
+        if ($paymentId === '') {
+            throw new \RuntimeException('Asaas não retornou o ID da cobrança');
+        }
+
+        try {
+            $this->garantirWebhook();
+        } catch (\Throwable $e) {
+            Log::warning('Asaas: falha ao garantir webhook', ['error' => $e->getMessage()]);
+        }
+
+        $pixPayload = null;
+        $pixQr = null;
+        if ($billingType === 'PIX') {
+            try {
+                $qr = $this->request('GET', '/payments/'.$paymentId.'/pixQrCode');
+                $pixPayload = $qr['payload'] ?? null;
+                $encoded = (string) ($qr['encodedImage'] ?? '');
+                $pixQr = $encoded === '' ? null : (str_starts_with($encoded, 'data:') ? $encoded : 'data:image/png;base64,'.$encoded);
+            } catch (\Throwable $e) {
+                Log::warning('Asaas: QR Code PIX indisponível', ['payment_id' => $paymentId, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return [
+            'id' => $paymentId,
+            'status' => $this->mapStatus((string) ($payment['status'] ?? 'PENDING')),
+            'billing_type' => $billingType,
+            'vencimento' => $payment['dueDate'] ?? null,
+            'url' => $payment['invoiceUrl'] ?? null,
+            'boleto_url' => $payment['bankSlipUrl'] ?? null,
+            'pix_payload' => $pixPayload,
+            'pix_qr_code' => $pixQr,
+            'external_reference' => $payment['externalReference'] ?? $externalReference,
         ];
     }
 
@@ -461,7 +567,7 @@ class AsaasService
         ]);
 
         if ($this->tenantId && $this->webhookSecret() === null) {
-            $encryption = new EncryptionService();
+            $encryption = new EncryptionService;
             DB::table('tenant_payment_credentials')
                 ->where('tenant_id', $this->tenantId)
                 ->where('provider', 'asaas')
@@ -510,7 +616,7 @@ class AsaasService
         return $this->decryptIfNeeded($secret);
     }
 
-    private function encontrarOuCriarCliente(array $dados): string
+    private function encontrarOuCriarCliente(array $dados, bool $notificar = false): string
     {
         $cpf = $dados['cpfCnpj'];
         $busca = $this->request('GET', '/customers', null, [
@@ -525,7 +631,7 @@ class AsaasService
         $payload = [
             'name' => $dados['name'] !== '' ? $dados['name'] : 'Aluno',
             'cpfCnpj' => $cpf,
-            'notificationDisabled' => true,
+            'notificationDisabled' => ! $notificar,
         ];
         if (! empty($dados['email'])) {
             $payload['email'] = $dados['email'];
@@ -674,7 +780,7 @@ class AsaasService
             return '';
         }
 
-        $encryption = new EncryptionService();
+        $encryption = new EncryptionService;
         if ($encryption->isEncrypted($value)) {
             try {
                 return $encryption->decrypt($value);

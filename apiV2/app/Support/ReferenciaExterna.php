@@ -30,6 +30,18 @@ final class ReferenciaExterna
         return self::gerar('PAC', $contratoId);
     }
 
+    /** Pagamento de contrato do SaaS (pagamentos_contrato.id), cobrado na conta do sistema. */
+    public static function contrato(int|string $pagamentoId): string
+    {
+        return self::gerar('CTR', $pagamentoId);
+    }
+
+    /** Id do pagamento de contrato numa referência CTR, ou null se a referência for de outro tipo. */
+    public static function pagamentoContrato(string $ref): ?int
+    {
+        return preg_match('/^CTR-(\d+)-/', $ref, $m) === 1 ? (int) $m[1] : null;
+    }
+
     /**
      * Normaliza um id vindo de payload externo (ex.: $data/metadata_extra do gateway), onde o
      * valor pode faltar, vir vazio, não-numérico ou nem sequer ser escalar.

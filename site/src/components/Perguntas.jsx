@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { nomeCurto, usePlanosPrincipais } from '../planos';
 
 const FAQS = [
   { q: 'Funciona para natação e para musculação?', a: 'Sim. Cada aula tem modalidade, professor, horário, vagas e prazo de check-in. Natação, musculação, funcional e WOD convivem na mesma agenda.' },
@@ -12,8 +13,20 @@ const FAQS = [
 const PM_ABERTO = { transform: 'rotate(45deg)', background: '#171a21', color: '#ffffff' };
 const PM_FECHADO = { transform: 'rotate(0deg)' };
 
+function perguntaFree(free, pago) {
+  const alunos = free.maxAlunos ? `Até ${free.maxAlunos} alunos ativos` : 'Sem limite de alunos';
+  const prazo = free.prazo ? `por ${free.prazo} dias` : 'sem prazo para acabar';
+  const depois = pago ? ` Quando quiser receber pagamentos pelo app e ter o financeiro, muda para o ${nomeCurto(pago)}.` : '';
+  return {
+    q: `O plano ${free.nome} é grátis mesmo?`,
+    a: `É. ${alunos}, sem cartão e ${prazo}. Você usa app do aluno, check-in, modo professor e ranking.${depois}`,
+  };
+}
+
 export default function Perguntas() {
   const [aberta, setAberta] = useState(0);
+  const { free, pago } = usePlanosPrincipais();
+  const faqs = free ? [perguntaFree(free, pago), ...FAQS] : FAQS;
 
   return (
     <section className="sec gray" id="perguntas">
@@ -23,7 +36,7 @@ export default function Perguntas() {
           <h2 className="h2">Antes de você perguntar.</h2>
         </div>
         <div className="faq">
-          {FAQS.map((f, i) => {
+          {faqs.map((f, i) => {
             const isOpen = aberta === i;
             return (
               <div key={f.q}>

@@ -27,13 +27,6 @@ class PlanoSistemaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function publicos(): JsonResponse
-    {
-        $result = $this->service->publicos();
-
-        return response()->json($result['body'], $result['status'], ['Cache-Control' => 'public, max-age=300'], JSON_UNESCAPED_UNICODE);
-    }
-
     public function show(int $id): JsonResponse
     {
         $result = $this->service->show($id);

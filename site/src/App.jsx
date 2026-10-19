@@ -10,8 +10,11 @@ import Planos from './components/Planos';
 import Perguntas from './components/Perguntas';
 import Contato from './components/Contato';
 import Footer from './components/Footer';
+import Checkout from './components/Checkout';
 
 export default function App() {
+  if (window.location.pathname.replace(/\/+$/, '') === '/assinar') return <Checkout />;
+
   return (
     <div className="lp">
       <Nav />

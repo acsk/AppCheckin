@@ -14,10 +14,10 @@ use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
 use App\Http\Controllers\Api\V2\MobileController;
 use App\Http\Controllers\Api\V2\NotificationController;
+use App\Http\Controllers\Api\V2\SiteController;
 use App\Http\Controllers\Api\V2\StatusController;
 use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
 use App\Http\Controllers\Api\V2\SuperAdmin\PapelController as SuperAdminPapelController;
-use App\Http\Controllers\Api\V2\SuperAdmin\PlanoSistemaController as SuperAdminPlanoSistemaController;
 use App\Http\Controllers\Api\V2\UploadsController;
 use Illuminate\Support\Facades\Route;
 
@@ -40,7 +40,8 @@ Route::prefix('v2')->group(function () {
     Route::post('/webhooks/asaas', [AsaasWebhookController::class, 'handle']);
 
     // Planos do sistema exibidos no site (público)
-    Route::get('/site/planos', [SuperAdminPlanoSistemaController::class, 'publicos']);
+    Route::get('/site/planos', [SiteController::class, 'planos']);
+    Route::post('/site/assinar', [SiteController::class, 'assinar']);
 
     // Rotas públicas (paridade Slim)
     Route::get('/cep/{cep}', [CepController::class, 'buscar'])->where('cep', '[0-9\\-]+');

@@ -1,4 +1,10 @@
+import { LINKS } from '../config';
+import { assinarHref, resumoFree, usePlanosPrincipais } from '../planos';
+
 export default function Hero() {
+  const { free, pago } = usePlanosPrincipais();
+  const nota = free ? `${resumoFree(free)} · iPhone e Android` : 'Para academias, boxes e escolas de natação · iPhone e Android';
+
   return (
     <section className="hero" id="topo">
       <div className="wrap">
@@ -6,15 +12,15 @@ export default function Hero() {
         <h1 className="h1">Check-in em <em>um toque.</em> Sua academia inteira em uma tela.</h1>
         <p className="lead">O aluno marca presença, paga o plano e acompanha a semana pelo celular. Você vê alunos, turmas e financeiro em tempo real no painel.</p>
         <div className="hero-ctas">
-          <a className="btn btn-glow" href="#contato">
-            Agendar demonstração
+          <a className="btn btn-glow" href={assinarHref(free || pago)}>
+            {free ? 'Começar grátis' : 'Assinar agora'}
             <svg className="ic" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </a>
-          <a className="btn btn-line" href="#como-funciona">Ver como funciona</a>
+          <a className="btn btn-line" href={LINKS.demonstracao}>Agendar demonstração</a>
         </div>
-        <p className="hero-note">Para academias, boxes e escolas de natação · iPhone e Android</p>
+        <p className="hero-note">{nota}</p>
       </div>
       <div className="stage">
         <div className="chip chip-a float">

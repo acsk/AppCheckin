@@ -40,20 +40,69 @@ export function limitesTexto(p) {
   return out;
 }
 
-/** Planos marcados para o site no painel. Começa com o retrato do build e atualiza pela API. */
-export function usePlanos() {
-  const [planos, setPlanos] = useState(() => snapshot.map(normalizar));
+export const gratis = (p) => p.tipo === 'gratuito';
+
+/** "AppCheckin Completo" vira "Completo" nos botões e títulos. */
+export const nomeCurto = (p) => p.nome.replace(/^AppCheckin\s+/i, '') || p.nome;
+
+/** "Grátis até 100 alunos ativos, sem cartão" — respeita prazo e limite do plano grátis. */
+export function resumoFree(p) {
+  const alunos = p.maxAlunos ? `até ${num(p.maxAlunos)} alunos ativos` : 'sem limite de alunos';
+  return p.prazo ? `Grátis por ${plural(p.prazo, 'dia', 'dias')}, ${alunos}, sem cartão` : `Grátis ${alunos}, sem cartão`;
+}
+
+/** Valor de um ciclo para a quantidade de alunos informada. */
+export function valorCiclo(p, alunos) {
+  if (p.tipo === 'por_aluno') return Math.min(alunos, p.maxAlunos || alunos) * p.porAluno;
+  return p.tipo === 'gratuito' ? 0 : p.valor;
+}
+
+export function assinarHref(p) {
+  return p ? `/assinar?plano=${p.id}` : '/assinar';
+}
+
+const inicial = { planos: snapshot.map(normalizar), formas: null, carregado: false };
+let pedido = null;
+
+function carregar() {
+  pedido ??= fetch(`${API_URL}/site/planos`)
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then((d) => ({
+      planos: Array.isArray(d.planos) && d.planos.length ? d.planos.map(normalizar) : inicial.planos,
+      formas: Array.isArray(d.formas_pagamento) ? d.formas_pagamento : [],
+      carregado: true,
+    }))
+    .catch(() => {
+      pedido = null;
+      return { ...inicial, formas: [], carregado: true };
+    });
+  return pedido;
+}
+
+/**
+ * Planos marcados para o site no painel e as formas de pagamento ativas no Asaas do AppCheckin.
+ * Começa com o retrato do build e atualiza pela API (uma requisição para a página toda).
+ */
+export function useCatalogo() {
+  const [catalogo, setCatalogo] = useState(inicial);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    fetch(`${API_URL}/site/planos`, { signal: ctrl.signal })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((d) => {
-        if (Array.isArray(d.planos) && d.planos.length) setPlanos(d.planos.map(normalizar));
-      })
-      .catch(() => {});
-    return () => ctrl.abort();
+    let vivo = true;
+    carregar().then((c) => vivo && setCatalogo(c));
+    return () => {
+      vivo = false;
+    };
   }, []);
 
-  return planos;
+  return catalogo;
+}
+
+export function usePlanos() {
+  return useCatalogo().planos;
+}
+
+/** Plano grátis e plano pago em destaque, na ordem do painel. */
+export function usePlanosPrincipais() {
+  const planos = usePlanos();
+  return { planos, free: planos.find(gratis) || null, pago: planos.find((p) => !gratis(p)) || null };
 }
