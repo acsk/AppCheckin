@@ -75,6 +75,7 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $l = $this->linha($r, 'asaas:pay_b');
         $this->assertSame('sem_baixa', $l['status']);
         $this->assertSame(10, $l['parcela']['id']);
+        $this->assertSame('sem_baixa', $l['baixa']);
         $this->assertStringContainsString('parcela #10 continua em aberto', $l['motivo']);
         $this->assertTrue($l['pode_reprocessar']);
     }
@@ -132,6 +133,9 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $this->assertSame('sem_recebimento', $semReceb['status']);
         $this->assertSame('pay_sumiu', $semReceb['payment_id']);
         $this->assertSame('manual', $this->linha($r, 'checkin:21')['status']);
+        $this->assertSame('Baixa manual', $this->linha($r, 'checkin:21')['baixa_nome']);
+        $this->assertSame('automatica', $semReceb['baixa']);
+        $this->assertSame([['forma' => 'Dinheiro', 'quantidade' => 1, 'valor' => 80.0]], $r['resumo']['checkin']['manual_por_forma']);
         $this->assertCount(2, $r['linhas'], 'parcela paga fora do período não entra');
         $this->assertSame(1, $r['resumo']['pendencias']);
         $this->assertEqualsWithDelta(80.0, $r['resumo']['checkin']['manual'], 0.001);

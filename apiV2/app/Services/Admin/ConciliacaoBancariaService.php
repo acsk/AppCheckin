@@ -223,6 +223,10 @@ class ConciliacaoBancariaService
         }
 
         $linhas = array_values(array_filter($linhas, fn ($l) => $l['status'] !== 'ignorar'));
+        foreach ($linhas as &$linha) {
+            $linha += self::baixaDaLinha($linha['parcela']);
+        }
+        unset($linha);
         usort($linhas, fn ($a, $b) => strcmp((string) $b['data'], (string) $a['data']) ?: strcmp((string) $a['id'], (string) $b['id']));
 
         return ['resumo' => self::resumo($linhas), 'linhas' => $linhas];
@@ -434,6 +438,7 @@ class ConciliacaoBancariaService
         $porProvedor = [];
         $porForma = [];
         $checkin = ['integracao' => 0.0, 'manual' => 0.0, 'manual_quantidade' => 0];
+        $manualPorForma = [];
 
         foreach ($linhas as $linha) {
             $contagem[$linha['status']]++;
@@ -442,6 +447,10 @@ class ConciliacaoBancariaService
                 if ($linha['status'] === 'manual') {
                     $checkin['manual'] += $linha['valor'];
                     $checkin['manual_quantidade']++;
+                    $forma = $linha['forma'] ?: 'Não informada';
+                    $manualPorForma[$forma] ??= ['forma' => $forma, 'quantidade' => 0, 'valor' => 0.0];
+                    $manualPorForma[$forma]['quantidade']++;
+                    $manualPorForma[$forma]['valor'] += $linha['valor'];
                 } else {
                     $checkin['integracao'] += $linha['valor'];
                 }
@@ -499,8 +508,28 @@ class ConciliacaoBancariaService
             'provedor' => $arred($total),
             'por_provedor' => array_values(array_map($arred, $porProvedor)),
             'por_forma' => $formas,
-            'checkin' => $arred($checkin),
+            'checkin' => $arred($checkin) + ['manual_por_forma' => array_values(array_map($arred, $manualPorForma))],
         ];
+    }
+
+    /**
+     * Como a parcela foi baixada: pela integração com o provedor, manualmente (dinheiro, Pix direto,
+     * maquininha, importação) ou ainda sem baixa.
+     *
+     * @param  array<string, mixed>|null  $parcela
+     * @return array{baixa: string, baixa_nome: string}
+     */
+    private static function baixaDaLinha(?array $parcela): array
+    {
+        if (! $parcela || (int) $parcela['status_pagamento_id'] !== 2) {
+            return ['baixa' => 'sem_baixa', 'baixa_nome' => 'Sem baixa'];
+        }
+        if ((int) $parcela['tipo_baixa_id'] === self::BAIXA_INTEGRACAO) {
+            return ['baixa' => 'automatica', 'baixa_nome' => 'Baixa automática'];
+        }
+        $tipo = trim((string) ($parcela['tipo_baixa_nome'] ?? ''));
+
+        return ['baixa' => 'manual', 'baixa_nome' => $tipo === '' || strcasecmp($tipo, 'Manual') === 0 ? 'Baixa manual' : 'Baixa por '.mb_strtolower($tipo)];
     }
 
     /**
@@ -518,6 +547,7 @@ class ConciliacaoBancariaService
             'data_vencimento' => $l['data_vencimento'] ? substr((string) $l['data_vencimento'], 0, 10) : null,
             'forma' => $l['forma_pagamento_nome'] ?? null,
             'tipo_baixa_id' => isset($l['tipo_baixa_id']) ? (int) $l['tipo_baixa_id'] : null,
+            'tipo_baixa_nome' => $l['tipo_baixa_nome'] ?? null,
         ];
     }
 
@@ -643,11 +673,12 @@ class ConciliacaoBancariaService
             ->leftJoin('alunos as a', 'a.id', '=', 'pp.aluno_id')
             ->leftJoin('planos as p', 'p.id', '=', 'pp.plano_id')
             ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'pp.forma_pagamento_id')
+            ->leftJoin('tipos_baixa as tb', 'tb.id', '=', 'pp.tipo_baixa_id')
             ->where('pp.tenant_id', $tenantId)
             ->select([
                 'pp.id', 'pp.matricula_id', 'pp.valor', $liquido, 'pp.status_pagamento_id', 'pp.data_pagamento',
                 'pp.data_vencimento', 'pp.tipo_baixa_id', 'pp.observacoes', 'a.nome as aluno_nome', 'p.nome as plano_nome',
-                'fp.nome as forma_pagamento_nome',
+                'fp.nome as forma_pagamento_nome', 'tb.nome as tipo_baixa_nome',
             ]);
 
         $porId = [];
