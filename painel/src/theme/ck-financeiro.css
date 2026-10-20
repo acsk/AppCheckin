@@ -183,3 +183,24 @@
 .ck-as-pend span { font-size: 13px; line-height: 18px; color: var(--ink); overflow-wrap: anywhere; }
 .ck-as-pend li > .ck-as-pend__actions { flex: none; align-self: center; display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 560px) { .ck-as-pend li { flex-wrap: wrap; } }
+
+/* Conciliação bancária (src/screens/financeiro/ConciliacaoBancariaScreen.js) */
+.ck-cb .ck-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ck-cb .ck-ml__chipdot--info { background: var(--info); }
+.ck-cb .ck-fin__range { align-items: flex-start; }
+.ck-cb .ck-fin__range > .ck-icon { flex: none; margin-top: 2px; }
+.ck-fin__period .ck-seg__opt { white-space: nowrap; }
+.ck-cb-facts { margin: 0; display: grid; gap: 0; }
+.ck-cb-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--line); }
+.ck-cb-facts > div:first-child { border-top: 0; padding-top: 0; }
+.ck-cb-facts dt { font-size: 14px; font-weight: 600; color: var(--ink); min-width: 0; }
+.ck-cb-facts dd { margin: 0; font-size: 15px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-cb-facts dt span, .ck-cb-facts dd span { display: block; font-size: 13px; font-weight: 400; color: var(--ink-muted); }
+.ck-cb-table td { vertical-align: top; }
+.ck-cb-table .is-num .ck-mt-cell__main { font-variant-numeric: tabular-nums; }
+.ck-cb__fee { color: var(--danger); }
+.ck-cb__sit { min-width: 180px; max-width: 280px; }
+.ck-cb__why { display: block; margin-top: 4px; font-size: 13px; line-height: 18px; color: var(--ink-muted); white-space: normal; }
+.ck-cb__acts { display: block; margin-top: var(--space-2); }
+.ck-cb__prov { display: inline-flex; align-items: center; gap: 2px; }
+.ck-cb__prov .ck-iconbtn { margin: -6px 0; }

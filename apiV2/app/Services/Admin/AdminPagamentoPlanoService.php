@@ -32,10 +32,17 @@ class AdminPagamentoPlanoService
                 FROM pagamentos_plano p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
-                INNER JOIN alunos a ON p.aluno_id = a.id
-                INNER JOIN planos pl ON p.plano_id = pl.id
+                LEFT JOIN alunos a ON p.aluno_id = a.id
+                LEFT JOIN planos pl ON p.plano_id = pl.id
                 WHERE p.tenant_id = ?';
         $bindings = [$tenantId];
+        // periodo_por=pagamento: só as pagas, pela data do pagamento (regime de caixa, o "Recebido" do
+        // Dashboard, Relatório e Assinaturas). Padrão: pela data de vencimento.
+        $porPagamento = ($query['periodo_por'] ?? '') === 'pagamento';
+        $campoData = $porPagamento ? 'p.data_pagamento' : 'p.data_vencimento';
+        if ($porPagamento) {
+            $sql .= ' AND p.status_pagamento_id = 2';
+        }
 
         if (! empty($query['status_pagamento_id'])) {
             $sql .= ' AND p.status_pagamento_id = ?';
@@ -48,15 +55,15 @@ class AdminPagamentoPlanoService
             $bindings[] = $query['aluno_id'];
         }
         if (! empty($query['data_inicio'])) {
-            $sql .= ' AND p.data_vencimento >= ?';
+            $sql .= " AND {$campoData} >= ?";
             $bindings[] = $query['data_inicio'];
         }
         if (! empty($query['data_fim'])) {
-            $sql .= ' AND p.data_vencimento <= ?';
+            $sql .= " AND {$campoData} <= ?";
             $bindings[] = $query['data_fim'];
         }
 
-        $sql .= ' ORDER BY p.data_vencimento DESC';
+        $sql .= " ORDER BY {$campoData} DESC";
 
         return ['status' => 200, 'body' => ['pagamentos' => $this->rows($sql, $bindings)]];
     }

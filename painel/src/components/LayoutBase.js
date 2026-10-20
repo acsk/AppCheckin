@@ -40,6 +40,7 @@ const SECTIONS = [
         icon: 'wallet',
         children: [
           { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3] },
+          { id: 'conciliacao-bancaria', label: 'Conciliação bancária', path: '/financeiro/conciliacao', roles: [3] },
           { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3] },
           { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3] },
           { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3] },

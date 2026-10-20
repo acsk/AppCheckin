@@ -101,7 +101,7 @@ class AdminAssinaturaRepository
                  FROM pagamentos_plano
                  WHERE tenant_id = ?
                    AND status_pagamento_id = 2
-                   AND data_pagamento >= DATE_FORMAT(CURDATE(), \'%Y-%m-01\')',
+                   AND data_pagamento BETWEEN DATE_FORMAT(CURDATE(), \'%Y-%m-01\') AND LAST_DAY(CURDATE())',
                 [$tenantId]
             );
             $pagasMes = [

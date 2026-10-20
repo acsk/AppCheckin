@@ -153,7 +153,7 @@ export function MonthlyChart({ months, currentKey, height = 200 }) {
   );
 }
 
-export function BarList({ items, total, empty = 'Nenhum dado no período.', max = 6 }) {
+export function BarList({ items, total, empty = 'Nenhum dado no período.', max = 6, unit = ['parcela', 'parcelas'] }) {
   if (!items.length) return <p className="ck-fin-empty">{empty}</p>;
   const top = items.slice(0, max);
   const rest = items.slice(max);
@@ -163,7 +163,7 @@ export function BarList({ items, total, empty = 'Nenhum dado no período.', max 
     <ul className="ck-fin-bars">
       {list.map((i) => (
         <li key={i.label}>
-          <span className="ck-fin-bars__label">{i.label}<span>{i.count} {i.count === 1 ? 'parcela' : 'parcelas'}</span></span>
+          <span className="ck-fin-bars__label">{i.label}<span>{i.count} {i.count === 1 ? unit[0] : unit[1]}</span></span>
           <span className="ck-fin-bars__value">{money(i.value)}<span>{pct(i.value, total)}%</span></span>
           <span className="ck-fin-bars__track"><span className="ck-fin-bars__fill" style={{ width: `${(i.value / peak) * 100}%` }} /></span>
         </li>

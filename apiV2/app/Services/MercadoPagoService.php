@@ -1350,6 +1350,42 @@ class MercadoPagoService
      * @param string $externalReference External reference (ex: MAT-158-1771524282)
      * @return array Lista de pagamentos encontrados
      */
+    /**
+     * Pagamentos aprovados no período (date_approved, fuso de Brasília), crus como o MP devolve.
+     * Para a conciliação: traz fee_details e transaction_details.net_received_amount.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarPagamentosAprovados(string $inicio, string $fim, int $maximo = 1000): array
+    {
+        $this->validarCredenciais();
+        $itens = [];
+        $offset = 0;
+        do {
+            $query = http_build_query([
+                'range' => 'date_approved',
+                'begin_date' => $inicio.'T00:00:00.000-03:00',
+                'end_date' => $fim.'T23:59:59.999-03:00',
+                'status' => 'approved',
+                'sort' => 'date_approved',
+                'criteria' => 'asc',
+                'limit' => 100,
+                'offset' => $offset,
+            ]);
+            $pagina = $this->fazerRequisicao('GET', '/v1/payments/search?'.$query);
+            $resultados = is_array($pagina['results'] ?? null) ? $pagina['results'] : [];
+            foreach ($resultados as $item) {
+                if (is_array($item)) {
+                    $itens[] = $item;
+                }
+            }
+            $offset += 100;
+            $total = (int) ($pagina['paging']['total'] ?? 0);
+        } while ($resultados !== [] && $offset < min($total, $maximo));
+
+        return $itens;
+    }
+
     public function buscarPagamentosPorExternalReference(string $externalReference): array
     {
         $this->validarCredenciais();

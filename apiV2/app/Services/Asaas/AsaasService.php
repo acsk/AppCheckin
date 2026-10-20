@@ -480,6 +480,57 @@ class AsaasService
         return array_values(array_filter($itens, 'is_array'));
     }
 
+    /**
+     * Cobranças recebidas no período (paymentDate) mais os cartões confirmados que ainda não caíram
+     * na conta (CONFIRMED não tem paymentDate; filtra pela data da confirmação). Para a conciliação.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarPagamentosDoPeriodo(string $inicio, string $fim, int $maximo = 1000): array
+    {
+        $this->validarCredenciais();
+        $recebidos = $this->paginar(['paymentDate[ge]' => $inicio, 'paymentDate[le]' => $fim], $maximo);
+        $confirmados = array_filter(
+            $this->paginar(['status' => 'CONFIRMED'], $maximo),
+            function ($p) use ($inicio, $fim) {
+                $dia = substr((string) ($p['confirmedDate'] ?? ''), 0, 10);
+
+                return $dia !== '' && $dia >= $inicio && $dia <= $fim;
+            }
+        );
+
+        $porId = [];
+        foreach (array_merge($recebidos, $confirmados) as $p) {
+            if (($p['deleted'] ?? false) === true || empty($p['id'])) {
+                continue;
+            }
+            $porId[(string) $p['id']] = $p;
+        }
+
+        return array_values($porId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filtros
+     * @return list<array<string, mixed>>
+     */
+    private function paginar(array $filtros, int $maximo): array
+    {
+        $itens = [];
+        $offset = 0;
+        do {
+            $pagina = $this->request('GET', '/payments', null, $filtros + ['limit' => 100, 'offset' => $offset]);
+            foreach ((array) ($pagina['data'] ?? []) as $item) {
+                if (is_array($item)) {
+                    $itens[] = $item;
+                }
+            }
+            $offset += 100;
+        } while (($pagina['hasMore'] ?? false) === true && $offset < $maximo);
+
+        return $itens;
+    }
+
     public function obterPagamento(string $paymentId): array
     {
         $this->validarCredenciais();

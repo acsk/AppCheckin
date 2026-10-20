@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [cards, setCards] = useState(null);
   const [stats, setStats] = useState(null);
   const [payments, setPayments] = useState(null);
+  const [recebidos, setRecebidos] = useState(null);
   const [paymentsError, setPaymentsError] = useState('');
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
@@ -56,11 +57,14 @@ export default function Dashboard() {
         if (active) setPaymentsError(err?.mensagemLimpa || err?.error || 'Não foi possível carregar as parcelas.');
         return null;
       }),
-    ]).then(([c, s, p]) => {
+      // "Recebido" pela data do pagamento, mesmo critério do Relatório e de Assinaturas
+      financeiroService.listarRecebidos({ dataInicio: isoDate(monthStart(now, -1)), dataFim: isoDate(monthEnd(now)) }).catch(() => null),
+    ]).then(([c, s, p, r]) => {
       if (!active) return;
       setCards(c?.data || c || null);
       setStats(s?.data || s || null);
       setPayments(p);
+      setRecebidos(r);
       setLoading(false);
     });
     return () => { active = false; };
@@ -71,7 +75,7 @@ export default function Dashboard() {
 
   const derived = useMemo(() => {
     const inMonth = (p, key) => String(p.data_vencimento || '').slice(0, 7) === key;
-    const paidIn = (key) => list.filter((p) => statusOf(p, today) === 'pago' && String(p.data_pagamento || '').slice(0, 7) === key).reduce((a, p) => a + (Number(p.valor) || 0), 0);
+    const paidIn = (key) => (recebidos || []).filter((p) => String(p.data_pagamento || '').slice(0, 7) === key).reduce((a, p) => a + (Number(p.valor) || 0), 0);
     const month = summarize(list.filter((p) => inMonth(p, currentKey)), today);
     const late = list.filter((p) => statusOf(p, today) === 'atrasado');
     const upcoming = list
@@ -86,10 +90,10 @@ export default function Dashboard() {
       upcoming,
       months: byMonth(list, today, from, monthEnd(now)),
     };
-  }, [payments]);
+  }, [payments, recebidos]);
 
-  const received = payments ? derived.receivedNow : Number(c.receita_mensal?.valor) || 0;
-  const trend = payments && derived.receivedPrev > 0
+  const received = recebidos ? derived.receivedNow : Number(c.receita_mensal?.valor) || 0;
+  const trend = recebidos && derived.receivedPrev > 0
     ? (() => {
       const d = Math.round(((derived.receivedNow - derived.receivedPrev) / derived.receivedPrev) * 100);
       return { direction: d < 0 ? 'down' : 'up', label: `${d > 0 ? '+' : ''}${d}% vs. mês passado` };
@@ -130,7 +134,7 @@ export default function Dashboard() {
         {paymentsError ? <Callout tone="warning" title="Parte dos números financeiros não carregou">{paymentsError}</Callout> : null}
 
         <div className="ck-kpis">
-          <KpiCard emphasis icon="wallet" label="Recebido no mês" value={loading ? '—' : money(received)} trend={trend} hint={trend ? null : 'Pagamentos registrados neste mês'} onClick={() => router.push('/financeiro/relatorio')} />
+          <KpiCard emphasis icon="wallet" label="Recebido no mês" value={loading ? '—' : money(received)} trend={trend} hint={trend ? null : 'Parcelas pagas neste mês, pela data do pagamento'} onClick={() => router.push('/financeiro/relatorio')} />
           <KpiCard tone="warning" icon="clock" label="A receber no mês" value={loading ? '—' : money(derived.month.aguardando)} hint={`${derived.month.count.aguardando} ${derived.month.count.aguardando === 1 ? 'parcela aguardando' : 'parcelas aguardando'}`} />
           <KpiCard tone="danger" icon="alert-triangle" label="Em atraso" value={loading ? '—' : money(derived.lateValue)} hint={`${derived.lateCount} ${derived.lateCount === 1 ? 'parcela' : 'parcelas'} nos últimos 6 meses`} onClick={derived.lateCount ? () => router.push('/financeiro/relatorio?status=atrasado&periodo=6m') : undefined} />
           <KpiCard tone="info" icon="users" label="Alunos com matrícula ativa" value={loading ? '—' : ativos.toLocaleString('pt-BR')} hint={`${Number(c.planos_vencendo?.novos_este_mes) || 0} matrículas novas este mês`} onClick={() => router.push('/matriculas')} />
@@ -154,7 +158,7 @@ export default function Dashboard() {
                 <h2 className="ck-mt-box__title">Este mês</h2>
                 <span className="ck-mt-box__sub">Parcelas com vencimento em {now.toLocaleDateString('pt-BR', { month: 'long' })}</span>
               </div>
-              <span className="ck-mt-box__aside">{pct(derived.month.pago, derived.month.total)}% recebido</span>
+              <span className="ck-mt-box__aside">{pct(derived.month.pago, derived.month.total)}% pago</span>
             </div>
             <StatusSplit summary={derived.month} />
           </section>
