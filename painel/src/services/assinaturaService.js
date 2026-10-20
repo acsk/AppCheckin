@@ -21,6 +21,17 @@ const assinaturaService = {
     }
   },
 
+  /** Cancela no provedor uma cobrança órfã (aberta lá, sem parcela em aberto no Check-in). */
+  async cancelarCobranca(assinaturaId, paymentId, tenantId = null) {
+    try {
+      const url = `/${tenantId ? 'superadmin' : 'admin'}/assinaturas/${assinaturaId}/cobrancas/${encodeURIComponent(paymentId)}/cancelar`;
+      const response = await api.post(url, tenantId ? { tenant_id: tenantId } : {});
+      return response.data;
+    } catch (error) {
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async listar(filtros = {}) {
     try {
       const params = {};

@@ -20,6 +20,18 @@ class AssinaturaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function cancelarCobranca(Request $request, int $id, string $paymentId): JsonResponse
+    {
+        $tenantId = (int) $request->input('tenant_id', $request->query('tenant_id', 0));
+        if ($tenantId <= 0) {
+            return response()->json(['success' => false, 'error' => 'tenant_id é obrigatório'], 400, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $result = $this->service->cancelarCobrancaOrfa($tenantId, $id, $paymentId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function cobrancas(Request $request, int $id): JsonResponse
     {
         $tenantId = (int) $request->query('tenant_id', 0);

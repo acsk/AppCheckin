@@ -8,6 +8,7 @@ use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\Asaas\AsaasService;
 use App\Services\MercadoPagoService;
+use App\Services\CobrancaAnteriorService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
@@ -26,6 +27,7 @@ class MobileCompraPlanoService
         private readonly PagamentoPlanoService $pagamentosPlano,
         private readonly MobilePagamentoService $mobilePagamento,
         private readonly PaymentGatewayFactory $gateways,
+        private readonly CobrancaAnteriorService $cobrancasAnteriores,
     ) {}
 
     /**
@@ -477,6 +479,8 @@ class MobileCompraPlanoService
                 $userId,
                 PagamentoPlanoService::obsAguardando($provider)
             );
+            // Cobranças da escolha anterior (ex.: Pix do mensal): lidas antes de gerar a nova, que sobrescreve a assinatura
+            $idsAnteriores = $this->cobrancasAnteriores->idsEmAberto($tenantId, $matriculaId);
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
             $descricaoCompra = $planoCicloId
@@ -591,6 +595,12 @@ class MobileCompraPlanoService
                 $mpError = $e->getMessage();
             }
 
+            // A nova cobrança já existe: a anterior não pode continuar aberta no provedor
+            $anteriores = ['canceladas' => [], 'falhas' => []];
+            if (! $mpError && $idsAnteriores !== []) {
+                $anteriores = $this->cobrancasAnteriores->cancelar($tenantId, $idsAnteriores, [(string) $preferenceId, (string) ($pixData['id'] ?? '')]);
+            }
+
             $body = [
                 'success' => true,
                 'message' => 'Matrícula criada. Complete o pagamento para ativar.',
@@ -618,6 +628,8 @@ class MobileCompraPlanoService
                     'gateway_nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
                     'tipo_cobranca' => $isRecorrente ? 'recorrente' : 'avulso',
                     'recorrente' => $isRecorrente,
+                    'cobrancas_canceladas' => $anteriores['canceladas'],
+                    'aviso' => CobrancaAnteriorService::aviso($anteriores['canceladas']),
                     'pix' => $pixData ? [
                         'payment_id' => $pixData['id'] ?? null,
                         'status' => $pixData['status'] ?? null,

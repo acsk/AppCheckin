@@ -12,6 +12,7 @@ Route::get('/assinaturas/relatorio', [AssinaturaController::class, 'relatorio'])
 Route::get('/assinaturas', [AssinaturaController::class, 'index']);
 Route::post('/assinaturas', [AssinaturaController::class, 'store']);
 Route::get('/assinaturas/{id}/cobrancas', [AssinaturaController::class, 'cobrancas']);
+Route::post('/assinaturas/{id}/cobrancas/{paymentId}/cancelar', [AssinaturaController::class, 'cancelarCobranca']);
 Route::get('/assinaturas/{id}', [AssinaturaController::class, 'show']);
 Route::put('/assinaturas/{id}', [AssinaturaController::class, 'update']);
 Route::post('/assinaturas/{id}/renovar', [AssinaturaController::class, 'renovar']);

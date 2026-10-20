@@ -171,3 +171,15 @@
 .ck-as-tech > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: var(--space-3); font-size: 14px; }
 .ck-as-tech dt { color: var(--ink-muted); }
 .ck-as-tech dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Conciliação: cobranças do provedor sem par no Check-in */
+.ck-as-pend { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.ck-as-pend li { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--warning); border-radius: var(--radius-lg); background: var(--warning-soft); }
+.ck-as-pend li.is-paid { border-color: var(--danger); background: var(--danger-soft); }
+.ck-as-pend li > .ck-icon { flex: none; margin-top: 2px; color: var(--warning); }
+.ck-as-pend li.is-paid > .ck-icon { color: var(--danger); }
+.ck-as-pend li > div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ck-as-pend strong { font-size: 15px; line-height: 20px; }
+.ck-as-pend span { font-size: 13px; line-height: 18px; color: var(--ink); overflow-wrap: anywhere; }
+.ck-as-pend li > .ck-as-pend__actions { flex: none; align-self: center; display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 560px) { .ck-as-pend li { flex-wrap: wrap; } }

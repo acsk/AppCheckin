@@ -134,6 +134,35 @@ class AdminAssinaturaService
      * @param  array<string, mixed>  $params
      * @return array{status: int, body: array<string, mixed>}
      */
+    /**
+     * Cancela no provedor uma cobrança órfã: só se a conciliação, agora, a mostra como aberta sem parcela no Check-in.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function cancelarCobrancaOrfa(int $tenantId, int $assinaturaId, string $paymentId): array
+    {
+        $res = $this->cobrancas($tenantId, $assinaturaId);
+        if ($res['status'] !== 200) {
+            return $res;
+        }
+        $pendencias = $res['body']['conciliacao']['pendencias'] ?? [];
+        $orfa = array_values(array_filter($pendencias, fn ($p) => ($p['payment_id'] ?? null) === $paymentId && ($p['tipo'] ?? '') === 'cobranca_aberta_sem_parcela'));
+        if ($orfa === []) {
+            return $this->erro('Esta cobrança não está em aberto sem parcela no Check-in. Atualize a conciliação.', 422);
+        }
+
+        $r = app(\App\Services\CobrancaAnteriorService::class)->cancelar($tenantId, [$paymentId]);
+        if ($r['falhas'] !== []) {
+            return $this->erro('O provedor não cancelou a cobrança: '.($r['falhas'][0]['erro'] ?? 'erro desconhecido'), 502);
+        }
+
+        return ['status' => 200, 'body' => [
+            'success' => true,
+            'message' => 'Cobrança de R$ '.number_format((float) $orfa[0]['valor'], 2, ',', '.').' cancelada no '.($res['body']['gateway']['nome'] ?? 'provedor').'.',
+            'cancelada' => $r['canceladas'][0] ?? ['payment_id' => $paymentId],
+        ]];
+    }
+
     public function listarSuperAdmin(array $params): array
     {
         $tenantId = ! empty($params['tenant_id']) ? (int) $params['tenant_id'] : null;
@@ -705,6 +734,7 @@ class AdminAssinaturaService
             'date_approved' => $pagamento['confirmedDate'] ?? $pagamento['paymentDate'] ?? null,
             'due_date' => $pagamento['dueDate'] ?? null,
             'invoice_url' => $pagamento['invoiceUrl'] ?? $pagamento['bankSlipUrl'] ?? null,
+            'net_amount' => isset($pagamento['netValue']) && $pagamento['netValue'] !== '' ? (float) $pagamento['netValue'] : null,
             'installment_id' => $pagamento['installment'] ?? null,
             'installment_number' => isset($pagamento['installmentNumber']) ? (int) $pagamento['installmentNumber'] : null,
             'installment_count' => null,
@@ -719,7 +749,7 @@ class AdminAssinaturaService
         return array_map(static fn ($row) => (array) $row, DB::select(
             'SELECT pp.id, pp.matricula_id, pp.valor, pp.status_pagamento_id, sp.nome as status,
                     pp.data_pagamento, pp.data_vencimento, fp.nome as forma_pagamento_nome,
-                    pp.observacoes, pp.created_at
+                    pp.observacoes, pp.created_at, pp.valor_liquido, pp.desconto_provedor
              FROM pagamentos_plano pp
              LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
              LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
@@ -799,13 +829,22 @@ class AdminAssinaturaService
         if (! $vencOk && $provedorPago && $localPago && $provedorForma === 'Cartão' && $localForma === 'Cartão') {
             $vencOk = true;
         }
-        $ok = $valorOk && $situacaoOk && $formaOk && $vencOk;
+        // Líquido: o que o provedor repassa (valor menos taxas) contra o gravado na baixa
+        $provedorLiq = $provedor === null ? null : $this->liquidoProvedor($provedor);
+        $localLiq = $local === null || ($local['valor_liquido'] ?? null) === null || $local['valor_liquido'] === '' ? null : (float) $local['valor_liquido'];
+        $liquidoOk = $provedorLiq === null || ! $provedorPago || ($localLiq !== null && abs($provedorLiq - $localLiq) < 0.02);
+
+        $pendencias = $this->pendenciasProvedor($provedorPagamentos, $pagamentosPlano, $provedor, $gatewayNome);
+        $ok = $valorOk && $situacaoOk && $formaOk && $vencOk && $liquidoOk && $pendencias === [];
 
         $parcelaId = $local === null ? null : (int) $local['id'];
         $titulo = $ok ? 'Tudo conferido' : ($provedor === null || $local === null ? 'Sem par para conferir' : 'Há divergência');
+        if ($pendencias !== [] && $valorOk && $situacaoOk && $formaOk && $vencOk && $liquidoOk) {
+            $titulo = count($pendencias) === 1 ? 'Há uma cobrança pendente no '.$gatewayNome : 'Há cobranças pendentes no '.$gatewayNome;
+        }
         $detalhe = $ok
             ? sprintf('A cobrança no %s bate com a parcela %s da matrícula.', $gatewayNome, $parcelaId ? (string) $parcelaId : 'local')
-            : 'Compare os valores do provedor com a parcela no Check-in.';
+            : ($pendencias !== [] ? 'A cobrança principal bate, mas o provedor tem cobranças sem par no Check-in.' : 'Compare os valores do provedor com a parcela no Check-in.');
 
         $obs = strtolower((string) ($local['observacoes'] ?? ''));
         $baixa = 'Manual';
@@ -828,6 +867,15 @@ class AdminAssinaturaService
                     'provedor_detalhe' => $parcelas > 1 ? sprintf('%d× de R$ %s', $parcelas, number_format((float) ($provedor['valor_parcela'] ?? 0), 2, ',', '.')) : null,
                     'checkin' => $local === null ? null : $localValor,
                     'ok' => $valorOk,
+                ],
+                [
+                    'campo' => 'liquido',
+                    'label' => 'Líquido',
+                    'provedor' => $provedorLiq,
+                    'provedor_detalhe' => $provedorLiq !== null && $provedorValor !== null && $provedorValor - $provedorLiq > 0.004
+                        ? 'taxa R$ '.number_format($provedorValor - $provedorLiq, 2, ',', '.') : null,
+                    'checkin' => $localLiq,
+                    'ok' => $liquidoOk,
                 ],
                 [
                     'campo' => 'situacao',
@@ -853,12 +901,86 @@ class AdminAssinaturaService
                     'ok' => $vencOk,
                 ],
             ],
+            'pendencias' => $pendencias,
             'parcela' => $local === null ? null : [
                 'id' => $parcelaId,
                 'baixa' => $baixa,
                 'pago_em' => $local['data_pagamento'] ?? null,
             ],
         ];
+    }
+
+    /**
+     * Cobranças do provedor fora do par principal que não batem com o Check-in: aberta lá sem parcela
+     * aberta aqui (ex.: Pix de uma escolha que o aluno trocou) ou paga lá sem baixa aqui (dinheiro órfão).
+     *
+     * @param  list<array<string, mixed>>  $provedorPagamentos
+     * @param  list<array<string, mixed>>  $pagamentosPlano
+     * @param  array<string, mixed>|null  $principal
+     * @return list<array<string, mixed>>
+     */
+    private function pendenciasProvedor(array $provedorPagamentos, array $pagamentosPlano, ?array $principal, string $gatewayNome): array
+    {
+        $grupo = $principal['installment_id'] ?? null;
+        $idPrincipal = $principal['id'] ?? null;
+        $abertasLocal = array_values(array_filter($pagamentosPlano, fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)));
+        $pagasLocal = array_values(array_filter($pagamentosPlano, fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2));
+        $mesmoValor = fn (array $locais, float $valor) => array_filter($locais, fn ($p) => abs((float) ($p['valor'] ?? 0) - $valor) < 0.02) !== [];
+        $citaId = fn (array $locais, string $id) => $id !== '' && array_filter($locais, fn ($p) => str_contains((string) ($p['observacoes'] ?? ''), $id)) !== [];
+
+        $pendencias = [];
+        foreach ($provedorPagamentos as $pg) {
+            $id = (string) ($pg['id'] ?? '');
+            if ($id === $idPrincipal || ($grupo && ($pg['installment_id'] ?? null) === $grupo)) {
+                continue;
+            }
+            $status = strtoupper((string) ($pg['status'] ?? ''));
+            $valor = (float) ($pg['transaction_amount'] ?? 0);
+            $forma = $this->normalizarForma((string) ($pg['payment_method_id'] ?? ''));
+            $venc = $this->soData((string) ($pg['due_date'] ?? ''));
+            $base = ['payment_id' => $id, 'valor' => $valor, 'forma' => $forma ?: null, 'vencimento' => $venc ?: null, 'status_provedor' => $status, 'invoice_url' => $pg['invoice_url'] ?? null];
+
+            if (in_array($status, ['PENDING', 'OVERDUE', 'AWAITING_RISK_ANALYSIS', 'IN_PROCESS'], true)
+                && ! $citaId($abertasLocal, $id) && ! $mesmoValor($abertasLocal, $valor)) {
+                $pendencias[] = $base + [
+                    'tipo' => 'cobranca_aberta_sem_parcela',
+                    'titulo' => sprintf('Cobrança de R$ %s%s aberta no %s', number_format($valor, 2, ',', '.'), $forma ? ' ('.$forma.')' : '', $gatewayNome),
+                    'detalhe' => 'Não há parcela em aberto no Check-in para ela. Cancele no '.$gatewayNome.' para o aluno não pagar por engano.',
+                ];
+            } elseif ($this->statusProvedorPago($status) && ! $citaId($pagasLocal, $id)
+                && ! $this->pagaNoMesmoDia($pagasLocal, $valor, $this->soData((string) ($pg['date_approved'] ?? '')))) {
+                $pendencias[] = $base + [
+                    'tipo' => 'pago_sem_baixa',
+                    'titulo' => sprintf('Pagamento de R$ %s%s recebido no %s sem baixa', number_format($valor, 2, ',', '.'), $forma ? ' ('.$forma.')' : '', $gatewayNome),
+                    'detalhe' => 'Nenhuma parcela paga no Check-in aponta para este pagamento. Confira e dê baixa ou registre o crédito do aluno.',
+                ];
+            }
+        }
+
+        return $pendencias;
+    }
+
+    /** Líquido informado pelo provedor: netValue (Asaas) ou net_received_amount (Mercado Pago). */
+    private function liquidoProvedor(array $pg): ?float
+    {
+        $v = $pg['net_amount'] ?? $pg['net_received_amount'] ?? ($pg['transaction_details']['net_received_amount'] ?? null);
+
+        return $v === null || $v === '' ? null : round((float) $v, 2);
+    }
+
+    /** Baixa antiga sem o id do provedor na observação: aceita parcela paga de mesmo valor no mesmo dia. */
+    private function pagaNoMesmoDia(array $pagasLocal, float $valor, string $dia): bool
+    {
+        if ($dia === '') {
+            return false;
+        }
+        foreach ($pagasLocal as $p) {
+            if (abs((float) ($p['valor'] ?? 0) - $valor) < 0.02 && $this->soData((string) ($p['data_pagamento'] ?? '')) === $dia) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -884,6 +1006,8 @@ class AdminAssinaturaService
 
         return array_merge($parcelas[0], [
             'transaction_amount' => round(array_sum(array_map(fn ($p) => (float) ($p['transaction_amount'] ?? 0), $parcelas)), 2),
+            // Só soma se todas as parcelas informarem o líquido; faltando uma, fica sem líquido
+            'net_amount' => array_filter($parcelas, fn ($p) => ($p['net_amount'] ?? null) === null) !== [] ? null : round(array_sum(array_map(fn ($p) => (float) $p['net_amount'], $parcelas)), 2),
             'valor_parcela' => (float) ($parcelas[0]['transaction_amount'] ?? 0),
             'installment_count' => count($parcelas),
             'status' => $todasPagas ? ($parcelas[0]['status'] ?? 'CONFIRMED') : 'PENDING',

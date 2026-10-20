@@ -557,6 +557,14 @@ class MercadoPagoService
      * @param string $paymentId ID do pagamento no Mercado Pago
      * @return array Informações do pagamento
      */
+    /** Cancela um pagamento pendente (ex.: Pix não pago de uma escolha que o aluno trocou). */
+    public function cancelarPagamento(string $paymentId): array
+    {
+        $this->validarCredenciais();
+
+        return $this->fazerRequisicao('PUT', "/v1/payments/{$paymentId}", ['status' => 'cancelled']);
+    }
+
     public function buscarPagamento($paymentId): array
     {
         $paymentId = (string) $paymentId;

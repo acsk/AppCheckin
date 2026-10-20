@@ -9,7 +9,7 @@ import assinaturaService from '../../services/assinaturaService';
 import { authService } from '../../services/authService';
 import { matriculaService } from '../../services/matriculaService';
 import { superAdminService } from '../../services/superAdminService';
-import { showError } from '../../utils/toast';
+import { showError, showSuccess } from '../../utils/toast';
 
 const PER_PAGE = 20;
 const STATUS_CHIPS = [
@@ -164,6 +164,9 @@ export default function AssinaturasScreen() {
   const [cobrancasAssinatura, setCobrancasAssinatura] = useState(null);
   const [cobrancas, setCobrancas] = useState(null);
   const [loadingCobrancas, setLoadingCobrancas] = useState(false);
+  // Cancelar cobrança órfã: primeiro clique pede confirmação na própria linha
+  const [confirmarCancelar, setConfirmarCancelar] = useState(null);
+  const [cancelandoCobranca, setCancelandoCobranca] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState('conciliacao');
 
@@ -238,6 +241,23 @@ export default function AssinaturasScreen() {
       setCobrancas(null);
     } finally {
       setLoadingCobrancas(false);
+    }
+  };
+
+  const cancelarCobrancaOrfa = async (paymentId) => {
+    if (!cobrancasAssinatura?.id) return;
+    setCancelandoCobranca(paymentId);
+    try {
+      const tenantId = isSuperAdmin ? selectedTenant?.id : null;
+      const r = await assinaturaService.cancelarCobranca(cobrancasAssinatura.id, paymentId, tenantId);
+      showSuccess(r?.message || 'Cobrança cancelada');
+      setConfirmarCancelar(null);
+      const response = await assinaturaService.consultarCobrancas(cobrancasAssinatura.id, tenantId);
+      setCobrancas(response);
+    } catch (error) {
+      showError(error?.message || error?.error || 'Não foi possível cancelar a cobrança');
+    } finally {
+      setCancelandoCobranca(null);
     }
   };
 
@@ -316,7 +336,7 @@ export default function AssinaturasScreen() {
   const invoiceUrl = cobrancas?.provedor?.invoice_url || cobrancasAssinatura?.payment_url;
 
   const formatLinha = (linha) => {
-    if (linha.campo === 'valor') {
+    if (linha.campo === 'valor' || linha.campo === 'liquido') {
       return {
         provedor: linha.provedor == null ? '—' : money(linha.provedor),
         checkin: linha.checkin == null ? '—' : money(linha.checkin),
@@ -609,6 +629,43 @@ export default function AssinaturasScreen() {
                     })}
                   </tbody>
                 </table>
+              ) : null}
+              {(conciliacao?.pendencias || []).length ? (
+                <ul className="ck-as-pend" aria-label="Cobranças sem par no Check-in">
+                  {conciliacao.pendencias.map((pd) => (
+                    <li key={pd.payment_id} className={pd.tipo === 'pago_sem_baixa' ? 'is-paid' : undefined}>
+                      <Icon name={pd.tipo === 'pago_sem_baixa' ? 'alert-triangle' : 'clock'} size={18} />
+                      <div>
+                        <strong>{pd.titulo}</strong>
+                        <span>{pd.detalhe}</span>
+                        <span className="ck-as__muted">
+                          {pd.payment_id}{pd.status_provedor ? ` · ${pd.status_provedor}` : ''}{pd.vencimento ? ` · vence em ${formatDate(pd.vencimento)}` : ''}
+                        </span>
+                      </div>
+                      <div className="ck-as-pend__actions">
+                        {pd.invoice_url ? (
+                          <Button size="sm" variant="ghost" icon="open-in-new" onClick={() => window.open(pd.invoice_url, '_blank', 'noopener')}>
+                            Ver
+                          </Button>
+                        ) : null}
+                        {pd.tipo === 'cobranca_aberta_sem_parcela' ? (
+                          confirmarCancelar === pd.payment_id ? (
+                            <>
+                              <Button size="sm" variant="ghost" disabled={!!cancelandoCobranca} onClick={() => setConfirmarCancelar(null)}>Voltar</Button>
+                              <Button size="sm" variant="danger" icon="ban" loading={cancelandoCobranca === pd.payment_id} onClick={() => cancelarCobrancaOrfa(pd.payment_id)}>
+                                Confirmar cancelamento
+                              </Button>
+                            </>
+                          ) : (
+                            <Button size="sm" variant="secondary" icon="ban" onClick={() => setConfirmarCancelar(pd.payment_id)}>
+                              Cancelar no {conciliacao.provedor_nome}
+                            </Button>
+                          )
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               ) : null}
               {conciliacao?.parcela ? (
                 <div className="ck-as-facts">
