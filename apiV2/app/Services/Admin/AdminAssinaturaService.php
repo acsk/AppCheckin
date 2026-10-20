@@ -723,10 +723,13 @@ class AdminAssinaturaService
      */
     private function mapearCobrancaAsaas(array $pagamento): array
     {
+        // Cobrança removida no Asaas mantém o status antigo (ex.: OVERDUE) e só ganha deleted=true
+        $removida = ($pagamento['deleted'] ?? false) === true;
+
         return [
             'id' => $pagamento['id'] ?? null,
-            'status' => $pagamento['status'] ?? null,
-            'status_detail' => $pagamento['status'] ?? null,
+            'status' => $removida ? 'CANCELLED' : ($pagamento['status'] ?? null),
+            'status_detail' => $removida ? 'DELETED' : ($pagamento['status'] ?? null),
             'external_reference' => $pagamento['externalReference'] ?? null,
             'transaction_amount' => $pagamento['value'] ?? null,
             'payment_method_id' => $pagamento['billingType'] ?? null,

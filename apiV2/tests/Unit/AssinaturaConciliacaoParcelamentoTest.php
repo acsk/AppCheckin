@@ -79,6 +79,27 @@ class AssinaturaConciliacaoParcelamentoTest extends TestCase
         $this->assertSame('pay_g8nrqnodppm6ftt9', $c['pendencias'][0]['payment_id']);
     }
 
+    public function test_cobranca_removida_no_asaas_some_das_pendencias(): void
+    {
+        // Asaas devolve a cobrança removida com o status antigo e deleted=true
+        $removida = $this->chamar('mapearCobrancaAsaas', [[
+            'id' => 'pay_g8nrqnodppm6ftt9', 'status' => 'OVERDUE', 'deleted' => true, 'value' => 70, 'billingType' => 'PIX', 'dueDate' => '2026-10-19',
+        ]]);
+        $this->assertSame('CANCELLED', $removida['status']);
+
+        $provedor = [
+            ['id' => 'pay_hjpofajk95bw1yyt', 'status' => 'RECEIVED', 'transaction_amount' => 120, 'payment_method_id' => 'PIX', 'due_date' => '2026-10-19', 'date_approved' => '2026-10-19', 'installment_id' => null],
+            $removida,
+        ];
+        $local = [
+            ['id' => 1472, 'valor' => '120.00', 'status_pagamento_id' => 2, 'status' => 'Pago', 'data_pagamento' => '2026-10-19', 'data_vencimento' => '2026-10-19', 'forma_pagamento_nome' => 'Pix', 'observacoes' => '[Asaas pay_hjpofajk95bw1yyt]'],
+        ];
+
+        $c = $this->chamar('montarConciliacao', [true, 'Asaas', $provedor, $local]);
+
+        $this->assertSame([], $c['pendencias']);
+    }
+
     public function test_pagamento_antigo_ja_baixado_nao_vira_pendencia(): void
     {
         $provedor = [
