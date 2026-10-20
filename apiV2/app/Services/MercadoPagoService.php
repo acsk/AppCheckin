@@ -1396,6 +1396,34 @@ class MercadoPagoService
         return $itens;
     }
 
+    /** Líquido de um pagamento aprovado: net_received_amount, ou valor menos fee_details. Null antes da aprovação. */
+    public static function liquidoDoPagamento(array $p): ?float
+    {
+        if (! in_array($p['status'] ?? null, ['approved', 'authorized'], true)) {
+            return null;
+        }
+        $liquido = $p['transaction_details']['net_received_amount'] ?? null;
+        if ($liquido !== null && $liquido !== '' && (float) $liquido > 0) {
+            return round((float) $liquido, 2);
+        }
+        $taxa = self::taxaDoPagamento($p);
+
+        return $taxa === null ? null : round((float) ($p['transaction_amount'] ?? 0) - $taxa, 2);
+    }
+
+    public static function taxaDoPagamento(array $p): ?float
+    {
+        if (empty($p['fee_details']) || ! is_array($p['fee_details'])) {
+            return null;
+        }
+        $taxa = 0.0;
+        foreach ($p['fee_details'] as $fee) {
+            $taxa += (float) ($fee['amount'] ?? 0);
+        }
+
+        return round($taxa, 2);
+    }
+
     public function buscarPagamentosPorExternalReference(string $externalReference): array
     {
         $this->validarCredenciais();
@@ -1428,6 +1456,10 @@ class MercadoPagoService
                     'date_last_updated' => $p['date_last_updated'] ?? null,
                     'payer' => $this->extrairPayer($p, true),
                     'metadata' => $p['metadata'] ?? [],
+                    // Taxa e líquido do MP (a conferência da assinatura lê net_amount, igual ao netValue do Asaas)
+                    'net_amount' => self::liquidoDoPagamento($p),
+                    'fee_amount' => self::taxaDoPagamento($p),
+                    'money_release_date' => $p['money_release_date'] ?? null,
                 ];
             }, $results)
         ];
