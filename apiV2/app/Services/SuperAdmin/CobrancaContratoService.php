@@ -122,6 +122,47 @@ class CobrancaContratoService
     }
 
     /**
+     * Confere no Asaas as cobranças em aberto (de uma academia ou de todas) e aplica o que mudou lá:
+     * paga, excluída ou vencida. Cobre os webhooks que não chegam (ambiente local, falha de entrega).
+     *
+     * @return array{conferidas: int, alteradas: int, erros: int}
+     */
+    public function sincronizar(?int $tenantId = null, int $limite = 200): array
+    {
+        $res = ['conferidas' => 0, 'alteradas' => 0, 'erros' => 0];
+        $abertos = $this->pagamentos->listarAbertosComGateway($tenantId, $limite);
+        if ($abertos === []) {
+            return $res;
+        }
+
+        $asaas = $this->asaas();
+        $webhook = app(\App\Services\Asaas\AsaasContratoWebhook::class);
+        foreach ($abertos as $pagamento) {
+            $res['conferidas']++;
+            try {
+                $payment = $asaas->obterPagamento((string) $pagamento['gateway_payment_id']);
+            } catch (\Throwable $e) {
+                $res['erros']++;
+                \Illuminate\Support\Facades\Log::warning('Asaas: não foi possível conferir cobrança de contrato', ['pagamento_contrato_id' => $pagamento['id'], 'error' => $e->getMessage()]);
+
+                continue;
+            }
+
+            $status = strtoupper((string) ($payment['status'] ?? ''));
+            $pago = in_array($status, ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'], true);
+            $evento = ($payment['deleted'] ?? false) === true ? 'PAYMENT_DELETED'
+                : ($pago ? 'PAYMENT_RECEIVED' : ($status === 'OVERDUE' ? 'PAYMENT_OVERDUE' : 'SYNC_'.$status));
+
+            $r = $webhook->processar($evento, $payment, (int) $pagamento['id'], $pago);
+            if (isset($r['body']['acao']) || isset($r['body']['pagamento_contrato_id'])) {
+                $res['alteradas']++;
+            }
+        }
+
+        return $res;
+    }
+
+    /**
      * Cobra no Asaas o próximo pagamento pendente do contrato que ainda não tem cobrança.
      */
     public function gerarProxima(int $contratoId, string $billingType): ?array

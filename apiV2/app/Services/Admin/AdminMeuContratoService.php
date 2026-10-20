@@ -43,6 +43,7 @@ class AdminMeuContratoService
      */
     public function mostrar(int $tenantId): array
     {
+        $this->sincronizarComAsaas($tenantId);
         $contrato = $this->contratos->buscarContratoVigente($tenantId);
         $plano = $contrato ? $this->planos->buscarPorId((int) $contrato['plano_sistema_id']) : null;
 
@@ -86,6 +87,15 @@ class AdminMeuContratoService
 
         $forma = strtoupper((string) ($data['forma_pagamento'] ?? ''));
         $trocarForma = filter_var($data['trocar_forma'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (! empty($pagamento['gateway_payment_id'])) {
+            // Confere antes de reaproveitar: a cobrança pode ter sido paga ou excluída no Asaas
+            $this->sincronizarComAsaas($tenantId);
+            $pagamento = $this->pagamentoDaAcademia($tenantId, $pagamentoId) ?? $pagamento;
+            if (! in_array((int) $pagamento['status_pagamento_id'], self::ABERTOS, true)) {
+                return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Esta cobrança já foi paga.']];
+            }
+        }
 
         if (! empty($pagamento['gateway_payment_id'])) {
             // Já tem cobrança no Asaas: devolve o mesmo link para não cobrar duas vezes
@@ -262,6 +272,16 @@ class AdminMeuContratoService
      *
      * @return list<array<string, mixed>>
      */
+    /** Falha do Asaas não pode derrubar a tela: só deixa de conferir desta vez. */
+    private function sincronizarComAsaas(int $tenantId): void
+    {
+        try {
+            $this->cobrancas->sincronizar($tenantId, 20);
+        } catch (\Throwable $e) {
+            Log::warning('Asaas: sincronização das cobranças do contrato falhou', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
+        }
+    }
+
     private function pagamentosDaAcademia(int $tenantId, ?int $contratoId): array
     {
         return DB::table('pagamentos_contrato as p')

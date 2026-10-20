@@ -13,7 +13,11 @@ use Illuminate\Support\Facades\Log;
  */
 class AsaasContratoWebhook
 {
+    private const AGUARDANDO = 1;
+
     private const PAGO = 2;
+
+    private const ABERTOS = [1, 3]; // Aguardando, Atrasado
 
     public function __construct(
         private readonly PagamentoContratoRepository $pagamentos,
@@ -39,7 +43,7 @@ class AsaasContratoWebhook
         }
 
         if (! $pago) {
-            return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => $event]];
+            return $this->atualizarEmAberto($event, $payment, $pagamento);
         }
 
         if ((int) $pagamento['status_pagamento_id'] === self::PAGO) {
@@ -72,5 +76,56 @@ class AsaasContratoWebhook
             'pagamento_contrato_id' => (int) $pagamento['id'],
             'proxima_cobranca' => $proxima['id'] ?? null,
         ]];
+    }
+
+    /**
+     * Eventos que não são pagamento: cobrança excluída, vencida ou restaurada no Asaas.
+     *
+     * @param  array<string, mixed>  $payment
+     * @param  array<string, mixed>  $pagamento
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function atualizarEmAberto(string $event, array $payment, array $pagamento): array
+    {
+        $ok = fn (string $acao) => ['status' => 200, 'body' => ['success' => true, 'received' => true, 'pagamento_contrato_id' => (int) $pagamento['id'], 'acao' => $acao]];
+        $ignorado = fn (string $motivo) => ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => $motivo]];
+
+        $status = (int) $pagamento['status_pagamento_id'];
+        if (! in_array($status, self::ABERTOS, true)) {
+            return $ignorado('pagamento_nao_esta_em_aberto');
+        }
+
+        $gatewayId = (string) ($payment['id'] ?? '');
+        $statusAsaas = strtoupper((string) ($payment['status'] ?? ''));
+
+        if ($event === 'PAYMENT_DELETED' || ($payment['deleted'] ?? false) === true) {
+            // A dívida continua: só o link morre, e a academia pode gerar outra cobrança
+            if ($gatewayId !== '' && $this->pagamentos->limparGateway((int) $pagamento['id'], $gatewayId)) {
+                Log::info('Asaas: cobrança de contrato excluída, link removido', ['pagamento_contrato_id' => $pagamento['id'], 'payment_id' => $gatewayId]);
+
+                return $ok('cobranca_removida');
+            }
+
+            return $ignorado('cobranca_antiga');
+        }
+
+        if ($event === 'PAYMENT_RESTORED' && $gatewayId !== '' && empty($pagamento['gateway_payment_id'])) {
+            $this->pagamentos->salvarGateway((int) $pagamento['id'], [
+                'gateway' => 'asaas',
+                'gateway_payment_id' => $gatewayId,
+                'gateway_billing_type' => isset($payment['billingType']) ? strtoupper((string) $payment['billingType']) : null,
+                'gateway_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
+            ]);
+
+            return $ok('cobranca_restaurada');
+        }
+
+        if (($event === 'PAYMENT_OVERDUE' || $statusAsaas === 'OVERDUE') && $status === self::AGUARDANDO) {
+            $this->pagamentos->marcarAtrasado((int) $pagamento['id']);
+
+            return $ok('marcado_atrasado');
+        }
+
+        return $ignorado($event);
     }
 }

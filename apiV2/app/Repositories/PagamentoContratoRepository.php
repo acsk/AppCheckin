@@ -31,6 +31,52 @@ class PagamentoContratoRepository
         DB::table('pagamentos_contrato')->where('id', $id)->update($dados);
     }
 
+    /**
+     * Desliga a cobrança do Asaas (excluída lá). Só mexe se o link atual ainda for esse,
+     * para a exclusão de uma cobrança antiga não apagar a que foi gerada no lugar dela.
+     */
+    public function limparGateway(int $id, string $gatewayPaymentId): bool
+    {
+        return DB::table('pagamentos_contrato')
+            ->where('id', $id)
+            ->where('gateway_payment_id', $gatewayPaymentId)
+            ->update([
+                'gateway' => null,
+                'gateway_payment_id' => null,
+                'gateway_billing_type' => null,
+                'gateway_url' => null,
+                'updated_at' => DB::raw('NOW()'),
+            ]) > 0;
+    }
+
+    public function marcarAtrasado(int $id): bool
+    {
+        return DB::table('pagamentos_contrato')
+            ->where('id', $id)
+            ->where('status_pagamento_id', 1)
+            ->update(['status_pagamento_id' => 3, 'updated_at' => DB::raw('NOW()')]) > 0;
+    }
+
+    /**
+     * Cobranças em aberto (Aguardando ou Atrasado) que têm link no Asaas, para conferir com ele.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarAbertosComGateway(?int $tenantId = null, int $limite = 200): array
+    {
+        $q = DB::table('pagamentos_contrato as p')
+            ->join('tenant_planos_sistema as c', 'c.id', '=', 'p.tenant_plano_id')
+            ->whereIn('p.status_pagamento_id', [1, 3])
+            ->whereNotNull('p.gateway_payment_id')
+            ->orderBy('p.id')
+            ->limit($limite);
+        if ($tenantId !== null) {
+            $q->where('c.tenant_id', $tenantId);
+        }
+
+        return $q->get(['p.*'])->map(fn ($r) => (array) $r)->all();
+    }
+
     public function buscarPorGatewayId(string $gatewayPaymentId): ?array
     {
         $row = DB::table('pagamentos_contrato')->where('gateway_payment_id', $gatewayPaymentId)->first();

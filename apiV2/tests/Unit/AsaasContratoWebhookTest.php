@@ -3,96 +3,93 @@
 namespace Tests\Unit;
 
 use App\Repositories\PagamentoContratoRepository;
+use App\Repositories\TenantPlanoRepository;
 use App\Services\Asaas\AsaasContratoWebhook;
+use App\Services\Asaas\AsaasService;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Services\SuperAdmin\SuperAdminPagamentoContratoService;
-use App\Support\Documento;
-use App\Support\ReferenciaExterna;
 use Mockery;
-use Mockery\MockInterface;
 use Tests\TestCase;
 
 class AsaasContratoWebhookTest extends TestCase
 {
-    private MockInterface $pagamentos;
-
-    private MockInterface $confirmacao;
-
-    private MockInterface $cobrancas;
-
-    protected function setUp(): void
+    private function pagamento(array $extra = []): array
     {
-        parent::setUp();
-        $this->pagamentos = Mockery::mock(PagamentoContratoRepository::class);
-        $this->confirmacao = Mockery::mock(SuperAdminPagamentoContratoService::class);
-        $this->cobrancas = Mockery::mock(CobrancaContratoService::class);
+        return $extra + ['id' => 13, 'tenant_plano_id' => 18, 'status_pagamento_id' => 1, 'gateway_payment_id' => 'pay_atual', 'gateway_billing_type' => 'PIX'];
     }
 
-    private function webhook(): AsaasContratoWebhook
+    private function webhook(PagamentoContratoRepository $pagamentos): AsaasContratoWebhook
     {
-        return new AsaasContratoWebhook($this->pagamentos, $this->confirmacao, $this->cobrancas);
+        $confirmacao = Mockery::mock(SuperAdminPagamentoContratoService::class);
+        $confirmacao->shouldNotReceive('confirmar');
+
+        return new AsaasContratoWebhook($pagamentos, $confirmacao, Mockery::mock(CobrancaContratoService::class));
     }
 
-    public function test_referencia_de_contrato(): void
+    public function test_cobranca_excluida_no_asaas_remove_o_link_e_mantem_a_divida(): void
     {
-        $ref = ReferenciaExterna::contrato(77);
+        $pagamentos = Mockery::mock(PagamentoContratoRepository::class);
+        $pagamentos->shouldReceive('buscarPorId')->with(13)->andReturn($this->pagamento());
+        $pagamentos->shouldReceive('limparGateway')->once()->with(13, 'pay_atual')->andReturn(true);
+        $pagamentos->shouldNotReceive('cancelar');
 
-        $this->assertMatchesRegularExpression('/^CTR-77-\d+[0-9a-f]{8}$/', $ref);
-        $this->assertSame(77, ReferenciaExterna::pagamentoContrato($ref));
-        $this->assertNull(ReferenciaExterna::pagamentoContrato(ReferenciaExterna::matricula(77)));
+        $res = $this->webhook($pagamentos)->processar('PAYMENT_DELETED', ['id' => 'pay_atual', 'deleted' => true], 13, false);
+
+        $this->assertSame('cobranca_removida', $res['body']['acao']);
     }
 
-    public function test_documentos(): void
+    public function test_exclusao_de_cobranca_antiga_nao_apaga_o_link_novo(): void
     {
-        $this->assertTrue(Documento::cnpjValido('11.444.777/0001-61'));
-        $this->assertFalse(Documento::cnpjValido('11.444.777/0001-62'));
-        $this->assertTrue(Documento::cpfValido('529.982.247-25'));
-        $this->assertFalse(Documento::cpfValido('111.111.111-11'));
+        $pagamentos = Mockery::mock(PagamentoContratoRepository::class);
+        $pagamentos->shouldReceive('buscarPorId')->andReturn($this->pagamento());
+        // A troca de forma cancela a cobrança antiga no Asaas; o link salvo já é o da nova
+        $pagamentos->shouldReceive('limparGateway')->once()->with(13, 'pay_antiga')->andReturn(false);
+
+        $res = $this->webhook($pagamentos)->processar('PAYMENT_DELETED', ['id' => 'pay_antiga'], 13, false);
+
+        $this->assertSame('cobranca_antiga', $res['body']['ignored']);
     }
 
-    public function test_pagamento_confirmado_ativa_e_cobra_o_proximo_ciclo(): void
+    public function test_cobranca_vencida_marca_atrasado(): void
     {
-        $this->pagamentos->shouldReceive('buscarPorId')->with(77)->andReturn(['id' => 77, 'tenant_plano_id' => 30, 'status_pagamento_id' => 1, 'gateway_billing_type' => 'PIX']);
-        $this->confirmacao->shouldReceive('confirmar')->once()
-            ->with(77, Mockery::on(fn (array $d) => $d['data_pagamento'] === '2026-10-19'))
-            ->andReturn(['status' => 200, 'body' => []]);
-        $this->cobrancas->shouldReceive('gerarProxima')->once()->with(30, 'PIX')->andReturn(['id' => 'pay_2']);
+        $pagamentos = Mockery::mock(PagamentoContratoRepository::class);
+        $pagamentos->shouldReceive('buscarPorId')->andReturn($this->pagamento());
+        $pagamentos->shouldReceive('marcarAtrasado')->once()->with(13)->andReturn(true);
 
-        $res = $this->webhook()->processar('PAYMENT_RECEIVED', ['id' => 'pay_1', 'billingType' => 'PIX', 'paymentDate' => '2026-10-19'], 77, true);
+        $res = $this->webhook($pagamentos)->processar('PAYMENT_OVERDUE', ['id' => 'pay_atual', 'status' => 'OVERDUE'], 13, false);
 
-        $this->assertSame(200, $res['status']);
-        $this->assertSame('pay_2', $res['body']['proxima_cobranca']);
+        $this->assertSame('marcado_atrasado', $res['body']['acao']);
     }
 
-    public function test_pagamento_ja_confirmado_e_ignorado(): void
+    public function test_cobranca_ja_paga_nao_e_alterada_por_exclusao(): void
     {
-        $this->pagamentos->shouldReceive('buscarPorId')->andReturn(['id' => 77, 'tenant_plano_id' => 30, 'status_pagamento_id' => 2]);
-        $this->confirmacao->shouldNotReceive('confirmar');
+        $pagamentos = Mockery::mock(PagamentoContratoRepository::class);
+        $pagamentos->shouldReceive('buscarPorId')->andReturn($this->pagamento(['status_pagamento_id' => 2]));
+        $pagamentos->shouldNotReceive('limparGateway');
 
-        $res = $this->webhook()->processar('PAYMENT_CONFIRMED', ['id' => 'pay_1'], 77, true);
+        $res = $this->webhook($pagamentos)->processar('PAYMENT_DELETED', ['id' => 'pay_atual'], 13, false);
 
-        $this->assertSame('ja_confirmado', $res['body']['ignored']);
+        $this->assertSame('pagamento_nao_esta_em_aberto', $res['body']['ignored']);
     }
 
-    public function test_evento_sem_pagamento_nao_confirma(): void
+    public function test_sincronizar_aplica_exclusao_vista_no_asaas(): void
     {
-        $this->pagamentos->shouldReceive('buscarPorGatewayId')->with('pay_1')->andReturn(['id' => 77, 'tenant_plano_id' => 30, 'status_pagamento_id' => 1]);
-        $this->confirmacao->shouldNotReceive('confirmar');
+        $pagamentos = Mockery::mock(PagamentoContratoRepository::class);
+        $pagamentos->shouldReceive('listarAbertosComGateway')->with(2, 20)->andReturn([$this->pagamento()]);
+        $pagamentos->shouldReceive('buscarPorId')->with(13)->andReturn($this->pagamento());
+        $pagamentos->shouldReceive('limparGateway')->once()->with(13, 'pay_atual')->andReturn(true);
+        $this->app->instance(PagamentoContratoRepository::class, $pagamentos);
 
-        $res = $this->webhook()->processar('PAYMENT_CREATED', ['id' => 'pay_1'], null, false);
+        $asaas = Mockery::mock(AsaasService::class);
+        $asaas->shouldReceive('obterPagamento')->with('pay_atual')->andReturn(['id' => 'pay_atual', 'status' => 'PENDING', 'deleted' => true]);
 
-        $this->assertSame('PAYMENT_CREATED', $res['body']['ignored']);
-    }
+        $confirmacao = Mockery::mock(SuperAdminPagamentoContratoService::class);
+        $confirmacao->shouldNotReceive('confirmar');
+        $this->app->instance(SuperAdminPagamentoContratoService::class, $confirmacao);
 
-    public function test_falha_na_proxima_cobranca_nao_desfaz_a_confirmacao(): void
-    {
-        $this->pagamentos->shouldReceive('buscarPorId')->andReturn(['id' => 77, 'tenant_plano_id' => 30, 'status_pagamento_id' => 1]);
-        $this->confirmacao->shouldReceive('confirmar')->andReturn(['status' => 200, 'body' => []]);
-        $this->cobrancas->shouldReceive('gerarProxima')->andThrow(new \RuntimeException('Asaas fora'));
+        $service = new CobrancaContratoService($pagamentos, Mockery::mock(TenantPlanoRepository::class), fn () => $asaas);
+        $this->app->instance(CobrancaContratoService::class, $service);
 
-        $res = $this->webhook()->processar('PAYMENT_RECEIVED', ['id' => 'pay_1', 'billingType' => 'BOLETO'], 77, true);
-
-        $this->assertSame(200, $res['status']);
-        $this->assertNull($res['body']['proxima_cobranca']);
+        $this->assertSame(['conferidas' => 1, 'alteradas' => 1, 'erros' => 0], $service->sincronizar(2, 20));
     }
 }

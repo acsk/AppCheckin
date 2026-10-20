@@ -632,6 +632,10 @@ class AsaasService
             'PAYMENT_RECEIVED',
             'PAYMENT_RECEIVED_IN_CASH',
             'PAYMENT_UPDATED',
+            // Cobranças de contrato: excluída, vencida ou restaurada (ver AsaasContratoWebhook)
+            'PAYMENT_DELETED',
+            'PAYMENT_OVERDUE',
+            'PAYMENT_RESTORED',
             'PAYMENT_ANTICIPATED',
             'ANTICIPATION_PENDING',
             'ANTICIPATION_SCHEDULED',
