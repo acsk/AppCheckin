@@ -82,13 +82,14 @@ export default function TrocarMeuPlanoScreen() {
         <>
           {!methods.length ? (
             <Callout tone="info" title="Pagamento online indisponível" className="ck-ct-scope">
-              No momento só é possível trocar para planos grátis por aqui. Para um plano pago, fale com o suporte do Check-in.
+              No momento os planos pagos não podem ser contratados por aqui. Para trocar para um deles, fale com o suporte do Check-in.
             </Callout>
           ) : null}
           <TrocarPlanoContrato
             contract={{ id: c?.id, academy: data.academia?.nome || 'A academia', plan: current?.name, pending: Number(c?.status_id) === 2 }}
             currentPlan={current || { id: null, name: 'Sem plano', type: 'gratuito' }}
-            plans={(data.planos || []).map(toPlan).filter((p) => methods.length || p.type === 'gratuito' || p.id === current?.id)}
+            plans={(data.planos || []).map(toPlan)}
+            paidUnavailable={methods.length ? null : 'Só com o suporte'}
             paymentMethods={methods}
             activeStudents={Number(data.alunos_ativos) || 0}
             today={today()}

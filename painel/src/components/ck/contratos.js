@@ -94,8 +94,9 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
   }
   function PlanCard(p) {
     var pl = p.plan, feats = planFeatures(pl);
-    return h('button', { type: 'button', role: 'radio', 'aria-checked': !!p.checked, disabled: p.current || undefined, 'aria-label': p.current ? pl.name + ', plano atual' : undefined, className: cx('ck-ct-plan', p.current && 'is-current'), onClick: p.onSelect },
-      h('span', { className: 'ck-ct-plan__top' }, h('span', { className: 'ck-ct-plan__name' }, pl.name), p.current ? h(Badge, { tone: 'neutral' }, 'Atual') : h('span', { className: 'ck-choice__radio ck-ct-radio', 'aria-hidden': true })),
+    var off = !p.current && !!p.unavailable;
+    return h('button', { type: 'button', role: 'radio', 'aria-checked': !!p.checked, disabled: p.current || off || undefined, 'aria-label': p.current ? pl.name + ', plano atual' : off ? pl.name + ', ' + p.unavailable : undefined, className: cx('ck-ct-plan', p.current && 'is-current', off && 'is-unavailable'), onClick: p.onSelect },
+      h('span', { className: 'ck-ct-plan__top' }, h('span', { className: 'ck-ct-plan__name' }, pl.name), p.current ? h(Badge, { tone: 'neutral' }, 'Atual') : off ? h(Badge, { tone: 'outline' }, p.unavailable) : h('span', { className: 'ck-choice__radio ck-ct-radio', 'aria-hidden': true })),
       h(PlanPrice, { plan: pl }),
       feats.length ? h('ul', { className: 'ck-ct-plan__feats' }, feats.map(function (f, i) { return h('li', { key: i }, h(Icon, { name: 'check', size: 13, strokeWidth: 2.5 }), f); })) : null);
   }
@@ -651,7 +652,11 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
         h('div', { className: 'ck-card ck-al-form__main' },
           h(Section, { id: 'tp-s1', icon: 'layers', title: 'Novo plano', done: !!plan },
             h('div', { className: cx('ck-ct-plans ck-ct-pick', show.plan && 'is-error'), role: 'radiogroup', 'aria-label': 'Novo plano' },
-              plans.map(function (x) { return h(PlanCard, { key: x.id, plan: x, current: x.id === cur.id, checked: pl[0] === x.id, onSelect: function () { if (x.id !== cur.id) pl[1](x.id); } }); })),
+              plans.map(function (x) {
+                // paidUnavailable: planos pagos aparecem, mas não podem ser escolhidos (sem pagamento online)
+                var blocked = p.paidUnavailable && x.type !== 'gratuito' ? (typeof p.paidUnavailable === 'string' ? p.paidUnavailable : 'Indisponível') : null;
+                return h(PlanCard, { key: x.id, plan: x, current: x.id === cur.id, unavailable: blocked, checked: pl[0] === x.id, onSelect: function () { if (x.id !== cur.id && !blocked) pl[1](x.id); } });
+              })),
             show.plan ? h('p', { className: 'ck-ct-err' }, h(Icon, { name: 'alert-triangle', size: 14 }), show.plan) : null,
             over ? h(Callout, { tone: p.blockOverLimit ? 'danger' : 'warning', title: c.academy + ' tem ' + num(students) + ' alunos ativos' },
               'O ' + plan.name + ' aceita até ' + num(plan.maxStudents) + '. ' + (p.blockOverLimit ? 'Escolha um plano maior.' : 'Depois da troca, a academia não consegue matricular ninguém até ficar abaixo do limite.')) : null,

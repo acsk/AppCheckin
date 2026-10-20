@@ -120,6 +120,9 @@
 /* TrocarPlanoContrato (src/components/ck/contratos.js), portado do design system */
 .ck-ct-plan.is-current { cursor: default; background: var(--bg); border-style: dashed; }
 .ck-ct-plan.is-current:hover { border-color: var(--line-strong); }
+.ck-ct-plan.is-unavailable { cursor: not-allowed; background: var(--bg); box-shadow: none; }
+.ck-ct-plan.is-unavailable:hover { border-color: var(--line-strong); }
+.ck-ct-plan.is-unavailable .ck-ct-plan__name, .ck-ct-plan.is-unavailable .ck-ct-plan__price { color: var(--ink-muted); }
 .ck-tp-cmp { display: grid; grid-template-columns: 1fr; align-items: center; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--sidebar-line); }
 .ck-tp-cmp > .ck-icon { color: var(--sidebar-muted); }
 .ck-tp-cmp > div { display: grid; gap: 2px; min-width: 0; padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--sidebar-line); }
