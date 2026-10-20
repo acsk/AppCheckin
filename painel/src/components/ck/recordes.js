@@ -2,6 +2,7 @@
    Estilos: ck-recordes.css. Formulário compartilhado entre modal e rotas diretas. */
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SelectField, TextAreaField, TextField } from './index';
+import { StatTile } from './pessoas';
 import recordeService from '../../services/recordeService';
 import { showSuccess } from '../../utils/toast';
 import { definitionErrors, definitionFromApi, definitionPayload, emptyRecordDefinition, emptyRecordMetric,
@@ -21,19 +22,20 @@ export function RecordeDefinicoesLista({ rows = [], modalities = [], loading, er
   const hasFilters = query || category || modality || status !== 'all';
   const reset = () => { setQuery(''); setCategory(''); setModality(''); setStatus('all'); };
   const stats = [
-    ['Total de definições', rows.length, 'Disponíveis no catálogo'],
-    ['Movimentos', rows.filter((row) => row.categoria === 'movimento').length, 'Exercícios de força e reps'],
-    ['Provas', rows.filter((row) => row.categoria === 'prova').length, 'Desafios e tempos'],
-    ['Modalidade natação', rows.filter((row) => normalizeRecordText(row.modalidade_nome) === 'natacao').length, 'Definições específicas'],
+    ['Total de definições', rows.length, 'Disponíveis no catálogo', 'layers'],
+    ['Movimentos', rows.filter((row) => row.categoria === 'movimento').length, 'Exercícios de força e reps', 'dumbbell'],
+    ['Provas', rows.filter((row) => row.categoria === 'prova').length, 'Desafios e tempos', 'activity'],
+    ['Modalidade natação', rows.filter((row) => normalizeRecordText(row.modalidade_nome) === 'natacao').length, 'Definições específicas', 'waves'],
   ];
   return (
     <div className="ck-rd">
       <PageHeader title="Definições de Recordes" description="Gerencie movimentos, provas e métricas utilizadas nos recordes dos alunos." actions={<><Button icon="external-link" onClick={onRecords}>Ver recordes</Button><Button variant="primary" icon="plus" onClick={onNew} disabled={loading || !!error}>Nova definição</Button></>} />
       {error ? <Callout tone="danger" title="Não foi possível carregar as definições" action={<Button size="sm" onClick={onRefresh}>Tentar novamente</Button>}>{error}</Callout> : null}
       <section className="ck-rd__summary" aria-label="Resumo do catálogo">
-        {stats.map(([label, value, hint]) => <div className="ck-card ck-rd__stat" key={label}><span>{label}</span><strong>{loading ? '—' : num(value)}</strong><span>{hint}</span></div>)}
+        {stats.map(([label, value, hint, icon]) => <StatTile key={label} label={label} value={loading ? '—' : num(value)} note={hint} icon={icon} />)}
       </section>
-      <section className="ck-card ck-rd__toolbar" aria-label="Filtrar definições">
+      <section className="ck-card ck-ml__panel ck-rd__panel" aria-label="Catálogo de definições">
+      <div className="ck-ml__toolbar ck-rd__toolbar" role="group" aria-label="Filtrar definições">
         <div className="ck-rd__tools">
           <div className="ck-control ck-rd__search"><Icon name="search" size={18} className="ck-control__icon" /><input type="search" className="ck-control__input" aria-label="Buscar definições" placeholder="Buscar definição por nome, descrição ou métrica…" value={query} onChange={(event) => setQuery(event.target.value)} />{query ? <IconButton icon="x" size="sm" label="Limpar busca" onClick={() => setQuery('')} /> : null}</div>
           <SelectField aria-label="Filtrar modalidade" value={modality} onChange={(event) => setModality(event.target.value)} options={[{ value: '', label: 'Todas as modalidades' }, { value: 'none', label: 'Sem modalidade' }, ...[...modalityOptions].map(([value, label]) => ({ value, label }))]} />
@@ -42,10 +44,9 @@ export function RecordeDefinicoesLista({ rows = [], modalities = [], loading, er
         <div className="ck-rd__filters" role="group" aria-label="Filtrar categoria">
           {[{ value: '', label: 'Todas' }, ...RECORD_CATEGORIES].map((item) => <button type="button" key={item.value} className="ck-ml__chip ck-rd__chip" aria-pressed={category === item.value} onClick={() => setCategory(item.value)}>{item.label}</button>)}
         </div>
-      </section>
-      <p className="ck-rd__count" role="status">{loading ? 'Carregando definições…' : `${num(visible.length)} ${visible.length === 1 ? 'definição encontrada' : 'definições encontradas'}`}</p>
+      </div>
       {loading ? <div className="ck-rd__empty"><Icon name="loader" className="ck-spin" size={24} /><strong>Carregando catálogo…</strong></div>
-        : visible.length ? <div className="ck-card ck-rd__scroll" role="region" aria-label="Tabela de definições de recordes" tabIndex={0}>
+        : visible.length ? <div className="ck-rd__scroll" role="region" aria-label="Tabela de definições de recordes" tabIndex={0}>
           <table className="ck-mt-table ck-rd__table"><thead><tr>{['Definição', 'Categoria', 'Modalidade', 'Métrica', 'Direção', 'Situação', 'Ações'].map((label) => <th key={label} scope="col" className={label === 'Ações' ? 'ck-rd__actions' : undefined}>{label}</th>)}</tr></thead>
             <tbody>{visible.map((row) => <tr key={row.id} className="ck-ml__row" onClick={(event) => { if (!event.target.closest('button, a')) onEdit(row); }}>
               <td><button type="button" className="ck-ml__name ck-rd__name" onClick={() => onEdit(row)}>{row.nome}</button>{row.descricao ? <p className="ck-rd__description">{row.descricao}</p> : null}</td>
@@ -58,6 +59,11 @@ export function RecordeDefinicoesLista({ rows = [], modalities = [], loading, er
             </tr>)}</tbody>
           </table>
         </div> : !error ? <div className="ck-rd__empty"><Icon name="search" size={24} /><strong>Nenhuma definição encontrada</strong><p>{hasFilters ? 'Ajuste os filtros para encontrar a definição desejada.' : 'Cadastre a primeira definição para começar.'}</p><Button size="sm" onClick={hasFilters ? reset : onNew}>{hasFilters ? 'Limpar filtros' : 'Nova definição'}</Button></div> : null}
+      <footer className="ck-ml__foot">
+        <span role="status">{loading ? 'Carregando definições…' : `${num(visible.length)} ${visible.length === 1 ? 'definição encontrada' : 'definições encontradas'}`}</span>
+        {hasFilters ? <Button size="sm" variant="ghost" icon="x" onClick={reset}>Limpar filtros</Button> : null}
+      </footer>
+      </section>
     </div>
   );
 }
@@ -130,5 +136,5 @@ export function RecordeDefinicaoEditor({ id, modalities = [], modal = true, onCl
     </form>}
   </>;
   return modal ? <div className="ck-rd"><Modal open title={title} description="Configure o recorde e suas métricas de comparação." size="md" dismissable={!saving} onClose={onClose} footer={footer}>{fields}</Modal></div>
-    : <div className="ck-rd"><PageHeader title={title} description="Configure o recorde e suas métricas de comparação." actions={<Button variant="ghost" icon="arrow-left" disabled={saving} onClick={onClose}>Voltar para definições</Button>} /><section className="ck-rd__editor">{fields}<footer>{footer}</footer></section></div>;
+    : <div className="ck-rd"><PageHeader title={title} description="Configure o recorde e suas métricas de comparação." actions={<Button variant="ghost" icon="arrow-left" disabled={saving} onClick={onClose}>Voltar para definições</Button>} /><section className="ck-card ck-rd__editor">{fields}<footer>{footer}</footer></section></div>;
 }
