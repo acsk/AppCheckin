@@ -141,6 +141,25 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $this->assertEqualsWithDelta(80.0, $r['resumo']['checkin']['manual'], 0.001);
     }
 
+    public function test_baixa_de_provedor_nao_consultado_fica_nao_conferida(): void
+    {
+        // Produção: só o Asaas foi consultado, mas as baixas de outubro vieram do Mercado Pago
+        $r = C::montar(
+            [],
+            [
+                $this->parcela(1435, 257, 200, 2, ['observacoes' => 'Pago via Mercado Pago - Payment #183482972067']),
+                $this->parcela(1460, 189, 72.66, 2, ['observacoes' => 'Pago via Asaas (Cartão) [Asaas pay_qhfl2c64yzl1pa1y]']),
+            ],
+            [], '2026-10-01', '2026-10-31', ['asaas']
+        );
+
+        $mp = $this->linha($r, 'checkin:1435');
+        $this->assertSame('nao_conferido', $mp['status']);
+        $this->assertStringContainsString('Mercado Pago', $mp['motivo']);
+        $this->assertSame('sem_recebimento', $this->linha($r, 'checkin:1460')['status']);
+        $this->assertSame(1, $r['resumo']['pendencias'], 'não conferido não é pendência');
+    }
+
     public function test_pagamento_de_outra_data_explica_a_baixa_e_nao_soma_no_periodo(): void
     {
         $fora = ['fora_do_periodo' => true] + $this->asaas('pay_sumiu', 90, 88, ['paymentDate' => '2026-09-28']);

@@ -37,7 +37,17 @@ export const buscarDashboardCards = async (): Promise<DashboardCardsResponse | n
   }
 };
 
+/**
+ * Séries dos gráficos do dashboard: check-ins por dia (30 dias) e por horário (4 semanas),
+ * alunos ativos por mês, alunos por plano, saídas do mês e acessos terminando em 15 dias.
+ */
+export const buscarDashboardVisao = async (): Promise<any> => {
+  const response = await api.get('/admin/dashboard/visao');
+  return response.data?.data ?? null;
+};
+
 export default {
   buscarDashboard,
   buscarDashboardCards,
+  buscarDashboardVisao,
 };

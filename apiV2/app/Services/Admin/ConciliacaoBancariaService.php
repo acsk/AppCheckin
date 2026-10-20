@@ -52,7 +52,8 @@ class ConciliacaoBancariaService
         }
         [$inicio, $fim] = $periodo;
 
-        $provedores = $this->provedoresAtivos($tenantId);
+        $conectados = $this->provedoresConectados($tenantId);
+        $provedores = array_keys($conectados);
         $pagamentos = [];
         $erros = [];
         $truncado = false;
@@ -74,20 +75,29 @@ class ConciliacaoBancariaService
             array_values(array_filter(array_column($pagamentos, 'matricula_id'))),
         );
         $pix = $this->matriculasDoPix($tenantId, array_column($pagamentos, 'payment_id'));
-        $resultado = self::montar($pagamentos, $locais, $pix, $inicio, $fim);
+        $consultados = array_values(array_diff($provedores, array_column($erros, 'provedor')));
+        $resultado = self::montar($pagamentos, $locais, $pix, $inicio, $fim, $consultados);
 
         // Parcela baixada pela integração que não apareceu no período: o pagamento pode ter outra data no provedor
-        $avulsos = $this->consultarCitados($tenantId, $resultado['linhas'], $provedores);
+        ['pagos' => $avulsos, 'situacao' => $situacaoCitados] = $this->consultarCitados($tenantId, $resultado['linhas'], $consultados);
         if ($avulsos !== []) {
-            $resultado = self::montar(array_merge($pagamentos, $avulsos), $locais, $pix, $inicio, $fim);
+            $resultado = self::montar(array_merge($pagamentos, $avulsos), $locais, $pix, $inicio, $fim, $consultados);
         }
+        // O provedor tem a cobrança, mas não paga: diz em que situação ela está (estornada, removida…)
+        foreach ($resultado['linhas'] as &$linha) {
+            $sit = $linha['status'] === 'sem_recebimento' ? ($situacaoCitados[(string) $linha['payment_id']] ?? null) : null;
+            if ($sit) {
+                $linha['motivo'] = $sit;
+            }
+        }
+        unset($linha);
 
         return [
             'status' => 200,
             'body' => [
                 'success' => true,
                 'periodo' => ['inicio' => $inicio, 'fim' => $fim],
-                'provedores' => array_map(fn ($p) => ['id' => $p, 'nome' => self::nomeProvedor($p)], $provedores),
+                'provedores' => array_map(fn ($p) => ['id' => $p, 'nome' => self::nomeProvedor($p), 'ativo' => $conectados[$p]], $provedores),
                 'erros' => $erros,
                 'truncado' => $truncado,
             ] + $resultado,
@@ -148,7 +158,7 @@ class ConciliacaoBancariaService
      * @param  array<string, int>  $pix  payment_id => matricula_id (pagamentos_pix)
      * @return array{resumo: array<string, mixed>, linhas: list<array<string, mixed>>}
      */
-    public static function montar(array $pagamentos, array $locais, array $pix, string $inicio, string $fim): array
+    public static function montar(array $pagamentos, array $locais, array $pix, string $inicio, string $fim, ?array $consultados = null): array
     {
         usort($pagamentos, fn ($a, $b) => strcmp((string) $a['data'], (string) $b['data']) ?: strcmp((string) $a['payment_id'], (string) $b['payment_id']));
         $usadas = [];
@@ -219,7 +229,14 @@ class ConciliacaoBancariaService
                 continue;
             }
             $integracao = (int) ($l['tipo_baixa_id'] ?? 0) === self::BAIXA_INTEGRACAO;
-            $linhas[] = self::linhaLocal($l, $integracao ? 'sem_recebimento' : 'manual');
+            $status = $integracao ? 'sem_recebimento' : 'manual';
+            // Baixa de um provedor que não foi consultado (sem credencial ou fora do ar): não dá para conferir
+            $citado = self::idCitado((string) ($l['observacoes'] ?? ''));
+            $provedorDaBaixa = $citado !== null ? self::provedorDoId($citado) : null;
+            if ($integracao && $consultados !== null && $provedorDaBaixa !== null && ! in_array($provedorDaBaixa, $consultados, true)) {
+                $status = 'nao_conferido';
+            }
+            $linhas[] = self::linhaLocal($l, $status);
         }
 
         $linhas = array_values(array_filter($linhas, fn ($l) => $l['status'] !== 'ignorar'));
@@ -374,6 +391,7 @@ class ConciliacaoBancariaService
             'antecipado' => (bool) $p['antecipado'],
             'fora_do_periodo' => (bool) $p['fora_do_periodo'],
             'forma' => $p['forma'],
+            'parcela_numero' => $p['parcela_numero'],
             'valor' => (float) $p['valor'],
             'taxa' => $p['taxa'],
             'liquido' => $p['liquido'],
@@ -398,9 +416,11 @@ class ConciliacaoBancariaService
             'id' => 'checkin:'.$l['id'],
             'origem' => 'checkin',
             'status' => $status,
-            'motivo' => $status === 'sem_recebimento'
-                ? 'Baixa automática no Check-in sem pagamento correspondente no provedor neste período.'
-                : null,
+            'motivo' => match ($status) {
+                'sem_recebimento' => 'Baixa automática no Check-in sem pagamento correspondente no provedor neste período.',
+                'nao_conferido' => sprintf('Baixa pelo %s, que não pôde ser consultado. Não dá para conferir.', self::nomeProvedor(self::provedorDoId((string) self::idCitado((string) ($l['observacoes'] ?? ''))))),
+                default => null,
+            },
             'nota' => null,
             'provedor' => null,
             'provedor_nome' => null,
@@ -433,7 +453,7 @@ class ConciliacaoBancariaService
      */
     private static function resumo(array $linhas): array
     {
-        $contagem = array_fill_keys(['conciliado', 'divergente', 'sem_baixa', 'sem_recebimento', 'sem_vinculo', 'manual'], 0);
+        $contagem = array_fill_keys(['conciliado', 'divergente', 'sem_baixa', 'sem_recebimento', 'sem_vinculo', 'manual', 'nao_conferido'], 0);
         $total = ['quantidade' => 0, 'bruto' => 0.0, 'taxas' => 0.0, 'liquido' => 0.0, 'a_receber' => 0.0, 'sem_liquido' => 0];
         $porProvedor = [];
         $porForma = [];
@@ -574,22 +594,33 @@ class ConciliacaoBancariaService
      */
     private function provedoresAtivos(int $tenantId): array
     {
-        return DB::table('tenant_payment_credentials')
+        return array_keys($this->provedoresConectados($tenantId));
+    }
+
+    /**
+     * Provedores com credencial da academia, ativos ou não: uma conta desativada pode ter recebido
+     * pagamentos no período (ex.: academia que trocou o Mercado Pago pelo Asaas no meio do mês).
+     *
+     * @return array<string, bool> provedor => ativo
+     */
+    private function provedoresConectados(int $tenantId): array
+    {
+        $out = [];
+        $rows = DB::table('tenant_payment_credentials')
             ->where('tenant_id', $tenantId)
             ->whereIn('provider', ['asaas', 'mercadopago'])
-            ->get()
-            ->filter(function ($row) {
-                $ativo = in_array($row->is_active, [1, true, '1'], true);
-                $token = ($row->environment ?? '') === 'production' ? $row->access_token_prod : $row->access_token_test;
+            ->get();
+        foreach ($rows as $row) {
+            $token = ($row->environment ?? '') === 'production' ? $row->access_token_prod : $row->access_token_test;
+            if (trim((string) $token) === '') {
+                continue;
+            }
+            $provedor = strtolower((string) $row->provider);
+            $out[$provedor] = ($out[$provedor] ?? false) || in_array($row->is_active, [1, true, '1'], true);
+        }
+        ksort($out);
 
-                return $ativo && trim((string) $token) !== '';
-            })
-            ->pluck('provider')
-            ->map(fn ($p) => strtolower((string) $p))
-            ->unique()
-            ->sort()
-            ->values()
-            ->all();
+        return $out;
     }
 
     /**
@@ -597,7 +628,7 @@ class ConciliacaoBancariaService
      */
     private function buscarNoProvedor(int $tenantId, string $provedor, string $inicio, string $fim): array
     {
-        $gw = ($this->gateway)($provedor, $tenantId);
+        $gw = $this->gatewayDoTenant($provedor, $tenantId);
         if ($provedor !== 'asaas') {
             return array_map([self::class, 'normalizarMercadoPago'], $gw->listarPagamentosAprovados($inicio, $fim));
         }
@@ -626,35 +657,87 @@ class ConciliacaoBancariaService
      *
      * @param  list<array<string, mixed>>  $linhas
      * @param  list<string>  $provedores
-     * @return list<array<string, mixed>>
+     * @return array{pagos: list<array<string, mixed>>, situacao: array<string, string>}
      */
     private function consultarCitados(int $tenantId, array $linhas, array $provedores): array
     {
-        $out = [];
+        $pagos = [];
+        $situacao = [];
+        $consultas = 0;
         foreach ($linhas as $linha) {
-            if ($linha['status'] !== 'sem_recebimento' || ! $linha['payment_id'] || count($out) >= self::MAX_CONSULTAS_AVULSAS) {
+            if ($linha['status'] !== 'sem_recebimento' || ! $linha['payment_id'] || $consultas >= self::MAX_CONSULTAS_AVULSAS) {
                 continue;
             }
             $id = (string) $linha['payment_id'];
-            $provedor = str_starts_with($id, 'pay_') ? 'asaas' : 'mercadopago';
+            $provedor = self::provedorDoId($id);
             if (! in_array($provedor, $provedores, true)) {
                 continue;
             }
+            $consultas++;
             try {
-                $gw = ($this->gateway)($provedor, $tenantId);
-                $p = $provedor === 'asaas'
-                    ? self::normalizarAsaas($gw->obterPagamento($id))
-                    : self::normalizarMercadoPago($gw->buscarPagamento($id));
-            } catch (Throwable) {
+                $gw = $this->gatewayDoTenant($provedor, $tenantId);
+                $bruto = $provedor === 'asaas' ? $gw->obterPagamento($id) : $gw->buscarPagamento($id);
+            } catch (Throwable $e) {
+                $situacao[$id] = sprintf('O %s não encontrou este pagamento (%s).', self::nomeProvedor($provedor), $e->getMessage());
+
                 continue;
             }
-            $pagoNoProvedor = $provedor === 'asaas' ? AsaasPagamentoStatus::pago($p['status']) : $p['status'] === 'APPROVED';
+            $p = $provedor === 'asaas' ? self::normalizarAsaas($bruto) : self::normalizarMercadoPago($bruto);
+            $removida = $provedor === 'asaas' && ($bruto['deleted'] ?? false) === true;
+            $pagoNoProvedor = ! $removida && ($provedor === 'asaas' ? AsaasPagamentoStatus::pago($p['status']) : $p['status'] === 'APPROVED');
             if ($pagoNoProvedor && $p['payment_id'] !== '') {
-                $out[] = ['fora_do_periodo' => true] + $p;
+                $pagos[] = ['fora_do_periodo' => true] + $p;
+            } else {
+                $situacao[$id] = sprintf(
+                    'O %s mostra este pagamento como %s, mas a parcela está paga no Check-in.',
+                    self::nomeProvedor($provedor),
+                    $removida ? 'removido' : self::rotuloStatus($provedor, $p['status']),
+                );
             }
         }
 
-        return $out;
+        return ['pagos' => $pagos, 'situacao' => $situacao];
+    }
+
+    /**
+     * Instância do provedor com a credencial da academia. O MercadoPagoService cai na credencial
+     * global do .env quando não consegue ler a do tenant: aí listaria a conta do sistema.
+     */
+    private function gatewayDoTenant(string $provedor, int $tenantId): object
+    {
+        $gw = ($this->gateway)($provedor, $tenantId);
+        if ($gw instanceof MercadoPagoService && ! $gw->usaCredencialDoTenant()) {
+            throw new \RuntimeException('não foi possível ler a credencial do Mercado Pago desta academia');
+        }
+
+        return $gw;
+    }
+
+    public static function provedorDoId(string $id): string
+    {
+        return str_starts_with($id, 'pay_') ? 'asaas' : 'mercadopago';
+    }
+
+    private static function rotuloStatus(string $provedor, string $status): string
+    {
+        if ($provedor === 'asaas') {
+            return match (strtoupper($status)) {
+                'REFUNDED', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS' => 'estornado',
+                'CHARGEBACK_REQUESTED', 'CHARGEBACK_DISPUTE', 'AWAITING_CHARGEBACK_REVERSAL' => 'em chargeback',
+                'PENDING', 'OVERDUE' => 'em aberto ('.strtoupper($status).')',
+                'CANCELLED', 'CANCELED' => 'cancelado',
+                default => strtoupper($status),
+            };
+        }
+
+        return match (strtolower($status)) {
+            'refunded' => 'estornado',
+            'charged_back' => 'em chargeback',
+            'cancelled' => 'cancelado',
+            'pending', 'in_process' => 'pendente',
+            'rejected' => 'recusado',
+            default => strtoupper($status),
+        };
     }
 
     /**

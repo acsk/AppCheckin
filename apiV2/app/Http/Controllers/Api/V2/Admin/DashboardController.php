@@ -28,4 +28,12 @@ class DashboardController extends Controller
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
+
+    public function visao(Request $request): JsonResponse
+    {
+        $tenantId = $request->attributes->get('tenantId');
+        $result = $this->service->visao($tenantId ? (int) $tenantId : null);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
 }

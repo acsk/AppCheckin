@@ -1,0 +1,103 @@
+/* AppCheckin — gráficos do Dashboard (src/components/ck/graficos.js). Portado de Dashboard.html do design system.
+   StatTile e Panel ficam em ck-pessoas.css. */
+/* ---------- Charts ---------- */
+.ck-tip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 20; display: grid; gap: 1px; min-width: 120px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--sidebar-bg); color: var(--sidebar-ink); box-shadow: var(--shadow-lg); font-size: 13px; line-height: 18px; text-align: left; white-space: nowrap; pointer-events: none; }
+.ck-tip strong { font-weight: 600; }
+.ck-tip span { color: var(--sidebar-muted); font-variant-numeric: tabular-nums; }
+.ck-tip span:nth-child(2) { color: var(--sidebar-ink); font-weight: 600; }
+
+.ck-spark { flex: none; margin-bottom: 4px; }
+.ck-spark__line { stroke: var(--chart-muted); }
+.ck-spark__dot { fill: var(--chart-accent); stroke: var(--surface); stroke-width: 2; }
+.ck-stat.is-featured .ck-spark__dot { stroke: var(--sidebar-bg); }
+/* ColumnChart */
+.ck-cc { margin: 0; }
+.ck-cc__plot { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2); height: var(--cc-h); }
+.ck-cc__axis { display: flex; flex-direction: column; justify-content: space-between; margin: -8px 0; font-size: 12px; line-height: 16px; color: var(--ink-muted); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-cc__area { position: relative; border-bottom: 1px solid var(--chart-grid); }
+.ck-cc__grid { position: absolute; left: 0; right: 0; height: 1px; background: var(--chart-grid); }
+.ck-cc__ref { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--ink-subtle); z-index: 1; pointer-events: none; }
+.ck-cc__ref span { position: absolute; left: 4px; bottom: 2px; padding: 0 4px; background: var(--surface); font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ck-cc__cols { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+.ck-cc__col { position: relative; flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0 1px; border: 0; background: transparent; cursor: default; font: inherit; }
+button.ck-cc__col { cursor: pointer; }
+.ck-cc__col:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: var(--radius-sm); }
+.ck-cc__bar { position: relative; display: block; width: 100%; max-width: 24px; border-radius: 4px 4px 0 0; background: var(--chart-muted); transition: background-color .15s; }
+.ck-cc__col.is-on .ck-cc__bar { background: var(--chart-accent); }
+.ck-cc__col.is-hover:not(.is-on) .ck-cc__bar { background: var(--ink-subtle); }
+.ck-cc__col.is-hover { background: var(--bg); }
+.ck-cc__val { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); font-size: 12px; line-height: 16px; font-weight: 700; color: var(--ink); white-space: nowrap; }
+.ck-cc__col.is-hover .ck-cc__val { visibility: hidden; }
+.ck-cc__labels { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2); margin-top: 6px; }
+.ck-cc__axisgap { visibility: hidden; font-size: 12px; }
+.ck-cc__labels > div { display: flex; }
+.ck-cc__labels > div span { flex: 1; text-align: center; font-size: 12px; line-height: 16px; color: var(--ink-muted); white-space: nowrap; overflow: visible; }
+.ck-cc__labels > div span.is-on { color: var(--ink); font-weight: 700; }
+
+/* BarList */
+.ck-bl { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.ck-bl li { display: grid; gap: 6px; }
+.ck-bl__top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); font-size: 14px; line-height: 20px; }
+.ck-bl__label { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); min-width: 0; }
+.ck-bl__label .ck-icon { color: var(--ink-subtle); }
+.ck-bl__value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-bl__value span { margin-left: 8px; font-weight: 500; color: var(--ink-muted); }
+.ck-bl__track { display: block; height: 8px; border-radius: var(--radius-full); background: var(--surface-muted); overflow: hidden; }
+.ck-bl__bar { display: block; height: 100%; border-radius: var(--radius-full); background: var(--chart-accent); }
+.ck-bl__bar.is-muted { background: var(--chart-muted); }
+.ck-bl__note { font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+
+/* Heatmap */
+.ck-hm { margin: 0; display: grid; gap: var(--space-3); }
+.ck-hm__grid { display: grid; gap: 3px; align-items: center; }
+.ck-hm__col { font-size: 11px; line-height: 14px; color: var(--ink-muted); text-align: left; white-space: nowrap; }
+.ck-hm__row { font-size: 12px; line-height: 16px; color: var(--ink-muted); font-weight: 600; }
+.ck-hm__cell { position: relative; display: block; height: 26px; border-radius: 4px; background: var(--surface-muted); }
+.ck-hm__cell:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.ck-hm__cell:hover { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); z-index: 2; }
+.ck-hm__cell--1 { background: var(--heat-1); } .ck-hm__cell--2 { background: var(--heat-2); } .ck-hm__cell--3 { background: var(--heat-3); } .ck-hm__cell--4 { background: var(--heat-4); } .ck-hm__cell--5 { background: var(--heat-5); }
+.ck-hm__legend { display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: 12px; color: var(--ink-muted); }
+.ck-hm__legend .ck-hm__cell { width: 16px; height: 12px; border-radius: 3px; }
+.ck-hm__legend span:first-child { margin-right: 4px; } .ck-hm__legend span:last-child { margin-left: 4px; }
+/* Meter */
+.ck-meter { display: grid; gap: var(--space-5); }
+.ck-meter__track { display: flex; gap: 2px; height: 14px; border-radius: var(--radius-full); overflow: hidden; background: var(--surface-muted); }
+.ck-meter__seg { display: block; height: 100%; }
+.ck-meter__seg--accent { background: var(--chart-accent); } .ck-meter__seg--muted { background: var(--chart-muted); } .ck-meter__seg--danger { background: var(--danger); } .ck-meter__seg--success { background: var(--success); }
+.ck-meter__legend { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.ck-meter__legend li { display: flex; align-items: center; gap: var(--space-3); }
+.ck-meter__key { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ck-meter__l { flex: 1; font-size: 15px; line-height: 20px; }
+.ck-meter__l span { display: block; font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ck-meter__v { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-meter__v span { display: block; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-muted); }
+
+
+/* Dashboard */
+.ck-db { display: grid; gap: var(--space-5); }
+.ck-db > .ck-pagehead { margin-bottom: var(--space-1); }
+.ck-db__row { display: grid; gap: var(--space-4); align-items: stretch; }
+.ck-db__row--2-1 { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.ck-db__row--1-1 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 1080px) { .ck-db__row--2-1, .ck-db__row--1-1 { grid-template-columns: 1fr; } }
+.ck-db__list { list-style: none; margin: 0; padding: 0; }
+.ck-db__list li { display: flex; align-items: center; gap: var(--space-3); padding: 10px 0; }
+.ck-db__list li + li { border-top: 1px solid var(--line); }
+.ck-db__list .ck-avatar--sm { background: var(--surface-muted); color: var(--ink-muted); }
+.ck-db__who { flex: 1; min-width: 0; }
+.ck-db__who strong { display: block; font-size: 14px; line-height: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ck-db__who span, .ck-db__when span { display: block; font-size: 13px; line-height: 18px; color: var(--ink-muted); white-space: nowrap; }
+.ck-db__when { text-align: right; }
+.ck-db__when strong { display: block; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
+.ck-db__when span.is-late { color: var(--danger); font-weight: 600; }
+.ck-db__who { overflow: hidden; }
+.ck-db__who span { overflow: hidden; text-overflow: ellipsis; }
+.ck-db__link { padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ck-db__link:hover strong { text-decoration: underline; }
+.ck-db__link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+.ck-db .ck-mt-empty { padding: var(--space-6) var(--space-4); }
+@media (max-width: 560px) {
+  .ck-db__list li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; column-gap: var(--space-3); row-gap: 6px; }
+  .ck-db__list li > .ck-btn { grid-column: 2 / -1; justify-self: start; }
+  .ck-hm__col { font-size: 10px; }
+}

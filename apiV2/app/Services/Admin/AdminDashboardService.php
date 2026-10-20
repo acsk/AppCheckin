@@ -92,6 +92,26 @@ class AdminDashboardService
     }
 
     /**
+     * GET /admin/dashboard/visao — séries dos gráficos do dashboard.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function visao(?int $tenantId): array
+    {
+        if (! $tenantId) {
+            return ['status' => 400, 'body' => ['success' => false, 'error' => 'Academia não identificada']];
+        }
+
+        try {
+            return ['status' => 200, 'body' => ['success' => true, 'data' => $this->dashboard->visaoGeral($tenantId)]];
+        } catch (Throwable $e) {
+            error_log('[AdminDashboardService::visao] Erro: '.$e->getMessage());
+
+            return ['status' => 500, 'body' => ['success' => false, 'error' => 'Erro ao carregar os gráficos do dashboard']];
+        }
+    }
+
+    /**
      * @return array<string, int|float>
      */
     private function statsVazias(): array

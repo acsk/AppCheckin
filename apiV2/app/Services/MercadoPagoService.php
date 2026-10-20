@@ -53,6 +53,14 @@ class MercadoPagoService
      * 
      * @param int|null $tenantId ID do tenant para buscar credenciais específicas
      */
+    /** true quando o token veio de tenant_payment_credentials (e não do fallback global do .env). */
+    private bool $credencialDoTenant = false;
+
+    public function usaCredencialDoTenant(): bool
+    {
+        return $this->credencialDoTenant;
+    }
+
     public function __construct(?int $tenantId = null)
     {
         $this->tenantId = $tenantId;
@@ -104,12 +112,14 @@ class MercadoPagoService
         if ($this->tenantId) {
             $credenciaisCarregadas = $this->carregarCredenciaisDoBanco();
             if ($credenciaisCarregadas) {
+                $this->credencialDoTenant = true;
                 $this->logInicializacao('BANCO (tenant)');
                 return;
             }
         }
         
         // Fallback: variáveis de ambiente (credenciais globais/padrão)
+        $this->credencialDoTenant = false;
         $this->carregarCredenciaisDoEnv();
         $this->logInicializacao('ENV (global)');
     }

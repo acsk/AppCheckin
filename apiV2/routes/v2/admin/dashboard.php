@@ -8,3 +8,4 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/dashboard', [DashboardController::class, 'index']);
 Route::get('/dashboard/cards', [DashboardController::class, 'cards']);
+Route::get('/dashboard/visao', [DashboardController::class, 'visao']);

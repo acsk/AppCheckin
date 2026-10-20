@@ -250,4 +250,109 @@ class DashboardRepository
             'novos_este_mes' => $novosEsteMes,
         ];
     }
+
+    /**
+     * Séries da visão geral do painel: check-ins por dia e por horário, alunos ativos ao longo dos meses,
+     * alunos por plano, entradas e saídas do mês e matrículas cujo acesso termina sem renovação.
+     *
+     * @return array<string, mixed>
+     */
+    public function visaoGeral(int $tenantId, ?string $hoje = null): array
+    {
+        $hoje = $hoje ?: date('Y-m-d');
+        $inicio30 = date('Y-m-d', strtotime($hoje.' -29 days'));
+        $inicio28 = date('Y-m-d', strtotime($hoje.' -28 days'));
+        $ontem = date('Y-m-d', strtotime($hoje.' -1 day'));
+        $mesInicio = substr($hoje, 0, 8).'01';
+
+        // Mesmo critério de data dos cards: dia da aula quando há turma, senão o dia do check-in
+        $dia = 'DATE(COALESCE(d.data, c.data_checkin_date, c.data_checkin))';
+        $base = "FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id WHERE c.tenant_id = ?";
+
+        $porDia = [];
+        foreach (DB::select("SELECT {$dia} AS dia, COUNT(*) AS total {$base} AND {$dia} BETWEEN ? AND ? GROUP BY dia", [$tenantId, $inicio30, $hoje]) as $r) {
+            $porDia[(string) $r->dia] = (int) $r->total;
+        }
+        $checkins30 = [];
+        for ($i = 0; $i < 30; $i++) {
+            $d = date('Y-m-d', strtotime($inicio30." +{$i} days"));
+            $checkins30[] = ['data' => $d, 'total' => $porDia[$d] ?? 0];
+        }
+
+        // Últimas 4 semanas completas (sem hoje): média por dia da semana (1 = segunda) e hora da aula
+        $hora = 'HOUR(COALESCE(t.horario_inicio, c.data_checkin))';
+        $horarios = array_map(fn ($r) => [
+            'dia_semana' => (int) $r->dia_semana,
+            'hora' => (int) $r->hora,
+            'media' => round(((int) $r->total) / 4, 1),
+        ], DB::select("SELECT WEEKDAY({$dia}) + 1 AS dia_semana, {$hora} AS hora, COUNT(*) AS total {$base} AND {$dia} BETWEEN ? AND ? GROUP BY dia_semana, hora", [$tenantId, $inicio28, $ontem]));
+
+        $diaSemanaHoje = (int) date('N', strtotime($hoje));
+        $mesmoDia = 0.0;
+        foreach ($horarios as $h) {
+            if ($h['dia_semana'] === $diaSemanaHoje) {
+                $mesmoDia += $h['media'];
+            }
+        }
+
+        // Alunos com matrícula vigente no fim de cada mês (o último ponto é hoje)
+        $ativosEm = function (string $ref) use ($tenantId): int {
+            return (int) (DB::selectOne("
+                SELECT COUNT(DISTINCT aluno_id) AS total FROM matriculas
+                WHERE tenant_id = ? AND status_id <> 5 AND data_inicio <= ? AND data_vencimento >= ?
+                AND (data_cancelamento IS NULL OR DATE(data_cancelamento) > ?)
+            ", [$tenantId, $ref, $ref, $ref])->total ?? 0);
+        };
+        $ativosHistorico = [];
+        for ($i = 5; $i >= 1; $i--) {
+            $ref = date('Y-m-t', strtotime($mesInicio." -{$i} months"));
+            $ativosHistorico[] = ['data' => $ref, 'total' => $ativosEm($ref)];
+        }
+        $ativosHistorico[] = ['data' => $hoje, 'total' => $ativosEm($hoje)];
+
+        $porPlano = array_map(fn ($r) => ['plano' => (string) $r->plano, 'alunos' => (int) $r->alunos], DB::select("
+            SELECT COALESCE(p.nome, 'Sem plano') AS plano, COUNT(DISTINCT m.aluno_id) AS alunos
+            FROM matriculas m LEFT JOIN planos p ON p.id = m.plano_id
+            WHERE m.tenant_id = ? AND m.status_id = 1
+            GROUP BY plano ORDER BY alunos DESC, plano
+        ", [$tenantId]));
+
+        $saidas = (int) (DB::selectOne("
+            SELECT COUNT(DISTINCT aluno_id) AS total FROM matriculas
+            WHERE tenant_id = ? AND status_id IN (3, 4)
+            AND DATE(COALESCE(data_cancelamento, updated_at)) BETWEEN ? AND ?
+        ", [$tenantId, $mesInicio, $hoje])->total ?? 0);
+
+        // Acesso vigente que termina em até 15 dias, sem outra matrícula do aluno criada depois (renovação)
+        $terminando = array_map(fn ($r) => [
+            'matricula_id' => (int) $r->id,
+            'aluno_id' => (int) $r->aluno_id,
+            'aluno_nome' => (string) $r->aluno_nome,
+            'plano_nome' => $r->plano_nome,
+            'data_vencimento' => (string) $r->data_vencimento,
+            'telefone' => $r->whatsapp ?: $r->telefone,
+        ], DB::select("
+            SELECT m.id, m.aluno_id, m.data_vencimento, a.nome AS aluno_nome, a.telefone, a.whatsapp, p.nome AS plano_nome
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            LEFT JOIN planos p ON p.id = m.plano_id
+            WHERE m.tenant_id = ? AND m.status_id = 1 AND m.data_vencimento BETWEEN ? AND ?
+            AND NOT EXISTS (
+                SELECT 1 FROM matriculas n WHERE n.tenant_id = m.tenant_id AND n.aluno_id = m.aluno_id
+                AND n.id > m.id AND n.status_id IN (1, 5)
+            )
+            ORDER BY m.data_vencimento, a.nome LIMIT 8
+        ", [$tenantId, $hoje, date('Y-m-d', strtotime($hoje.' +15 days'))]));
+
+        return [
+            'hoje' => $hoje,
+            'checkins_30_dias' => $checkins30,
+            'checkins_por_horario' => $horarios,
+            'checkins_media_dia_semana' => round($mesmoDia, 1),
+            'alunos_ativos_historico' => $ativosHistorico,
+            'alunos_por_plano' => $porPlano,
+            'saidas_mes' => $saidas,
+            'acesso_terminando' => $terminando,
+        ];
+    }
 }

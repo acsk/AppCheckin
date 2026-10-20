@@ -63,4 +63,13 @@
   --font-display: "Barlow Semi Condensed", "Barlow", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Gráficos (Dashboard) */
+  --chart-accent: #c9430c;
+  --chart-muted: #8a93a0;
+  --chart-grid: var(--line);
+  --heat-1: #eea47a;
+  --heat-2: #e2814c;
+  --heat-3: #cc6127;
+  --heat-4: #a8460f;
+  --heat-5: #7c330b;
 }

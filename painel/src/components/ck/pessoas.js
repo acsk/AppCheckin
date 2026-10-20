@@ -8,6 +8,7 @@ import React from 'react';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, PageHeader, SelectField, Switch, Tabs, TextField,
 } from './index';
+import { Sparkline } from './graficos';
 
   var h = React.createElement;
   var useState = React.useState, useRef = React.useRef;
@@ -47,7 +48,8 @@ import {
         h('span', { className: 'ck-stat__label' }, p.label),
         p.icon ? h('span', { className: 'ck-stat__icon', 'aria-hidden': true }, h(Icon, { name: p.icon, size: 16 })) : null),
       h('div', { className: 'ck-stat__row' },
-        h('strong', { className: 'ck-stat__value' }, p.value)),
+        h('strong', { className: 'ck-stat__value' }, p.value),
+        p.trend ? h(Sparkline, { data: p.trend }) : null),
       d || p.note ? h('div', { className: 'ck-stat__foot' },
         d ? h('span', { className: 'ck-stat__delta ck-stat__delta--' + tone },
           d.value !== 0 ? h(Icon, { name: d.value > 0 ? 'trending-up' : 'trending-down', size: 14, strokeWidth: 2 }) : null,

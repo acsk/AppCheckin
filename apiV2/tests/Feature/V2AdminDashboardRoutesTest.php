@@ -107,4 +107,25 @@ class V2AdminDashboardRoutesTest extends TestCase
             'tenant_id' => 3,
         ]);
     }
+
+    public function test_visao_retorna_series_do_dashboard(): void
+    {
+        $token = $this->tokenParaPapel(3);
+
+        $service = Mockery::mock(\App\Services\Admin\AdminDashboardService::class);
+        $service->shouldReceive('visao')
+            ->once()
+            ->with(3)
+            ->andReturn([
+                'status' => 200,
+                'body' => ['success' => true, 'data' => ['checkins_media_dia_semana' => 12.5, 'saidas_mes' => 2]],
+            ]);
+        $this->app->instance(\App\Services\Admin\AdminDashboardService::class, $service);
+
+        $this->getJson('/v2/admin/dashboard/visao', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.saidas_mes', 2);
+    }
 }

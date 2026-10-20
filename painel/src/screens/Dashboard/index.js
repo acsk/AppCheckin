@@ -1,43 +1,63 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { authService } from '../../services/authService';
-import { buscarDashboard, buscarDashboardCards } from '../../services/dashboardService';
+import { buscarDashboardCards, buscarDashboardVisao } from '../../services/dashboardService';
 import { financeiroService } from '../../services/financeiroService';
 import { DASHBOARD_CARDS_DEFAULT } from '../../models';
 import LayoutBase from '../../components/LayoutBase';
-import { Avatar, Badge, Button, Callout, Icon, PageHeader } from '../../components/ck';
-import {
-  KpiCard, MonthlyChart, StatusSplit, byMonth, fdate, isoDate, money, monthEnd, monthStart, pct, statusOf, summarize,
-} from '../../components/ck/financeiro';
+import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
+import { Avatar, Button, Callout, Icon, PageHeader } from '../../components/ck';
+import { Panel, StatTile } from '../../components/ck/pessoas';
+import { ChartBarList, ColumnChart, Heatmap, Meter, deltaObj } from '../../components/ck/graficos';
+import { fdate, isoDate, money, monthEnd, monthStart, statusOf, summarize } from '../../components/ck/financeiro';
 
 const titleCase = (n) => String(n || '').toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, s, c) => s + c.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
 const greeting = (h) => (h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite');
 const dayDiff = (a, b) => Math.round((new Date(`${b}T00:00:00`) - new Date(`${a}T00:00:00`)) / 86400000);
+const num = (v) => new Intl.NumberFormat('pt-BR').format(v || 0);
+const plural = (n, um, varios) => `${num(n)} ${n === 1 ? um : varios}`;
+const monthName = (d) => d.toLocaleDateString('pt-BR', { month: 'long' });
 
-const QUICK_LINKS = [
-  { label: 'Matrículas', icon: 'receipt', path: '/matriculas' },
-  { label: 'Alunos', icon: 'users', path: '/alunos' },
-  { label: 'Planos', icon: 'layers', path: '/planos' },
-  { label: 'Aulas', icon: 'calendar', path: '/turmas' },
-];
+const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const NOS_DIAS = ['aos domingos', 'às segundas', 'às terças', 'às quartas', 'às quintas', 'às sextas', 'aos sábados'];
+const DIA_LONGO = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const MAX_PLANOS = 6;
+
+function Empty({ icon = 'check-circle', title, children }) {
+  return (
+    <div className="ck-mt-empty">
+      <span className="ck-mt-empty__icon" aria-hidden><Icon name={icon} size={20} /></span>
+      <strong>{title}</strong>
+      {children ? <p>{children}</p> : null}
+    </div>
+  );
+}
+
+function whatsappLink(telefone, nome, ate) {
+  let d = String(telefone || '').replace(/\D/g, '');
+  if (d.length < 10) return null;
+  if (d.length <= 11) d = `55${d}`;
+  const texto = `Oi, ${titleCase(nome).split(' ')[0]}! Seu plano na academia vale até ${fdate(ate)}. Quer renovar para continuar treinando?`;
+  return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`;
+}
 
 export default function Dashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [cards, setCards] = useState(null);
-  const [stats, setStats] = useState(null);
+  const [visao, setVisao] = useState(null);
   const [payments, setPayments] = useState(null);
   const [recebidos, setRecebidos] = useState(null);
-  const [paymentsError, setPaymentsError] = useState('');
+  const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  const [baixa, setBaixa] = useState(null);
 
   const now = new Date();
   const today = isoDate(now);
-  const from = monthStart(now, -5);
-  const to = monthEnd(now, 1);
   const currentKey = today.slice(0, 7);
-  const prevKey = isoDate(monthStart(now, -1)).slice(0, 7);
+  const prevMonth = monthStart(now, -1);
+  const prevKey = isoDate(prevMonth).slice(0, 7);
 
   useEffect(() => {
     authService.getCurrentUser().then((u) => {
@@ -49,20 +69,22 @@ export default function Dashboard() {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setPaymentsError('');
+    setErro('');
+    const falhou = (msg) => (err) => {
+      if (active) setErro((e) => e || err?.mensagemLimpa || err?.error || msg);
+      return null;
+    };
     Promise.all([
       buscarDashboardCards().catch(() => null),
-      buscarDashboard().catch(() => null),
-      financeiroService.listarPagamentos({ dataInicio: isoDate(from), dataFim: isoDate(to) }).catch((err) => {
-        if (active) setPaymentsError(err?.mensagemLimpa || err?.error || 'Não foi possível carregar as parcelas.');
-        return null;
-      }),
+      buscarDashboardVisao().catch(falhou('Não foi possível carregar os gráficos de frequência.')),
+      financeiroService.listarPagamentos({ dataInicio: isoDate(monthStart(now, -5)), dataFim: isoDate(monthEnd(now, 1)) })
+        .catch(falhou('Não foi possível carregar as parcelas.')),
       // "Recebido" pela data do pagamento, mesmo critério do Relatório e de Assinaturas
-      financeiroService.listarRecebidos({ dataInicio: isoDate(monthStart(now, -1)), dataFim: isoDate(monthEnd(now)) }).catch(() => null),
-    ]).then(([c, s, p, r]) => {
+      financeiroService.listarRecebidos({ dataInicio: isoDate(monthStart(now, -5)), dataFim: isoDate(monthEnd(now)) }).catch(() => null),
+    ]).then(([c, v, p, r]) => {
       if (!active) return;
       setCards(c?.data || c || null);
-      setStats(s?.data || s || null);
+      setVisao(v);
       setPayments(p);
       setRecebidos(r);
       setLoading(false);
@@ -71,179 +93,261 @@ export default function Dashboard() {
   }, [reload]);
 
   const c = cards || DASHBOARD_CARDS_DEFAULT;
-  const list = payments || [];
 
-  const derived = useMemo(() => {
-    const inMonth = (p, key) => String(p.data_vencimento || '').slice(0, 7) === key;
-    const paidIn = (key) => (recebidos || []).filter((p) => String(p.data_pagamento || '').slice(0, 7) === key).reduce((a, p) => a + (Number(p.valor) || 0), 0);
-    const month = summarize(list.filter((p) => inMonth(p, currentKey)), today);
+  const fin = useMemo(() => {
+    const list = payments || [];
+    const recs = recebidos || [];
+    const somaRecebida = (filtro) => recs.filter((p) => filtro(String(p.data_pagamento || '').slice(0, 10))).reduce((a, p) => a + (Number(p.valor) || 0), 0);
+    const diaHoje = today.slice(8, 10);
     const late = list.filter((p) => statusOf(p, today) === 'atrasado');
     const upcoming = list
       .filter((p) => statusOf(p, today) === 'aguardando' && dayDiff(today, String(p.data_vencimento).slice(0, 10)) <= 7)
       .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)));
+    const meses = [5, 4, 3, 2, 1, 0].map((i) => isoDate(monthStart(now, -i)).slice(0, 7));
     return {
-      month,
-      receivedNow: paidIn(currentKey),
-      receivedPrev: paidIn(prevKey),
+      month: summarize(list.filter((p) => String(p.data_vencimento || '').slice(0, 7) === currentKey), today),
+      receivedToday: somaRecebida((d) => d === today),
+      receivedNow: somaRecebida((d) => d.slice(0, 7) === currentKey),
+      // Mesmo intervalo do mês anterior (até o mesmo dia), para comparar sem o mês em curso sair perdendo
+      receivedPrev: somaRecebida((d) => d.slice(0, 7) === prevKey && d.slice(8, 10) <= diaHoje),
+      receivedTrend: meses.map((k) => somaRecebida((d) => d.slice(0, 7) === k)),
       lateCount: late.length,
       lateValue: late.reduce((a, p) => a + (Number(p.valor) || 0), 0),
       upcoming,
-      months: byMonth(list, today, from, monthEnd(now)),
+      upcomingValue: upcoming.reduce((a, p) => a + (Number(p.valor) || 0), 0),
     };
   }, [payments, recebidos]);
 
-  const received = recebidos ? derived.receivedNow : Number(c.receita_mensal?.valor) || 0;
-  const trend = recebidos && derived.receivedPrev > 0
-    ? (() => {
-      const d = Math.round(((derived.receivedNow - derived.receivedPrev) / derived.receivedPrev) * 100);
-      return { direction: d < 0 ? 'down' : 'up', label: `${d > 0 ? '+' : ''}${d}% vs. mês passado` };
-    })()
-    : null;
+  const freq = useMemo(() => {
+    const dias = visao?.checkins_30_dias || [];
+    const total30 = dias.reduce((a, d) => a + d.total, 0);
+    const horarios = visao?.checkins_por_horario || [];
+    const horas = horarios.map((x) => x.hora);
+    const de = Math.min(6, ...horas);
+    const ate = Math.max(21, ...horas);
+    const cols = Array.from({ length: ate - de + 1 }, (_, i) => `${de + i}h`);
+    const heat = DIAS.map((_, i) => cols.map((__, j) => horarios.find((x) => x.dia_semana === i + 1 && x.hora === de + j)?.media || 0));
+    const planos = visao?.alunos_por_plano || [];
+    const outros = planos.slice(MAX_PLANOS).reduce((a, x) => a + x.alunos, 0);
+    const hist = (visao?.alunos_ativos_historico || []).map((x) => x.total);
+    return {
+      checkins: dias.map((d) => {
+        const dt = new Date(`${d.data}T00:00:00`);
+        return { label: fdate(d.data).slice(0, 5), tip: `${DIA_LONGO[dt.getDay()]}, ${fdate(d.data).slice(0, 5)}`, value: d.total };
+      }),
+      total30,
+      avg30: dias.length ? total30 / dias.length : null,
+      last7: dias.slice(-7).map((d) => d.total),
+      cols,
+      heat,
+      temHorarios: horarios.length > 0,
+      porPlano: [
+        ...planos.slice(0, MAX_PLANOS).map((x) => ({ label: x.plano, value: x.alunos })),
+        ...(outros ? [{ label: 'Outros planos', value: outros, muted: true }] : []),
+      ],
+      hist,
+    };
+  }, [visao]);
 
-  const cadastrados = Number(c.total_alunos?.ativos) || 0;
-  const mats = c.matriculas || null;
-  const ativos = mats ? Number(mats.alunos_com_matricula_ativa) || 0 : cadastrados;
-  const semMatricula = Math.max(0, cadastrados - ativos);
+  const ativos = c.matriculas ? Number(c.matriculas.alunos_com_matricula_ativa) || 0 : Number(c.total_alunos?.ativos) || 0;
+  const checkinsHoje = Number(c.checkins_hoje?.hoje) || 0;
+  const novos = Number(c.planos_vencendo?.novos_este_mes) || 0;
   const firstName = titleCase(user?.nome || '').split(' ')[0];
   const dateLabel = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const prevName = monthName(prevMonth);
+  const terminando = visao?.acesso_terminando || [];
+  const ver = (v) => (loading ? '—' : v);
+
+  const abrirBaixa = (p) => {
+    if (p.pacote_contrato_id) {
+      // Parcela rateada de pacote: a baixa é feita pelo pacote, na tela da matrícula
+      router.push(`/matriculas/detalhe?id=${p.matricula_id}`);
+      return;
+    }
+    setBaixa(p);
+  };
 
   return (
     <LayoutBase title="Dashboard" pageHeader={false}>
-      <div className="ck-dash">
+      <div className="ck-db">
         <PageHeader
           title={`${greeting(now.getHours())}${firstName ? `, ${firstName}` : ''}`}
-          description={`${dateLabel.charAt(0).toUpperCase()}${dateLabel.slice(1)}. Veja como estão as matrículas e os recebimentos.`}
+          description={`${dateLabel.charAt(0).toUpperCase()}${dateLabel.slice(1)}.${loading ? '' : ` Até agora, ${plural(checkinsHoje, 'check-in', 'check-ins')} e ${money(fin.receivedToday)} ${fin.receivedToday ? 'recebidos' : 'recebido'} hoje.`}`}
           actions={(
             <>
-              <Button icon="bar-chart" onClick={() => router.push('/financeiro/relatorio')}>Relatório financeiro</Button>
+              <Button icon="receipt" onClick={() => router.push('/financeiro/relatorio')}>Relatório financeiro</Button>
               <Button variant="primary" icon="plus" onClick={() => router.push('/matriculas/novo')}>Nova matrícula</Button>
             </>
           )}
         />
 
-        {derived.lateCount > 0 ? (
-          <Callout
-            tone="danger"
-            icon="clock"
-            title={`${derived.lateCount} ${derived.lateCount === 1 ? 'parcela atrasada soma' : 'parcelas atrasadas somam'} ${money(derived.lateValue)}`}
-            action={<Button size="sm" onClick={() => router.push('/financeiro/relatorio?status=atrasado&periodo=6m')}>Ver parcelas</Button>}
-          >
-            Considera os vencimentos dos últimos 6 meses. Dar baixa em dia mantém o acesso dos alunos liberado.
+        {erro ? (
+          <Callout tone="warning" title="Parte do dashboard não carregou" action={<Button size="sm" icon="refresh-cw" onClick={() => setReload((v) => v + 1)}>Tentar de novo</Button>}>
+            {erro}
           </Callout>
         ) : null}
-        {paymentsError ? <Callout tone="warning" title="Parte dos números financeiros não carregou">{paymentsError}</Callout> : null}
 
-        <div className="ck-kpis">
-          <KpiCard emphasis icon="wallet" label="Recebido no mês" value={loading ? '—' : money(received)} trend={trend} hint={trend ? null : 'Parcelas pagas neste mês, pela data do pagamento'} onClick={() => router.push('/financeiro/relatorio')} />
-          <KpiCard tone="warning" icon="clock" label="A receber no mês" value={loading ? '—' : money(derived.month.aguardando)} hint={`${derived.month.count.aguardando} ${derived.month.count.aguardando === 1 ? 'parcela aguardando' : 'parcelas aguardando'}`} />
-          <KpiCard tone="danger" icon="alert-triangle" label="Em atraso" value={loading ? '—' : money(derived.lateValue)} hint={`${derived.lateCount} ${derived.lateCount === 1 ? 'parcela' : 'parcelas'} nos últimos 6 meses`} onClick={derived.lateCount ? () => router.push('/financeiro/relatorio?status=atrasado&periodo=6m') : undefined} />
-          <KpiCard tone="info" icon="users" label="Alunos com matrícula ativa" value={loading ? '—' : ativos.toLocaleString('pt-BR')} hint={`${Number(c.planos_vencendo?.novos_este_mes) || 0} matrículas novas este mês`} onClick={() => router.push('/matriculas')} />
+        <div className="ck-db__kpis">
+          <StatTile
+            label="Alunos ativos"
+            icon="users"
+            value={ver(num(ativos))}
+            delta={freq.hist.length > 1 ? deltaObj(freq.hist[freq.hist.length - 1], freq.hist[freq.hist.length - 2], `vs fim de ${prevName}`, true, num) : null}
+            note={freq.hist.length > 1 ? null : 'Com matrícula ativa'}
+            trend={freq.hist}
+          />
+          <StatTile
+            label="Recebido no mês"
+            icon="wallet"
+            value={ver(money(fin.receivedNow))}
+            delta={recebidos ? deltaObj(fin.receivedNow, fin.receivedPrev, `no mesmo dia de ${prevName}`, true) : null}
+            note={recebidos && !fin.receivedPrev ? 'Pela data do pagamento' : null}
+            trend={recebidos ? fin.receivedTrend : null}
+          />
+          <StatTile
+            label="Check-ins hoje"
+            icon="activity"
+            value={ver(num(checkinsHoje))}
+            note={visao ? `Média de ${num(Math.round(visao.checkins_media_dia_semana || 0))} ${NOS_DIAS[now.getDay()]}` : null}
+            trend={freq.last7}
+          />
+          <StatTile
+            label="Em atraso"
+            icon="alert-triangle"
+            value={ver(money(fin.lateValue))}
+            note={payments ? `${plural(fin.lateCount, 'parcela', 'parcelas')} nos últimos 6 meses` : null}
+          />
         </div>
 
-        <div className="ck-dash__row">
-          <section className="ck-card ck-dash__panel" aria-label="Parcelas por mês">
-            <header className="ck-dash__head">
-              <div>
-                <h2 className="ck-mt-box__title">Parcelas por mês</h2>
-                <p className="ck-dash__sub">Últimos 6 meses, pela data de vencimento</p>
-              </div>
-              <Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/financeiro/relatorio?periodo=6m')}>Detalhar</Button>
-            </header>
-            {loading ? <p className="ck-fin-empty" role="status">Carregando…</p> : <MonthlyChart months={derived.months} currentKey={currentKey} />}
-          </section>
-
-          <section className="ck-card ck-mt-box ck-dash__month" aria-label="Este mês">
-            <div className="ck-mt-box__head">
-              <div>
-                <h2 className="ck-mt-box__title">Este mês</h2>
-                <span className="ck-mt-box__sub">Parcelas com vencimento em {now.toLocaleDateString('pt-BR', { month: 'long' })}</span>
-              </div>
-              <span className="ck-mt-box__aside">{pct(derived.month.pago, derived.month.total)}% pago</span>
-            </div>
-            <StatusSplit summary={derived.month} />
-          </section>
+        <div className="ck-db__row ck-db__row--2-1">
+          <Panel
+            title="Check-ins nos últimos 30 dias"
+            description={visao ? `${plural(freq.total30, 'check-in', 'check-ins')} no período` : null}
+          >
+            {loading ? <p className="ck-fin-empty" role="status">Carregando…</p> : freq.total30 ? (
+              <ColumnChart
+                data={freq.checkins}
+                highlightLast
+                height={200}
+                labelEvery={5}
+                reference={freq.avg30}
+                referenceLabel={`Média ${num(Math.round(freq.avg30))}`}
+                caption="Check-ins por dia"
+              />
+            ) : <Empty icon="activity" title="Nenhum check-in nos últimos 30 dias">Os check-ins dos alunos aparecem aqui dia a dia.</Empty>}
+          </Panel>
+          <Panel
+            title="Receita do mês"
+            description={`Parcelas que vencem em ${monthName(now)}: previsto ${money(fin.month.total)}`}
+            actions={<Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/financeiro/relatorio')}>Detalhes</Button>}
+          >
+            {loading ? <p className="ck-fin-empty" role="status">Carregando…</p> : fin.month.total ? (
+              <Meter
+                total={fin.month.total}
+                format={money}
+                segments={[
+                  { label: 'Pago', value: fin.month.pago, tone: 'accent', note: plural(fin.month.count.pago, 'parcela', 'parcelas') },
+                  { label: 'A vencer', value: fin.month.aguardando, tone: 'muted', note: 'Ainda no prazo' },
+                  { label: 'Em atraso', value: fin.month.atrasado, tone: 'danger', note: plural(fin.month.count.atrasado, 'parcela', 'parcelas') },
+                ]}
+              />
+            ) : <Empty icon="receipt" title={`Nenhuma parcela vence em ${monthName(now)}`} />}
+          </Panel>
         </div>
 
-        <div className="ck-dash__row ck-dash__row--even">
-          <section className="ck-card ck-dash__panel" aria-label="Próximos vencimentos">
-            <header className="ck-dash__head">
-              <div>
-                <h2 className="ck-mt-box__title">Próximos vencimentos</h2>
-                <p className="ck-dash__sub">Parcelas aguardando pagamento nos próximos 7 dias</p>
-              </div>
-              {derived.upcoming.length ? <Badge tone="warning">{derived.upcoming.length}</Badge> : null}
-            </header>
-            {derived.upcoming.length ? (
-              <ul className="ck-dash__due">
-                {derived.upcoming.slice(0, 6).map((p) => {
+        <div className="ck-db__row ck-db__row--2-1">
+          <Panel title="Horários de pico" description="Média de check-ins por dia da semana e hora da aula, nas últimas 4 semanas.">
+            {loading ? <p className="ck-fin-empty" role="status">Carregando…</p> : freq.temHorarios ? (
+              <Heatmap rows={DIAS} cols={freq.cols} values={freq.heat} unit="check-ins" label="Check-ins por dia e hora" />
+            ) : <Empty icon="clock" title="Sem check-ins nas últimas 4 semanas">O mapa mostra os horários mais cheios quando houver frequência.</Empty>}
+          </Panel>
+          <Panel
+            title="Alunos por plano"
+            description={visao ? `+${num(novos)} ${novos === 1 ? 'matrícula nova' : 'matrículas novas'} e ${plural(visao.saidas_mes || 0, 'saída', 'saídas')} este mês` : null}
+          >
+            {loading ? <p className="ck-fin-empty" role="status">Carregando…</p> : freq.porPlano.length ? (
+              <ChartBarList items={freq.porPlano} />
+            ) : <Empty icon="layers" title="Nenhuma matrícula ativa" />}
+          </Panel>
+        </div>
+
+        <div className="ck-db__row ck-db__row--1-1">
+          <Panel
+            title="Vencem nos próximos 7 dias"
+            description={fin.upcoming.length ? `${money(fin.upcomingValue)} em ${plural(fin.upcoming.length, 'parcela', 'parcelas')}` : null}
+            actions={<Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/matriculas/vencimentos')}>Ver todas</Button>}
+          >
+            {fin.upcoming.length ? (
+              <ul className="ck-db__list">
+                {fin.upcoming.slice(0, 6).map((p) => {
                   const d = dayDiff(today, String(p.data_vencimento).slice(0, 10));
                   return (
                     <li key={p.id}>
-                      <button type="button" onClick={() => router.push(`/matriculas/detalhe?id=${p.matricula_id}`)}>
-                        <Avatar name={titleCase(p.aluno_nome)} size="sm" decorative />
-                        <span className="ck-dash__who"><strong>{titleCase(p.aluno_nome)}</strong><span>{p.plano_nome}</span></span>
-                        <span className="ck-dash__when">
-                          <strong>{money(p.valor)}</strong>
-                          <span className={d === 0 ? 'is-today' : null}>{d === 0 ? 'Vence hoje' : d === 1 ? 'Amanhã' : `${fdate(p.data_vencimento)}, em ${d} dias`}</span>
-                        </span>
+                      <Avatar name={titleCase(p.aluno_nome)} size="sm" decorative />
+                      <button type="button" className="ck-db__who ck-db__link" onClick={() => router.push(`/matriculas/detalhe?id=${p.matricula_id}`)}>
+                        <strong>{titleCase(p.aluno_nome)}</strong><span>{p.plano_nome}</span>
                       </button>
+                      <span className="ck-db__when">
+                        <strong>{money(p.valor)}</strong>
+                        <span>{d === 0 ? 'Vence hoje' : d === 1 ? 'Vence amanhã' : `Em ${d} dias`}</span>
+                      </span>
+                      <Button size="sm" variant="secondary" onClick={() => abrirBaixa(p)}>Dar baixa</Button>
                     </li>
                   );
                 })}
               </ul>
             ) : (
-              <div className="ck-mt-empty">
-                <span className="ck-mt-empty__icon" aria-hidden><Icon name="check-circle" size={20} /></span>
-                <strong>Nada vencendo nos próximos 7 dias</strong>
-                <p>As próximas parcelas aparecem aqui conforme chegam perto do vencimento.</p>
-              </div>
+              <Empty title={loading ? 'Carregando…' : 'Nada vencendo nos próximos 7 dias'}>
+                {loading ? null : 'As próximas parcelas aparecem aqui conforme chegam perto do vencimento.'}
+              </Empty>
             )}
-            <footer className="ck-dash__foot">
-              <Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/matriculas/vencimentos')}>Ver vencimentos</Button>
-            </footer>
-          </section>
-
-          <section className="ck-card ck-dash__panel" aria-label="Academia">
-            <header className="ck-dash__head">
-              <div>
-                <h2 className="ck-mt-box__title">Academia</h2>
-                <p className="ck-dash__sub">Alunos, frequência e renovações</p>
-              </div>
-              <Button size="sm" variant="ghost" icon="refresh-cw" loading={loading} onClick={() => setReload((v) => v + 1)}>Atualizar</Button>
-            </header>
-            <div className="ck-dash__students">
-              <div className="ck-dash__studentsrow">
-                <span><strong>{ativos.toLocaleString('pt-BR')}</strong> com matrícula ativa</span>
-                <span>de {cadastrados.toLocaleString('pt-BR')} cadastrados</span>
-              </div>
-              <span className="ck-mt-plan__track ck-dash__track" role="progressbar" aria-label="Alunos cadastrados com matrícula ativa" aria-valuenow={pct(ativos, cadastrados)} aria-valuemin={0} aria-valuemax={100}>
-                <span className="ck-mt-plan__fill" style={{ width: `${Math.max(pct(ativos, cadastrados), 2)}%` }} />
-              </span>
-              {mats ? (
-                <ul className="ck-dash__mats">
-                  <li><button type="button" onClick={() => router.push('/alunos')}><strong>{semMatricula.toLocaleString('pt-BR')}</strong> sem matrícula ativa</button></li>
-                  {Number(mats.vencidas) ? <li className="is-danger"><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.vencidas}</strong> {Number(mats.vencidas) === 1 ? 'vencida' : 'vencidas'}</button></li> : null}
-                  {Number(mats.pendentes) ? <li className="is-warning"><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.pendentes}</strong> {Number(mats.pendentes) === 1 ? 'pendente' : 'pendentes'}</button></li> : null}
-                  {Number(mats.bloqueadas) ? <li><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.bloqueadas}</strong> {Number(mats.bloqueadas) === 1 ? 'bloqueada' : 'bloqueadas'}</button></li> : null}
-                </ul>
-              ) : null}
-            </div>
-            <dl className="ck-dash__facts">
-              <div><dt><Icon name="check-circle" size={15} />Check-ins hoje</dt><dd>{Number(c.checkins_hoje?.hoje) || 0}</dd></div>
-              <div><dt><Icon name="activity" size={15} />Check-ins no mês</dt><dd>{(Number(c.checkins_hoje?.no_mes) || 0).toLocaleString('pt-BR')}</dd></div>
-              <div><dt><Icon name="calendar" size={15} />Matrículas vencendo em 7 dias</dt><dd>{Number(c.planos_vencendo?.vencendo) || 0}</dd></div>
-              <div><dt><Icon name="user-plus" size={15} />Novos alunos no mês</dt><dd>{Number(stats?.novos_alunos_mes) || 0}</dd></div>
-            </dl>
-            <nav className="ck-dash__links" aria-label="Atalhos">
-              {QUICK_LINKS.map((l) => (
-                <button key={l.path} type="button" onClick={() => router.push(l.path)}>
-                  <Icon name={l.icon} size={18} />{l.label}
-                </button>
-              ))}
-            </nav>
-          </section>
+          </Panel>
+          <Panel
+            title="Acesso terminando"
+            description="Matrículas que encerram nos próximos 15 dias e ainda não renovaram."
+            actions={<Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/matriculas')}>Matrículas</Button>}
+          >
+            {terminando.length ? (
+              <ul className="ck-db__list">
+                {terminando.map((m) => {
+                  const d = dayDiff(today, m.data_vencimento);
+                  const wa = whatsappLink(m.telefone, m.aluno_nome, m.data_vencimento);
+                  return (
+                    <li key={m.matricula_id}>
+                      <Avatar name={titleCase(m.aluno_nome)} size="sm" decorative />
+                      <button type="button" className="ck-db__who ck-db__link" onClick={() => router.push(`/matriculas/detalhe?id=${m.matricula_id}`)}>
+                        <strong>{titleCase(m.aluno_nome)}</strong><span>{m.plano_nome || 'Sem plano'}</span>
+                      </button>
+                      <span className="ck-db__when">
+                        <strong>{fdate(m.data_vencimento)}</strong>
+                        <span>{d === 0 ? 'Termina hoje' : `Em ${d} ${d === 1 ? 'dia' : 'dias'}`}</span>
+                      </span>
+                      {wa ? (
+                        <Button size="sm" variant="ghost" icon="message-circle" onClick={() => window.open(wa, '_blank', 'noopener')}>Lembrar</Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => router.push(`/matriculas/detalhe?id=${m.matricula_id}`)}>Abrir</Button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <Empty title={loading ? 'Carregando…' : 'Nenhum acesso terminando'}>
+                {loading ? null : 'Quem estiver a 15 dias do fim do plano, sem renovação, aparece aqui.'}
+              </Empty>
+            )}
+          </Panel>
         </div>
       </div>
+
+      <BaixaPagamentoPlanoModal
+        visible={!!baixa}
+        pagamento={baixa}
+        student={titleCase(baixa?.aluno_nome)}
+        plan={baixa?.plano_nome}
+        onClose={() => setBaixa(null)}
+        onSuccess={() => { setBaixa(null); setReload((v) => v + 1); }}
+      />
     </LayoutBase>
   );
 }
