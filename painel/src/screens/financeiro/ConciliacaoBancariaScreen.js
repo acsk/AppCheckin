@@ -5,6 +5,7 @@ import LayoutBase from '../../components/LayoutBase';
 import { Badge, Button, Callout, Icon, IconButton, PageHeader, SegmentedControl, SelectField, TextField } from '../../components/ck';
 import { fdate, isoDate, money, monthEnd, monthStart } from '../../components/ck/financeiro';
 import { showError, showSuccess } from '../../utils/toast';
+import { gerarPdfConciliacao } from '../../utils/relatorioConciliacaoPdf';
 
 const PAGE_SIZE = 25;
 const MAX_DIAS = 186;
@@ -66,7 +67,7 @@ const BAIXAS = [
   { value: 'manual', label: 'Manuais' },
   { value: 'sem_baixa', label: 'Sem baixa' },
 ];
-const COLS = [30, 13, 11, 9, 11, 8, 18];
+const COLS = [26, 12, 10, 9, 10, 7, 10, 16];
 
 const cx = (...a) => a.filter(Boolean).join(' ');
 const titleCase = (n) => String(n || '').toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, s, c) => s + c.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
@@ -150,6 +151,7 @@ function agrupar(linhas) {
       provedores: [...new Set(pays.map((l) => l.provedor))],
       t,
       diff: pays.length && paga ? t.gross - parcela.valor : null,
+      ...resultadoDaTaxa(parcela, pays, t),
       notas,
       reprocessaveis: pays.filter((l) => l.pode_reprocessar),
       busca: norm([ref.aluno_nome, ref.descricao, ref.matricula_id, parcela?.id, ref.plano_nome, ...ls.map((l) => `${l.payment_id || ''} ${l.forma || ''}`)].join(' ')),
@@ -157,10 +159,36 @@ function agrupar(linhas) {
   });
 }
 
+/**
+ * Quanto a parcela rendeu frente à mensalidade: líquido que caiu na conta menos o valor do plano.
+ * Pix e boleto costumam ficar abaixo (a taxa sai da academia); no cartão com acréscimo (tarifa_cartao,
+ * já somado ao valor da parcela) o aluno paga a taxa e a sobra vira ganho.
+ */
+function resultadoDaTaxa(parcela, pays, t) {
+  if (!parcela || !pays.length || pays.some((l) => l.liquido == null)) return { resultado: null };
+  const acrescimo = Number(parcela.acrescimo) || 0;
+  const mensalidade = Math.round((parcela.valor - acrescimo) * 100) / 100;
+  return { mensalidade, acrescimo, resultado: Math.round((t.net - mensalidade) * 100) / 100 };
+}
+
 /** Totais da faixa de resumo, sobre os grupos filtrados. */
 function resumir(grupos) {
-  const r = { gross: 0, fees: 0, net: 0, receivable: 0, payments: 0, semLiquido: 0, auto: 0, autoCount: 0, manual: 0, manualCount: 0, naoConferido: 0 };
+  const r = {
+    gross: 0, fees: 0, net: 0, receivable: 0, payments: 0, semLiquido: 0, auto: 0, autoCount: 0, manual: 0, manualCount: 0, naoConferido: 0,
+    taxa: { parcelas: 0, mensalidades: 0, liquido: 0, taxas: 0, acrescimos: 0, resultado: 0, perdas: 0, perdaQtd: 0, ganhos: 0, ganhoQtd: 0 },
+  };
   grupos.forEach((g) => {
+    if (g.resultado != null) {
+      const x = r.taxa;
+      x.parcelas += 1;
+      x.mensalidades += g.mensalidade;
+      x.liquido += g.t.net;
+      x.taxas += g.t.fee;
+      x.acrescimos += g.acrescimo;
+      x.resultado += g.resultado;
+      if (g.resultado < -0.004) { x.perdas += g.resultado; x.perdaQtd += 1; }
+      if (g.resultado > 0.004) { x.ganhos += g.resultado; x.ganhoQtd += 1; }
+    }
     r.gross += g.t.grossP;
     r.fees += g.t.feeP;
     r.net += g.t.netP;
@@ -178,6 +206,18 @@ function resumir(grupos) {
 function SituacaoBadge({ status, grupo }) {
   const st = SITUACAO[status] || { tone: 'outline', texto: '' };
   return <span title={st.texto}><Badge tone={st.tone} dot>{rotulo(status, grupo)}</Badge></span>;
+}
+
+function Resultado({ grupo: g }) {
+  if (g.resultado == null) return <span className="ck-cb__dash">—</span>;
+  const perda = g.resultado < -0.004;
+  const ganho = g.resultado > 0.004;
+  return (
+    <>
+      <span className={perda ? 'ck-cb__loss' : ganho ? 'ck-cb__gain' : 'ck-cb__dash'}>{perda || ganho ? `${ganho ? '+' : '−'}${num(Math.abs(g.resultado))}` : '0,00'}</span>
+      <span className="ck-cb__sub ck-cb__wrapsub">{g.acrescimo ? `acréscimo ${num(g.acrescimo)}` : `plano ${num(g.mensalidade)}`}</span>
+    </>
+  );
 }
 
 function Diferenca({ value }) {
@@ -305,13 +345,29 @@ export default function ConciliacaoBancariaScreen() {
   const exportCsv = () => {
     const rows = list.flatMap((g) => g.linhas);
     downloadCsv(`conciliacao_${from}_${to}.csv`, [
-      ['Data', 'Crédito', 'Provedor', 'ID no provedor', 'Forma', 'Tipo de baixa', 'Aluno', 'Matrícula', 'Bruto', 'Taxa', 'Líquido', 'Parcela Check-in', 'Valor no Check-in', 'Situação', 'Detalhe'],
+      ['Data', 'Crédito', 'Provedor', 'ID no provedor', 'Forma', 'Tipo de baixa', 'Aluno', 'Matrícula', 'Bruto', 'Taxa', 'Líquido', 'Parcela Check-in', 'Valor no Check-in', 'Mensalidade', 'Acréscimo cobrado', 'Ganho/perda', 'Situação', 'Detalhe'],
       ...rows.map((l) => [
         fdate(l.data), l.data_credito ? fdate(l.data_credito) : '', l.provedor_nome || '', l.payment_id || '', l.forma || '', l.baixa_nome || '', quem(l), l.matricula_id || '',
         num(l.origem === 'provedor' ? l.valor : null), num(l.taxa), num(l.liquido), l.parcela?.id || '', num(l.parcela?.valor),
+        ...(() => { const g = list.find((x) => x.linhas.includes(l)); return g?.resultado != null && g.linhas.find((y) => y.origem === 'provedor') === l ? [num(g.mensalidade), num(g.acrescimo), num(g.resultado)] : ['', '', '']; })(),
         l.status === 'manual' ? (l.baixa_nome || 'Baixa manual') : SITUACAO[l.status]?.label || l.status, l.motivo || l.nota || '',
       ]),
     ]);
+  };
+
+  const exportPdf = () => {
+    try {
+      gerarPdfConciliacao({
+        grupos: list,
+        resumo: resumir(list),
+        academia: data?.academia,
+        inicio: from,
+        fim: to,
+        provedor: opcoesProvedor.find((o) => o.value === provedor)?.label.replace('Todos os provedores', 'Todos') || 'Todos',
+      });
+    } catch (err) {
+      showError('Não foi possível gerar o PDF.');
+    }
   };
 
   const semProvedor = !loading && data && provedores.length === 0;
@@ -334,6 +390,7 @@ export default function ConciliacaoBancariaScreen() {
           actions={(
             <>
               <Button icon="download" disabled={loading || !list.length} onClick={exportCsv}>Exportar CSV</Button>
+              <Button icon="file-text" disabled={loading || !list.length} onClick={exportPdf}>Exportar PDF</Button>
               <Button icon="refresh-cw" loading={loading} onClick={() => setReload((v) => v + 1)}>{loading ? 'Atualizando…' : 'Atualizar'}</Button>
             </>
           )}
@@ -383,6 +440,30 @@ export default function ConciliacaoBancariaScreen() {
           <div><dt>Baixas manuais</dt><dd>{loading ? '—' : money(sm.manual)}</dd><span>{`${plural(sm.manualCount, 'parcela', 'parcelas')}, fora do provedor`}</span></div>
         </dl>
 
+        {!loading && sm.taxa.parcelas ? (
+          <section className="ck-cb__taxa" aria-label="Ganho ou perda com as taxas">
+            <div className="ck-cb__taxahead">
+              <h2>Taxas x mensalidade</h2>
+              <p>O líquido que caiu na conta comparado com o valor do plano. Pix e boleto ficam abaixo, porque a taxa sai da academia; o acréscimo no cartão compensa.</p>
+            </div>
+            <dl className="ck-cb__taxafacts">
+              <div><dt>Mensalidades</dt><dd>{money(sm.taxa.mensalidades)}</dd><span>{plural(sm.taxa.parcelas, 'parcela recebida', 'parcelas recebidas')} no provedor</span></div>
+              <div><dt>Taxas do provedor</dt><dd className="is-neg">{`−${money(sm.taxa.taxas)}`}</dd><span>descontadas no recebimento</span></div>
+              <div><dt>Acréscimos cobrados</dt><dd>{`+${money(sm.taxa.acrescimos)}`}</dd><span>repasse da taxa do cartão ao aluno</span></div>
+              <div className={cx('ck-cb__taxares', sm.taxa.resultado < -0.004 ? 'is-loss' : 'is-gain')}>
+                <dt>{sm.taxa.resultado < -0.004 ? 'Perda com taxas' : 'Ganho com taxas'}</dt>
+                <dd>{`${sm.taxa.resultado < -0.004 ? '−' : '+'}${money(Math.abs(sm.taxa.resultado))}`}</dd>
+                <span>{`líquido de ${money(sm.taxa.liquido)} para ${money(sm.taxa.mensalidades)} em mensalidades`}</span>
+              </div>
+            </dl>
+            <p className="ck-cb__taxasplit">
+              {sm.taxa.perdaQtd ? <span className="is-loss">{`${plural(sm.taxa.perdaQtd, 'parcela abaixo', 'parcelas abaixo')} da mensalidade: −${money(Math.abs(sm.taxa.perdas))}`}</span> : null}
+              {sm.taxa.ganhoQtd ? <span className="is-gain">{`${plural(sm.taxa.ganhoQtd, 'parcela acima', 'parcelas acima')}: +${money(sm.taxa.ganhos)}`}</span> : null}
+              {!sm.taxa.perdaQtd && !sm.taxa.ganhoQtd ? <span>Todas as parcelas renderam exatamente a mensalidade.</span> : null}
+            </p>
+          </section>
+        ) : null}
+
         <section className="ck-cb__report" aria-label="Conciliação por matrícula">
           <div className="ck-cb__bar">
             <div className="ck-control ck-ml__search">
@@ -427,6 +508,7 @@ export default function ConciliacaoBancariaScreen() {
                       <th scope="col" className="is-num">Taxas</th>
                       <th scope="col" className="is-num">Líquido</th>
                       <th scope="col" className="is-num">Diferença</th>
+                      <th scope="col" className="is-num" title="Líquido recebido menos a mensalidade (valor do plano, sem o acréscimo do cartão)">Taxa x plano</th>
                       <th scope="col">Situação</th>
                     </tr>
                   </thead>
@@ -463,6 +545,7 @@ export default function ConciliacaoBancariaScreen() {
                             {g.t.rec ? <span className="ck-cb__sub">{`${money(g.t.rec)} a receber`}</span> : null}
                           </td>
                           <td className={cx('is-num', g.diff != null && Math.abs(g.diff) > 0.05 && 'ck-cb__diff--bad')}><Diferenca value={g.diff} /></td>
+                          <td className="is-num"><Resultado grupo={g} /></td>
                           <td>
                             <SituacaoBadge status={g.status} grupo={g} />
                             {g.notas.map((n) => <span key={n} className="ck-cb__note">{n}</span>)}
@@ -491,6 +574,7 @@ export default function ConciliacaoBancariaScreen() {
                             <td className="is-num ck-cb__fee">{x.taxa ? `−${money(x.taxa)}` : '—'}</td>
                             <td className="is-num">{x.liquido != null ? money(x.liquido) : '—'}</td>
                             <td />
+                            <td />
                             <td>
                               {x.payment_id ? <span className="ck-cb__pid" title={x.payment_id}>{x.payment_id}</span> : null}
                               {g.reprocessaveis.length > 1 && x.pode_reprocessar ? <span className="ck-cb__acts"><BotaoReprocessar linha={x} grupo={g} /></span> : null}
@@ -511,6 +595,7 @@ export default function ConciliacaoBancariaScreen() {
                       <td className="is-num ck-cb__fee">{`−${money(tot.fee)}`}</td>
                       <td className="is-num">{money(tot.net)}</td>
                       <td />
+                      <td className="is-num">{sm.taxa.parcelas ? <span className={sm.taxa.resultado < -0.004 ? 'ck-cb__loss' : 'ck-cb__gain'}>{`${sm.taxa.resultado < -0.004 ? '−' : '+'}${num(Math.abs(sm.taxa.resultado))}`}</span> : null}</td>
                       <td>{counts.pendencias && filter === 'todos' ? <span className="ck-cb__sub">{plural(counts.pendencias, 'pendência', 'pendências')}</span> : null}</td>
                     </tr>
                   </tfoot>

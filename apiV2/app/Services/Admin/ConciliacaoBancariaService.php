@@ -96,6 +96,7 @@ class ConciliacaoBancariaService
             'status' => 200,
             'body' => [
                 'success' => true,
+                'academia' => DB::table('tenants')->where('id', $tenantId)->value('nome'),
                 'periodo' => ['inicio' => $inicio, 'fim' => $fim],
                 'provedores' => array_map(fn ($p) => ['id' => $p, 'nome' => self::nomeProvedor($p), 'ativo' => $conectados[$p]], $provedores),
                 'erros' => $erros,
@@ -562,6 +563,7 @@ class ConciliacaoBancariaService
             'id' => (int) $l['id'],
             'valor' => (float) $l['valor'],
             'valor_liquido' => isset($l['valor_liquido']) ? (float) $l['valor_liquido'] : null,
+            'acrescimo' => round((float) ($l['tarifa_cartao'] ?? 0), 2),
             'status_pagamento_id' => (int) $l['status_pagamento_id'],
             'data_pagamento' => $l['data_pagamento'] ? substr((string) $l['data_pagamento'], 0, 10) : null,
             'data_vencimento' => $l['data_vencimento'] ? substr((string) $l['data_vencimento'], 0, 10) : null,
@@ -752,6 +754,8 @@ class ConciliacaoBancariaService
     {
         // valor_liquido vem da migration SQL 071 (api/); banco sem ela segue sem comparar o líquido
         $liquido = Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : DB::raw('NULL as valor_liquido');
+        // tarifa_cartao: acréscimo cobrado do aluno para cobrir a taxa do cartão (o valor da parcela já o inclui)
+        $acrescimo = Schema::hasColumn('pagamentos_plano', 'tarifa_cartao') ? 'pp.tarifa_cartao' : DB::raw('NULL as tarifa_cartao');
         $base = fn () => DB::table('pagamentos_plano as pp')
             ->leftJoin('alunos as a', 'a.id', '=', 'pp.aluno_id')
             ->leftJoin('planos as p', 'p.id', '=', 'pp.plano_id')
@@ -759,7 +763,7 @@ class ConciliacaoBancariaService
             ->leftJoin('tipos_baixa as tb', 'tb.id', '=', 'pp.tipo_baixa_id')
             ->where('pp.tenant_id', $tenantId)
             ->select([
-                'pp.id', 'pp.matricula_id', 'pp.valor', $liquido, 'pp.status_pagamento_id', 'pp.data_pagamento',
+                'pp.id', 'pp.matricula_id', 'pp.valor', $liquido, $acrescimo, 'pp.status_pagamento_id', 'pp.data_pagamento',
                 'pp.data_vencimento', 'pp.tipo_baixa_id', 'pp.observacoes', 'a.nome as aluno_nome', 'p.nome as plano_nome',
                 'fp.nome as forma_pagamento_nome', 'tb.nome as tipo_baixa_nome',
             ]);

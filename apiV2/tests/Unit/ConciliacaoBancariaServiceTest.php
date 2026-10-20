@@ -38,13 +38,14 @@ class ConciliacaoBancariaServiceTest extends TestCase
     {
         $r = C::montar(
             [$this->asaas('pay_hjp', 120, 118.01)],
-            [$this->parcela(1472, 385, 120, 2, ['valor_liquido' => 118.01, 'observacoes' => 'Pago via Asaas (Pix) [Asaas pay_hjp]'])],
+            [$this->parcela(1472, 385, 120, 2, ['valor_liquido' => 118.01, 'tarifa_cartao' => '4.50', 'observacoes' => 'Pago via Asaas (Pix) [Asaas pay_hjp]'])],
             [], '2026-10-01', '2026-10-31'
         );
 
         $l = $this->linha($r, 'asaas:pay_hjp');
         $this->assertSame('conciliado', $l['status']);
         $this->assertSame(1472, $l['parcela']['id']);
+        $this->assertSame(4.5, $l['parcela']['acrescimo']);
         $this->assertEqualsWithDelta(1.99, $l['taxa'], 0.001);
         $this->assertSame(['quantidade' => 1, 'bruto' => 120.0, 'taxas' => 1.99, 'liquido' => 118.01, 'a_receber' => 0.0, 'sem_liquido' => 0], $r['resumo']['provedor']);
         $this->assertSame(0, $r['resumo']['pendencias']);
@@ -113,6 +114,7 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $p2 = $this->linha($r, 'asaas:pay_p2');
         $this->assertSame('conciliado', $p2['status']);
         $this->assertSame(1473, $p2['parcela']['id']);
+        $this->assertSame(0.0, $p2['parcela']['acrescimo'], 'sem acréscimo gravado, a mensalidade é o valor da parcela');
         $this->assertStringContainsString('cartão parcelado', $p2['nota']);
         $this->assertEqualsWithDelta(215.78, $r['resumo']['checkin']['integracao'], 0.001, 'a parcela local conta uma vez');
     }
