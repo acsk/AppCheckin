@@ -382,7 +382,6 @@ class RecordePessoalRepository
                 'valor_decimal' => $v['valor_decimal'] ?? null,
                 'valor_tempo_ms' => $v['valor_tempo_ms'] ?? null,
                 'created_at' => now(),
-                'updated_at' => now(),
             ]);
         }
     }

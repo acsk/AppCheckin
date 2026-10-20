@@ -50,6 +50,20 @@ Pagamentos usam `App\Services\MercadoPagoService` (portado da Slim) com credenci
 
 ## Desenvolvimento local (Docker)
 
+### Persistência de recordes
+
+A tabela `recorde_valores` do schema compartilhado com a API Slim possui
+`created_at`, mas não `updated_at`. A criação e a substituição das métricas
+devem respeitar esse schema; não é necessária uma migração para registrar recordes.
+
+Os testes de regressão usam SQLite em memória, sem gravar no banco da aplicação:
+
+```bash
+docker exec -e APP_ENV=testing -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: -e DB_URL= appcheckin_php_v2 php vendor/bin/phpunit tests/Feature/RecordePessoalPersistenceTest.php tests/Feature/V2AdminRecordeRoutesTest.php
+```
+
+### Subindo a API
+
 Com o stack principal no ar:
 
 ```bash
