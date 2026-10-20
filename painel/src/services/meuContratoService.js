@@ -15,9 +15,10 @@ const meuContratoService = {
     }
   },
 
-  async pagar(pagamentoId, formaPagamento, documento) {
+  // trocarForma: cancela no Asaas a cobrança já gerada (se não foi paga) e gera outra na forma escolhida
+  async pagar(pagamentoId, formaPagamento, documento, trocarForma = false) {
     try {
-      return (await api.post(`/admin/meu-contrato/pagamentos/${pagamentoId}/pagar`, { forma_pagamento: formaPagamento, documento: documento || undefined })).data;
+      return (await api.post(`/admin/meu-contrato/pagamentos/${pagamentoId}/pagar`, { forma_pagamento: formaPagamento, documento: documento || undefined, trocar_forma: trocarForma || undefined })).data;
     } catch (error) {
       throw erro(error, 'Não foi possível gerar a cobrança');
     }

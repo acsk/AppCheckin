@@ -84,19 +84,23 @@ class AdminMeuContratoService
             return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Esta cobrança é de um plano que a academia não usa mais.']];
         }
 
-        // Já tem cobrança no Asaas: devolve o mesmo link para não cobrar duas vezes
+        $forma = strtoupper((string) ($data['forma_pagamento'] ?? ''));
+        $trocarForma = filter_var($data['trocar_forma'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
         if (! empty($pagamento['gateway_payment_id'])) {
-            return ['status' => 200, 'body' => [
-                'type' => 'success',
-                'reaproveitada' => true,
-                'cobranca' => [
-                    'billing_type' => $pagamento['gateway_billing_type'] ?? null,
-                    'url' => $pagamento['gateway_url'] ?? null,
-                ],
-            ]];
+            // Já tem cobrança no Asaas: devolve o mesmo link para não cobrar duas vezes
+            if (! $trocarForma || $forma === strtoupper((string) ($pagamento['gateway_billing_type'] ?? ''))) {
+                return ['status' => 200, 'body' => [
+                    'type' => 'success',
+                    'reaproveitada' => true,
+                    'cobranca' => [
+                        'billing_type' => $pagamento['gateway_billing_type'] ?? null,
+                        'url' => $pagamento['gateway_url'] ?? null,
+                    ],
+                ]];
+            }
         }
 
-        $forma = strtoupper((string) ($data['forma_pagamento'] ?? ''));
         $formas = $this->cobrancas->formasHabilitadas();
         if ($formas === []) {
             return ['status' => 503, 'body' => ['type' => 'error', 'message' => 'O pagamento online está indisponível no momento. Fale com o suporte do Check-in.']];
@@ -108,6 +112,14 @@ class AdminMeuContratoService
         $doc = $this->exigirDocumento($tenantId, $data);
         if ($doc) {
             return $doc;
+        }
+
+        // Trocar a forma: só depois de validar a nova, cancela a cobrança atual no Asaas (se ainda não foi paga)
+        if (! empty($pagamento['gateway_payment_id'])) {
+            $cancelada = $this->cancelarCobrancaAtual($pagamentoId, (string) $pagamento['gateway_payment_id']);
+            if ($cancelada) {
+                return $cancelada;
+            }
         }
 
         try {
@@ -299,6 +311,34 @@ class AdminMeuContratoService
     private function cobrancaPublica(array $c): array
     {
         return array_intersect_key($c, array_flip(['billing_type', 'vencimento', 'url', 'boleto_url', 'pix_payload', 'pix_qr_code']));
+    }
+
+    /**
+     * Antes de gerar a cobrança em outra forma, apaga a atual no Asaas. Se ela já foi paga (o webhook
+     * ainda não chegou), não apaga: devolve o aviso para a academia esperar a confirmação.
+     *
+     * @return array{status: int, body: array<string, mixed>}|null  null quando pode seguir
+     */
+    private function cancelarCobrancaAtual(int $pagamentoId, string $gatewayId): ?array
+    {
+        try {
+            $asaas = $this->cobrancas->asaas();
+            $status = strtoupper((string) ($asaas->obterPagamento($gatewayId)['status'] ?? ''));
+            if (in_array($status, ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'], true)) {
+                return ['status' => 409, 'body' => ['type' => 'error', 'message' => 'Esta cobrança já foi paga. A confirmação chega em instantes; atualize a página.']];
+            }
+            if ($status !== 'DELETED') {
+                $asaas->cancelarCobranca($gatewayId);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Meu contrato: cobrança anterior não cancelada', ['pagamento_id' => $pagamentoId, 'gateway_payment_id' => $gatewayId, 'error' => $e->getMessage()]);
+
+            return ['status' => 502, 'body' => ['type' => 'error', 'message' => 'Não foi possível trocar a forma de pagamento agora. Tente de novo em instantes.']];
+        }
+
+        $this->pagamentos->salvarGateway($pagamentoId, ['gateway' => null, 'gateway_payment_id' => null, 'gateway_billing_type' => null, 'gateway_url' => null]);
+
+        return null;
     }
 
     private function documentoValido(int $tenantId): bool

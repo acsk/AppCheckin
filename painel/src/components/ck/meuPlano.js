@@ -11,9 +11,9 @@ const CONTRACT_STATUS = { 1: ['success', 'Ativo'], 2: ['warning', 'Aguardando pa
 const PAY_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'] };
 
 export const BILLING = {
-  PIX: { name: 'Pix', icon: 'qr-code', hint: 'Aprovação na hora' },
-  CREDIT_CARD: { name: 'Cartão de crédito', icon: 'credit-card', hint: 'Na página segura do Asaas' },
-  BOLETO: { name: 'Boleto', icon: 'receipt', hint: 'Compensa em até 3 dias úteis' },
+  PIX: { name: 'Pix', short: 'Pix', icon: 'qr-code', hint: 'Aprovação na hora' },
+  CREDIT_CARD: { name: 'Cartão de crédito', short: 'cartão', icon: 'credit-card', hint: 'Na página segura do Asaas' },
+  BOLETO: { name: 'Boleto', short: 'boleto', icon: 'receipt', hint: 'Compensa em até 3 dias úteis' },
 };
 
 const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
@@ -91,7 +91,7 @@ function PlanCard({ contract: c, alunos }) {
   );
 }
 
-export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
+export function MeuPlano({ data, today, onPay, onChangeMethod, onChangePlan, onOpenInvoice }) {
   const c = data.contrato;
   const alunos = Number(data.alunos_ativos) || 0;
   const pays = (data.pagamentos || []).map((p) => ({ ...p, st: payStatus(p, today), amount: Number(p.valor) || 0 }));
@@ -117,6 +117,13 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
   }
 
   const [tone, label] = CONTRACT_STATUS[Number(c.status_id)] || ['neutral', c.status_nome || '—'];
+  const methodName = (p) => (BILLING[p.gateway_billing_type] || {}).name;
+  const payActions = (p) => (canPay ? (
+    <>
+      {p.tem_cobranca && onChangeMethod && (data.formas || []).length > 1 ? <Button variant="ghost" icon="repeat" onClick={() => onChangeMethod(p)}>Trocar forma de pagamento</Button> : null}
+      <Button variant="primary" icon="check-circle" onClick={() => onPay(p)}>{p.tem_cobranca ? `Abrir cobrança${methodName(p) ? ` (${methodName(p)})` : ''}` : 'Pagar agora'}</Button>
+    </>
+  ) : null);
   return (
     <div className="ck-mp">
       <PageHeader
@@ -127,13 +134,13 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
 
       {Number(c.status_id) === 2 && next ? (
         <Callout tone="warning" icon="clock" title={`Pague ${money(next.amount)} para ativar o plano ${pl?.nome}`}
-          action={canPay ? <Button variant="primary" icon="check-circle" onClick={() => onPay(next)}>{next.tem_cobranca ? 'Abrir cobrança' : 'Pagar agora'}</Button> : null}>
-          O plano é ativado assim que o pagamento for confirmado. Pelo Pix, isso leva alguns segundos.
+          action={payActions(next)}>
+          O plano é ativado assim que o pagamento for confirmado.{next.tem_cobranca && methodName(next) ? ` Cobrança gerada por ${methodName(next)}.` : ' Pelo Pix, isso leva alguns segundos.'}
         </Callout>
       ) : next ? (
         <Callout tone={next.st === 'atrasado' ? 'danger' : 'warning'} icon={next.st === 'atrasado' ? 'alert-triangle' : 'clock'}
           title={`Cobrança de ${money(next.amount)} ${next.st === 'atrasado' ? `venceu em ${fdate(next.data_vencimento)}` : `vence em ${fdate(next.data_vencimento)}`}`}
-          action={canPay ? <Button variant="primary" icon="check-circle" onClick={() => onPay(next)}>{next.tem_cobranca ? 'Abrir cobrança' : 'Pagar agora'}</Button> : null}>
+          action={payActions(next)}>
           {next.st === 'atrasado' ? 'Sem o pagamento, o painel da academia pode ser bloqueado.' : 'Pague pelo Pix ou cartão, aqui mesmo.'}
         </Callout>
       ) : null}
@@ -189,6 +196,7 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
                             <td><Badge tone={t} dot={t !== 'neutral'}>{l}</Badge></td>
                             <td>{p.data_pagamento ? <span className="ck-mt-cell__main">{fdate(p.data_pagamento)}</span> : <span className="ck-al__missing">—</span>}</td>
                             <td className="ck-mt-actions">
+                              {isOpen && canPay && p.tem_cobranca && onChangeMethod && (data.formas || []).length > 1 ? <IconButton icon="repeat" label="Trocar forma de pagamento" size="sm" onClick={() => onChangeMethod(p)} /> : null}
                               {isOpen && canPay ? <Button size="sm" variant={p === next ? 'primary' : 'secondary'} onClick={() => onPay(p)}>{p.tem_cobranca ? 'Abrir cobrança' : 'Pagar'}</Button> : null}
                               {!isOpen && p.gateway_url && onOpenInvoice ? <IconButton icon="receipt" label="Ver fatura" size="sm" onClick={() => onOpenInvoice(p.gateway_url)} /> : null}
                             </td>
@@ -217,9 +225,12 @@ export function PagarModal({ open, payment, formas, generating, result, error, e
   const [doc, setDoc] = useState('');
   if (!open || !payment) return null;
   const list = (formas || []).filter((f) => BILLING[f]);
-  const chosen = forma || (list.length === 1 ? list[0] : null);
+  const options = payment.trocar ? list.filter((f) => f !== payment.gateway_billing_type) : list;
+  const chosen = forma || (options.length === 1 ? options[0] : null);
   const amount = money(Number(payment.valor) || payment.amount || 0);
   const r = result;
+  const switching = !!payment.trocar;
+  const atual = switching ? (BILLING[payment.gateway_billing_type] || {}).name : null;
 
   const copy = async () => {
     try { await navigator.clipboard.writeText(r.pix_payload); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* sem permissão: o código continua visível */ }
@@ -264,22 +275,24 @@ export function PagarModal({ open, payment, formas, generating, result, error, e
   }
 
   return (
-    <Modal open size="sm" title={`Pagar ${amount}`} dismissable={!generating} onClose={close}
-      description={payment.plano_nome ? `Cobrança do plano ${payment.plano_nome}, vencimento ${fdate(payment.data_vencimento)}.` : `Vencimento ${fdate(payment.data_vencimento)}.`}
+    <Modal open size="sm" title={switching ? 'Trocar forma de pagamento' : `Pagar ${amount}`} dismissable={!generating} onClose={close}
+      description={switching
+        ? `A cobrança de ${amount}${atual ? ` por ${atual}` : ''} é cancelada e uma nova é gerada na forma escolhida. Se você já pagou, aguarde a confirmação em vez de trocar.`
+        : payment.plano_nome ? `Cobrança do plano ${payment.plano_nome}, vencimento ${fdate(payment.data_vencimento)}.` : `Vencimento ${fdate(payment.data_vencimento)}.`}
       footer={(
         <>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" disabled={generating} onClick={close}>Cancelar</Button>
           <Button variant="primary" icon={chosen ? BILLING[chosen].icon : 'check-circle'} loading={generating} disabled={!chosen || !docOk} onClick={() => onGenerate(chosen, askDoc ? onlyDigits(doc) : undefined)}>
-            {generating ? 'Gerando…' : chosen ? `Pagar ${amount} com ${BILLING[chosen].name}` : 'Escolha como pagar'}
+            {generating ? 'Gerando…' : !chosen ? 'Escolha como pagar' : switching ? `Trocar para ${BILLING[chosen].short}` : `Pagar com ${BILLING[chosen].short}`}
           </Button>
         </>
       )}>
       <div className="ck-ct-pays ck-mp-formas" role="radiogroup" aria-label="Forma de pagamento">
         {list.map((f) => (
-          <button key={f} type="button" role="radio" aria-checked={chosen === f} className="ck-ct-pay" onClick={() => setForma(f)}>
+          <button key={f} type="button" role="radio" aria-checked={chosen === f} disabled={switching && f === payment.gateway_billing_type} className="ck-ct-pay" onClick={() => setForma(f)}>
             <span className="ck-ct-pay__icon" aria-hidden="true"><Icon name={BILLING[f].icon} size={16} /></span>
-            <span className="ck-mp-forma"><strong>{BILLING[f].name}</strong><span>{BILLING[f].hint}</span></span>
+            <span className="ck-mp-forma"><strong>{BILLING[f].name}</strong><span>{switching && f === payment.gateway_billing_type ? 'Forma atual' : BILLING[f].hint}</span></span>
             <span className="ck-choice__radio ck-ct-radio" aria-hidden="true" />
           </button>
         ))}

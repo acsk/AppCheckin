@@ -61,7 +61,7 @@ export default function MeuPlanoScreen() {
     setPayError('');
     setPayErrorCode(null);
     try {
-      const r = await meuContratoService.pagar(paying.id, forma, documento);
+      const r = await meuContratoService.pagar(paying.id, forma, documento, !!paying.trocar);
       setResult(r.cobranca || null);
       load();
     } catch (err) {
@@ -92,6 +92,7 @@ export default function MeuPlanoScreen() {
           data={data}
           today={today()}
           onPay={pay}
+          onChangeMethod={(p) => { setPayError(''); setPayErrorCode(null); setResult(null); setPaying({ ...p, trocar: true }); }}
           onOpenInvoice={openUrl}
           onChangePlan={(data.planos || []).length ? () => router.push('/meu-plano/trocar') : undefined}
         />

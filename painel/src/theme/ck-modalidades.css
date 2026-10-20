@@ -1,0 +1,43 @@
+/* Modalidades: ModalidadesLista e ModalidadeForm (src/components/ck/modalidades.js).
+   Portado do design system. Reaproveita ck-al-* (ck-pessoas.css) e ck-ml* (ck-enrollments.css). */
+
+.ck-mod-page { display: grid; gap: var(--space-6); }
+.ck-mod-page > .ck-pagehead { margin-bottom: 0; }
+
+.ck-mod__tile { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: var(--radius-md); color: #fff; }
+.ck-mod__tile--lg { width: 64px; height: 64px; border-radius: var(--radius-lg); }
+.ck-mod__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.ck-mod__toolbar .ck-ml__search { flex: 1 1 280px; max-width: 420px; background: var(--surface); }
+.ck-mod__grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); }
+.ck-mod { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); }
+.ck-mod.is-off { box-shadow: none; background: var(--bg); }
+.ck-mod.is-off .ck-mod__tile { filter: grayscale(1); opacity: .55; }
+.ck-mod__head { display: flex; align-items: center; gap: var(--space-3); }
+.ck-mod__titles { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ck-mod__name { margin: 0; font-family: var(--font-display); font-size: 20px; line-height: 24px; font-weight: 600; }
+.ck-mod__desc { margin: 0; font-size: 14px; line-height: 20px; color: var(--ink-muted); flex: 1; }
+.ck-mod__foot { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; padding-top: var(--space-3); border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-muted); }
+.ck-mod__foot > span { display: inline-flex; align-items: center; gap: 6px; }
+.ck-mod__foot .ck-icon { color: var(--ink-subtle); }
+
+.ck-mod-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: var(--space-2); }
+.ck-mod-icons__opt { display: grid; place-items: center; height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-muted); cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.ck-mod-icons__opt:hover { color: var(--ink); border-color: var(--ink-subtle); }
+.ck-mod-icons__opt[aria-checked="true"] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.ck-mod-icons__opt:focus-visible, .ck-mod-colors__opt:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-mod-colors { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ck-mod-colors__opt { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-full); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
+.ck-mod-colors__opt[aria-checked="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); font-weight: 600; }
+.ck-mod-colors__dot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #fff; }
+
+/* Prévia no resumo grafite */
+.ck-mod-sumlabel { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--sidebar-subtle); }
+.ck-mod-prev { display: flex; flex-direction: column; align-items: flex-start; position: relative; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--sidebar-hover); border: 1px solid var(--sidebar-line); }
+.ck-mod-prev strong { display: block; font-family: var(--font-display); font-size: 20px; line-height: 24px; overflow-wrap: break-word; }
+.ck-mod-prev__desc { display: -webkit-box; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--sidebar-muted); -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ck-mod-prev__tag { position: absolute; top: var(--space-4); right: var(--space-4); padding: 1px 8px; border-radius: var(--radius-full); border: 1px solid var(--sidebar-line); font-size: 12px; color: var(--sidebar-muted); }
+.ck-mod-plans { display: grid; grid-template-columns: auto 1fr; gap: 4px var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--sidebar-line); }
+.ck-mod-plans > .ck-icon { margin-top: 3px; color: var(--brand); }
+.ck-mod-plans strong { display: block; font-size: 15px; line-height: 22px; }
+.ck-mod-plans span { display: block; font-size: 13px; line-height: 18px; color: var(--sidebar-muted); }
+.ck-mod-plans .ck-al-plan__link { grid-column: 2; justify-self: start; margin: 4px 0 0 -10px; }

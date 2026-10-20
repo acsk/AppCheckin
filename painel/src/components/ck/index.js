@@ -105,7 +105,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
   function Icon(p) {
     var parts = ICONS[p.name] || [];
     var size = p.size || 18;
-    if (!ICONS[p.name] && p.name && MaterialCommunityIcons.glyphMap && MaterialCommunityIcons.glyphMap[p.name] != null) {
+    // glyph: prefere o desenho do MaterialCommunityIcons (o mesmo do app do aluno)
+    if ((p.glyph || !ICONS[p.name]) && p.name && MaterialCommunityIcons.glyphMap && MaterialCommunityIcons.glyphMap[p.name] != null) {
       return h('span', {
         className: cx('ck-icon ck-icon--glyph', p.className), role: p.label ? 'img' : undefined,
         'aria-label': p.label, 'aria-hidden': p.label ? undefined : true,
