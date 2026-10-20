@@ -398,6 +398,39 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(2, (int) $parcela->status_pagamento_id);
     }
 
+    public function test_reprocessar_parcela_ja_paga_tira_o_texto_do_mercado_pago(): void
+    {
+        DB::table('pagamentos_plano')->where('matricula_id', 189)->update([
+            'status_pagamento_id' => 2,
+            'valor' => 120.00,
+            'data_pagamento' => '2026-10-16',
+            'observacoes' => 'Aguardando pagamento via Mercado Pago [Asaas pay_hjpofajk95bw1yyt] valor R$ 120,00 líquido R$ 118,01 desconto_provedor R$ 1,99',
+        ]);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $result = $service->processar([
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => [
+                'id' => 'pay_hjpofajk95bw1yyt',
+                'status' => 'RECEIVED',
+                'billingType' => 'PIX',
+                'externalReference' => 'MAT-189-abc',
+                'paymentDate' => '2026-10-16',
+                'value' => 120.00,
+                'netValue' => 118.01,
+            ],
+        ], null);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame(
+            'Pago via Asaas (Pix) [Asaas pay_hjpofajk95bw1yyt] valor R$ 120,00 líquido R$ 118,01 desconto_provedor R$ 1,99',
+            DB::table('pagamentos_plano')->value('observacoes')
+        );
+    }
+
     public function test_payload_invalido_retorna_400(): void
     {
         $service = new AsaasWebhookService(

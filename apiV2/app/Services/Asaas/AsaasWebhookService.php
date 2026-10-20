@@ -291,7 +291,16 @@ class AsaasWebhookService
                     ->orderByDesc('id')
                     ->first();
                 if ($parcelaPaga) {
-                    $this->persistirTarifaProvedor((int) $parcelaPaga->id, $tenantId, $payment, (string) ($parcelaPaga->observacoes ?? ''), true);
+                    // Parcela baixada antes da correção ainda pode estar com "Aguardando pagamento via Mercado Pago"
+                    $obsAtual = (string) ($parcelaPaga->observacoes ?? '');
+                    $this->persistirTarifaProvedor(
+                        (int) $parcelaPaga->id,
+                        $tenantId,
+                        $payment,
+                        self::observacaoPagoAsaas($obsAtual, $paymentId, $payment),
+                        true,
+                        $obsAtual,
+                    );
                 }
 
                 return;
@@ -360,9 +369,12 @@ class AsaasWebhookService
     /**
      * @param  array<string, mixed>  $payment
      */
-    private function persistirTarifaProvedor(int $parcelaId, int $tenantId, array $payment, string $observacoes, bool $anexarObs): void
+    private function persistirTarifaProvedor(int $parcelaId, int $tenantId, array $payment, string $observacoes, bool $anexarObs, ?string $obsGravada = null): void
     {
         $campos = $this->camposTarifaProvedor($payment, $observacoes, $anexarObs);
+        if (! isset($campos['observacoes']) && $obsGravada !== null && $observacoes !== $obsGravada) {
+            $campos['observacoes'] = $observacoes;
+        }
         if ($campos === []) {
             return;
         }
