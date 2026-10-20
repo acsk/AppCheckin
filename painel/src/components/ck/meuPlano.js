@@ -56,7 +56,9 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
   const c = data.contrato;
   const alunos = Number(data.alunos_ativos) || 0;
   const pays = (data.pagamentos || []).map((p) => ({ ...p, st: payStatus(p, today), amount: Number(p.valor) || 0 }));
-  const open = pays.filter((p) => p.st === 'aguardando' || p.st === 'atrasado')
+  // Cobranças de R$ 0,00 (sobras de plano grátis) não pedem pagamento
+  const isDue = (p) => (p.st === 'aguardando' || p.st === 'atrasado') && p.amount > 0;
+  const open = pays.filter(isDue)
     .sort((a, b) => (a.st === 'atrasado' ? 0 : 1) - (b.st === 'atrasado' ? 0 : 1) || String(a.data_vencimento).localeCompare(String(b.data_vencimento)));
   const next = open[0];
   const pl = c?.plano;
@@ -137,7 +139,7 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
                     <tbody>
                       {pays.map((p) => {
                         const [t, l] = PAY_STATUS[p.st];
-                        const isOpen = p.st === 'aguardando' || p.st === 'atrasado';
+                        const isOpen = isDue(p);
                         return (
                           <tr key={p.id}>
                             <td>

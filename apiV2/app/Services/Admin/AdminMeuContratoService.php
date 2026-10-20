@@ -20,6 +20,8 @@ class AdminMeuContratoService
 {
     private const ABERTOS = [1, 3]; // Aguardando, Atrasado
 
+    private const ATRASADO = 3;
+
     public function __construct(
         private readonly TenantPlanoRepository $contratos,
         private readonly PlanoSistemaRepository $planos,
@@ -64,8 +66,14 @@ class AdminMeuContratoService
         if (! $pagamento) {
             return ['status' => 404, 'body' => ['type' => 'error', 'message' => 'Cobrança não encontrada']];
         }
-        if (! in_array((int) $pagamento['status_pagamento_id'], self::ABERTOS, true)) {
+        if (! in_array((int) $pagamento['status_pagamento_id'], self::ABERTOS, true) || (float) $pagamento['valor'] <= 0) {
             return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Esta cobrança não está em aberto']];
+        }
+        // De contrato que não é o vigente, só a dívida atrasada pode ser paga (período já usado);
+        // "Aguardando" de contrato substituído era do plano antigo e não vale mais.
+        $vigente = $this->contratos->buscarContratoVigente($tenantId);
+        if ((! $vigente || (int) $vigente['id'] !== (int) $pagamento['tenant_plano_id']) && (int) $pagamento['status_pagamento_id'] !== self::ATRASADO) {
+            return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Esta cobrança é de um plano que a academia não usa mais.']];
         }
 
         // Já tem cobrança no Asaas: devolve o mesmo link para não cobrar duas vezes
@@ -234,7 +242,10 @@ class AdminMeuContratoService
             ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'p.forma_pagamento_id')
             ->where('c.tenant_id', $tenantId)
             ->where(function ($q) use ($contratoId) {
-                $q->whereIn('p.status_pagamento_id', self::ABERTOS);
+                // Todas as do contrato vigente; de contratos anteriores, só a dívida atrasada
+                $q->where(function ($d) {
+                    $d->where('p.status_pagamento_id', self::ATRASADO)->where('p.valor', '>', 0);
+                });
                 if ($contratoId) {
                     $q->orWhere('p.tenant_plano_id', $contratoId);
                 }

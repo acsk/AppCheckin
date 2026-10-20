@@ -11,6 +11,7 @@ const SECTIONS = [
     label: 'Geral',
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4] },
+      { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3] },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
       { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
@@ -74,7 +75,6 @@ const SECTIONS = [
         icon: 'settings',
         children: [
           { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3] },
-          { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', roles: [3] },
           { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3] },
         ],
       },
