@@ -658,7 +658,34 @@ class AdminAssinaturaService
             }
         }
 
-        return array_values($porId);
+        return $this->numerarParcelas(array_values($porId));
+    }
+
+    /**
+     * Cartão parcelado vira uma cobrança por parcela no Asaas (mesmo "installment"): numera cada uma
+     * ("1 de 2") e ordena por vencimento, para a tela e a conciliação tratarem o parcelamento junto.
+     *
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return list<array<string, mixed>>
+     */
+    private function numerarParcelas(array $pagamentos): array
+    {
+        usort($pagamentos, fn ($a, $b) => strcmp((string) ($a['due_date'] ?? ''), (string) ($b['due_date'] ?? '')));
+
+        $grupos = [];
+        foreach ($pagamentos as $i => $p) {
+            if (! empty($p['installment_id'])) {
+                $grupos[$p['installment_id']][] = $i;
+            }
+        }
+        foreach ($grupos as $indices) {
+            foreach ($indices as $pos => $i) {
+                $pagamentos[$i]['installment_number'] = $pagamentos[$i]['installment_number'] ?? $pos + 1;
+                $pagamentos[$i]['installment_count'] = count($indices);
+            }
+        }
+
+        return $pagamentos;
     }
 
     /**
@@ -678,6 +705,9 @@ class AdminAssinaturaService
             'date_approved' => $pagamento['confirmedDate'] ?? $pagamento['paymentDate'] ?? null,
             'due_date' => $pagamento['dueDate'] ?? null,
             'invoice_url' => $pagamento['invoiceUrl'] ?? $pagamento['bankSlipUrl'] ?? null,
+            'installment_id' => $pagamento['installment'] ?? null,
+            'installment_number' => isset($pagamento['installmentNumber']) ? (int) $pagamento['installmentNumber'] : null,
+            'installment_count' => null,
         ];
     }
 
@@ -746,8 +776,9 @@ class AdminAssinaturaService
      */
     private function montarConciliacao(bool $ehAsaas, string $gatewayNome, array $provedorPagamentos, array $pagamentosPlano): array
     {
-        $provedor = $this->escolherPagamentoProvedor($provedorPagamentos);
+        $provedor = $this->agruparParcelamento($this->escolherPagamentoProvedor($provedorPagamentos), $provedorPagamentos);
         $local = $this->escolherParcelaLocal($pagamentosPlano, $provedor);
+        $parcelas = (int) ($provedor['installment_count'] ?? 1);
 
         $provedorValor = $provedor === null ? null : (float) ($provedor['transaction_amount'] ?? 0);
         $localValor = $local === null ? null : (float) ($local['valor'] ?? 0);
@@ -764,6 +795,10 @@ class AdminAssinaturaService
         $situacaoOk = $provedor !== null && $local !== null && $provedorPago === $localPago;
         $formaOk = $provedor !== null && $local !== null && $provedorForma !== '' && $provedorForma === $localForma;
         $vencOk = $provedor !== null && $local !== null && $provedorVenc !== '' && $provedorVenc === $localVenc;
+        // Cartão é cobrado na hora: o Asaas data a cobrança no dia da compra, não no vencimento da parcela
+        if (! $vencOk && $provedorPago && $localPago && $provedorForma === 'Cartão' && $localForma === 'Cartão') {
+            $vencOk = true;
+        }
         $ok = $valorOk && $situacaoOk && $formaOk && $vencOk;
 
         $parcelaId = $local === null ? null : (int) $local['id'];
@@ -790,6 +825,7 @@ class AdminAssinaturaService
                     'campo' => 'valor',
                     'label' => 'Valor',
                     'provedor' => $provedor === null ? null : $provedorValor,
+                    'provedor_detalhe' => $parcelas > 1 ? sprintf('%d× de R$ %s', $parcelas, number_format((float) ($provedor['valor_parcela'] ?? 0), 2, ',', '.')) : null,
                     'checkin' => $local === null ? null : $localValor,
                     'ok' => $valorOk,
                 ],
@@ -812,6 +848,7 @@ class AdminAssinaturaService
                     'campo' => 'vencimento',
                     'label' => 'Vencimento',
                     'provedor' => $provedorVenc !== '' ? $provedorVenc : null,
+                    'provedor_detalhe' => $parcelas > 1 ? '1ª parcela' : null,
                     'checkin' => $localVenc !== '' ? $localVenc : null,
                     'ok' => $vencOk,
                 ],
@@ -822,6 +859,35 @@ class AdminAssinaturaService
                 'pago_em' => $local['data_pagamento'] ?? null,
             ],
         ];
+    }
+
+    /**
+     * Parcelamento no cartão: a parcela local é o valor cheio, então compara com a soma das parcelas,
+     * o vencimento da primeira e "pago" só se todas estiverem pagas.
+     *
+     * @param  array<string, mixed>|null  $escolhido
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return array<string, mixed>|null
+     */
+    private function agruparParcelamento(?array $escolhido, array $pagamentos): ?array
+    {
+        $grupo = $escolhido['installment_id'] ?? null;
+        if (! $grupo) {
+            return $escolhido;
+        }
+        $parcelas = array_values(array_filter($pagamentos, fn ($p) => ($p['installment_id'] ?? null) === $grupo));
+        if (count($parcelas) < 2) {
+            return $escolhido;
+        }
+        usort($parcelas, fn ($a, $b) => ((int) ($a['installment_number'] ?? 0)) <=> ((int) ($b['installment_number'] ?? 0)));
+        $todasPagas = array_reduce($parcelas, fn ($ok, $p) => $ok && $this->statusProvedorPago(strtoupper((string) ($p['status'] ?? ''))), true);
+
+        return array_merge($parcelas[0], [
+            'transaction_amount' => round(array_sum(array_map(fn ($p) => (float) ($p['transaction_amount'] ?? 0), $parcelas)), 2),
+            'valor_parcela' => (float) ($parcelas[0]['transaction_amount'] ?? 0),
+            'installment_count' => count($parcelas),
+            'status' => $todasPagas ? ($parcelas[0]['status'] ?? 'CONFIRMED') : 'PENDING',
+        ]);
     }
 
     /**

@@ -599,6 +599,7 @@ export default function AssinaturasScreen() {
                           <th scope="row">{linha.label}</th>
                           <td>
                             {v.provedor}
+                            {linha.provedor_detalhe ? <span className="ck-as__muted"> ({linha.provedor_detalhe})</span> : null}
                             {linha.campo === 'situacao' && linha.provedor_codigo ? <Badge className="ck-as-cmp__code">{linha.provedor_codigo}</Badge> : null}
                           </td>
                           <td>{v.checkin}</td>
@@ -633,8 +634,15 @@ export default function AssinaturasScreen() {
               <ul className="ck-as-list">
                 {cobrancasProvedor.map((pagamento) => (
                   <li key={pagamento.id}>
-                    <strong>{money(pagamento.transaction_amount)}</strong>
-                    <span>{pagamento.status} · {pagamento.payment_method_id || '—'} · {formatDateTime(pagamento.date_created)}</span>
+                    <strong>
+                      {money(pagamento.transaction_amount)}
+                      {pagamento.installment_count > 1 ? <span className="ck-as__muted"> · Parcela {pagamento.installment_number} de {pagamento.installment_count}</span> : null}
+                    </strong>
+                    <span>
+                      {pagamento.status} · {pagamento.payment_method_id || '—'}
+                      {pagamento.due_date ? ` · vence em ${formatDate(pagamento.due_date)}` : ''}
+                      {pagamento.date_approved ? ` · pago em ${formatDate(pagamento.date_approved)}` : ` · criada em ${formatDate(pagamento.date_created)}`}
+                    </span>
                     <span className="ck-as__muted">{pagamento.id}</span>
                   </li>
                 ))}

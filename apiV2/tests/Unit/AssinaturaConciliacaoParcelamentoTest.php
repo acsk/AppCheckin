@@ -1,0 +1,60 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Services\Admin\AdminAssinaturaService;
+use Tests\TestCase;
+
+class AssinaturaConciliacaoParcelamentoTest extends TestCase
+{
+    private function chamar(string $metodo, array $args): mixed
+    {
+        $service = (new \ReflectionClass(AdminAssinaturaService::class))->newInstanceWithoutConstructor();
+        $m = new \ReflectionMethod($service, $metodo);
+
+        return $m->invokeArgs($service, $args);
+    }
+
+    private function parcela(string $id, string $due, ?int $numero = null): array
+    {
+        return ['id' => $id, 'status' => 'CONFIRMED', 'transaction_amount' => 107.89, 'payment_method_id' => 'CREDIT_CARD',
+            'date_created' => '2026-10-19', 'date_approved' => '2026-10-19', 'due_date' => $due,
+            'installment_id' => 'ins_1', 'installment_number' => $numero, 'installment_count' => null];
+    }
+
+    public function test_numera_e_ordena_as_parcelas_do_cartao(): void
+    {
+        $lista = $this->chamar('numerarParcelas', [[$this->parcela('pay_2', '2026-11-19'), $this->parcela('pay_1', '2026-10-19')]]);
+
+        $this->assertSame(['pay_1', 'pay_2'], array_column($lista, 'id'));
+        $this->assertSame([1, 2], array_column($lista, 'installment_number'));
+        $this->assertSame([2, 2], array_column($lista, 'installment_count'));
+    }
+
+    public function test_cartao_parcelado_bate_com_a_parcela_local_cheia(): void
+    {
+        $provedor = $this->chamar('numerarParcelas', [[$this->parcela('pay_2', '2026-11-19'), $this->parcela('pay_1', '2026-10-19')]]);
+        $local = [['id' => 1473, 'valor' => '215.77', 'status_pagamento_id' => 2, 'status' => 'Pago', 'data_pagamento' => '2026-10-19',
+            'data_vencimento' => '2026-10-20', 'forma_pagamento_nome' => 'Cartão', 'observacoes' => '[Asaas pay_1]']];
+
+        $c = $this->chamar('montarConciliacao', [true, 'Asaas', $provedor, $local]);
+        $linhas = array_column($c['linhas'], null, 'campo');
+
+        $this->assertTrue($c['ok'], json_encode($c['linhas']));
+        $this->assertSame(215.78, $linhas['valor']['provedor']);
+        $this->assertSame('2× de R$ 107,89', $linhas['valor']['provedor_detalhe']);
+        $this->assertSame('2026-10-19', $linhas['vencimento']['provedor']);
+        $this->assertSame(1473, $c['parcela']['id']);
+    }
+
+    public function test_pix_avulso_continua_comparando_vencimento(): void
+    {
+        $provedor = [['id' => 'pay_x', 'status' => 'RECEIVED', 'transaction_amount' => 120, 'payment_method_id' => 'PIX', 'due_date' => '2026-10-19', 'installment_id' => null]];
+        $local = [['id' => 9, 'valor' => '120.00', 'status_pagamento_id' => 2, 'status' => 'Pago', 'data_vencimento' => '2026-10-20', 'forma_pagamento_nome' => 'Pix']];
+
+        $c = $this->chamar('montarConciliacao', [true, 'Asaas', $provedor, $local]);
+
+        $this->assertFalse($c['ok']);
+        $this->assertFalse(array_column($c['linhas'], null, 'campo')['vencimento']['ok']);
+    }
+}
