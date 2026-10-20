@@ -214,6 +214,9 @@ class AdminPagamentoPlanoService
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
         }
+        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+            return $bloqueio;
+        }
 
         $allowed = [
             'valor', 'desconto', 'motivo_desconto', 'data_vencimento', 'data_pagamento',
@@ -390,6 +393,9 @@ class AdminPagamentoPlanoService
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
         }
+        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+            return $bloqueio;
+        }
 
         DB::update(
             'UPDATE pagamentos_plano
@@ -418,6 +424,9 @@ class AdminPagamentoPlanoService
         $pagamento = $this->buscarPorId($tenantId, $pagamentoId);
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
+        }
+        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+            return $bloqueio;
         }
 
         DB::delete('DELETE FROM pagamentos_plano WHERE tenant_id = ? AND id = ?', [$tenantId, $pagamentoId]);
@@ -934,6 +943,30 @@ class AdminPagamentoPlanoService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
+    /**
+     * Parcela paga com baixa automática do provedor (Asaas, Mercado Pago): só pode ser vista.
+     * Mudar aqui não mexe no provedor e deixaria o Check-in diferente do que foi cobrado.
+     *
+     * @param  array<string, mixed>  $pagamento
+     * @return array{status: int, body: array<string, mixed>}|null
+     */
+    private function bloqueioBaixaAutomatica(array $pagamento): ?array
+    {
+        if ((int) ($pagamento['status_pagamento_id'] ?? 0) !== 2 || empty($pagamento['tipo_baixa_id'])) {
+            return null;
+        }
+        $integracao = (int) (DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4);
+        if ((int) $pagamento['tipo_baixa_id'] !== $integracao) {
+            return null;
+        }
+
+        return ['status' => 422, 'body' => [
+            'type' => 'error',
+            'code' => 'BAIXA_AUTOMATICA',
+            'message' => 'Este pagamento teve baixa automática pelo provedor e não pode ser alterado aqui. Para estornar, faça no provedor.',
+        ]];
+    }
+
     private function erro(string $message, int $status): array
     {
         return ['status' => $status, 'body' => ['type' => 'error', 'message' => $message]];

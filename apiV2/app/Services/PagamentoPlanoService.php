@@ -51,6 +51,16 @@ class PagamentoPlanoService
         );
     }
 
+    /** Texto da parcela aberta enquanto o aluno paga no provedor ('asaas' ou 'mercadopago'). */
+    public static function obsAguardando(?string $provider): string
+    {
+        return match (strtolower((string) $provider)) {
+            'asaas' => 'Aguardando pagamento via Asaas',
+            'mercadopago', 'mercado_pago' => 'Aguardando pagamento via Mercado Pago',
+            default => 'Aguardando pagamento',
+        };
+    }
+
     /**
      * Deixa uma única parcela pendente com o valor atual da matrícula (evita baixa MP na parcela errada).
      */
@@ -62,7 +72,7 @@ class PagamentoPlanoService
         float $valor,
         string $dataVencimento,
         int $criadoPor,
-        string $observacoes = 'Aguardando pagamento via Mercado Pago'
+        string $observacoes = 'Aguardando pagamento'
     ): int {
         $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Substituída por nova cobrança');
 

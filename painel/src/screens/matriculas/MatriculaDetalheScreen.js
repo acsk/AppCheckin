@@ -17,6 +17,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
 import TrocaPlanoModal from '../../components/ck/TrocaPlanoModal';
+import { EditarPagamentoModal, isBaixaAutomatica, provedorDaBaixa } from '../../components/ck/pagamento';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
@@ -85,15 +86,6 @@ export default function MatriculaDetalheScreen() {
   const [etapaAlterarPlano, setEtapaAlterarPlano] = useState('plano');
   const [previaAlteracao, setPreviaAlteracao] = useState(null);
   const [loadingPreviaAlteracao, setLoadingPreviaAlteracao] = useState(false);
-  const [formEditarPagamento, setFormEditarPagamento] = useState({
-    valor: '',
-    desconto: '',
-    motivo_desconto: '',
-    data_vencimento: '',
-    data_pagamento: '',
-    status_pagamento_id: '1',
-    observacoes: '',
-  });
   const [modalConfirmAlteracaoVisible, setModalConfirmAlteracaoVisible] = useState(false);
   const [alterarPlanoErro, setAlterarPlanoErro] = useState('');
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
@@ -1101,60 +1093,17 @@ export default function MatriculaDetalheScreen() {
 
   const handleAbrirEditarPagamento = (pagamento) => {
     setPagamentoEditando(pagamento);
-    setFormEditarPagamento({
-      valor: formatarMoedaInput(pagamento?.valor || 0),
-      desconto: formatarMoedaInput(pagamento?.desconto || 0),
-      motivo_desconto: pagamento?.motivo_desconto || '',
-      data_vencimento: pagamento?.data_vencimento || '',
-      data_pagamento: pagamento?.data_pagamento || '',
-      status_pagamento_id: String(pagamento?.status_pagamento_id || 1),
-      observacoes: pagamento?.observacoes || '',
-    });
     setModalEditarPagamentoVisible(true);
   };
 
-  const handleSalvarEdicaoPagamento = async () => {
+  const handleSalvarEdicaoPagamento = async (payload) => {
     const pagamentoId = getPagamentoId(pagamentoEditando);
     if (!pagamentoId) {
       showAlert('Erro', 'Pagamento inválido para edição');
       return;
     }
-
-    const valorNormalizado = parseMoeda(formEditarPagamento.valor);
-    if (!Number.isFinite(valorNormalizado) || valorNormalizado <= 0) {
-      showAlert('Erro', 'Informe um valor válido');
-      return;
-    }
-
-    const descontoNormalizado = parseMoeda(formEditarPagamento.desconto);
-    if (!Number.isFinite(descontoNormalizado) || descontoNormalizado < 0) {
-      showAlert('Erro', 'Informe um desconto válido');
-      return;
-    }
-
-    if (descontoNormalizado > valorNormalizado) {
-      showAlert('Erro', 'Desconto não pode ser maior que o valor do pagamento');
-      return;
-    }
-
-    if (!formEditarPagamento.data_vencimento) {
-      showAlert('Erro', 'Data de vencimento é obrigatória');
-      return;
-    }
-
     try {
       setSalvandoPagamento(true);
-
-      const payload = {
-        valor: valorNormalizado,
-        desconto: descontoNormalizado,
-        motivo_desconto: formEditarPagamento.motivo_desconto || null,
-        data_vencimento: formEditarPagamento.data_vencimento,
-        data_pagamento: formEditarPagamento.data_pagamento || null,
-        status_pagamento_id: Number(formEditarPagamento.status_pagamento_id || 1),
-        observacoes: formEditarPagamento.observacoes || null,
-      };
-
       const response = await pagamentoPlanoService.atualizar(pagamentoId, payload);
       showToast(response?.message || 'Pagamento atualizado com sucesso');
       setModalEditarPagamentoVisible(false);
@@ -1295,7 +1244,9 @@ export default function MatriculaDetalheScreen() {
         paidDate: isoDia(pg.data_pagamento),
         paidBy: pg.baixado_por_nome || pg.criado_por_nome || undefined,
         method: pg.forma_pagamento_nome || undefined,
-        channel: pg.tipo_baixa_nome ? String(pg.tipo_baixa_nome).toLowerCase() : undefined,
+        // Baixa automática: mostra quem recebeu (ex.: Asaas) em vez de "integração"
+        channel: isBaixaAutomatica(pg) ? `pelo ${provedorDaBaixa(pg)}` : (pg.tipo_baixa_nome ? String(pg.tipo_baixa_nome).toLowerCase() : undefined),
+        locked: isBaixaAutomatica(pg),
         amount: parseFloat(pg.valor || 0),
         net:
           pg.valor_liquido != null && pg.valor_liquido !== ''
@@ -2238,174 +2189,18 @@ export default function MatriculaDetalheScreen() {
         </View>
       </Modal>
 
-      {/* Modal de Editar Pagamento */}
-      <Modal
-        visible={modalEditarPagamentoVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setModalEditarPagamentoVisible(false)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/50 px-4">
-          <View className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
-            <View className="border-b border-slate-200 px-6 py-5">
-              <Text className="text-lg font-bold text-slate-800">Editar pagamento</Text>
-              <Text className="text-sm text-slate-500">
-                Parcela #{getPagamentoId(pagamentoEditando) || '-'}
-              </Text>
-            </View>
-
-            <ScrollView
-              className="px-6 py-4"
-              style={{ maxHeight: isDesktop ? 430 : 360 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {pagamentoEditando?.valor_original && (
-                <View className="mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 flex-row items-center justify-between">
-                  <Text className="text-xs font-semibold text-blue-700">Valor original da mensalidade</Text>
-                  <Text className="text-sm font-bold text-blue-800">{formatCurrency(pagamentoEditando.valor_original)}</Text>
-                </View>
-              )}
-
-              <View className="mb-3 flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Valor</Text>
-                  <TextInput
-                    className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-500"
-                    value={formEditarPagamento.valor}
-                    editable={false}
-                    selectTextOnFocus={false}
-                  />
-                </View>
-
-                <View className="flex-1">
-                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Desconto</Text>
-                  <TextInput
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                    value={formEditarPagamento.desconto}
-                    onChangeText={(text) =>
-                      setFormEditarPagamento((prev) => ({ ...prev, desconto: aplicarMascaraDesconto(text) }))
-                    }
-                    keyboardType="decimal-pad"
-                    placeholder="0,00"
-                  />
-                </View>
-              </View>
-
-              <View className="mb-3 flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de vencimento</Text>
-                  <input
-                    type="date"
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      padding: 10,
-                      fontSize: 14,
-                      width: '100%',
-                    }}
-                    value={formEditarPagamento.data_vencimento}
-                    onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_vencimento: e.target.value }))}
-                  />
-                </View>
-
-                <View className="flex-1">
-                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de pagamento</Text>
-                  <input
-                    type="date"
-                    style={{
-                      borderWidth: 1,
-                      borderColor: '#cbd5e1',
-                      borderRadius: 8,
-                      padding: 10,
-                      fontSize: 14,
-                      width: '100%',
-                    }}
-                    value={formEditarPagamento.data_pagamento || ''}
-                    onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_pagamento: e.target.value }))}
-                  />
-                </View>
-              </View>
-
-              <View className="mb-3">
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Motivo do desconto</Text>
-                <TextInput
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                  value={formEditarPagamento.motivo_desconto}
-                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, motivo_desconto: text }))}
-                  placeholder="Ex: desconto promocional"
-                />
-              </View>
-
-              <View className="mb-3">
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Status</Text>
-                <View className="flex-row flex-wrap gap-2">
-                  {[
-                    { id: '1', label: 'Aguardando', color: '#3B82F6' },
-                    { id: '2', label: 'Pago', color: '#10b981' },
-                    { id: '3', label: 'Atrasado', color: '#dc2626' },
-                    { id: '4', label: 'Cancelado', color: '#6B7280' },
-                  ].map((status) => {
-                    const ativo = formEditarPagamento.status_pagamento_id === status.id;
-                    return (
-                      <Pressable
-                        key={status.id}
-                        className="rounded-full border px-3 py-1"
-                        style={{
-                          borderColor: ativo ? status.color : '#cbd5e1',
-                          backgroundColor: ativo ? status.color : '#fff',
-                        }}
-                        onPress={() => setFormEditarPagamento((prev) => ({ ...prev, status_pagamento_id: status.id }))}
-                      >
-                        <Text
-                          className="text-xs font-semibold"
-                          style={{ color: ativo ? '#fff' : '#475569' }}
-                        >
-                          {status.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View>
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Observações</Text>
-                <TextInput
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                  value={formEditarPagamento.observacoes}
-                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, observacoes: text }))}
-                  multiline
-                  numberOfLines={2}
-                />
-              </View>
-            </ScrollView>
-
-            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
-              <Pressable
-                onPress={() => setModalEditarPagamentoVisible(false)}
-                disabled={salvandoPagamento}
-                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-              >
-                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleSalvarEdicaoPagamento}
-                disabled={salvandoPagamento}
-                className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }, salvandoPagamento && { opacity: 0.6 }]}
-              >
-                {salvandoPagamento ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text className="text-sm font-semibold text-white">Salvar alterações</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Modal de Editar Pagamento (baixa automática abre só para consulta) */}
+      {pagamentoEditando ? (
+        <EditarPagamentoModal
+          key={getPagamentoId(pagamentoEditando)}
+          open={modalEditarPagamentoVisible}
+          payment={pagamentoEditando}
+          context={matricula ? `Matrícula #${matricula.id}${matricula.plano_nome ? `, ${matricula.plano_nome}` : ''}` : undefined}
+          saving={salvandoPagamento}
+          onSave={handleSalvarEdicaoPagamento}
+          onCancel={() => { setModalEditarPagamentoVisible(false); setPagamentoEditando(null); }}
+        />
+      ) : null}
 
       {/* Modal de Excluir Pagamento */}
       <Modal

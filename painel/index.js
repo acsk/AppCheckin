@@ -14,5 +14,6 @@ import './src/theme/ck-contratos.css';
 import './src/theme/ck-planos-sistema.css';
 import './src/theme/ck-contrato-detalhe.css';
 import './src/theme/ck-modalidades.css';
+import './src/theme/ck-pagamento.css';
 
 import 'expo-router/entry';

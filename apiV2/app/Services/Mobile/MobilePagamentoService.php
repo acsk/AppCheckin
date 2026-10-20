@@ -373,9 +373,7 @@ class MobilePagamentoService
                 (float) $matricula['valor'],
                 $dataVencParcela,
                 $userId,
-                $provider === 'asaas'
-                    ? 'Aguardando pagamento via Asaas'
-                    : 'Aguardando pagamento via Mercado Pago'
+                PagamentoPlanoService::obsAguardando($provider)
             );
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';

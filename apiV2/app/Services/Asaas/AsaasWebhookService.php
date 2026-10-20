@@ -337,7 +337,7 @@ class AsaasWebhookService
 
         $dataPagamento = AsaasPagamentoStatus::dataPagamento($payment)
             ?? substr((string) date('Y-m-d'), 0, 10);
-        $obs = trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']');
+        $obs = self::observacaoPagoAsaas((string) ($parcela->observacoes ?? ''), $paymentId, $payment);
 
         $update = [
             'status_pagamento_id' => 2,
@@ -377,6 +377,35 @@ class AsaasWebhookService
      * @param  array<string, mixed>  $payment
      * @return array<string, mixed>
      */
+    /**
+     * Troca o "Aguardando pagamento via ..." (às vezes gravado como Mercado Pago por engano) por quem
+     * realmente recebeu: "Pago via Asaas (Cartão)". Mantém o resto da observação e o id da cobrança.
+     *
+     * @param  array<string, mixed>  $payment
+     */
+    public static function observacaoPagoAsaas(string $observacoes, string $paymentId, array $payment): string
+    {
+        $forma = match (strtoupper((string) ($payment['billingType'] ?? ''))) {
+            'CREDIT_CARD' => 'Cartão',
+            'PIX' => 'Pix',
+            'BOLETO' => 'Boleto',
+            'RECEIVED_IN_CASH' => 'Dinheiro',
+            default => null,
+        };
+        $pago = 'Pago via Asaas'.($forma ? ' ('.$forma.')' : '');
+
+        $obs = trim($observacoes);
+        $obs = preg_replace('/^Aguardando pagamento(?:\s+via\s+(?:Mercado Pago|Asaas))?/u', $pago, $obs, 1, $trocou) ?? $obs;
+        if (! $trocou && ! str_contains($obs, 'Pago via Asaas')) {
+            $obs = trim($pago.' '.$obs);
+        }
+        if (! str_contains($obs, $paymentId)) {
+            $obs .= ' [Asaas '.$paymentId.']';
+        }
+
+        return trim($obs);
+    }
+
     private function camposTarifaProvedor(array $payment, string $observacoes, bool $anexarObs): array
     {
         $tarifa = AsaasPagamentoStatus::tarifaProvedor($payment);

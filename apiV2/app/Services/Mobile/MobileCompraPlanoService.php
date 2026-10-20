@@ -325,6 +325,7 @@ class MobileCompraPlanoService
                     $metodoPagamento,
                     $usuario,
                     $alunoId,
+                    $provider,
                 );
             }
             // Ciclo/plano diferente: cai no UPDATE abaixo (nunca INSERT irmão).
@@ -473,7 +474,8 @@ class MobileCompraPlanoService
                 $planoId,
                 $valorCompra,
                 $dataInicio,
-                $userId
+                $userId,
+                PagamentoPlanoService::obsAguardando($provider)
             );
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
@@ -659,6 +661,7 @@ class MobileCompraPlanoService
         string $metodoPagamento,
         array $usuario,
         int $alunoId,
+        ?string $provider = null,
     ): array {
         $matriculaId = (int) $pendente['id'];
         $valorPendente = (float) $pendente['valor'];
@@ -670,7 +673,8 @@ class MobileCompraPlanoService
             (int) $pendente['plano_id'],
             $valorPendente,
             $pendente['data_inicio'] ?? date('Y-m-d'),
-            $userId
+            $userId,
+            PagamentoPlanoService::obsAguardando($provider)
         );
 
         $assinaturaRow = DB::table('assinaturas')

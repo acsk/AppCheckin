@@ -1,0 +1,36 @@
+/* EditarPagamentoModal (src/components/ck/pagamento.js), portado do design system. */
+.ck-adm__foot { display: flex; justify-content: flex-end; gap: var(--space-2); width: 100%; }
+.ck-ep { display: grid; gap: var(--space-4); }
+.ck-ep__sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.ck-ep__sum > div { display: grid; gap: 2px; padding: var(--space-3) var(--space-4); min-width: 0; }
+.ck-ep__sum > div + div { border-left: 1px solid var(--line); }
+.ck-ep__sum span { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ck-ep__sum strong { font-family: var(--font-display); font-size: 20px; line-height: 24px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ck-ep__sum .is-disc { color: var(--success); }
+.ck-ep__sum .is-final { background: var(--bg); }
+.ck-ep__status { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ck-ep__chip--success[aria-checked="true"] { background: var(--success-soft); border-color: var(--success); color: var(--ink); }
+.ck-ep__chip--warning[aria-checked="true"] { background: var(--warning-soft); border-color: var(--warning); color: var(--ink); }
+.ck-ep__chip--danger[aria-checked="true"] { background: var(--danger-soft); border-color: var(--danger); color: var(--ink); }
+.ck-ep__chip--outline[aria-checked="true"] { background: var(--surface-muted); border-color: var(--ink-subtle); color: var(--ink); }
+.ck-ep__status .ck-ml__chip[aria-checked="true"] { box-shadow: 0 0 0 1px currentColor inset; font-weight: 700; }
+.ck-ep__status .ck-ml__chip:disabled { opacity: .45; cursor: not-allowed; }
+.ck-ep__disc { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.ck-ep__hint { margin: 32px 0 0; font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+@media (max-width: 560px) { .ck-ep__sum { grid-template-columns: 1fr; } .ck-ep__sum > div + div { border-left: 0; border-top: 1px solid var(--line); } .ck-ep__disc { grid-template-columns: 1fr; } .ck-ep__hint { margin-top: 0; } }
+.ck-ep__log { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.ck-ep__logbtn { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-muted); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ck-ep__logbtn:hover { background: var(--surface-hover); color: var(--ink); }
+.ck-ep__logbtn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-ep__chev { margin-left: auto; transition: transform .15s; }
+.ck-ep__chev.is-open { transform: rotate(180deg); }
+.ck-ep__tech { margin: var(--space-2) 0 0; display: grid; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.ck-ep__tech > div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: var(--space-3); align-items: center; padding: 8px var(--space-3); }
+.ck-ep__tech > div + div { border-top: 1px solid var(--line); }
+.ck-ep__tech dt { font-size: 13px; color: var(--ink-muted); }
+.ck-ep__tech dd { margin: 0; font-size: 13px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .ck-ep__tech > div { grid-template-columns: 1fr; gap: 2px; } }
+.ck-ep__copy { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; min-width: 0; }
+.ck-ep__copy code { font-family: var(--font-mono); font-size: 12.5px; font-weight: 400; background: var(--surface-muted); padding: 2px 6px; border-radius: var(--radius-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-ep__copybtn { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-muted); cursor: pointer; }
+.ck-ep__copybtn:hover { background: var(--surface-hover); color: var(--ink); }

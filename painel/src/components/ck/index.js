@@ -518,7 +518,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
               h('td', { className: 'ck-mt-actions' },
                 due && i.canSettle !== false ? h(Button, { size: 'sm', variant: 'secondary', icon: 'check-circle', onClick: function () { p.onSettle && p.onSettle(i); } }, 'Dar baixa') : null,
                 due && i.canSettle === false && i.settleNote ? h(Badge, { tone: 'info', icon: 'package' }, i.settleNote) : null,
-                p.menu === false ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: [
+                // locked: baixa automática do provedor, só dá para ver os detalhes
+                p.menu === false ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: i.locked ? [
+                  { label: 'Ver detalhes', icon: 'eye', onClick: function () { p.onEdit && p.onEdit(i); } }] : [
                   { label: 'Editar parcela', icon: 'pencil', onClick: function () { p.onEdit && p.onEdit(i); } }, '-',
                   { label: 'Excluir parcela', icon: 'trash', danger: true, onClick: function () { p.onDelete && p.onDelete(i); } }] })));
           }) : h('tr', null, h('td', { colSpan: 6, className: 'ck-mt-table__empty' }, filter === 'canceladas' ? 'Nenhuma fatura cancelada.' : 'Nenhuma fatura ativa.'))))));
