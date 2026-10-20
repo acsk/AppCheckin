@@ -1396,6 +1396,24 @@ class MercadoPagoService
         return $itens;
     }
 
+    /**
+     * formas_pagamento.id de um pagamento do MP: 2=Pix, 3=Débito, 8=Boleto, 9=Cartão.
+     * Pix chega como payment_type_id=bank_transfer (o polling antigo gravava como 8 = Boleto).
+     */
+    public static function formaPagamentoId(array $p): int
+    {
+        $method = strtolower((string) ($p['payment_method_id'] ?? ''));
+        $type = strtolower((string) ($p['payment_type_id'] ?? ''));
+
+        return match (true) {
+            $method === 'pix' || $type === 'bank_transfer' || $type === 'account_money' || $method === 'account_money' => 2,
+            $type === 'debit_card' || $type === 'prepaid_card' => 3,
+            $type === 'ticket' || $type === 'atm' || in_array($method, ['bolbradesco', 'pec'], true) => 8,
+            $type === 'credit_card' => 9,
+            default => 2,
+        };
+    }
+
     /** Líquido de um pagamento aprovado: net_received_amount, ou valor menos fee_details. Null antes da aprovação. */
     public static function liquidoDoPagamento(array $p): ?float
     {

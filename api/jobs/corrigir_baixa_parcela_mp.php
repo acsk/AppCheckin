@@ -138,13 +138,14 @@ try {
         UPDATE pagamentos_plano
         SET status_pagamento_id = 2,
             data_pagamento = ?,
-            forma_pagamento_id = 8,
+            forma_pagamento_id = ?,
             tipo_baixa_id = 4,
             observacoes = ?,
             updated_at = NOW()
         WHERE id = ? AND matricula_id = ? AND tenant_id = ?
     ");
-    $stmtBaixa->execute([$dateApproved, $obs, $parcelaId, $matriculaId, $tenantId]);
+    $stmtBaixa->execute([$dateApproved, \App\Models\PagamentoPlano::formaPagamentoIdMercadoPago($mp), $obs, $parcelaId, $matriculaId, $tenantId]);
+    (new \App\Models\PagamentoPlano($pdo))->gravarTaxaMercadoPago((int) $parcelaId, $mp);
     out("✅ Parcela #{$parcelaId} baixada (rows: {$stmtBaixa->rowCount()})", $quiet);
 
     $pagamentoModel = new \App\Models\PagamentoPlano($pdo);

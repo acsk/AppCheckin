@@ -1274,6 +1274,8 @@ class MercadoPagoService
                         'id' => $p['payer']['id'] ?? null,
                     ],
                     'metadata' => $p['metadata'] ?? [],
+                    'transaction_details' => $p['transaction_details'] ?? null,
+                    'fee_details' => $p['fee_details'] ?? [],
                 ];
             }, $results)
         ];

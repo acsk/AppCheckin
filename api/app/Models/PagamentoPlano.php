@@ -17,6 +17,63 @@ class PagamentoPlano
     }
 
     /**
+     * Forma de pagamento (formas_pagamento.id) de um pagamento do Mercado Pago.
+     * 2=Pix, 3=Débito, 8=Boleto, 9=Cartão. Pix chega como payment_type_id=bank_transfer.
+     */
+    public static function formaPagamentoIdMercadoPago(array $pagamento): int
+    {
+        $method = strtolower((string) ($pagamento['payment_method_id'] ?? ''));
+        $type = strtolower((string) ($pagamento['payment_type_id'] ?? ''));
+
+        return match (true) {
+            $method === 'pix' || $type === 'bank_transfer' || $type === 'account_money' || $method === 'account_money' => 2,
+            $type === 'debit_card' || $type === 'prepaid_card' => 3,
+            $type === 'ticket' || $type === 'atm' || in_array($method, ['bolbradesco', 'pec'], true) => 8,
+            $type === 'credit_card' => 9,
+            default => 2,
+        };
+    }
+
+    /**
+     * Grava a taxa e o líquido do Mercado Pago na parcela (colunas da migration 071; ignora se não existirem).
+     * Aceita o pagamento da API (/v1/payments) ou o normalizado pelo MercadoPagoService (com 'raw').
+     */
+    public function gravarTaxaMercadoPago(int $parcelaId, array $pagamento): void
+    {
+        $p = isset($pagamento['raw']) && is_array($pagamento['raw']) ? $pagamento['raw'] + $pagamento : $pagamento;
+        if (($p['status'] ?? null) !== 'approved') {
+            return;
+        }
+        $valor = (float) ($p['transaction_amount'] ?? 0);
+        $liquido = $p['transaction_details']['net_received_amount'] ?? null;
+        if ($liquido === null || (float) $liquido <= 0) {
+            $taxas = 0.0;
+            foreach ((array) ($p['fee_details'] ?? []) as $fee) {
+                $taxas += (float) ($fee['amount'] ?? 0);
+            }
+            if (empty($p['fee_details'])) {
+                return;
+            }
+            $liquido = $valor - $taxas;
+        }
+        $liquido = round((float) $liquido, 2);
+
+        try {
+            $cols = $this->pdo->query("SHOW COLUMNS FROM pagamentos_plano WHERE Field IN ('valor_liquido', 'desconto_provedor')")->fetchAll(PDO::FETCH_COLUMN);
+        } catch (\Throwable $e) {
+            return;
+        }
+        if (!in_array('valor_liquido', $cols, true)) {
+            return;
+        }
+        $sql = 'UPDATE pagamentos_plano SET valor_liquido = ?' . (in_array('desconto_provedor', $cols, true) ? ', desconto_provedor = ?' : '') . ' WHERE id = ?';
+        $params = in_array('desconto_provedor', $cols, true)
+            ? [$liquido, max(0, round($valor - $liquido, 2)), $parcelaId]
+            : [$liquido, $parcelaId];
+        $this->pdo->prepare($sql)->execute($params);
+    }
+
+    /**
      * Criar novo pagamento
      */
     public function criar(array $dados): int

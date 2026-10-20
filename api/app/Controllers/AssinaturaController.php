@@ -1256,13 +1256,7 @@ class AssinaturaController
             : date('Y-m-d H:i:s');
 
         // Determinar forma_pagamento_id baseado no payment_type_id do MP
-        $paymentType = $pagamento['payment_type_id'] ?? $pagamento['payment_method_id'] ?? '';
-        $formaPagamentoId = match(true) {
-            str_contains($paymentType, 'credit') => 9,   // Cartão de crédito
-            str_contains($paymentType, 'debit') => 10,   // Cartão de débito
-            $paymentType === 'bank_transfer' || str_contains($paymentType, 'pix') => 8, // PIX
-            default => 8 // Default PIX
-        };
+        $formaPagamentoId = \App\Models\PagamentoPlano::formaPagamentoIdMercadoPago($pagamento);
 
         // Buscar pagamento pendente
         $stmtBuscar = $this->db->prepare("
@@ -1297,6 +1291,7 @@ class AssinaturaController
 
             if ($stmtUpdate->rowCount() > 0) {
                 error_log("[aprovadasHoje] ✅ Pagamento #{$pendente['id']} baixado como PAGO");
+                (new \App\Models\PagamentoPlano($this->db))->gravarTaxaMercadoPago((int) $pendente['id'], $pagamento);
             }
 
             // Gerar próximo pagamento pendente para manter o ciclo de cobrança

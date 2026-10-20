@@ -299,13 +299,8 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         logMsg("✅ pagamentos_mercadopago inserido para payment {$paymentId}", $quiet);
     }
 
-    $paymentType = strtolower((string)($pagamento['payment_type_id'] ?? $pagamento['payment_method_id'] ?? ''));
-    $formaPagamentoId = match (true) {
-        str_contains($paymentType, 'credit') => 9,
-        str_contains($paymentType, 'debit') => 10,
-        $paymentType === 'bank_transfer', str_contains($paymentType, 'pix') => 8,
-        default => 8,
-    };
+    // Pix = 2, cartão = 9, débito = 3, boleto = 8 (antes gravava Pix como 8 = Boleto)
+    $formaPagamentoId = \App\Models\PagamentoPlano::formaPagamentoIdMercadoPago($pagamento);
 
     $valorMp = (float) ($pagamento['transaction_amount'] ?? 0);
 
@@ -367,6 +362,7 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
             $obsBaixa,
             $pagamentoPlanoId,
         ]);
+        (new \App\Models\PagamentoPlano($pdo))->gravarTaxaMercadoPago((int) $pagamentoPlanoId, $pagamento);
         logMsg("✅ pagamentos_plano {$pagamentoPlanoId} baixado como pago", $quiet);
     } else {
         logMsg("ℹ️  Nenhum pagamento_plano pendente encontrado para matrícula {$matriculaId}", $quiet);

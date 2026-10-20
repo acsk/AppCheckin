@@ -32,4 +32,12 @@ class MercadoPagoLiquidoTest extends TestCase
         $this->assertNull(MercadoPagoService::liquidoDoPagamento($p));
         $this->assertNull(MercadoPagoService::taxaDoPagamento($p));
     }
+
+    public function test_forma_de_pagamento_do_mp(): void
+    {
+        $this->assertSame(2, MercadoPagoService::formaPagamentoId(['payment_method_id' => 'pix', 'payment_type_id' => 'bank_transfer']));
+        $this->assertSame(9, MercadoPagoService::formaPagamentoId(['payment_method_id' => 'visa', 'payment_type_id' => 'credit_card']));
+        $this->assertSame(3, MercadoPagoService::formaPagamentoId(['payment_method_id' => 'debvisa', 'payment_type_id' => 'debit_card']));
+        $this->assertSame(8, MercadoPagoService::formaPagamentoId(['payment_method_id' => 'bolbradesco', 'payment_type_id' => 'ticket']));
+    }
 }

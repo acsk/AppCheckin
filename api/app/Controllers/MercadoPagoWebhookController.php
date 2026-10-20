@@ -1722,14 +1722,7 @@ class MercadoPagoWebhookController
             $statusPagoId = (int) ($stmtStatusPago->fetchColumn() ?: 2);
 
             // Buscar forma de pagamento pelo método do MP (usando nome na tabela)
-            $formaPagamentoId = null;
-            $metodoPagamento = $pagamento['payment_method_id'] ?? null;
-            if ($metodoPagamento) {
-                // formas_pagamento não tem coluna 'codigo', usar 'nome'
-                $stmtForma = $this->db->prepare("SELECT id FROM formas_pagamento WHERE nome LIKE ? AND ativo = 1 LIMIT 1");
-                $stmtForma->execute(['%' . $metodoPagamento . '%']);
-                $formaPagamentoId = $stmtForma->fetchColumn() ?: null;
-            }
+            $formaPagamentoId = \App\Models\PagamentoPlano::formaPagamentoIdMercadoPago($pagamento);
 
             $dataPagamento = !empty($pagamento['date_approved'])
                 ? date('Y-m-d', strtotime((string) $pagamento['date_approved']))
@@ -2415,7 +2408,7 @@ class MercadoPagoWebhookController
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
             
             // Buscar forma de pagamento (PIX, cartão, etc)
-            $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id'] ?? 'pix');
+            $formaPagamentoId = \App\Models\PagamentoPlano::formaPagamentoIdMercadoPago($pagamento);
             $parcelaBaixadaId = null;
             
             if ($pagamentoPendente) {
@@ -2482,6 +2475,7 @@ class MercadoPagoWebhookController
             try {
                 $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
                 if ($parcelaBaixadaId) {
+                    $pagamentoModel->gravarTaxaMercadoPago($parcelaBaixadaId, $pagamento);
                     $n = $pagamentoModel->cancelarParcelasDuplicadasAposBaixa(
                         (int) $matricula['tenant_id'],
                         $matriculaId,
@@ -2633,6 +2627,7 @@ class MercadoPagoWebhookController
     /**
      * Obter ID da forma de pagamento baseado no método do MP
      */
+    /** @deprecated use PagamentoPlano::formaPagamentoIdMercadoPago (considera payment_type_id) */
     private function obterFormaPagamentoId(string $paymentMethodId): ?int
     {
         // Mapear métodos do MP para IDs de formas de pagamento do sistema
