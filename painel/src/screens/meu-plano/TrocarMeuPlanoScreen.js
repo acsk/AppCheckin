@@ -5,7 +5,7 @@ import meuContratoService from '../../services/meuContratoService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout } from '../../components/ck';
 import { TrocarPlanoContrato, planFromApi } from '../../components/ck/contratos';
-import { BILLING, PagarModal } from '../../components/ck/meuPlano';
+import { BILLING, DocumentoModal, PagarModal } from '../../components/ck/meuPlano';
 import { openUrl } from './MeuPlanoScreen';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -20,6 +20,9 @@ export default function TrocarMeuPlanoScreen() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [paid, setPaid] = useState(null);
+  // Troca paga sem CNPJ/CPF válido: guarda o pedido, pede o documento e repete com ele
+  const [askDoc, setAskDoc] = useState(null);
+  const [docError, setDocError] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -38,10 +41,12 @@ export default function TrocarMeuPlanoScreen() {
 
   const back = () => router.push('/meu-plano');
 
-  const save = async (v) => {
+  const save = async (v, documento) => {
     setSaving(true);
+    setDocError('');
     try {
-      const r = await meuContratoService.trocarPlano({ planoId: v.planId, formaPagamento: v.paymentId, motivo: v.notes });
+      const r = await meuContratoService.trocarPlano({ planoId: v.planId, formaPagamento: v.paymentId, motivo: v.notes, documento });
+      setAskDoc(null);
       if (r.aviso) showError(r.aviso);
       if (r.cobranca) {
         // Plano pago: mostra o Pix (ou o link do cartão) na hora, sem precisar voltar à lista
@@ -51,7 +56,12 @@ export default function TrocarMeuPlanoScreen() {
         back();
       }
     } catch (err) {
-      showError(err.message);
+      if (err.code === 'DOCUMENTO_INVALIDO') {
+        if (askDoc) setDocError(err.message);
+        setAskDoc(v);
+      } else {
+        showError(err.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -93,6 +103,13 @@ export default function TrocarMeuPlanoScreen() {
           />
         </>
       )}
+      <DocumentoModal
+        open={!!askDoc}
+        saving={saving}
+        error={docError}
+        onSubmit={(doc) => save(askDoc, doc)}
+        onClose={() => { setAskDoc(null); setDocError(''); }}
+      />
       <PagarModal
         open={!!paid}
         payment={paid ? { valor: paid.valor || 0, plano_nome: null } : null}

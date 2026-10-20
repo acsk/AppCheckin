@@ -23,6 +23,7 @@ export default function MeuPlanoScreen() {
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(null);
   const [payError, setPayError] = useState('');
+  const [payErrorCode, setPayErrorCode] = useState(null);
 
   const load = async () => {
     setError('');
@@ -55,15 +56,17 @@ export default function MeuPlanoScreen() {
     setPaying(p);
   };
 
-  const generate = async (forma) => {
+  const generate = async (forma, documento) => {
     setGenerating(true);
     setPayError('');
+    setPayErrorCode(null);
     try {
-      const r = await meuContratoService.pagar(paying.id, forma);
+      const r = await meuContratoService.pagar(paying.id, forma, documento);
       setResult(r.cobranca || null);
       load();
     } catch (err) {
       setPayError(err.message);
+      setPayErrorCode(err.code || null);
       if (err.status === 503) showError(err.message);
     } finally {
       setGenerating(false);
@@ -74,6 +77,7 @@ export default function MeuPlanoScreen() {
     setPaying(null);
     setResult(null);
     setPayError('');
+    setPayErrorCode(null);
     load();
   };
 
@@ -99,6 +103,8 @@ export default function MeuPlanoScreen() {
         generating={generating}
         result={result}
         error={payError}
+        errorCode={payErrorCode}
+        needsDocument={data ? data.documento_valido === false : false}
         onGenerate={generate}
         onOpenUrl={openUrl}
         onClose={closePay}

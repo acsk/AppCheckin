@@ -5,6 +5,7 @@ namespace App\Services\SuperAdmin;
 use App\Repositories\PagamentoContratoRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Services\Asaas\AsaasService;
+use App\Support\Documento;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,6 +34,26 @@ class CobrancaContratoService
         $id = DB::table('formas_pagamento')->where('nome', self::FORMA_PAGAMENTO_NOME[strtoupper($billingType)] ?? '')->value('id');
 
         return $id ? (int) $id : null;
+    }
+
+    /**
+     * Documento que vai para o cliente no Asaas: o CNPJ da academia se for válido, senão o CPF do responsável.
+     *
+     * @param  array<string, mixed>  $academia  linha de tenants
+     * @return array{cpfCnpj: string, name: string}|null  null quando nenhum dos dois é válido
+     */
+    public static function documentoCobranca(array $academia): ?array
+    {
+        $cnpj = Documento::digitos((string) ($academia['cnpj'] ?? ''));
+        if (strlen($cnpj) === 14 && Documento::cnpjValido($cnpj)) {
+            return ['cpfCnpj' => $cnpj, 'name' => (string) ($academia['nome'] ?? '')];
+        }
+        $cpf = Documento::digitos((string) ($academia['responsavel_cpf'] ?? ''));
+        if (strlen($cpf) === 11 && Documento::cpfValido($cpf)) {
+            return ['cpfCnpj' => $cpf, 'name' => (string) ($academia['responsavel_nome'] ?: ($academia['nome'] ?? ''))];
+        }
+
+        return null;
     }
 
     public static function sistemaTenantId(): int
@@ -71,9 +92,10 @@ class CobrancaContratoService
             throw new \RuntimeException('Contrato não encontrado');
         }
         $academia = (array) DB::table('tenants')->where('id', (int) $contrato['tenant_id'])->first();
-
-        $cnpj = preg_replace('/[^0-9]/', '', (string) ($academia['cnpj'] ?? ''));
-        $cpf = preg_replace('/[^0-9]/', '', (string) ($academia['responsavel_cpf'] ?? ''));
+        $documento = self::documentoCobranca($academia);
+        if (! $documento) {
+            throw new \RuntimeException('A academia não tem CNPJ nem CPF do responsável válido para a cobrança');
+        }
 
         $cobranca = $this->asaas()->criarCobrancaContrato([
             'pagamento_id' => $pagamentoId,
@@ -82,8 +104,8 @@ class CobrancaContratoService
             'vencimento' => max((string) $pagamento['data_vencimento'], date('Y-m-d')),
             'descricao' => 'AppCheckin '.($contrato['plano_nome'] ?? '').' — '.($academia['nome'] ?? ''),
             'cliente' => [
-                'name' => (string) (strlen($cnpj) === 14 ? $academia['nome'] : ($academia['responsavel_nome'] ?? $academia['nome'])),
-                'cpfCnpj' => strlen($cnpj) === 14 ? $cnpj : $cpf,
+                'name' => $documento['name'],
+                'cpfCnpj' => $documento['cpfCnpj'],
                 'email' => $academia['responsavel_email'] ?? $academia['email'] ?? null,
                 'mobilePhone' => $academia['responsavel_telefone'] ?? $academia['telefone'] ?? null,
             ],

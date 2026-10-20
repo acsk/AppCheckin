@@ -8,6 +8,7 @@ use App\Repositories\TenantPlanoRepository;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Services\SuperAdmin\CobrancaTenantService;
 use App\Services\SuperAdmin\SuperAdminContratoService;
+use App\Support\Documento;
 use App\Support\TipoCobrancaPlanoSistema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -29,7 +30,13 @@ class AdminMeuContratoService
         private readonly CobrancaContratoService $cobrancas,
         private readonly CobrancaTenantService $cobranca,
         private readonly SuperAdminContratoService $contratoService,
-    ) {}
+        ?\Closure $buscarAcademia = null,
+    ) {
+        $this->buscarAcademia = $buscarAcademia ?? static fn (int $id) => (array) DB::table('tenants')->where('id', $id)->first();
+    }
+
+    /** @var \Closure(int): array<string, mixed> linha de tenants */
+    private \Closure $buscarAcademia;
 
     /**
      * @return array{status: int, body: array<string, mixed>}
@@ -50,6 +57,7 @@ class AdminMeuContratoService
                 'planos' => array_map(fn (array $p) => $this->planoPublico($p), $this->planos->listarPublicos()),
                 'formas' => $this->cobrancas->formasHabilitadas(),
                 'alunos_ativos' => $this->cobranca->alunosAtivos($tenantId),
+                'documento_valido' => $this->documentoValido($tenantId),
             ],
         ];
     }
@@ -95,6 +103,11 @@ class AdminMeuContratoService
         }
         if (! in_array($forma, $formas, true)) {
             return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Escolha como pagar.']];
+        }
+
+        $doc = $this->exigirDocumento($tenantId, $data);
+        if ($doc) {
+            return $doc;
         }
 
         try {
@@ -150,6 +163,10 @@ class AdminMeuContratoService
             }
             if (! in_array($forma, $formas, true)) {
                 return ['status' => 422, 'body' => ['type' => 'error', 'message' => 'Escolha como pagar.']];
+            }
+            $doc = $this->exigirDocumento($tenantId, $data);
+            if ($doc) {
+                return $doc;
             }
         }
 
@@ -284,10 +301,68 @@ class AdminMeuContratoService
         return array_intersect_key($c, array_flip(['billing_type', 'vencimento', 'url', 'boleto_url', 'pix_payload', 'pix_qr_code']));
     }
 
+    private function documentoValido(int $tenantId): bool
+    {
+        return CobrancaContratoService::documentoCobranca(($this->buscarAcademia)($tenantId)) !== null;
+    }
+
+    /**
+     * O Asaas só cria a cobrança com CNPJ ou CPF válido. Se veio `documento`, grava no cadastro da academia
+     * (CNPJ com 14 dígitos, CPF do responsável com 11); se ainda faltar, devolve o erro que a tela usa para pedir.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}|null
+     */
+    private function exigirDocumento(int $tenantId, array $data): ?array
+    {
+        $informado = Documento::digitos((string) ($data['documento'] ?? ''));
+        if ($informado !== '') {
+            $erro = $this->salvarDocumento($tenantId, $informado);
+            if ($erro) {
+                return ['status' => 422, 'body' => ['type' => 'error', 'code' => 'DOCUMENTO_INVALIDO', 'message' => $erro]];
+            }
+        }
+
+        if ($this->documentoValido($tenantId)) {
+            return null;
+        }
+
+        return ['status' => 422, 'body' => [
+            'type' => 'error',
+            'code' => 'DOCUMENTO_INVALIDO',
+            'message' => 'Para pagar online, informe o CNPJ da academia ou o CPF do responsável. O do cadastro não é válido.',
+        ]];
+    }
+
+    private function salvarDocumento(int $tenantId, string $doc): ?string
+    {
+        if (strlen($doc) === 14) {
+            if (! Documento::cnpjValido($doc)) {
+                return 'Confira o CNPJ: os dígitos não conferem.';
+            }
+            if (DB::table('tenants')->where('cnpj', $doc)->where('id', '!=', $tenantId)->exists()) {
+                return 'Este CNPJ já está em outra academia do Check-in. Fale com o suporte.';
+            }
+            DB::table('tenants')->where('id', $tenantId)->update(['cnpj' => $doc, 'updated_at' => DB::raw('NOW()')]);
+
+            return null;
+        }
+        if (strlen($doc) === 11) {
+            if (! Documento::cpfValido($doc)) {
+                return 'Confira o CPF: os dígitos não conferem.';
+            }
+            DB::table('tenants')->where('id', $tenantId)->update(['responsavel_cpf' => $doc, 'updated_at' => DB::raw('NOW()')]);
+
+            return null;
+        }
+
+        return 'Informe um CNPJ (14 números) ou um CPF (11 números).';
+    }
+
     private function mensagemGateway(\Throwable $e): string
     {
         $msg = $e->getMessage();
-        if (stripos($msg, 'CPF ou CNPJ') !== false) {
+        if (stripos($msg, 'CPF ou CNPJ') !== false || stripos($msg, 'CPF/CNPJ') !== false || stripos($msg, 'CNPJ nem CPF') !== false) {
             return 'Para pagar online, a academia precisa de CNPJ (ou o CPF do responsável) no cadastro. Fale com o suporte do Check-in.';
         }
 

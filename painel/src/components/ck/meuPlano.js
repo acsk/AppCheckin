@@ -2,7 +2,8 @@
    pelo Asaas da conta do sistema. Estilos: ck-contrato-detalhe.css (ck-cd-*, ck-mt-plan) + ck-contratos.css (ck-ct-pay)
    + bloco "Meu plano" em ck-contratos.css. */
 import React, { useState } from 'react';
-import { Badge, Button, Callout, Icon, IconButton, Modal, PageHeader } from './index';
+import { Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, TextField } from './index';
+import { maskCnpj, maskCpf } from './pessoas';
 import { fdate, money, payStatus } from './contratoDetalhe';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -14,6 +15,44 @@ export const BILLING = {
   CREDIT_CARD: { name: 'Cartão de crédito', icon: 'credit-card', hint: 'Na página segura do Asaas' },
   BOLETO: { name: 'Boleto', icon: 'receipt', hint: 'Compensa em até 3 dias úteis' },
 };
+
+const onlyDigits = (v) => String(v || '').replace(/\D/g, '');
+export const maskDocumento = (v) => (onlyDigits(v).length <= 11 ? maskCpf(v) : maskCnpj(v));
+
+/** CNPJ da academia ou CPF do responsável: o Asaas só emite a cobrança com um documento válido. */
+export function DocumentoField({ value, onChange, error }) {
+  return (
+    <TextField
+      label="CNPJ da academia ou CPF do responsável"
+      value={value}
+      inputMode="numeric"
+      placeholder="00.000.000/0000-00"
+      icon="clipboard"
+      error={error}
+      hint={!error ? 'O documento do cadastro não é válido. Ele fica salvo para as próximas cobranças.' : null}
+      onChange={(e) => onChange(maskDocumento(e.target.value))}
+    />
+  );
+}
+
+export function DocumentoModal({ open, saving, error, onSubmit, onClose }) {
+  const [doc, setDoc] = useState('');
+  if (!open) return null;
+  const n = onlyDigits(doc).length;
+  return (
+    <Modal open size="sm" title="Informe o documento para a cobrança" dismissable={!saving} onClose={onClose}
+      description="Para gerar a cobrança no Asaas, precisamos do CNPJ da academia ou do CPF de quem responde por ela."
+      footer={(
+        <>
+          <span style={{ flex: 1 }} />
+          <Button variant="ghost" disabled={saving} onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" icon="check" loading={saving} disabled={n !== 11 && n !== 14} onClick={() => onSubmit(onlyDigits(doc))}>Salvar e continuar</Button>
+        </>
+      )}>
+      <DocumentoField value={doc} onChange={setDoc} error={error} />
+    </Modal>
+  );
+}
 
 export function priceText(pl) {
   if (!pl) return '—';
@@ -172,9 +211,10 @@ export function MeuPlano({ data, today, onPay, onChangePlan, onOpenInvoice }) {
  * Pagamento de uma cobrança: escolhe Pix, cartão ou boleto (as formas que a conta do sistema aceita) e
  * mostra o resultado. Pix: QR Code e copia e cola na tela. Cartão e boleto: página do Asaas.
  */
-export function PagarModal({ open, payment, formas, generating, result, error, onGenerate, onOpenUrl, onClose }) {
+export function PagarModal({ open, payment, formas, generating, result, error, errorCode, needsDocument, onGenerate, onOpenUrl, onClose }) {
   const [forma, setForma] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [doc, setDoc] = useState('');
   if (!open || !payment) return null;
   const list = (formas || []).filter((f) => BILLING[f]);
   const chosen = forma || (list.length === 1 ? list[0] : null);
@@ -185,7 +225,10 @@ export function PagarModal({ open, payment, formas, generating, result, error, o
     try { await navigator.clipboard.writeText(r.pix_payload); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* sem permissão: o código continua visível */ }
   };
 
-  const close = () => { setForma(null); setCopied(false); onClose(); };
+  const close = () => { setForma(null); setCopied(false); setDoc(''); onClose(); };
+  const askDoc = needsDocument || errorCode === 'DOCUMENTO_INVALIDO';
+  const docLen = onlyDigits(doc).length;
+  const docOk = !askDoc || docLen === 11 || docLen === 14;
 
   if (r) {
     const isPix = r.billing_type === 'PIX' && (r.pix_qr_code || r.pix_payload);
@@ -227,7 +270,7 @@ export function PagarModal({ open, payment, formas, generating, result, error, o
         <>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" disabled={generating} onClick={close}>Cancelar</Button>
-          <Button variant="primary" icon={chosen ? BILLING[chosen].icon : 'check-circle'} loading={generating} disabled={!chosen} onClick={() => onGenerate(chosen)}>
+          <Button variant="primary" icon={chosen ? BILLING[chosen].icon : 'check-circle'} loading={generating} disabled={!chosen || !docOk} onClick={() => onGenerate(chosen, askDoc ? onlyDigits(doc) : undefined)}>
             {generating ? 'Gerando…' : chosen ? `Pagar ${amount} com ${BILLING[chosen].name}` : 'Escolha como pagar'}
           </Button>
         </>
@@ -241,7 +284,8 @@ export function PagarModal({ open, payment, formas, generating, result, error, o
           </button>
         ))}
       </div>
-      {error ? <p className="ck-field__error" role="alert" style={{ marginTop: 12 }}><Icon name="alert-triangle" size={13} />{error}</p> : null}
+      {askDoc ? <div style={{ marginTop: 16 }}><DocumentoField value={doc} onChange={setDoc} error={errorCode === 'DOCUMENTO_INVALIDO' && doc ? error : null} /></div> : null}
+      {error && !(askDoc && errorCode === 'DOCUMENTO_INVALIDO' && doc) ? <p className="ck-field__error" role="alert" style={{ marginTop: 12 }}><Icon name="alert-triangle" size={13} />{error}</p> : null}
     </Modal>
   );
 }

@@ -25,7 +25,7 @@ class AdminMeuContratoServiceTest extends TestCase
     /**
      * @return array{0: AdminMeuContratoService, 1: CobrancaContratoService&MockInterface, 2: SuperAdminContratoService&MockInterface}
      */
-    private function service(int $alunos = 10, array $formas = ['PIX', 'CREDIT_CARD']): array
+    private function service(int $alunos = 10, array $formas = ['PIX', 'CREDIT_CARD'], ?string $cnpj = '11222333000181'): array
     {
         $contratos = Mockery::mock(TenantPlanoRepository::class);
         $contratos->shouldReceive('buscarContratoVigente')->andReturn(['id' => 40, 'plano_sistema_id' => 4, 'status_id' => 1]);
@@ -42,7 +42,9 @@ class AdminMeuContratoServiceTest extends TestCase
 
         $contratoService = Mockery::mock(SuperAdminContratoService::class);
 
-        return [new AdminMeuContratoService($contratos, $planos, Mockery::mock(PagamentoContratoRepository::class), $gateway, $cobranca, $contratoService), $gateway, $contratoService];
+        $academia = fn () => ['id' => 2, 'nome' => 'Box', 'cnpj' => $cnpj, 'responsavel_cpf' => null, 'responsavel_nome' => 'Ana'];
+
+        return [new AdminMeuContratoService($contratos, $planos, Mockery::mock(PagamentoContratoRepository::class), $gateway, $cobranca, $contratoService, $academia), $gateway, $contratoService];
     }
 
     public function test_recusa_plano_que_a_academia_ja_usa(): void
@@ -115,13 +117,43 @@ class AdminMeuContratoServiceTest extends TestCase
         $gateway->shouldNotReceive('gerarProxima');
         $contratoService = Mockery::mock(SuperAdminContratoService::class);
         $contratoService->shouldReceive('trocarPlano')->once()->andReturn(['status' => 200, 'body' => ['contrato' => ['id' => 42]]]);
-        $service = new AdminMeuContratoService($contratos, $planos, Mockery::mock(PagamentoContratoRepository::class), $gateway, $cobranca, $contratoService);
+        $service = new AdminMeuContratoService($contratos, $planos, Mockery::mock(PagamentoContratoRepository::class), $gateway, $cobranca, $contratoService, fn () => []);
 
         $res = $service->trocarPlano(2, ['plano_sistema_id' => 4]);
 
         $this->assertSame(200, $res['status']);
         $this->assertSame('ativo', $res['body']['contrato']['status']);
         $this->assertNull($res['body']['cobranca']);
+    }
+
+    public function test_troca_paga_pede_documento_antes_de_trocar(): void
+    {
+        [$service, , $contratoService] = $this->service(cnpj: '12345678000190');
+        $contratoService->shouldNotReceive('trocarPlano');
+
+        $res = $service->trocarPlano(2, ['plano_sistema_id' => 5, 'forma_pagamento' => 'PIX']);
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame('DOCUMENTO_INVALIDO', $res['body']['code']);
+    }
+
+    public function test_documento_informado_invalido_e_recusado_sem_gravar(): void
+    {
+        [$service, , $contratoService] = $this->service(cnpj: null);
+        $contratoService->shouldNotReceive('trocarPlano');
+
+        $res = $service->trocarPlano(2, ['plano_sistema_id' => 5, 'forma_pagamento' => 'PIX', 'documento' => '12.345.678/0001-90']);
+
+        $this->assertSame(422, $res['status']);
+        $this->assertStringContainsString('Confira o CNPJ', $res['body']['message']);
+    }
+
+    public function test_documento_de_cobranca_prefere_cnpj_valido_e_cai_para_cpf(): void
+    {
+        $this->assertSame('11222333000181', CobrancaContratoService::documentoCobranca(['nome' => 'Box', 'cnpj' => '11.222.333/0001-81', 'responsavel_cpf' => '52998224725'])['cpfCnpj']);
+        $cpf = CobrancaContratoService::documentoCobranca(['nome' => 'Box', 'cnpj' => '12345678000190', 'responsavel_cpf' => '529.982.247-25', 'responsavel_nome' => 'Ana']);
+        $this->assertSame(['cpfCnpj' => '52998224725', 'name' => 'Ana'], $cpf);
+        $this->assertNull(CobrancaContratoService::documentoCobranca(['nome' => 'Box', 'cnpj' => '12345678000190', 'responsavel_cpf' => '12345678901']));
     }
 
     public function test_pagamento_de_contrato_cancelado_nao_reativa_o_contrato(): void
