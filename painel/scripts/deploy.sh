@@ -34,13 +34,34 @@ fi
 # Step 1: Executar export do Expo
 echo -e "${BLUE}📦 Step 1: Exportando Expo para Web...${NC}"
 cd "$PROJECT_DIR"
-npx expo export --platform web
+# Limpa o dist antigo (bundles velhos ficavam junto) e o cache do Metro: as variáveis EXPO_PUBLIC_*
+# ficam gravadas no JS transformado, e o cache reaproveitava um build feito com a URL local.
+rm -rf "$PROJECT_DIR/dist/_expo/static"
+npx expo export --platform web --clear
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Erro ao executar expo export${NC}"
     exit 1
 fi
 echo -e "${GREEN}✅ Export concluído${NC}"
+echo ""
+
+# Step 1b: Conferir a API gravada no bundle
+API_ESPERADA="${EXPO_PUBLIC_API_V2_URL:-}"
+BUNDLES=$(ls "$PROJECT_DIR"/dist/_expo/static/js/web/index-*.js 2>/dev/null || true)
+if [ -z "$API_ESPERADA" ]; then
+    echo -e "${RED}❌ EXPO_PUBLIC_API_V2_URL não definida. Use npm run web:build (produção) ou web:build:dev.${NC}"
+    exit 1
+fi
+if ! grep -qF "$API_ESPERADA" $BUNDLES; then
+    echo -e "${RED}❌ O bundle não usa $API_ESPERADA. Build cancelado.${NC}"
+    exit 1
+fi
+if [[ "$API_ESPERADA" != *localhost* ]] && grep -qE "localhost:(8080|9090)" $BUNDLES; then
+    echo -e "${RED}❌ O bundle de produção ainda aponta para localhost. Build cancelado.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✅ API no bundle: $API_ESPERADA${NC}"
 echo ""
 
 # Step 2: Copiar fonts
