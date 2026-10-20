@@ -146,13 +146,13 @@ class AdminRecordeService
         $origem = $query['origem'] ?? null;
         $modalidadeId = isset($query['modalidade_id']) ? (int) $query['modalidade_id'] : null;
 
-        if ($origem === 'academia') {
-            $recordes = $this->recordes->listarRecordesAcademia($tenantId, $definicaoId, $modalidadeId);
-        } elseif ($alunoId) {
-            $recordes = $this->recordes->listarPorAluno($tenantId, $alunoId, $definicaoId);
-        } else {
-            $recordes = $this->recordes->listarRecordesAcademia($tenantId, $definicaoId, $modalidadeId);
+        if ($origem !== null && ! in_array($origem, ['academia', 'aluno'], true)) {
+            return $this->error('Origem deve ser aluno ou academia', 422);
         }
+
+        $recordes = $this->recordes->listarRecordes(
+            $tenantId, $definicaoId, $modalidadeId, $origem ?? ($alunoId ? 'aluno' : null), $alunoId,
+        );
 
         return [
             'status' => 200,

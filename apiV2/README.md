@@ -52,6 +52,11 @@ Pagamentos usam `App\Services\MercadoPagoService` (portado da Slim) com credenci
 
 ### Persistência de recordes
 
+`GET /v2/admin/recordes` lista todos os recordes válidos do tenant, de alunos
+e da academia. Aceita `origem=aluno|academia`, `aluno_id`, `definicao_id` e
+`modalidade_id`. Quando apenas `aluno_id` é informado, lista os recordes de
+origem aluno desse aluno.
+
 A tabela `recorde_valores` do schema compartilhado com a API Slim possui
 `created_at`, mas não `updated_at`. A criação e a substituição das métricas
 devem respeitar esse schema; não é necessária uma migração para registrar recordes.

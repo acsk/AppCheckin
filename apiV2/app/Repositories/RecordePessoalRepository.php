@@ -203,13 +203,20 @@ class RecordePessoalRepository
      */
     public function listarRecordesAcademia(int $tenantId, ?int $definicaoId = null, ?int $modalidadeId = null): array
     {
+        return $this->listarRecordes($tenantId, $definicaoId, $modalidadeId, 'academia');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarRecordes(int $tenantId, ?int $definicaoId = null, ?int $modalidadeId = null, ?string $origem = null, ?int $alunoId = null): array
+    {
         $query = DB::table('recordes as r')
             ->join('recorde_definicoes as rd', 'rd.id', '=', 'r.definicao_id')
             ->leftJoin('modalidades as m', 'm.id', '=', 'rd.modalidade_id')
             ->leftJoin('alunos as a', 'a.id', '=', 'r.aluno_id')
             ->leftJoin('usuarios as u', 'u.id', '=', 'r.registrado_por')
             ->where('r.tenant_id', $tenantId)
-            ->where('r.origem', 'academia')
             ->where('r.valido', 1)
             ->orderBy('rd.ordem')
             ->orderByDesc('r.data_recorde')
@@ -228,6 +235,12 @@ class RecordePessoalRepository
         }
         if ($modalidadeId) {
             $query->where('rd.modalidade_id', $modalidadeId);
+        }
+        if ($origem !== null) {
+            $query->where('r.origem', $origem);
+        }
+        if ($alunoId !== null) {
+            $query->where('r.aluno_id', $alunoId);
         }
 
         return $this->carregarValoresRecordes(

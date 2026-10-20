@@ -4,8 +4,9 @@ import recordeService from '../../services/recordeService';
 import modalidadeService from '../../services/modalidadeService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout, Modal } from '../../components/ck';
-import { RecordeDefinicaoEditor, RecordeDefinicoesLista, recordError } from '../../components/ck/recordes';
+import { RecordeDefinicoesLista, recordError } from '../../components/ck/recordes';
 import { definitionFromApi, recordActive } from '../../utils/recordeDefinicoes';
+import { officialDefinition, officialRecord } from '../../utils/recordesOficiais';
 import { showSuccess } from '../../utils/toast';
 
 export default function RecordeDefinicoesScreen() {
@@ -14,7 +15,7 @@ export default function RecordeDefinicoesScreen() {
   const [modalities, setModalities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editor, setEditor] = useState(null);
+  const [records, setRecords] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState('');
@@ -24,9 +25,15 @@ export default function RecordeDefinicoesScreen() {
     const request = ++requestId.current;
     setLoading(true); setError('');
     try {
-      const [rows, mods] = await Promise.all([
-        recordeService.listarDefinicoes({ todas: 'true' }), modalidadeService.listar(),
-      ]);
+      const results = await Promise.allSettled([recordeService.listarDefinicoes({ todas: 'true' }), modalidadeService.listar(), recordeService.listarRecordes()]);
+      if (request !== requestId.current) return;
+      const [defsResult, modsResult, recordsResult] = results;
+      if (defsResult.status === 'rejected') throw defsResult.reason;
+      const rows = defsResult.value;
+      const mods = modsResult.status === 'fulfilled' ? modsResult.value : [];
+      if (modsResult.status === 'rejected') setError(recordError(modsResult.reason,'Não foi possível carregar as modalidades.'));
+      if (recordsResult.status === 'rejected') { setRecords(null); setError(recordError(recordsResult.reason,'Contagem de registros indisponível.')); }
+      else { const data = recordsResult.value; const mapped = rows.map(officialDefinition); setRecords((Array.isArray(data) ? data : data.recordes || []).map(record=>officialRecord(record,mapped))); }
       if (request !== requestId.current) return;
       setDefinitions(rows.map(definitionFromApi));
       setModalities(mods);
@@ -60,11 +67,9 @@ export default function RecordeDefinicoesScreen() {
 
   return (
     <LayoutBase title="Definições de Recordes" pageHeader={false}>
-      <RecordeDefinicoesLista rows={definitions} modalities={modalities} loading={loading} error={error}
-        onRefresh={load} onNew={() => setEditor({ id: null })} onEdit={(row) => setEditor({ id: row.id })}
+      <RecordeDefinicoesLista rows={definitions} records={records} modalities={modalities} loading={loading} error={error} busy={toggling}
+        onRefresh={load} onNew={() => router.push('/recordes/definicoes/novo')} onEdit={(row) => router.push(`/recordes/definicoes/${row.id}`)}
         onToggle={(row) => { setToggleError(''); setConfirm(row); }} onRecords={() => router.push('/recordes')} />
-      {editor ? <RecordeDefinicaoEditor key={editor.id || 'new'} id={editor.id} modalities={modalities}
-        onClose={() => setEditor(null)} onSaved={() => { setEditor(null); load(); }} /> : null}
       <Modal open={!!confirm} size="sm" title={`${recordActive(confirm?.ativo) ? 'Desativar' : 'Ativar'} definição?`}
         description={confirm ? `Deseja ${recordActive(confirm.ativo) ? 'desativar' : 'ativar'} “${confirm.nome}”?` : ''}
         dismissable={!toggling} onClose={() => setConfirm(null)} footer={<>
