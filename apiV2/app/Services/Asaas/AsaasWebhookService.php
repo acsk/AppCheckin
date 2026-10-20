@@ -160,6 +160,7 @@ class AsaasWebhookService
 
         $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
         $this->ativarMatriculaPendente($tenantId, $matriculaId);
+        $this->registrarFimDoPeriodo($tenantId, $matriculaId);
 
         return [
             'status' => 200,
@@ -240,6 +241,32 @@ class AsaasWebhookService
         }
 
         return in_array($event, self::EVENTOS_PAGOS, true);
+    }
+
+    /**
+     * Assinatura avulsa paga: o fim do período é até quando a matrícula dá acesso (mesma regra do
+     * "sincronizar" do painel). Lido depois da baixa, que é quem avança o vencimento da matrícula.
+     */
+    private function registrarFimDoPeriodo(int $tenantId, int $matriculaId): void
+    {
+        $fim = DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->value('proxima_data_vencimento');
+        if (! $fim) {
+            return;
+        }
+
+        $assinaturaId = DB::table('assinaturas')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->orderByDesc('id')
+            ->value('id');
+        if (! $assinaturaId) {
+            return;
+        }
+
+        DB::table('assinaturas')
+            ->where('id', $assinaturaId)
+            ->where(fn ($q) => $q->where('tipo_cobranca', 'avulso')->orWhereNull('tipo_cobranca'))
+            ->update(['data_fim' => substr((string) $fim, 0, 10)]);
     }
 
     /**

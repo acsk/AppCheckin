@@ -772,6 +772,9 @@ class MobileCompraPlanoService
             'frequencia_id' => $frequenciaId,
             'dia_cobranca' => (int) date('d'),
             'data_inicio' => date('Y-m-d'),
+            // A linha é reaproveitada a cada compra: o fim do período anterior não vale para esta.
+            // O webhook grava o novo fim quando o pagamento for confirmado.
+            'data_fim' => null,
             'proxima_cobranca' => $isRecorrente ? date('Y-m-d', strtotime('+1 month')) : null,
             'tipo_cobranca' => $tipoCobranca,
             'atualizado_em' => now(),

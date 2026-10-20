@@ -41,6 +41,9 @@ class AsaasWebhookServiceTest extends TestCase
             $table->string('gateway_preference_id')->nullable();
             $table->string('status_gateway')->nullable();
             $table->unsignedInteger('status_id')->nullable();
+            $table->string('tipo_cobranca')->nullable();
+            $table->date('data_inicio')->nullable();
+            $table->date('data_fim')->nullable();
             $table->timestamp('atualizado_em')->nullable();
         });
         Schema::create('status_matricula', function (Blueprint $table) {
@@ -52,6 +55,7 @@ class AsaasWebhookServiceTest extends TestCase
             $table->unsignedInteger('tenant_id');
             $table->unsignedInteger('status_id')->nullable();
             $table->date('data_inicio')->nullable();
+            $table->date('proxima_data_vencimento')->nullable();
             $table->timestamp('updated_at')->nullable();
         });
         Schema::create('pagamentos_plano', function (Blueprint $table) {
@@ -130,6 +134,9 @@ class AsaasWebhookServiceTest extends TestCase
 
     public function test_baixa_manual_received_in_cash_atualiza_parcela_e_matricula(): void
     {
+        // O início da matrícula é o dia em que o webhook chega
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-10-16 10:00:00'));
+
         $pagamentos = Mockery::mock(PagamentoPlanoService::class);
         $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
 
@@ -161,6 +168,41 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertStringContainsString('desconto_provedor R$ 1,99', (string) $parcela->observacoes);
         $this->assertSame('approved', DB::table('assinaturas')->value('status_gateway'));
         $this->assertSame('2026-10-16', DB::table('matriculas')->value('data_inicio'));
+    }
+
+    public function test_pagamento_confirmado_grava_fim_do_periodo_na_assinatura_avulsa(): void
+    {
+        // Linha reaproveitada de uma compra anterior: início novo, fim antigo (antes do início)
+        DB::table('assinaturas')->update(['tipo_cobranca' => 'avulso', 'data_inicio' => '2026-10-20', 'data_fim' => '2026-05-04']);
+        DB::table('matriculas')->where('id', 189)->update(['proxima_data_vencimento' => '2026-12-20']);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once();
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $service->processar([
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => ['id' => 'pay_xlm9exz869gjx520', 'status' => 'RECEIVED', 'billingType' => 'PIX', 'externalReference' => 'MAT-189-abc', 'paymentDate' => '2026-10-20'],
+        ], null);
+
+        $this->assertSame('2026-12-20', DB::table('assinaturas')->value('data_fim'));
+    }
+
+    public function test_assinatura_recorrente_nao_ganha_data_fim(): void
+    {
+        DB::table('assinaturas')->update(['tipo_cobranca' => 'recorrente']);
+        DB::table('matriculas')->where('id', 189)->update(['proxima_data_vencimento' => '2026-12-20']);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once();
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $service->processar([
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => ['id' => 'pay_xlm9exz869gjx520', 'status' => 'RECEIVED', 'billingType' => 'CREDIT_CARD', 'externalReference' => 'MAT-189-abc', 'paymentDate' => '2026-10-20'],
+        ], null);
+
+        $this->assertNull(DB::table('assinaturas')->value('data_fim'));
     }
 
     public function test_payment_updated_com_status_received_e_pago(): void

@@ -89,6 +89,15 @@ class AdminMeuContratoServiceTest extends TestCase
 
     public function test_troca_paga_gera_a_primeira_cobranca_no_asaas(): void
     {
+        // A troca grava a forma de pagamento pelo nome (formas_pagamento); no SQLite dos testes ela não existe
+        if (! \Illuminate\Support\Facades\Schema::hasTable('formas_pagamento')) {
+            \Illuminate\Support\Facades\Schema::create('formas_pagamento', function ($t) {
+                $t->id();
+                $t->string('nome');
+            });
+            \Illuminate\Support\Facades\DB::table('formas_pagamento')->insert(['nome' => 'Pix']);
+        }
+
         [$service, $gateway, $contratoService] = $this->service();
         $contratoService->shouldReceive('trocarPlano')->once()
             ->with(2, Mockery::on(fn (array $d) => $d['plano_sistema_id'] === 5 && str_contains($d['observacoes'], 'painel da academia (Ana)')))
