@@ -248,6 +248,10 @@ function RootContent() {
                 options={{ headerShown: false }}
               />
               <Stack.Screen
+                name="recordes"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
                 name="matricula-detalhes"
                 options={{ headerShown: false }}
               />

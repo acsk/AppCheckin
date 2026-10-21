@@ -853,6 +853,13 @@ export default function AccountScreen() {
             onPress: goTo("/minhas-assinaturas"),
           },
           {
+            icon: "award",
+            tone: "brand",
+            label: "Recordes",
+            hint: "Suas marcas, escola e ranking",
+            onPress: goTo("/(tabs)/recordes"),
+          },
+          {
             icon: "key",
             label: "Alterar senha",
             onPress: () => {

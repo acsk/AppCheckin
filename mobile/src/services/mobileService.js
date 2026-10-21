@@ -162,6 +162,36 @@ export const mobileService = {
   },
 
   /**
+   * Recordes do aluno: melhores marcas, recordista de cada prova (geral/masculino/feminino)
+   */
+  async getRecordes() {
+    try {
+      const response = await api.get("/mobile/recordes");
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Ranking de uma prova: melhor marca de cada aluno.
+   * @param {number} definicaoId
+   * @param {"masculino" | "feminino" | null} [sexo]
+   */
+  async getRankingRecorde(definicaoId, sexo = null) {
+    try {
+      // api.js não monta query string a partir de `params`
+      const query = sexo ? `?sexo=${encodeURIComponent(sexo)}` : "";
+      const response = await api.get(`/mobile/recordes/ranking/${definicaoId}${query}`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
    * Obtém a foto de perfil do usuário
    * @returns {Blob} Blob da imagem
    */

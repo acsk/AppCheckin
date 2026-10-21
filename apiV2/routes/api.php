@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
+use App\Http\Controllers\Api\V2\MobileRecordeController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
@@ -115,6 +116,8 @@ Route::prefix('v2')->group(function () {
             Route::get('/pacotes/contratos', [MobileController::class, 'listarPacotesContratos']);
             Route::get('/pacotes/pendentes', [MobileController::class, 'listarPacotesPendentes']);
             Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato']);
+            Route::get('/recordes', [MobileRecordeController::class, 'resumo']);
+            Route::get('/recordes/ranking/{definicaoId}', [MobileRecordeController::class, 'ranking'])->whereNumber('definicaoId');
         });
 
         // Painel admin (contrato Slim /admin/* sob prefixo /v2)
