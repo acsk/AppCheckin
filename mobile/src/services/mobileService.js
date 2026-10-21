@@ -192,6 +192,63 @@ export const mobileService = {
   },
 
   /**
+   * Uma prova do aluno: métricas da definição e todas as marcas dele (mais recente primeiro).
+   * @param {number} definicaoId
+   */
+  async getProvaRecorde(definicaoId) {
+    try {
+      const response = await api.get(`/mobile/recordes/prova/${definicaoId}`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Registra uma marca do aluno. Resposta diz se bateu o melhor anterior (novo_recorde).
+   * @param {{definicao_id: number, data_recorde: string, observacoes?: string|null, valores: {metrica_id: number, valor: number}[]}} data
+   */
+  async criarMarcaRecorde(data) {
+    try {
+      const response = await api.post("/mobile/recordes", data);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Edita uma marca que o próprio aluno registrou.
+   * @param {number} id
+   * @param {{data_recorde: string, observacoes?: string|null, valores: {metrica_id: number, valor: number}[]}} data
+   */
+  async atualizarMarcaRecorde(id, data) {
+    try {
+      const response = await api.put(`/mobile/recordes/${id}`, data);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Exclui uma marca que o próprio aluno registrou.
+   * @param {number} id
+   */
+  async excluirMarcaRecorde(id) {
+    try {
+      const response = await api.delete(`/mobile/recordes/${id}`);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
    * Obtém a foto de perfil do usuário
    * @returns {Blob} Blob da imagem
    */

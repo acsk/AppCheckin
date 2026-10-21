@@ -9,6 +9,7 @@ import RecordHero from "@/src/components/ds/RecordHero";
 import RecordRow from "@/src/components/ds/RecordRow";
 import Section from "@/src/components/ds/Section";
 import Segmented from "@/src/components/ds/Segmented";
+import Modal from "@/src/components/ds/Modal";
 import { ds, space } from "@/src/components/ds/tokens";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { mobileService } from "@/src/services/mobileService";
@@ -19,6 +20,7 @@ import {
   fmtMarca,
   lerProva,
   textoMelhora,
+  recordeErro,
   type Prova,
   type RankingItem,
   type RecordesResumo,
@@ -27,7 +29,7 @@ import {
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -47,10 +49,10 @@ const CATEGORIAS = [
 /** Marca registrada há poucos dias e sem anterior para comparar ganha o selo "Novo". */
 const DIAS_NOVO = 30;
 
-const msgErro = (e: any) => e?.message || e?.error || "Não foi possível carregar os recordes.";
+const msgErro = recordeErro;
 
 export default function RecordesScreen() {
-  useProtectedRoute();
+  const { isAuthorized } = useProtectedRoute();
   const router = useRouter();
   const [aba, setAba] = useState<Aba>("meus");
   const [estilo, setEstilo] = useState("todos");
@@ -59,33 +61,39 @@ export default function RecordesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [registrar, setRegistrar] = useState(false);
+  const [provaRegistrar, setProvaRegistrar] = useState("");
+  const request = useRef(0);
 
   const [provaRanking, setProvaRanking] = useState<number | null>(null);
   const [ranking, setRanking] = useState<RankingItem[] | null>(null);
   const [rankingErro, setRankingErro] = useState<string | null>(null);
+  const [rankingRetry, setRankingRetry] = useState(0);
   const [rankingLoading, setRankingLoading] = useState(false);
 
   const carregar = useCallback(async (silencioso = false) => {
+    const version = ++request.current;
     if (!silencioso) setLoading(true);
     try {
       const r = await mobileService.getRecordes();
+      if (version !== request.current) return;
       setResumo(r);
       setErro(null);
     } catch (e) {
-      if (!silencioso) setErro(msgErro(e));
+      console.error("Erro ao carregar recordes:", e);
+      if (version === request.current) setErro(msgErro(e));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (version === request.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void carregar(Boolean(resumo));
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [carregar]),
+      if (isAuthorized) void carregar();
+      return () => { request.current++; };
+    }, [carregar, isAuthorized]),
   );
-  useRefreshOnFocus(() => carregar(true));
+  useRefreshOnFocus(() => { if (isAuthorized) return carregar(true); });
 
   const provas = useMemo<Prova[]>(() => (resumo?.definicoes || []).map(lerProva), [resumo]);
   const porId = useMemo(() => new Map(provas.map((p) => [p.def.id, p])), [provas]);
@@ -109,16 +117,17 @@ export default function RecordesScreen() {
     if (aba !== "ranking" || !provaAtual) return;
     let ativo = true;
     setRankingLoading(true);
+    setRanking(null);
     setRankingErro(null);
     mobileService
       .getRankingRecorde(provaAtual, categoria === "geral" ? null : categoria)
       .then((r: { ranking: RankingItem[] }) => ativo && setRanking(r.ranking || []))
-      .catch((e: unknown) => ativo && setRankingErro(msgErro(e)))
+      .catch((e: unknown) => { console.error("Erro ao carregar ranking:", e); if (ativo) setRankingErro(msgErro(e)); })
       .finally(() => ativo && setRankingLoading(false));
     return () => {
       ativo = false;
     };
-  }, [aba, provaAtual, categoria]);
+  }, [aba, provaAtual, categoria, resumo, rankingRetry]);
 
   const abrirRanking = (defId: number) => {
     setProvaRanking(defId);
@@ -155,6 +164,7 @@ export default function RecordesScreen() {
             note={heroi.posicao ? `${heroi.posicao}º na escola` : null}
             history={heroi.historico}
             lowerIsBetter={provaHeroi.def.direcao === "menor_melhor"}
+            onPress={() => router.push({ pathname: "./recorde-prova", params: { id: provaHeroi.def.id } })}
           />
         ) : null}
         {opcoesEstilo.length ? <ChipFilter label="Estilo" options={opcoesEstilo} value={estilo} onChange={setEstilo} /> : null}
@@ -178,7 +188,7 @@ export default function RecordesScreen() {
                     badge={novo ? "Novo" : null}
                     empty={!tem}
                     emptyText={p.distancia ? undefined : `${p.estilo} · ainda sem marca`}
-                    onPress={() => abrirRanking(p.def.id)}
+                    onPress={() => router.push({ pathname: "./recorde-prova", params: { id: p.def.id } })}
                   />
                 );
               })}
@@ -244,7 +254,7 @@ export default function RecordesScreen() {
         {rankingLoading && !ranking ? (
           <ActivityIndicator color={ds.brand} style={{ marginTop: space[6] }} />
         ) : rankingErro ? (
-          <Aviso icon="alert-circle" titulo="Não foi possível carregar" texto={rankingErro} />
+          <View><Aviso icon="alert-circle" titulo="Não foi possível carregar" texto={rankingErro} /><Button variant="secondary" onPress={() => setRankingRetry(value => value + 1)}>Tentar de novo</Button></View>
         ) : !lista.length ? (
           <Aviso icon="award" titulo="Ninguém nesta prova ainda" texto="O ranking aparece quando os alunos tiverem marcas registradas." />
         ) : (
@@ -271,7 +281,7 @@ export default function RecordesScreen() {
   };
 
   const corpo = () => {
-    if (loading && !resumo) {
+    if (!isAuthorized || (loading && !resumo)) {
       return (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={ds.brand} />
@@ -301,6 +311,7 @@ export default function RecordesScreen() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void carregar(true); }} tintColor={ds.brand} />}
       >
+        {erro ? <View><Text accessibilityRole="alert" style={{ color: ds.danger }}>{erro}</Text><Button variant="secondary" onPress={() => carregar(true)}>Tentar de novo</Button></View> : null}
         {aba === "meus" ? renderMeus() : aba === "escola" ? renderEscola() : renderRanking()}
       </ScrollView>
     );
@@ -312,9 +323,14 @@ export default function RecordesScreen() {
         title="Recordes"
         eyebrow={eyebrow}
         onBack={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/account"))}
+        actions={resumo?.aluno && provas.length ? [{ icon: "plus", label: "Registrar marca", disabled: !isAuthorized || loading || !!erro, onPress: () => { setProvaRegistrar(String(provas[0].def.id)); setRegistrar(true); } }] : []}
         bottom={<HeaderTabs label="Recordes" options={ABAS} value={aba} onChange={(id) => setAba(id as Aba)} />}
       />
       {corpo()}
+      {registrar ? <Modal visible title="Registrar marca" icon="award" description="Escolha a prova para registrar sua marca." onClose={() => setRegistrar(false)}
+        primary={{ label: "Continuar", onPress: () => { if (provaRegistrar) { setRegistrar(false); router.push({ pathname: "./recorde-prova", params: { id: provaRegistrar, registrar: "1" } }); } } }}>
+        <ChipFilter label="Prova" options={provas.map(p => ({ id: String(p.def.id), label: p.rotulo }))} value={provaRegistrar} onChange={setProvaRegistrar} />
+      </Modal> : null}
     </SafeAreaView>
   );
 }

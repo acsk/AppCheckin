@@ -79,6 +79,8 @@ const PROTECTED_ROUTES = [
   "checkin",
   "checkin-detalhes",
   "checkin-turma",
+  "recordes",
+  "recorde-prova",
 ];
 
 export default function RootLayout() {
@@ -249,6 +251,10 @@ function RootContent() {
               />
               <Stack.Screen
                 name="recordes"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="recorde-prova"
                 options={{ headerShown: false }}
               />
               <Stack.Screen

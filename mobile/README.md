@@ -63,6 +63,40 @@ pendente usam o mesmo [dialogo de pagamento](./src/components/ds/PendingPaymentM
 nas telas de turma e check-in, preservando a mensagem e o vencimento da API.
 As duas sobreposicoes usam os tokens de cores dos temas claro e escuro.
 
+## Recordes pessoais
+
+Em **Recordes > Meus**, toque numa prova (ou no destaque) para abrir a evolucao,
+o grafico por data e o historico. O botao **+** permite escolher uma prova e
+registrar uma marca; provas sem marcas tambem podem receber o primeiro registro.
+O filtro de seis meses usa datas reais, e nao uma quantidade fixa de tentativas.
+
+O formulario usa as metricas cadastradas pela academia: tempo em minutos,
+segundos e centesimos, inteiros ou decimais com ate tres casas. Ao editar apenas
+data/observacao, a precisao original dos valores em milissegundos e preservada.
+Edicao e exclusao sao permitidas apenas para marcas proprias de origem `aluno`;
+marcas da academia aparecem no historico, mas sao somente leitura.
+
+Contrato da API v2 (JWT e academia do token):
+
+- `GET /mobile/recordes`: resumo pessoal, recordistas e definicoes ativas.
+- `GET /mobile/recordes/ranking/{definicaoId}`: classificacao por prova/categoria.
+- `GET /mobile/recordes/prova/{definicaoId}`: metricas, marcas e `melhor_id`.
+- `POST /mobile/recordes`: `{ definicao_id, data_recorde, observacoes, valores }`.
+- `PUT /mobile/recordes/{id}`: mesma estrutura, sem trocar a prova.
+- `DELETE /mobile/recordes/{id}`: exclusao definitiva com confirmacao no app.
+
+`data_recorde` usa `AAAA-MM-DD`; `valores` e uma lista de
+`{ metrica_id, valor }`. Tempo e enviado em milissegundos. A metrica principal
+e sempre obrigatoria; as demais seguem sua configuracao. Datas futuras, valores
+nao positivos, metricas alheias/duplicadas e precisao fora do contrato retornam
+422. Melhor marca e ranking sao recalculados apos as alteracoes.
+
+Meta pessoal e classificacao treino/competicao do prototipo nao fazem parte
+do contrato atual e nao sao apresentados como configuracoes persistidas.
+Publicar API v2 e mobile juntos; nao ha migracao de banco adicional.
+
+Validacao dos formatadores e payloads: `npm run test:recordes`.
+
 ## Get a fresh project
 
 When you're ready, run:

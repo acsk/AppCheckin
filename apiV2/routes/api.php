@@ -118,6 +118,10 @@ Route::prefix('v2')->group(function () {
             Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato']);
             Route::get('/recordes', [MobileRecordeController::class, 'resumo']);
             Route::get('/recordes/ranking/{definicaoId}', [MobileRecordeController::class, 'ranking'])->whereNumber('definicaoId');
+            Route::get('/recordes/prova/{definicaoId}', [MobileRecordeController::class, 'prova'])->whereNumber('definicaoId');
+            Route::post('/recordes', [MobileRecordeController::class, 'criar']);
+            Route::put('/recordes/{id}', [MobileRecordeController::class, 'atualizar'])->whereNumber('id');
+            Route::delete('/recordes/{id}', [MobileRecordeController::class, 'excluir'])->whereNumber('id');
         });
 
         // Painel admin (contrato Slim /admin/* sob prefixo /v2)

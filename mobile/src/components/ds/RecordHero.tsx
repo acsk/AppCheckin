@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { ds, radius, space } from "./tokens";
 
@@ -45,12 +45,13 @@ type Props = {
   note?: string | null;
   history?: number[];
   lowerIsBetter?: boolean;
+  onPress?: () => void;
 };
 
 // Recorde pessoal mais recente: card grafite, marca como herói, quanto melhorou e a evolução.
-export default function RecordHero({ event, time, date, tag = "Novo recorde", delta, note, history = [], lowerIsBetter }: Props) {
+export default function RecordHero({ event, time, date, tag = "Novo recorde", delta, note, history = [], lowerIsBetter, onPress }: Props) {
   return (
-    <View style={styles.card} accessible accessibilityLabel={`${tag}: ${event}, ${time}${delta ? `, ${delta}` : ""}`}>
+    <Pressable style={styles.card} onPress={onPress} accessibilityRole={onPress ? "button" : undefined} accessible accessibilityLabel={`${tag}: ${event}, ${time}${delta ? `, ${delta}` : ""}`}>
       <View style={styles.top}>
         <View style={styles.tag}>
           <Feather name="award" size={13} color="#171a21" />
@@ -78,7 +79,7 @@ export default function RecordHero({ event, time, date, tag = "Novo recorde", de
         </View>
         <TimeSpark values={history} lowerIsBetter={lowerIsBetter} />
       </View>
-    </View>
+    </Pressable>
   );
 }
 

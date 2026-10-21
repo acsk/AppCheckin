@@ -30,6 +30,10 @@ class MobileRecordeController extends Controller
 
     public function ranking(Request $request, int $definicaoId): JsonResponse
     {
+        if (($request->query('sexo') !== null && ! is_string($request->query('sexo')))
+            || filter_var($request->query('limit', 50), FILTER_VALIDATE_INT) === false) {
+            return response()->json(['success' => false, 'error' => 'Filtros de ranking inválidos'], 422);
+        }
         try {
             $result = $this->recordes->ranking(
                 $this->userId($request),
@@ -44,6 +48,42 @@ class MobileRecordeController extends Controller
             Log::error('recordes ranking v2: '.$e->getMessage());
 
             return MobileResponse::serverError('Erro ao carregar ranking', $e->getMessage());
+        }
+    }
+
+    public function prova(Request $request, int $definicaoId): JsonResponse
+    {
+        return $this->responder('recordes prova v2', 'Erro ao carregar a prova', fn () => $this->recordes->prova($this->userId($request), $this->tenantId($request), $definicaoId));
+    }
+
+    public function criar(Request $request): JsonResponse
+    {
+        return $this->responder('recordes criar v2', 'Erro ao registrar a marca', fn () => $this->recordes->criar($this->userId($request), $this->tenantId($request), $request->all()));
+    }
+
+    public function atualizar(Request $request, int $id): JsonResponse
+    {
+        return $this->responder('recordes atualizar v2', 'Erro ao atualizar a marca', fn () => $this->recordes->atualizar($this->userId($request), $this->tenantId($request), $id, $request->all()));
+    }
+
+    public function excluir(Request $request, int $id): JsonResponse
+    {
+        return $this->responder('recordes excluir v2', 'Erro ao excluir a marca', fn () => $this->recordes->excluir($this->userId($request), $this->tenantId($request), $id));
+    }
+
+    /**
+     * @param  callable(): array{status: int, body: array<string, mixed>}  $acao
+     */
+    private function responder(string $contexto, string $mensagem, callable $acao): JsonResponse
+    {
+        try {
+            $result = $acao();
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error($contexto.': '.$e->getMessage());
+
+            return MobileResponse::serverError($mensagem, $e->getMessage());
         }
     }
 

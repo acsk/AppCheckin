@@ -120,6 +120,317 @@ class MobileRecordeService
     }
 
     /**
+     * Uma prova do aluno: métricas da definição e todas as marcas dele, da mais recente para a mais antiga.
+     * Só as marcas que ele mesmo registrou (origem aluno) são editáveis; as da escola aparecem como leitura.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function prova(int $userId, ?int $tenantId, int $definicaoId): array
+    {
+        if (! $tenantId) {
+            return $this->erro('Nenhum tenant selecionado', 400);
+        }
+        $def = $this->definicoes($tenantId)[$definicaoId] ?? null;
+        $full = $def ? $this->recordes->buscarDefinicao($definicaoId, $tenantId) : null;
+        if (! $def || ! $full) {
+            return $this->erro('Prova não encontrada', 404);
+        }
+
+        $aluno = $this->aluno($userId);
+        $marcas = [];
+        if ($aluno) {
+            foreach ($this->recordes->listarRecordes($tenantId, $definicaoId, null, null, $aluno['id']) as $r) {
+                $valores = [];
+                foreach ($r['valores'] ?? [] as $v) {
+                    $valor = $v['valor_tempo_ms'] ?? $v['valor_decimal'] ?? $v['valor_int'];
+                    if ($valor !== null && is_numeric($valor)) {
+                        $valores[(string) $v['metrica_id']] = (float) $valor;
+                    }
+                }
+                $principal = $valores[(string) $def['metrica_id']] ?? null;
+                if ($principal === null) {
+                    continue;
+                }
+                $marcas[] = [
+                    'id' => (int) $r['id'],
+                    'data' => substr((string) $r['data_recorde'], 0, 10),
+                    'valor' => $principal,
+                    'valores' => $valores,
+                    'observacoes' => $r['observacoes'] ?? null,
+                    'origem' => (string) $r['origem'],
+                    'editavel' => $r['origem'] === 'aluno',
+                ];
+            }
+        }
+        usort($marcas, fn ($a, $b) => [$b['data'], $b['id']] <=> [$a['data'], $a['id']]);
+
+        // Empate: vale a mais antiga (a lista está da mais recente para a mais antiga).
+        $melhor = null;
+        foreach ($marcas as $m) {
+            if (! $melhor || ! $this->melhor($melhor['valor'], $m['valor'], $def['direcao'])) {
+                $melhor = $m;
+            }
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'definicao' => array_diff_key($def, ['metrica_id' => 1]) + ['metrica_principal_id' => $def['metrica_id']],
+                'metricas' => $this->metricasPublicas($full),
+                'pode_registrar' => $aluno !== null,
+                'marcas' => $marcas,
+                'melhor_id' => $melhor['id'] ?? null,
+            ],
+        ];
+    }
+
+    /**
+     * Registra uma marca do próprio aluno. Diz se bateu o melhor anterior dele na prova.
+     *
+     * @param  array<string, mixed>  $data  definicao_id, data_recorde (Y-m-d), observacoes?, valores [{metrica_id, valor}]
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function criar(int $userId, ?int $tenantId, array $data): array
+    {
+        if (! $tenantId) {
+            return $this->erro('Nenhum tenant selecionado', 400);
+        }
+        $aluno = $this->aluno($userId);
+        if (! $aluno) {
+            return $this->erro('Seu cadastro de aluno não foi encontrado', 404);
+        }
+        $definicaoId = filter_var($data['definicao_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($definicaoId === false) {
+            return $this->erro('Selecione uma prova válida', 422);
+        }
+        $def = $this->definicoes($tenantId)[$definicaoId] ?? null;
+        $full = $def ? $this->recordes->buscarDefinicao($definicaoId, $tenantId) : null;
+        if (! $def || ! $full) {
+            return $this->erro('Prova não encontrada', 404);
+        }
+
+        $validado = $this->validar($full, $data);
+        if (isset($validado['erro'])) {
+            return $this->erro($validado['erro'], 422);
+        }
+
+        $anterior = $this->melhorDoAluno($tenantId, $def, $aluno['id']);
+        $id = $this->recordes->criar([
+            'tenant_id' => $tenantId,
+            'aluno_id' => $aluno['id'],
+            'definicao_id' => $definicaoId,
+            'origem' => 'aluno',
+            'data_recorde' => $validado['data'],
+            'observacoes' => $validado['observacoes'],
+            'registrado_por' => $userId,
+            'valores' => $validado['valores'],
+        ]);
+        $valor = $validado['principal'][$def['metrica_id']] ?? null;
+
+        return [
+            'status' => 201,
+            'body' => [
+                'success' => true,
+                'message' => 'Marca registrada',
+                'id' => $id,
+                'valor' => $valor,
+                'melhor_anterior' => $anterior,
+                'novo_recorde' => $valor !== null && ($anterior === null || $this->melhor($valor, $anterior, $def['direcao'])),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data  data_recorde, observacoes?, valores
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function atualizar(int $userId, ?int $tenantId, int $id, array $data): array
+    {
+        $alvo = $this->minhaMarca($userId, $tenantId, $id);
+        if (isset($alvo['status'])) {
+            return $alvo;
+        }
+        $full = $this->recordes->buscarDefinicao((int) $alvo['definicao_id'], (int) $tenantId);
+        if (! $full) {
+            return $this->erro('Prova não encontrada', 404);
+        }
+
+        $validado = $this->validar($full, $data);
+        if (isset($validado['erro'])) {
+            return $this->erro($validado['erro'], 422);
+        }
+
+        $this->recordes->atualizar($id, (int) $tenantId, [
+            'definicao_id' => (int) $alvo['definicao_id'],
+            'data_recorde' => $validado['data'],
+            'observacoes' => $validado['observacoes'],
+            'valores' => $validado['valores'],
+        ]);
+
+        return ['status' => 200, 'body' => ['success' => true, 'message' => 'Marca atualizada', 'id' => $id]];
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function excluir(int $userId, ?int $tenantId, int $id): array
+    {
+        $alvo = $this->minhaMarca($userId, $tenantId, $id);
+        if (isset($alvo['status'])) {
+            return $alvo;
+        }
+        if (! $this->recordes->excluir($id, (int) $tenantId)) {
+            return $this->erro('Marca não encontrada', 404);
+        }
+
+        return ['status' => 200, 'body' => ['success' => true, 'message' => 'Marca excluída']];
+    }
+
+    /**
+     * Marca registrada pelo próprio aluno nesta academia; senão, a resposta de erro.
+     *
+     * @return array<string, mixed>
+     */
+    private function minhaMarca(int $userId, ?int $tenantId, int $id): array
+    {
+        if (! $tenantId) {
+            return $this->erro('Nenhum tenant selecionado', 400);
+        }
+        $aluno = $this->aluno($userId);
+        $r = $aluno ? $this->recordes->buscar($id, $tenantId) : null;
+        if (! $r || ! $r['valido'] || (int) $r['aluno_id'] !== $aluno['id']) {
+            return $this->erro('Marca não encontrada', 404);
+        }
+        if ($r['origem'] !== 'aluno') {
+            return $this->erro('Marcas registradas pela escola só podem ser alteradas por ela', 403);
+        }
+
+        return $r;
+    }
+
+    /**
+     * Valida data, observação e valores contra as métricas da definição.
+     *
+     * @param  array<string, mixed>  $def  definição com metricas
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function validar(array $def, array $data): array
+    {
+        if (! is_string($data['data_recorde'] ?? null)) {
+            return ['erro' => 'Informe a data no formato AAAA-MM-DD'];
+        }
+        $data_ = $data['data_recorde'];
+        $dt = \DateTimeImmutable::createFromFormat('!Y-m-d', $data_);
+        if (! $dt || $dt->format('Y-m-d') !== $data_) {
+            return ['erro' => 'Informe a data no formato AAAA-MM-DD'];
+        }
+        if ($data_ > now()->format('Y-m-d')) {
+            return ['erro' => 'A data não pode ser no futuro'];
+        }
+
+        if (isset($data['observacoes']) && ! is_string($data['observacoes'])) {
+            return ['erro' => 'A observação deve ser um texto'];
+        }
+        $obs = trim($data['observacoes'] ?? '');
+        if (mb_strlen($obs) > 500) {
+            return ['erro' => 'A observação pode ter até 500 caracteres'];
+        }
+
+        if (! is_array($data['valores'] ?? null) || ! array_is_list($data['valores'])) {
+            return ['erro' => 'Informe os valores das métricas'];
+        }
+        $metricas = $def['metricas'] ?? [];
+        usort($metricas, fn ($a, $b) => [(int) $a['ordem_comparacao'], (int) $a['id']] <=> [(int) $b['ordem_comparacao'], (int) $b['id']]);
+        $ids = array_column($metricas, 'id');
+        $enviados = [];
+        foreach ($data['valores'] as $v) {
+            $mid = is_array($v) ? filter_var($v['metrica_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) : false;
+            if ($mid === false || ! in_array($mid, $ids, false) || array_key_exists($mid, $enviados)) {
+                return ['erro' => 'As métricas devem pertencer à prova e não podem se repetir'];
+            }
+            $enviados[$mid] = $v['valor'] ?? null;
+        }
+
+        $valores = [];
+        $principal = [];
+        foreach ($metricas as $i => $m) {
+            $mid = (int) $m['id'];
+            $bruto = $enviados[$mid] ?? null;
+            if ($bruto === null || $bruto === '') {
+                if ($i === 0 || (int) ($m['obrigatoria'] ?? 1) === 1) {
+                    return ['erro' => 'Informe '.mb_strtolower((string) $m['nome'])];
+                }
+
+                continue;
+            }
+            if (! is_numeric($bruto) || ! is_finite((float) $bruto) || (float) $bruto <= 0) {
+                return ['erro' => 'Valor inválido em '.mb_strtolower((string) $m['nome'])];
+            }
+            $n = (float) $bruto;
+            $inteiro = in_array((string) $m['tipo_valor'], ['tempo_ms', 'inteiro'], true);
+            if (($inteiro && (floor($n) !== $n || $n > 9007199254740991))
+                || (! $inteiro && ($n > 999999999.999 || round($n, 3) !== $n))) {
+                return ['erro' => 'Valor fora do limite ou precisão inválida em '.mb_strtolower((string) $m['nome'])];
+            }
+            $linha = ['metrica_id' => $mid];
+            match ((string) $m['tipo_valor']) {
+                'tempo_ms' => $linha['valor_tempo_ms'] = (int) round($n),
+                'inteiro' => $linha['valor_int'] = (int) round($n),
+                default => $linha['valor_decimal'] = round($n, 3),
+            };
+            $valores[] = $linha;
+            $principal[$mid] = (float) ($linha['valor_tempo_ms'] ?? $linha['valor_int'] ?? $linha['valor_decimal']);
+        }
+        if ($valores === []) {
+            return ['erro' => 'Informe pelo menos um valor'];
+        }
+
+        return ['data' => $data_, 'observacoes' => $obs !== '' ? $obs : null, 'valores' => $valores, 'principal' => $principal];
+    }
+
+    /**
+     * @param  array<string, mixed>  $def  definição resumida (com metrica_id)
+     */
+    private function melhorDoAluno(int $tenantId, array $def, int $alunoId): ?float
+    {
+        $minhas = array_values(array_filter(
+            $this->marcas($tenantId, [$def['id'] => $def['metrica_id']])[$def['id']] ?? [],
+            fn ($m) => $m['aluno_id'] === $alunoId,
+        ));
+
+        return $this->lider($minhas, $def['direcao'])['valor'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $full
+     * @return list<array<string, mixed>>
+     */
+    private function metricasPublicas(array $full): array
+    {
+        $metricas = $full['metricas'] ?? [];
+        usort($metricas, fn ($a, $b) => [(int) $a['ordem_comparacao'], (int) $a['id']] <=> [(int) $b['ordem_comparacao'], (int) $b['id']]);
+
+        return array_map(fn ($m) => [
+            'id' => (int) $m['id'],
+            'nome' => (string) $m['nome'],
+            'tipo_valor' => (string) $m['tipo_valor'],
+            'unidade' => $m['unidade'] ?? null,
+            'direcao' => $m['direcao'] === 'menor_melhor' ? 'menor_melhor' : 'maior_melhor',
+            'obrigatoria' => (int) ($m['obrigatoria'] ?? 1) === 1,
+        ], $metricas);
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function erro(string $mensagem, int $status): array
+    {
+        return ['status' => $status, 'body' => ['success' => false, 'error' => $mensagem]];
+    }
+
+    /**
      * @return array{id: int, nome: string, sexo: ?string}|null
      */
     private function aluno(int $userId): ?array
