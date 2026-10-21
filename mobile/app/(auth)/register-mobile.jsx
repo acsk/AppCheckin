@@ -623,24 +623,27 @@ export default function RegisterMobileScreen() {
               editable={!loading}
             />
             <View style={styles.wa}>
+              <TextField
+                label="WhatsApp"
+                icon="message-circle"
+                placeholder="(82) 99999-9999"
+                keyboardType="phone-pad"
+                value={form.mesmoWhatsapp ? form.telefone : form.whatsapp}
+                error={form.mesmoWhatsapp ? null : erro("whatsapp")}
+                hint="A academia usa para avisos e grupos de turma."
+                onChangeText={(v) => set("whatsapp", formatPhone(v))}
+                editable={!loading && !form.mesmoWhatsapp}
+                style={form.mesmoWhatsapp ? { color: ds.inkMuted } : null}
+              />
               <Checkbox
                 checked={form.mesmoWhatsapp}
-                label="Este número também é meu WhatsApp"
-                onChange={(v) => set("mesmoWhatsapp", v)}
+                label="Mesmo número do telefone"
+                onChange={(v) => {
+                  // Ao desmarcar, o campo começa com o telefone para a pessoa só ajustar.
+                  if (!v && !form.whatsapp) set("whatsapp", form.telefone);
+                  set("mesmoWhatsapp", v);
+                }}
               />
-              {form.mesmoWhatsapp ? null : (
-                <TextField
-                  label="WhatsApp"
-                  icon="message-circle"
-                  placeholder="(82) 99999-9999"
-                  keyboardType="phone-pad"
-                  value={form.whatsapp}
-                  error={erro("whatsapp")}
-                  hint="A academia usa para avisos e grupos de turma."
-                  onChangeText={(v) => set("whatsapp", formatPhone(v))}
-                  editable={!loading}
-                />
-              )}
             </View>
           </View>
         </Section>
@@ -871,7 +874,7 @@ const styles = StyleSheet.create({
   },
   sexoOptOn: { backgroundColor: ds.inverse, borderColor: ds.inverse },
   sexoText: { fontSize: 15, lineHeight: 18, fontWeight: "700", color: ds.ink, textAlign: "center" },
-  wa: { gap: space[3], marginTop: -space[2] },
+  wa: { gap: space[1] },
   check: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
   checkBox: {
     width: 22,

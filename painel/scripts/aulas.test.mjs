@@ -6,12 +6,17 @@ const { officialAula, aulaPayload, localISO, weekStart, replicationPayload, isEn
 const raw = { id: 1, dia_id: 5, dia_data: '2026-10-20', professor_id: 7, professor_nome: 'Maria', modalidade_id: 2, modalidade_nome: 'CrossFit', horario_inicio: '06:00:00', horario_fim: '07:00:00', limite_alunos: '20', alunos_count: '8', total_checkins: 3, ativo: '1', checkin_bloqueado: '0', tolerancia_antes_minutos: 480, tolerancia_minutos: 10 };
 const values = { id: 1, modalityId: '2', teacherId: '7', date: '2026-10-20', start: '06:00', end: '07:00', capacity: 20, openBefore: 480, lateAfter: 10, closeBefore: null, cancelBefore: null, active: true };
 const payload = input => aulaPayload(input, [{ id: 2, nome: 'CrossFit' }], [{ id: 7, nome: 'Maria' }], 5);
-test('usa alunos_count sem duplicar contagens e normaliza os status da API', () => {
+test('usa check-ins em vez de inscrições fixas e normaliza os status da API', () => {
   const aula = officialAula(raw);
-  assert.equal(aula.booked, 8); assert.equal(aula.active, true); assert.equal(aula.checkinLocked, false);
+  assert.equal(aula.booked, 3); assert.equal(aula.active, true); assert.equal(aula.checkinLocked, false);
   assert.equal(aula.start, '06:00'); assert.equal(aula.date, '2026-10-20'); assert.equal(aula.teacherId, '7');
   for (const value of [false, 0, '0', null, undefined]) assert.equal(isEnabled(value), false);
   for (const value of [true, 1, '1']) assert.equal(isEnabled(value), true);
+});
+test('check-ins não são mascarados por zero inscrições nem substituídos por inscrições', () => {
+  assert.equal(officialAula({ ...raw, alunos_count: 0, total_checkins: '9' }).booked, 9);
+  assert.equal(officialAula({ ...raw, alunos_count: 8, total_checkins: 0 }).booked, 0);
+  assert.equal(officialAula({ ...raw, alunos_count: 8, total_checkins: undefined }).booked, 0);
 });
 test('preserva regras opcionais nulas e defaults de abertura/atraso', () => {
   const aula = officialAula({ ...raw, tolerancia_antes_minutos: null, tolerancia_minutos: null });

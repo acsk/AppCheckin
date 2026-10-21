@@ -104,7 +104,7 @@ export function DesativarAulaModal({ aula, onCancel, onSaved }) {
     </div>
     {scope === 'mes_todo' ? <TextField type="month" label="Mês" value={month} onChange={e => setMonth(e.target.value)} /> : null}
     <p className="ck-al-hint">A aula deixa de aparecer como ativa no app. Os registros existentes são preservados. Nenhum motivo ou aviso automático é enviado por esta operação.</p>
-    {aula.booked > 0 ? <Callout tone="warning" title={`${aula.booked} inscrições nesta aula`}>Confira os alunos afetados antes de desativar. Esta ação não confirma estorno de saldo nem notificação.</Callout> : null}
+    {aula.booked > 0 ? <Callout tone="warning" title={`${aula.booked} check-ins nesta aula`}>Confira os alunos afetados antes de desativar. Esta ação não confirma estorno de saldo nem notificação.</Callout> : null}
     {error ? <p role="alert" className="ck-field__error">{error}</p> : null}</BusyBody>
   </Modal>;
 }

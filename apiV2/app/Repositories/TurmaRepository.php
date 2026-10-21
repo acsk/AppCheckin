@@ -304,7 +304,7 @@ class TurmaRepository
     }
 
     /**
-     * Espelha App\Models\Turma::listarPorDia da Slim (inclui alunos_count).
+     * Inclui inscrições fixas e check-ins separadamente para a agenda administrativa.
      *
      * @return list<array<string, mixed>>
      */
@@ -317,7 +317,9 @@ class TurmaRepository
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor,
                 d.data as dia_data,
-                '.self::SUBQUERY_ALUNOS_COUNT.'
+                '.self::SUBQUERY_ALUNOS_COUNT.',
+                (SELECT COUNT(DISTINCT c.aluno_id) FROM checkins c
+                 WHERE c.turma_id = t.id AND c.tenant_id = t.tenant_id) as total_checkins
                 FROM turmas t
                 LEFT JOIN professores p ON t.professor_id = p.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id

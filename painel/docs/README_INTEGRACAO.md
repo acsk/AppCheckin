@@ -25,7 +25,11 @@ As rotas de criação e edição também usam o mesmo
 [AulaEditor](../src/components/ck/aulas.js).
 
 - Agenda semanal, seleção de data, busca por professor/modalidade, filtros,
-  ocupação por `alunos_count`, status e menu de ações por aula.
+  ocupação por `total_checkins`, status e menu de ações por aula. A listagem
+  `/admin/turmas?data=YYYY-MM-DD` da API v2 conta alunos distintos com check-in
+  na turma e no tenant; `alunos_count` continua representando inscrições fixas
+  e não é usado como quantidade de check-ins. Essa correção exige publicar
+  tanto a API v2 quanto o painel.
 - Criação com confirmação para criar outra mantendo os dados anteriores;
   edição com consulta das equivalentes futuras e escolha de escopo.
 - Bloqueio/reabertura do check-in, reativação, desativação e exclusões

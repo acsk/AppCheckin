@@ -175,11 +175,23 @@ function resultadoDaTaxa(parcela, pays, t) {
 function resumir(grupos) {
   const r = {
     gross: 0, fees: 0, net: 0, receivable: 0, payments: 0, semLiquido: 0, auto: 0, autoCount: 0, manual: 0, manualCount: 0, naoConferido: 0,
-    taxa: { parcelas: 0, mensalidades: 0, liquido: 0, taxas: 0, acrescimos: 0, resultado: 0, perdas: 0, perdaQtd: 0, ganhos: 0, ganhoQtd: 0 },
+    taxa: {
+      parcelas: 0, mensalidades: 0, liquido: 0, taxas: 0, acrescimos: 0, resultado: 0, perdas: 0, perdaQtd: 0, ganhos: 0, ganhoQtd: 0,
+      // Ponte entre "Recebido no provedor" (pagamentos do período) e as parcelas comparadas.
+      brutoComparado: 0, pagsComparados: 0, semParcela: { qtd: 0, bruto: 0 }, semLiquido: { qtd: 0, bruto: 0 }, foraPeriodo: { qtd: 0, bruto: 0 },
+    },
   };
   grupos.forEach((g) => {
-    if (g.resultado != null) {
+    if (g.resultado == null) {
+      const fora = g.parcela ? r.taxa.semLiquido : r.taxa.semParcela;
+      fora.qtd += g.t.paysP;
+      fora.bruto += g.t.grossP;
+    } else {
       const x = r.taxa;
+      x.brutoComparado += g.t.grossP;
+      x.pagsComparados += g.t.paysP;
+      // Parcela comparada com pagamento fora do período (ex.: cartão parcelado): entra na mensalidade, não no recebido.
+      if (g.t.paysP < g.pays.length) { x.foraPeriodo.qtd += g.pays.length - g.t.paysP; x.foraPeriodo.bruto += g.t.gross - g.t.grossP; }
       x.parcelas += 1;
       x.mensalidades += g.mensalidade;
       x.liquido += g.t.net;
@@ -201,6 +213,41 @@ function resumir(grupos) {
     if (g.baixa === 'manual') { r.manual += g.parcela.valor; r.manualCount += 1; }
   });
   return r;
+}
+
+/** Explica por que "Recebido no provedor" e "Mensalidades" não batem: o que ficou fora da comparação. */
+function PonteRecebido({ sm, onFiltrar }) {
+  const x = sm.taxa;
+  const fora = x.semParcela.bruto + x.semLiquido.bruto;
+  const extra = x.brutoComparado - x.mensalidades;
+  if (Math.abs(sm.gross - x.mensalidades) < 0.005) return null;
+  return (
+    <div className="ck-cb__ponte">
+      <p className="ck-cb__ponteh">{`Recebido no provedor (${money(sm.gross)}) × mensalidades comparadas (${money(x.mensalidades)}): diferença de ${money(sm.gross - x.mensalidades)}`}</p>
+      <ul>
+        <li><span>{`${plural(x.pagsComparados, 'pagamento', 'pagamentos')} de ${plural(x.parcelas, 'parcela comparada', 'parcelas comparadas')}`}</span><b>{money(x.brutoComparado)}</b></li>
+        {Math.abs(extra) >= 0.005 ? (
+          <li className="is-sub"><span>{extra > 0 ? 'cobrado acima da mensalidade (acréscimo do cartão ou valor diferente do plano)' : 'recebido abaixo da mensalidade (desconto ou pagamento fora do período)'}</span><b>{`${extra > 0 ? '+' : '−'}${money(Math.abs(extra))}`}</b></li>
+        ) : null}
+        {x.semParcela.qtd ? (
+          <li className="is-out">
+            <span>
+              {`${plural(x.semParcela.qtd, 'pagamento', 'pagamentos')} sem parcela no Check-in, fora da comparação · `}
+              <button type="button" className="ck-linkbtn" onClick={() => onFiltrar('sem_vinculo')}>ver</button>
+            </span>
+            <b>{money(x.semParcela.bruto)}</b>
+          </li>
+        ) : null}
+        {x.semLiquido.qtd ? (
+          <li className="is-out"><span>{`${plural(x.semLiquido.qtd, 'pagamento', 'pagamentos')} sem líquido informado pelo provedor, fora da comparação`}</span><b>{money(x.semLiquido.bruto)}</b></li>
+        ) : null}
+        {x.foraPeriodo.qtd ? (
+          <li className="is-sub"><span>{`${plural(x.foraPeriodo.qtd, 'pagamento', 'pagamentos')} de parcelas comparadas caem fora do período (não somam no recebido)`}</span><b>{money(x.foraPeriodo.bruto)}</b></li>
+        ) : null}
+      </ul>
+      {fora >= 0.005 ? <p className="ck-cb__pontenota">{`${money(fora)} entraram no provedor sem uma parcela comparável. Confira se são cobranças avulsas ou se falta dar baixa/ligar à matrícula.`}</p> : null}
+    </div>
+  );
 }
 
 function SituacaoBadge({ status, grupo }) {
@@ -456,6 +503,7 @@ export default function ConciliacaoBancariaScreen() {
                 <span>{`líquido de ${money(sm.taxa.liquido)} para ${money(sm.taxa.mensalidades)} em mensalidades`}</span>
               </div>
             </dl>
+            <PonteRecebido sm={sm} onFiltrar={setFilter} />
             <p className="ck-cb__taxasplit">
               {sm.taxa.perdaQtd ? <span className="is-loss">{`${plural(sm.taxa.perdaQtd, 'parcela abaixo', 'parcelas abaixo')} da mensalidade: −${money(Math.abs(sm.taxa.perdas))}`}</span> : null}
               {sm.taxa.ganhoQtd ? <span className="is-gain">{`${plural(sm.taxa.ganhoQtd, 'parcela acima', 'parcelas acima')}: +${money(sm.taxa.ganhos)}`}</span> : null}

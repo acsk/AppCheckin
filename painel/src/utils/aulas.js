@@ -14,7 +14,7 @@ export function officialAula(row, date) {
     modality: { id: String(row.modalidade_id), name: row.modalidade_nome || 'Modalidade', icon: row.modalidade_icone || 'dumbbell', color: row.modalidade_cor },
     teacherId: String(row.professor_id), teacher: row.professor_nome || 'Professor',
     start: row.horario_inicio?.slice(0, 5) || '', end: row.horario_fim?.slice(0, 5) || '',
-    capacity: Number(row.limite_alunos), booked: Number(row.alunos_count ?? row.total_checkins ?? 0),
+    capacity: Number(row.limite_alunos), booked: Number(row.total_checkins ?? 0),
     active: isEnabled(row.ativo), checkinLocked: isEnabled(row.checkin_bloqueado),
     openBefore: row.tolerancia_antes_minutos ?? 480, lateAfter: row.tolerancia_minutos ?? 10,
     closeBefore: row.tolerancia_antes_checkin_minutos ?? '', cancelBefore: row.tolerancia_cancelamento_minutos ?? '',
