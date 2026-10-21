@@ -171,6 +171,7 @@ class AdminPaymentCredentialsService
                 'sobretaxa_antecipacao_avista_percentual' => $sobretaxa['sobretaxa_antecipacao_avista_percentual'],
                 'sobretaxa_antecipacao_parcelada_percentual' => $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'],
                 'enable_antecipacao_automatica' => $sobretaxa['enable_antecipacao_automatica'],
+                'conciliar_somente_vinculados' => $this->somenteVinculadosDoBody($provider, $body, $existente),
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -202,6 +203,7 @@ class AdminPaymentCredentialsService
                 $update['sobretaxa_antecipacao_avista_percentual'] = $sobretaxa['sobretaxa_antecipacao_avista_percentual'];
                 $update['sobretaxa_antecipacao_parcelada_percentual'] = $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'];
                 $update['enable_antecipacao_automatica'] = $sobretaxa['enable_antecipacao_automatica'];
+                $update['conciliar_somente_vinculados'] = $dados['conciliar_somente_vinculados'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -413,6 +415,7 @@ class AdminPaymentCredentialsService
         $row['enable_credit_card'] = $this->boolish($row['enable_credit_card'] ?? true);
         $row['enable_antecipacao_automatica'] = $this->boolish($row['enable_antecipacao_automatica'] ?? $row['enable_sobretaxa_antecipacao'] ?? false);
         $row['enable_sobretaxa_antecipacao'] = $this->boolish($row['enable_sobretaxa_antecipacao'] ?? false);
+        $row['conciliar_somente_vinculados'] = $this->boolish($row['conciliar_somente_vinculados'] ?? $provider === 'mercadopago');
         $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
@@ -438,6 +441,7 @@ class AdminPaymentCredentialsService
             'enable_boleto' => true,
             'enable_credit_card' => true,
             'enable_antecipacao_automatica' => false,
+            'conciliar_somente_vinculados' => $provider === 'mercadopago',
             'enable_sobretaxa_antecipacao' => false,
             'sobretaxa_antecipacao_avista_percentual' => 1.15,
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
@@ -474,6 +478,14 @@ class AdminPaymentCredentialsService
             'sobretaxa_antecipacao_avista_percentual' => $avista,
             'sobretaxa_antecipacao_parcelada_percentual' => $parcelada,
         ];
+    }
+
+    /** Conciliação só com recebimentos ligados a matrícula; padrão ligado no Mercado Pago. */
+    private function somenteVinculadosDoBody(string $provider, array $body, ?array $existente): int
+    {
+        $valor = $body['conciliar_somente_vinculados'] ?? $existente['conciliar_somente_vinculados'] ?? $provider === 'mercadopago';
+
+        return $this->boolish($valor) ? 1 : 0;
     }
 
     private function percentualOuPadrao(mixed $valor, float $padrao): float

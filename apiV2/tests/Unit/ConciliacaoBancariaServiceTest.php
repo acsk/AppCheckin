@@ -98,6 +98,25 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $this->assertSame(0, $r['resumo']['pendencias']);
     }
 
+    public function test_provedor_so_com_vinculados_tira_o_sem_vinculo_da_tela_e_dos_totais(): void
+    {
+        $pagamentos = [
+            $this->asaas('pay_e', 100, 98, ['externalReference' => 'MAT-5-P10']),
+            $this->asaas('pay_f', 300, 290),
+        ];
+        $locais = [$this->parcela(10, 5, 100, 2, ['observacoes' => 'Asaas pay_e'])];
+
+        $todos = C::montar($pagamentos, $locais, [], '2026-10-01', '2026-10-31');
+        $filtrado = C::montar($pagamentos, $locais, [], '2026-10-01', '2026-10-31', null, ['asaas']);
+        $outro = C::montar($pagamentos, $locais, [], '2026-10-01', '2026-10-31', null, ['mercadopago']);
+
+        $this->assertSame('sem_vinculo', $this->linha($todos, 'asaas:pay_f')['status']);
+        $this->assertSame(['asaas:pay_e'], array_column(array_filter($filtrado['linhas'], fn ($l) => $l['origem'] === 'provedor'), 'id'));
+        $this->assertCount(count($todos['linhas']), $outro['linhas']);
+        $this->assertEqualsWithDelta(400.0, $todos['resumo']['provedor']['bruto'], 0.001);
+        $this->assertEqualsWithDelta(100.0, $filtrado['resumo']['provedor']['bruto'], 0.001);
+    }
+
     public function test_cartao_parcelado_casa_as_duas_parcelas_com_a_parcela_cheia(): void
     {
         $cartao = ['billingType' => 'CREDIT_CARD', 'installment' => 'ins_1', 'externalReference' => 'MAT-63-z'];

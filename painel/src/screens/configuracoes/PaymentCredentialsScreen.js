@@ -44,6 +44,7 @@ function formDe(provider, row) {
     enable_boleto: row ? row.enable_boleto !== false && row.enable_boleto !== 0 : true,
     enable_credit_card: row ? row.enable_credit_card !== false && row.enable_credit_card !== 0 : true,
     enable_antecipacao_automatica: ligado(row?.enable_antecipacao_automatica),
+    conciliar_somente_vinculados: row?.conciliar_somente_vinculados == null ? provider === 'mercadopago' : ligado(row.conciliar_somente_vinculados),
     enable_sobretaxa_antecipacao: ligado(row?.enable_sobretaxa_antecipacao),
     sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
@@ -154,6 +155,7 @@ export default function PaymentCredentialsScreen() {
       enable_boleto: !!f.enable_boleto,
       enable_credit_card: !!f.enable_credit_card,
       enable_antecipacao_automatica: !!f.enable_antecipacao_automatica,
+      conciliar_somente_vinculados: !!f.conciliar_somente_vinculados,
       enable_sobretaxa_antecipacao: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao,
       sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
       sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
@@ -368,6 +370,17 @@ export default function PaymentCredentialsScreen() {
                   />
                 ))}
               </div>
+            </div>
+
+            <div className="ck-section">
+              <h3 className="ck-section__title">Conciliação bancária</h3>
+              <p className="ck-section__desc">O que entra na conferência entre o {atual.nome} e as parcelas do Check-in.</p>
+              <Switch
+                label="Só pagamentos ligados a matrículas"
+                description={`Recebimentos do ${atual.nome} sem matrícula (vendas avulsas, cobranças criadas direto na conta) ficam fora da conciliação e dos totais.`}
+                checked={!!form.conciliar_somente_vinculados}
+                onChange={(v) => atualizar(selecionado, { conciliar_somente_vinculados: v })}
+              />
             </div>
 
             {selecionado === 'asaas' && form.enable_credit_card ? (

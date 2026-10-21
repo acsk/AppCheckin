@@ -79,13 +79,20 @@ class TenantPaymentCredentialsRepository
         return Schema::hasColumn('tenant_payment_credentials', 'enable_antecipacao_automatica');
     }
 
+    private function temColunaSomenteVinculados(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados');
+    }
+
     private function sqlSelectAntecipacao(): string
     {
         $sql = $this->temColunasAntecipacao()
             ? ', enable_sobretaxa_antecipacao, sobretaxa_antecipacao_avista_percentual, sobretaxa_antecipacao_parcelada_percentual'
             : '';
 
-        return $sql.($this->temColunaAntecipacaoAutomatica() ? ', enable_antecipacao_automatica' : '');
+        $sql .= $this->temColunaAntecipacaoAutomatica() ? ', enable_antecipacao_automatica' : '';
+
+        return $sql.($this->temColunaSomenteVinculados() ? ', conciliar_somente_vinculados' : '');
     }
 
     public function definirAntecipacaoAutomatica(int $tenantId, string $provider, bool $ligada): void
@@ -139,6 +146,10 @@ class TenantPaymentCredentialsRepository
             $cols .= ', enable_antecipacao_automatica';
             $params[] = $dados['enable_antecipacao_automatica'] ?? 0;
         }
+        if ($this->temColunaSomenteVinculados()) {
+            $cols .= ', conciliar_somente_vinculados';
+            $params[] = $dados['conciliar_somente_vinculados'] ?? 0;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -176,6 +187,10 @@ class TenantPaymentCredentialsRepository
         if ($this->temColunaAntecipacaoAutomatica() && array_key_exists('enable_antecipacao_automatica', $dados)) {
             $sql .= ', enable_antecipacao_automatica = ?';
             $params[] = $dados['enable_antecipacao_automatica'];
+        }
+        if ($this->temColunaSomenteVinculados() && array_key_exists('conciliar_somente_vinculados', $dados)) {
+            $sql .= ', conciliar_somente_vinculados = ?';
+            $params[] = $dados['conciliar_somente_vinculados'];
         }
         $sql .= ', updated_at = NOW()';
 

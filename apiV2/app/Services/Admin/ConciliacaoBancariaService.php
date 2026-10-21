@@ -76,12 +76,13 @@ class ConciliacaoBancariaService
         );
         $pix = $this->matriculasDoPix($tenantId, array_column($pagamentos, 'payment_id'));
         $consultados = array_values(array_diff($provedores, array_column($erros, 'provedor')));
-        $resultado = self::montar($pagamentos, $locais, $pix, $inicio, $fim, $consultados);
+        $somenteVinculados = $this->provedoresSomenteVinculados($tenantId);
+        $resultado = self::montar($pagamentos, $locais, $pix, $inicio, $fim, $consultados, $somenteVinculados);
 
         // Parcela baixada pela integração que não apareceu no período: o pagamento pode ter outra data no provedor
         ['pagos' => $avulsos, 'situacao' => $situacaoCitados] = $this->consultarCitados($tenantId, $resultado['linhas'], $consultados);
         if ($avulsos !== []) {
-            $resultado = self::montar(array_merge($pagamentos, $avulsos), $locais, $pix, $inicio, $fim, $consultados);
+            $resultado = self::montar(array_merge($pagamentos, $avulsos), $locais, $pix, $inicio, $fim, $consultados, $somenteVinculados);
         }
         // O provedor tem a cobrança, mas não paga: diz em que situação ela está (estornada, removida…)
         foreach ($resultado['linhas'] as &$linha) {
@@ -159,7 +160,7 @@ class ConciliacaoBancariaService
      * @param  array<string, int>  $pix  payment_id => matricula_id (pagamentos_pix)
      * @return array{resumo: array<string, mixed>, linhas: list<array<string, mixed>>}
      */
-    public static function montar(array $pagamentos, array $locais, array $pix, string $inicio, string $fim, ?array $consultados = null): array
+    public static function montar(array $pagamentos, array $locais, array $pix, string $inicio, string $fim, ?array $consultados = null, array $somenteVinculados = []): array
     {
         usort($pagamentos, fn ($a, $b) => strcmp((string) $a['data'], (string) $b['data']) ?: strcmp((string) $a['payment_id'], (string) $b['payment_id']));
         $usadas = [];
@@ -240,7 +241,9 @@ class ConciliacaoBancariaService
             $linhas[] = self::linhaLocal($l, $status);
         }
 
-        $linhas = array_values(array_filter($linhas, fn ($l) => $l['status'] !== 'ignorar'));
+        // Provedor com "conciliar só vinculados": recebimento sem matrícula não entra na tela nem nos totais
+        $linhas = array_values(array_filter($linhas, fn ($l) => $l['status'] !== 'ignorar'
+            && ! ($l['status'] === 'sem_vinculo' && in_array($l['provedor'] ?? null, $somenteVinculados, true))));
         foreach ($linhas as &$linha) {
             $linha += self::baixaDaLinha($linha['parcela']);
         }
@@ -605,6 +608,26 @@ class ConciliacaoBancariaService
      *
      * @return array<string, bool> provedor => ativo
      */
+    /**
+     * Provedores com o flag conciliar_somente_vinculados ligado.
+     *
+     * @return list<string>
+     */
+    private function provedoresSomenteVinculados(int $tenantId): array
+    {
+        if (! Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados')) {
+            return [];
+        }
+
+        return DB::table('tenant_payment_credentials')
+            ->where('tenant_id', $tenantId)
+            ->where('conciliar_somente_vinculados', 1)
+            ->pluck('provider')
+            ->map(fn ($p) => strtolower((string) $p))
+            ->values()
+            ->all();
+    }
+
     private function provedoresConectados(int $tenantId): array
     {
         $out = [];
