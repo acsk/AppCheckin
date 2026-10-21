@@ -27,6 +27,7 @@ class MobileRecordeServiceTest extends TestCase
         Schema::create('alunos', function (Blueprint $t) {
             $t->increments('id');
             $t->integer('usuario_id')->nullable();
+            $t->string('foto_caminho')->nullable();
             $t->string('nome');
             $t->string('sexo')->nullable();
         });
@@ -157,6 +158,16 @@ class MobileRecordeServiceTest extends TestCase
         $this->assertSame(1, $fem['ranking'][0]['posicao']);
 
         $this->assertSame(404, $svc->ranking(100, 3, 3, null)['status']);
+    }
+
+    public function test_ranking_traz_foto_do_aluno_ou_null_sem_foto(): void
+    {
+        DB::table('alunos')->where('id', 11)->update(['foto_caminho' => '/uploads/fotos/dalvan.jpg']);
+        $headers = $this->headersAluno();
+        $this->getJson('/v2/mobile/recordes/ranking/1', $headers)->assertOk()
+            ->assertJsonPath('ranking.0.foto_caminho', '/uploads/fotos/dalvan.jpg')
+            ->assertJsonPath('ranking.1.foto_caminho', null)
+            ->assertJsonPath('ranking.2.foto_caminho', null);
     }
 
     public function test_aluno_fora_da_lista_do_limite_continua_aparecendo(): void

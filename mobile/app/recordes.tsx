@@ -13,11 +13,13 @@ import Modal from "@/src/components/ds/Modal";
 import { ds, space } from "@/src/components/ds/tokens";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { mobileService } from "@/src/services/mobileService";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import {
   diasDesde,
   fmtData,
   fmtDiferenca,
   fmtMarca,
+  fotoRecordeUrl,
   lerProva,
   textoMelhora,
   recordeErro,
@@ -259,7 +261,7 @@ export default function RecordesScreen() {
           <Aviso icon="award" titulo="Ninguém nesta prova ainda" texto="O ranking aparece quando os alunos tiverem marcas registradas." />
         ) : (
           <>
-            <Podium items={top.map((r) => ({ name: r.nome, value: fmtMarca(r.valor, prova.def), self: r.self }))} />
+            <Podium items={top.map((r) => ({ name: r.nome, value: fmtMarca(r.valor, prova.def), self: r.self, avatarUri: fotoRecordeUrl(r.foto_caminho, getApiUrlRuntime()) }))} />
             {resto.length ? (
               <Section title="Classificação" aside="Melhor marca de cada aluno">
                 {resto.map((r) => (
@@ -267,6 +269,7 @@ export default function RecordesScreen() {
                     key={r.aluno_id}
                     position={r.posicao}
                     name={r.nome}
+                    avatarUri={fotoRecordeUrl(r.foto_caminho, getApiUrlRuntime())}
                     value={fmtMarca(r.valor, prova.def)}
                     gap={lider ? `${prova.def.direcao === "menor_melhor" ? "+" : "−"}${fmtDiferenca(r.valor, lider.valor, prova.def)}` : null}
                     self={r.self}

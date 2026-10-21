@@ -101,6 +101,7 @@ class MobileRecordeService
                 'posicao' => $i + 1,
                 'aluno_id' => (int) $m['aluno_id'],
                 'nome' => $m['nome'],
+                'foto_caminho' => $m['foto_caminho'],
                 'valor' => $m['valor'],
                 'data' => $m['data'],
                 'self' => $self,
@@ -501,7 +502,7 @@ class MobileRecordeService
             ->orderBy('r.data_recorde')
             ->orderBy('r.id')
             ->get(array_merge(
-                ['r.id', 'r.definicao_id', 'r.aluno_id', 'r.data_recorde', 'r.origem', 'rv.metrica_id', 'rv.valor_int', 'rv.valor_decimal', 'rv.valor_tempo_ms', 'a.nome as aluno_nome'],
+                ['r.id', 'r.definicao_id', 'r.aluno_id', 'r.data_recorde', 'r.origem', 'rv.metrica_id', 'rv.valor_int', 'rv.valor_decimal', 'rv.valor_tempo_ms', 'a.nome as aluno_nome', 'a.foto_caminho'],
                 SexoAluno::colunaExiste() ? ['a.sexo'] : [],
             ));
 
@@ -520,6 +521,7 @@ class MobileRecordeService
                 'aluno_id' => $r->aluno_id !== null ? (int) $r->aluno_id : null,
                 'nome' => $r->aluno_id !== null ? (string) ($r->aluno_nome ?? 'Aluno #'.$r->aluno_id) : 'Marca da academia',
                 'sexo' => SexoAluno::normalizar($r->sexo ?? null),
+                'foto_caminho' => $r->foto_caminho,
                 'valor' => (float) $valor,
                 'data' => substr((string) $r->data_recorde, 0, 10),
             ];

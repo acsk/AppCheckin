@@ -12,6 +12,14 @@ const reps = { id: 3, nome: "Repetições", tipo_valor: "inteiro", obrigatoria: 
 const detalhe = { definicao: { id: 8, metrica_principal_id: 1 }, metricas: [tempo, carga, reps] };
 const base = () => ({ 1: { tempo: { m: "1", s: "23", c: "4" }, texto: "" }, 2: { tempo: {}, texto: "" }, 3: { tempo: {}, texto: "12" } });
 
+test("fotos do ranking aceitam URL completa e caminho relativo à API", () => {
+  assert.equal(r.fotoRecordeUrl("/uploads/fotos/aluno.jpg", "https://api.test/v2"), "https://api.test/v2/uploads/fotos/aluno.jpg");
+  assert.equal(r.fotoRecordeUrl("uploads/fotos/aluno.jpg", "https://api.test/v2/"), "https://api.test/v2/uploads/fotos/aluno.jpg");
+  assert.equal(r.fotoRecordeUrl("https://cdn.test/aluno.jpg", "https://api.test/v2"), "https://cdn.test/aluno.jpg");
+  assert.equal(r.fotoRecordeUrl(null, "https://api.test/v2"), null);
+  assert.equal(r.fotoRecordeUrl("  ", "https://api.test/v2"), null);
+});
+
 test("tempos em minutos, segundos e centésimos, sem aceitar negativos ou frações", () => {
   assert.equal(r.partesEmTempo({ m: "1", s: "23", c: "4" }), 83400);
   assert.equal(r.partesEmTempo({ m: "", s: "00", c: "01" }), 10);

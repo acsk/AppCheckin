@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Avatar from "./Avatar";
 import { ds, space } from "./tokens";
 
-export type PodiumItem = { name: string; value: string; self?: boolean };
+export type PodiumItem = { name: string; value: string; self?: boolean; avatarUri?: string | null };
 
 const MEDAL = [ds.medalGold, ds.medalSilver, ds.medalBronze];
 const STEP = [64, 44, 32];
@@ -19,7 +19,7 @@ export default function Podium({ items }: { items: PodiumItem[] }) {
         return (
           <View key={i} style={styles.pod} accessible accessibilityLabel={`${i + 1}º lugar, ${x.name}, ${x.value}`}>
             <View style={[styles.av, { borderColor: medal }]}>
-              <Avatar name={x.name} size={i === 0 ? 64 : 52} />
+              <Avatar name={x.name} uri={x.avatarUri} size={i === 0 ? 64 : 52} />
               <View style={[styles.num, { backgroundColor: medal }]}>
                 <Text style={styles.numText}>{i + 1}</Text>
               </View>

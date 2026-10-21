@@ -10,19 +10,20 @@ type Props = {
   /** Distância para o primeiro ("+1,18"). */
   gap?: string | null;
   self?: boolean;
+  avatarUri?: string | null;
 };
 
 const MEDAL: Record<number, string> = { 1: ds.medalGold, 2: ds.medalSilver, 3: ds.medalBronze };
 
 // Uma linha do ranking: posição (medalha no pódio), aluno, marca e a distância para o líder.
-export default function RankingRow({ position, name, value, gap, self }: Props) {
+export default function RankingRow({ position, name, value, gap, self, avatarUri }: Props) {
   const medal = MEDAL[position];
   return (
     <View style={[styles.row, self && { backgroundColor: ds.brandSoft }]} accessible accessibilityLabel={`${position}º, ${name}, ${value}`}>
       <View style={[styles.pos, medal ? { backgroundColor: medal } : null]}>
         <Text style={[styles.posText, medal ? { color: "#171a21" } : null]}>{position}</Text>
       </View>
-      <Avatar name={name} size={36} />
+      <Avatar name={name} uri={avatarUri} size={36} />
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text style={[styles.name, self && { color: ds.brandInk }]} numberOfLines={1}>
           {name}

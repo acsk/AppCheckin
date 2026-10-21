@@ -71,6 +71,9 @@ registrar uma marca; provas sem marcas tambem podem receber o primeiro registro.
 O filtro de seis meses usa datas reais, e nao uma quantidade fixa de tentativas.
 Os links de detalhe usam a rota absoluta `/recorde-prova`, tanto na entrada
 raiz quanto em `/(tabs)/recordes`; a tela de detalhe nao pertence ao grupo de abas.
+O ranking exibe a foto cadastrada do aluno no podio e na classificacao,
+usando `foto_caminho` da API. Sem foto ou em caso de falha ao carregar a imagem,
+o avatar mostra as iniciais.
 
 O formulario usa as metricas cadastradas pela academia: tempo em minutos,
 segundos e centesimos, inteiros ou decimais com ate tres casas. Ao editar apenas

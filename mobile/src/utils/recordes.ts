@@ -41,7 +41,14 @@ export type RecordesResumo = {
   escola: { geral: Recordista[]; masculino: Recordista[]; feminino: Recordista[] };
 };
 
-export type RankingItem = { posicao: number; aluno_id: number; nome: string; valor: number; data: string; self: boolean };
+export type RankingItem = { posicao: number; aluno_id: number; nome: string; foto_caminho?: string | null; valor: number; data: string; self: boolean };
+
+export function fotoRecordeUrl(caminho: string | null | undefined, apiUrl: string): string | null {
+  const foto = caminho?.trim();
+  if (!foto) return null;
+  if (/^https?:\/\//i.test(foto)) return foto;
+  return `${apiUrl.replace(/\/$/, "")}/${foto.replace(/^\/+/, "")}`;
+}
 
 export type Prova = {
   def: RecordeDefinicao;

@@ -13,14 +13,14 @@ type Props = { name?: string | null; uri?: string | null; size?: number; ring?: 
 
 // Avatar redondo: foto ou iniciais em ink sobre surface-sunken.
 export default function Avatar({ name, uri, size = 40, ring }: Props) {
-  const [failed, setFailed] = useState(false);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
   const inner = (
     <View style={[styles.base, { width: size, height: size, borderRadius: size / 2 }]}>
-      {uri && !failed ? (
+      {uri && uri !== failedUri ? (
         <Image
           source={{ uri }}
           style={{ width: size, height: size }}
-          onError={() => setFailed(true)}
+          onError={() => setFailedUri(uri)}
           accessibilityIgnoresInvertColors
         />
       ) : (
