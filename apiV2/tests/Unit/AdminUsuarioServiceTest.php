@@ -137,6 +137,25 @@ class AdminUsuarioServiceTest extends TestCase
         $this->assertSame(42, $result['body']['usuario']['id']);
     }
 
+    public function test_create_recusa_papel_privilegiado_para_admin_do_tenant(): void
+    {
+        $repo = Mockery::mock(UsuarioRepository::class);
+        $repo->shouldReceive('emailExists')->andReturn(false);
+        $repo->shouldNotReceive('criarUsuarioCompleto');
+        $service = new AdminUsuarioService($repo);
+
+        foreach ([3, 4, 5] as $papelId) {
+            $result = $service->create(3, [
+                'nome' => 'Novo',
+                'email' => 'novo@example.com',
+                'senha' => 'segredo123',
+                'papel_id' => $papelId,
+            ], ['id' => 9, 'papel_id' => 3]);
+
+            $this->assertSame(403, $result['status'], 'papel '.$papelId);
+        }
+    }
+
     public function test_update_retorna_400_quando_nada_foi_atualizado(): void
     {
         $repo = Mockery::mock(UsuarioRepository::class);

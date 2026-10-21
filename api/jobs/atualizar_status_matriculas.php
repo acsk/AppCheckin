@@ -395,6 +395,7 @@ try {
             $sqlCancelada = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.data_cancelamento = CURDATE(),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
                 AND m.tipo_cobranca != 'avulso'
@@ -435,6 +436,7 @@ try {
             $sqlCanceladaPorData = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.data_cancelamento = CURDATE(),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
@@ -454,6 +456,7 @@ try {
                 INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
                 INNER JOIN assinatura_status ast ON ast.id = a.status_id
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.data_cancelamento = CURDATE(),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND ast.codigo = 'cancelada'
@@ -582,6 +585,7 @@ try {
                 INNER JOIN planos p ON p.id = m.plano_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.data_cancelamento = CURDATE(),
                     m.data_vencimento = COALESCE(m.data_inicio, m.data_vencimento),
                     m.proxima_data_vencimento = COALESCE(m.data_inicio, m.data_vencimento),
                     m.updated_at = NOW()

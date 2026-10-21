@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { authService } from '../services/authService';
+import { authService, PAPEL_COMERCIAL } from '../services/authService';
 import { AppShell, AppHeader, IconButton, PageHeader, Sidebar } from './ck';
 
 // Menu do painel em seções (design system: Geral · Gestão · Sistema).
@@ -55,6 +55,19 @@ const SECTIONS = [
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3] },
         ],
       },
+      {
+        // Comercial (5) só vê esta seção. Novas funcionalidades comerciais entram como filhos aqui.
+        id: 'prospeccao',
+        label: 'Prospecção',
+        icon: 'target',
+        children: [
+          { id: 'prospeccao-painel', label: 'Painel de recuperação', path: '/prospeccao', roles: [3, 5] },
+          { id: 'prospeccao-recuperacao', label: 'Recuperação de Alunos', path: '/prospeccao/recuperacao', roles: [3, 5] },
+          { id: 'prospeccao-contatos', label: 'Contatos pendentes', path: '/prospeccao/contatos', roles: [3, 5] },
+          { id: 'prospeccao-modelos', label: 'Modelos de mensagem', path: '/prospeccao/modelos', roles: [3, 5] },
+          { id: 'prospeccao-config', label: 'Equipe e score', path: '/prospeccao/configuracoes', roles: [3] },
+        ],
+      },
     ],
   },
   {
@@ -91,19 +104,21 @@ const SECTIONS = [
 const BREAKPOINT_MOBILE = 768;
 const COLLAPSE_KEY = 'ck:sidebar-collapsed';
 
-const papelLabel = (papelId) => (papelId === 4 ? 'Super admin' : papelId === 3 ? 'Administrador' : 'Usuário');
+const papelLabel = (papelId) => (papelId === 4 ? 'Super admin' : papelId === 3 ? 'Administrador' : papelId === PAPEL_COMERCIAL ? 'Comercial' : 'Usuário');
 
 // Filtra o menu pelo papel do usuário e devolve as seções no formato do Sidebar.
-function buildSections(role) {
+// `comercial`: o usuário também tem o papel Comercial (fora da hierarquia de `role`).
+function buildSections(role, comercial) {
+  const visivel = (roles) => roles.includes(role) || (comercial && roles.includes(PAPEL_COMERCIAL));
   return SECTIONS.map((s) => ({
     label: s.label,
     items: s.items
       .map((it) => {
         if (it.children) {
-          const children = it.children.filter((c) => c.roles.includes(role));
+          const children = it.children.filter((c) => visivel(c.roles));
           return children.length ? { ...it, children: children.map((c) => ({ ...c, href: c.path })) } : null;
         }
-        return it.roles.includes(role) ? { ...it, href: it.path } : null;
+        return visivel(it.roles) ? { ...it, href: it.path } : null;
       })
       .filter(Boolean),
   })).filter((s) => s.items.length);
@@ -151,7 +166,13 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   }, [pathname]);
 
   const role = authService.getEffectivePapelId(usuarioInfo);
-  const sections = useMemo(() => buildSections(role), [role]);
+  const comercial = authService.hasPapel(usuarioInfo, PAPEL_COMERCIAL);
+  const sections = useMemo(() => buildSections(role, comercial), [role, comercial]);
+
+  // Quem é só comercial não tem acesso às telas de administração.
+  useEffect(() => {
+    if (usuarioInfo && role === PAPEL_COMERCIAL && !(pathname || '').startsWith('/prospeccao')) router.replace('/prospeccao');
+  }, [usuarioInfo, role, pathname]);
   const active = useMemo(() => findActive(sections, pathname || '/'), [sections, pathname]);
 
   const allNodes = useMemo(
@@ -209,7 +230,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       breadcrumbs={breadcrumbs}
       search={false}
       notifications={false}
-      user={{ name: nome, role: papelLabel(usuarioInfo?.papel_id), email: usuarioInfo?.email }}
+      user={{ name: nome, role: papelLabel(role), email: usuarioInfo?.email }}
       menuItems={canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []}
       onSignOut={handleLogout}
     />

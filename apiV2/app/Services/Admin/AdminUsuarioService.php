@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Repositories\UsuarioRepository;
+use App\Support\Papel;
 
 class AdminUsuarioService
 {
@@ -68,13 +69,21 @@ class AdminUsuarioService
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|null  $usuarioLogado
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function create(int $tenantId, array $data): array
+    public function create(int $tenantId, array $data, ?array $usuarioLogado = null): array
     {
         $errors = $this->validarDadosUsuario($data);
         if ($errors !== []) {
             return $this->erro(implode(', ', $errors), 422);
+        }
+
+        // Admin do tenant só cria aluno ou professor aqui; admins são criados pela tela de Academia
+        // e a equipe comercial pelo módulo Prospecção. Antes, qualquer papel_id era aceito.
+        $papelId = (int) ($data['papel_id'] ?? Papel::ALUNO);
+        if (! $this->isSuperAdmin($usuarioLogado) && ! in_array($papelId, [Papel::ALUNO, Papel::PROFESSOR], true)) {
+            return $this->erro('Papel não permitido para este cadastro', 403);
         }
 
         $usuarioId = $this->usuarios->criarUsuarioCompleto($data, $tenantId);

@@ -9,6 +9,7 @@ use App\Repositories\MatriculaRepository;
 use App\Repositories\TurmaRepository;
 use App\Support\AcademyDateTime;
 use App\Support\AniversarioUtil;
+use App\Support\Papel;
 use Illuminate\Support\Facades\DB;
 
 class MobileProfessorService
@@ -487,6 +488,7 @@ class MobileProfessorService
             ->where('usuario_id', $userId)
             ->where('tenant_id', $tenantId)
             ->where('ativo', 1)
+            ->whereIn('papel_id', Papel::HIERARQUICOS)
             ->max('papel_id') ?: 0);
 
         if ($papelId < 2) {

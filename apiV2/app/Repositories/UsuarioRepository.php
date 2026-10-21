@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Papel;
 use Illuminate\Support\Facades\DB;
 
 class UsuarioRepository
@@ -33,7 +34,7 @@ class UsuarioRepository
             ->where('tup.ativo', 1)
             ->select('tup.papel_id', 'p.nome as papel_nome')
             ->groupBy('tup.papel_id', 'p.nome')
-            ->orderByDesc('tup.papel_id')
+            ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))
             ->get();
 
         $papeis = [];
@@ -53,10 +54,10 @@ class UsuarioRepository
             ->join('tenants as t', 't.id', '=', 'tup.tenant_id')
             ->leftJoin('papeis as p', 'p.id', '=', 'tup.papel_id')
             ->where('tup.usuario_id', $usuarioId)
-            ->whereIn('tup.papel_id', [1, 2, 3])
+            ->whereIn('tup.papel_id', [Papel::ALUNO, Papel::PROFESSOR, Papel::ADMIN, Papel::COMERCIAL])
             ->where('tup.ativo', 1)
             ->where('t.ativo', 1)
-            ->orderByDesc('tup.papel_id')
+            ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))
             ->orderBy('t.nome')
             ->select([
                 'tup.id as vinculo_id',
@@ -145,7 +146,7 @@ class UsuarioRepository
             ->where('u.id', $userId);
 
         $user = $query
-            ->orderByDesc('tup.papel_id')
+            ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))
             ->select([
                 'u.id',
                 DB::raw('COALESCE(tup.tenant_id, '.(int) ($tenantId ?? 0).') as tenant_id'),
@@ -210,7 +211,7 @@ class UsuarioRepository
                 $join->on('tup.usuario_id', '=', 'u.id')->where('tup.ativo', 1);
             })
             ->where('u.id', $userId)
-            ->orderByDesc('tup.papel_id')
+            ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))
             ->select([
                 'u.id',
                 'u.nome',
@@ -261,7 +262,7 @@ class UsuarioRepository
                     'ativo' => $data['ativo'] ?? 1,
                 ]);
 
-                if (! in_array($papelId, [3, 4], true)) {
+                if (in_array($papelId, [Papel::ALUNO, Papel::PROFESSOR], true)) {
                     DB::table('alunos')->insert([
                         'usuario_id' => $usuarioId,
                         'nome' => $nome,

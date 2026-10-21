@@ -25,6 +25,7 @@ final class PaymentSandboxAccess
                     ->where('usuario_id', $userId)
                     ->where('tenant_id', $tenantId)
                     ->where('ativo', 1)
+                    ->whereIn('papel_id', Papel::HIERARQUICOS)
                     ->max('papel_id') ?: 0);
                 if (in_array($maxPapel, [3, 4], true)) {
                     return true;

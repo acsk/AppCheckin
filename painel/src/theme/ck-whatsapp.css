@@ -1,0 +1,32 @@
+/* WhatsappContato (src/components/ck/whatsapp.js): número + ícone na tabela, botão da ficha e ação rápida. */
+
+.ck-wa { --wa: #25d366; --wa-ink: #128c4a; --wa-soft: #e7f8ee; font: inherit; cursor: pointer; border: 1px solid transparent; background: transparent; color: inherit; transition: background-color .15s, color .15s, border-color .15s; }
+.ck-wa:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-wa:disabled { cursor: not-allowed; opacity: .55; }
+.ck-wa__icon { color: var(--wa); flex: none; }
+.ck-wa.is-invalid .ck-wa__icon { color: var(--warning); }
+
+/* Tabela: discreto, mesma métrica do texto da célula; área de toque ampliada sem mexer no layout */
+.ck-wa--inline { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; margin: -2px -6px; border-radius: var(--radius-sm); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink); }
+.ck-wa--inline::after { content: ''; position: absolute; inset: -8px -2px; }
+.ck-wa--inline:hover:not(:disabled) { background: var(--wa-soft); color: var(--wa-ink); }
+.ck-wa--inline.is-invalid { color: var(--ink-muted); }
+.ck-wa--inline.is-invalid:hover { background: var(--warning-soft); color: var(--warning); }
+.ck-wa--inline.is-empty { cursor: default; color: var(--ink-subtle); padding: 0; margin: 0; }
+
+/* Ficha comercial: botão destacado */
+.ck-wa--button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control-height); padding: 0 var(--space-4); border-radius: var(--radius-md); background: var(--wa-ink); color: #fff; font-weight: 600; }
+.ck-wa--button .ck-wa__icon { color: #fff; }
+.ck-wa--button:hover:not(:disabled) { background: #0f7a40; }
+.ck-wa--button.is-invalid { background: var(--warning-soft); color: var(--warning); border-color: var(--warning); }
+.ck-wa--button.is-invalid .ck-wa__icon { color: var(--warning); }
+
+/* Contatos pendentes: ação rápida no tamanho do ck-iconbtn */
+.ck-wa--icon { display: inline-grid; place-items: center; width: var(--control-height-sm); height: var(--control-height-sm); border-radius: var(--radius-sm); }
+.ck-wa--icon:hover:not(:disabled) { background: var(--wa-soft); }
+.ck-wa--icon.is-invalid:hover { background: var(--warning-soft); }
+
+@media (pointer: coarse) {
+  .ck-wa--icon { width: 44px; height: 44px; }
+  .ck-wa--button { height: var(--control-height-lg); }
+}

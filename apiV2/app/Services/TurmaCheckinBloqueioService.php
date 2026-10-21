@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\Papel;
 use Illuminate\Support\Facades\DB;
 
 class TurmaCheckinBloqueioService
@@ -126,9 +127,14 @@ class TurmaCheckinBloqueioService
                 ->where('usuario_id', $usuarioId)
                 ->where('tenant_id', $tenantId)
                 ->where('ativo', 1)
+                ->whereIn('papel_id', Papel::HIERARQUICOS)
                 ->max('papel_id') ?: 0);
         } else {
             $papelId = (int) ($papelRequest['id'] ?? 0);
+            // Comercial (5) é funcional, não está acima de admin
+            if (! in_array($papelId, Papel::HIERARQUICOS, true)) {
+                $papelId = 0;
+            }
         }
 
         if ($papelId >= 3) {

@@ -1,6 +1,8 @@
 import api from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export const PAPEL_COMERCIAL = 5;
+
 export const authService = {
   normalizeUser(user) {
     if (!user) return user;
@@ -14,8 +16,18 @@ export const authService = {
     return normalized;
   },
 
+  // Papel efetivo = maior papel hierárquico (1 aluno … 4 super admin). Comercial (5) é funcional e
+  // fica de fora, senão um admin que também é comercial perderia o menu de admin.
   getEffectivePapelId(user) {
     if (!user) return 1;
+    const ids = this.papelIds(user);
+    const hierarquicos = ids.filter((id) => id !== PAPEL_COMERCIAL);
+    if (hierarquicos.length) return Math.max(...hierarquicos);
+    return ids.includes(PAPEL_COMERCIAL) ? PAPEL_COMERCIAL : 1;
+  },
+
+  papelIds(user) {
+    if (!user) return [];
     const ids = [];
     if (user.papel_id != null) ids.push(Number(user.papel_id));
     if (Array.isArray(user.papeis)) {
@@ -23,7 +35,16 @@ export const authService = {
         if (p?.id != null) ids.push(Number(p.id));
       });
     }
-    return ids.length ? Math.max(...ids) : 1;
+    return ids;
+  },
+
+  hasPapel(user, papelId) {
+    return this.papelIds(user).includes(papelId);
+  },
+
+  /** Administrador ou equipe comercial: acessa o módulo Prospecção. */
+  podeProspeccao(user) {
+    return [3, 4].includes(this.getEffectivePapelId(user)) || this.hasPapel(user, PAPEL_COMERCIAL);
   },
 
   async isSuperAdmin(user = null) {

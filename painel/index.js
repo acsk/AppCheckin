@@ -20,5 +20,7 @@ import './src/theme/ck-logs.css';
 import './src/theme/ck-recordes.css';
 import './src/theme/ck-aulas.css';
 import './src/theme/ck-pacotes.css';
+import './src/theme/ck-whatsapp.css';
+import './src/theme/ck-prospeccao.css';
 
 import 'expo-router/entry';

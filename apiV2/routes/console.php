@@ -13,3 +13,6 @@ Schedule::command('asaas:sincronizar-contratos')->hourly()->withoutOverlapping()
 
 // Mensalidades de alunos: baixa as cobranças Asaas pagas cujo webhook não chegou (fila interrompida, 401, 500)
 Schedule::command('asaas:sincronizar-matriculas')->everyFifteenMinutes()->withoutOverlapping();
+
+// Prospecção: oportunidades de recuperação (matrículas canceladas), recuperações e score do dia
+Schedule::command('prospeccao:sincronizar')->dailyAt('05:30')->withoutOverlapping();

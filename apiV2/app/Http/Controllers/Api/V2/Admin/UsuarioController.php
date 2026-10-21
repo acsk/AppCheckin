@@ -45,7 +45,7 @@ class UsuarioController extends Controller
             return $tenantId;
         }
 
-        $result = $this->service->create($tenantId, $request->all());
+        $result = $this->service->create($tenantId, $request->all(), $request->attributes->get('usuario'));
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }

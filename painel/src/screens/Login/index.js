@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authService } from '../../services/authService';
+import { authService, PAPEL_COMERCIAL } from '../../services/authService';
 import { showError } from '../../utils/toast';
 import { Button, Icon, Modal } from '../../components/ck';
 import { LoginScreen as CkLoginScreen } from '../../components/ck/pessoas';
@@ -49,8 +49,10 @@ export default function LoginScreen() {
     }
   };
 
-  const goToDashboard = () => {
-    setTimeout(() => router.replace('/dashboard/'), 100);
+  // Quem é só da equipe comercial entra direto no módulo Prospecção.
+  const goToDashboard = (user) => {
+    const destino = user && authService.getEffectivePapelId(user) === PAPEL_COMERCIAL ? '/prospeccao' : '/dashboard/';
+    setTimeout(() => router.replace(destino), 100);
   };
 
   const handleSubmit = async ({ email, password, remember: keep }) => {
@@ -61,11 +63,11 @@ export default function LoginScreen() {
     try {
       const response = await authService.login(email, password);
 
-      // Só administradores (3) e super admins (4) acessam o painel
-      if (![3, 4].includes(response.user?.papel_id)) {
+      // Administradores (3), super admins (4) e equipe comercial (5) acessam o painel
+      if (!authService.podeProspeccao(response.user)) {
         await authService.logout();
         setErrorTitle('Acesso não permitido');
-        setError('Este painel é exclusivo para administradores da academia. Alunos usam o app do Check-in.');
+        setError('Este painel é exclusivo para a equipe da academia. Alunos usam o app do Check-in.');
         return;
       }
 
@@ -76,7 +78,7 @@ export default function LoginScreen() {
         setRemember(keep);
       } else if (response.token) {
         await persistCredentials(creds, keep);
-        goToDashboard();
+        goToDashboard(response.user);
       }
     } catch (err) {
       setError(err?.error || err?.message || 'E-mail ou senha incorretos. Confira e tente de novo, ou use "Esqueci minha senha".');
@@ -92,7 +94,7 @@ export default function LoginScreen() {
       if (response.token) {
         setTenants([]);
         if (credentials) await persistCredentials(credentials, remember);
-        goToDashboard();
+        goToDashboard(response.user);
       }
     } catch (err) {
       showError(err?.error || err?.message || 'Não foi possível entrar nesta academia');
