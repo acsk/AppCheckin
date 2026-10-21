@@ -18,5 +18,6 @@ import './src/theme/ck-pagamento.css';
 import './src/theme/ck-graficos.css';
 import './src/theme/ck-logs.css';
 import './src/theme/ck-recordes.css';
+import './src/theme/ck-aulas.css';
 
 import 'expo-router/entry';

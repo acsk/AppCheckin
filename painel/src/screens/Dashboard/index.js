@@ -275,7 +275,6 @@ export default function Dashboard() {
           <Panel
             title="Vencem nos próximos 7 dias"
             description={fin.upcoming.length ? `${money(fin.upcomingValue)} em ${plural(fin.upcoming.length, 'parcela', 'parcelas')}` : null}
-            actions={<Button size="sm" variant="ghost" iconRight="arrow-right" onClick={() => router.push('/matriculas/vencimentos')}>Ver todas</Button>}
           >
             {fin.upcoming.length ? (
               <ul className="ck-db__list">

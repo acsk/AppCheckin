@@ -16,6 +16,39 @@ Permite que administradores criem matrículas de alunos com assinaturas vinculad
 
 ---
 
+## Aulas no painel
+
+A agenda em [TurmasScreen](../src/screens/turmas/TurmasScreen.js) usa o
+[layout CK fornecido em HTML](../src/components/ck/aulasOficial.js), com
+[CSS semântico](../src/theme/ck-aulas.css) compatível com os temas claro e escuro.
+As rotas de criação e edição também usam o mesmo
+[AulaEditor](../src/components/ck/aulas.js).
+
+- Agenda semanal, seleção de data, busca por professor/modalidade, filtros,
+  ocupação por `alunos_count`, status e menu de ações por aula.
+- Criação com confirmação para criar outra mantendo os dados anteriores;
+  edição com consulta das equivalentes futuras e escolha de escopo.
+- Bloqueio/reabertura do check-in, reativação, desativação e exclusões
+  preservam os endpoints de turmas. O WOD mantém sua prévia existente.
+- Replicação em três etapas: modalidade, destinos e revisão. O modelo diário
+  copia todas as aulas da modalidade para os dias da semana de um mês;
+  o semanal usa domingo a sábado, aceita múltiplos meses e permanece disponível
+  mesmo quando o dia selecionado está vazio ou não foi cadastrado. A API informa
+  aulas criadas e puladas; conflitos existentes não são substituídos.
+- A API atual não aceita seleção individual de aulas, motivo de desativação,
+  notificação automática ou substituição de conflitos. Esses controles do
+  protótipo não são apresentados como operações disponíveis.
+- Os escopos mensais podem incluir datas anteriores à origem. A opção legada
+  `proxima_semana` de desativação atinge o mês da data de origem mais sete dias,
+  não apenas uma ocorrência; o modal explicita isso.
+- Dias não cadastrados não são criados implicitamente. Erros permanecem
+  visíveis, a troca de data descarta respostas antigas e gravações bloqueiam
+  reenvio/fechamento. Campos opcionais nulos mantêm o contrato da API:
+  fechamento segue a tolerância de atraso e cancelamento vai até o início.
+
+Testes dos adaptadores e payloads: `node --test scripts/aulas.test.mjs`,
+executado a partir da pasta do painel.
+
 ## Componentes de matrícula no painel
 
 As telas usam `MatriculasLista`, `NovaMatricula` e `BaixaModal` do

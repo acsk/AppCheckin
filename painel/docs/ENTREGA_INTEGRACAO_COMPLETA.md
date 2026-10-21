@@ -358,8 +358,6 @@ cancelar(id)
 buscarPagamentos(id)
 confirmarPagamento(matriculaId, pagamentoId, dados)
 atualizarProximaDataVencimento(matriculaId, data)
-listarVencimentosHoje()
-listarProximosVencimentos(dias)
 ```
 
 ### assinaturaService (JavaScript)

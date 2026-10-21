@@ -18,7 +18,7 @@ class TenantRepository
             ->where('ativo', 1)
             ->where('id', '<>', 1)
             ->orderBy('nome')
-            ->get(['id', 'nome', 'slug', 'email', 'telefone'])
+            ->get(['id', 'nome', 'slug', 'email', 'telefone', 'cidade', 'estado'])
             ->map(fn ($row) => (array) $row)
             ->all();
     }

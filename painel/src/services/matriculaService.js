@@ -159,26 +159,6 @@ export const matriculaService = {
     }
   },
 
-  async listarVencimentosHoje() {
-    try {
-      const response = await api.get('/admin/matriculas/vencimentos/hoje');
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao listar vencimentos de hoje:', error);
-      throw prepararErro(error.response?.data || error);
-    }
-  },
-
-  async listarProximosVencimentos(dias = 7) {
-    try {
-      const response = await api.get(`/admin/matriculas/vencimentos/proximos?dias=${dias}`);
-      return response.data;
-    } catch (error) {
-      console.error('Erro ao listar próximos vencimentos:', error);
-      throw prepararErro(error.response?.data || error);
-    }
-  },
-
   /**
    * Criar assinatura para matrícula existente
    * @param {number} matriculaId - ID da matrícula

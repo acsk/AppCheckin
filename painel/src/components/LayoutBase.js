@@ -42,7 +42,6 @@ const SECTIONS = [
           { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3] },
           { id: 'conciliacao-bancaria', label: 'Conciliação bancária', path: '/financeiro/conciliacao', roles: [3] },
           { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3] },
-          { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3] },
           { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3] },
         ],
       },
@@ -54,14 +53,6 @@ const SECTIONS = [
           { id: 'wods', label: 'WOD', path: '/wods', roles: [3] },
           { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3] },
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3] },
-        ],
-      },
-      {
-        id: 'mercadopago',
-        label: 'Mercado Pago',
-        icon: 'credit-card',
-        children: [
-          { id: 'pagamentos-mp', label: 'Pagamentos', path: '/pagamentos-mp', roles: [3] },
         ],
       },
     ],

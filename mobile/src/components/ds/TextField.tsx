@@ -18,12 +18,14 @@ type Props = TextInputProps & {
   hint?: string | null;
   /** Mostra o botão de olho e controla secureTextEntry sozinho. */
   password?: boolean;
+  /** Conteúdo à direita, dentro da borda (ex.: spinner ou ✓ da busca do CEP). */
+  trailing?: React.ReactNode;
 };
 
 // Campo do design system: borda line-strong; em foco, borda ink de 2px
 // (sem o contorno azul do navegador); com erro, borda e mensagem em danger.
 const TextField = forwardRef<TextInput, Props>(function TextField(
-  { label, icon, error, hint, password, style, onFocus, onBlur, ...rest },
+  { label, icon, error, hint, password, trailing, style, onFocus, onBlur, ...rest },
   ref,
 ) {
   const [focused, setFocused] = useState(false);
@@ -68,7 +70,9 @@ const TextField = forwardRef<TextInput, Props>(function TextField(
           >
             <Feather name={visible ? "eye-off" : "eye"} size={20} color={ds.inkMuted} />
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          trailing || null
+        )}
       </View>
       {error ? (
         <View style={styles.msg} accessibilityLiveRegion="polite">
