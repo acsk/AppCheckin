@@ -164,7 +164,7 @@ export default function RecordesScreen() {
             note={heroi.posicao ? `${heroi.posicao}º na escola` : null}
             history={heroi.historico}
             lowerIsBetter={provaHeroi.def.direcao === "menor_melhor"}
-            onPress={() => router.push({ pathname: "./recorde-prova", params: { id: provaHeroi.def.id } })}
+            onPress={() => router.push({ pathname: "/recorde-prova", params: { id: provaHeroi.def.id } })}
           />
         ) : null}
         {opcoesEstilo.length ? <ChipFilter label="Estilo" options={opcoesEstilo} value={estilo} onChange={setEstilo} /> : null}
@@ -188,7 +188,7 @@ export default function RecordesScreen() {
                     badge={novo ? "Novo" : null}
                     empty={!tem}
                     emptyText={p.distancia ? undefined : `${p.estilo} · ainda sem marca`}
-                    onPress={() => router.push({ pathname: "./recorde-prova", params: { id: p.def.id } })}
+                    onPress={() => router.push({ pathname: "/recorde-prova", params: { id: p.def.id } })}
                   />
                 );
               })}
@@ -328,7 +328,7 @@ export default function RecordesScreen() {
       />
       {corpo()}
       {registrar ? <Modal visible title="Registrar marca" icon="award" description="Escolha a prova para registrar sua marca." onClose={() => setRegistrar(false)}
-        primary={{ label: "Continuar", onPress: () => { if (provaRegistrar) { setRegistrar(false); router.push({ pathname: "./recorde-prova", params: { id: provaRegistrar, registrar: "1" } }); } } }}>
+        primary={{ label: "Continuar", onPress: () => { if (provaRegistrar) { setRegistrar(false); router.push({ pathname: "/recorde-prova", params: { id: provaRegistrar, registrar: "1" } }); } } }}>
         <ChipFilter label="Prova" options={provas.map(p => ({ id: String(p.def.id), label: p.rotulo }))} value={provaRegistrar} onChange={setProvaRegistrar} />
       </Modal> : null}
     </SafeAreaView>

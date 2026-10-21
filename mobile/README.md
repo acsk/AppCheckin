@@ -69,6 +69,8 @@ Em **Recordes > Meus**, toque numa prova (ou no destaque) para abrir a evolucao,
 o grafico por data e o historico. O botao **+** permite escolher uma prova e
 registrar uma marca; provas sem marcas tambem podem receber o primeiro registro.
 O filtro de seis meses usa datas reais, e nao uma quantidade fixa de tentativas.
+Os links de detalhe usam a rota absoluta `/recorde-prova`, tanto na entrada
+raiz quanto em `/(tabs)/recordes`; a tela de detalhe nao pertence ao grupo de abas.
 
 O formulario usa as metricas cadastradas pela academia: tempo em minutos,
 segundos e centesimos, inteiros ou decimais com ate tres casas. Ao editar apenas

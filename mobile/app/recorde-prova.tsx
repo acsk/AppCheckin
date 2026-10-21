@@ -57,7 +57,7 @@ export default function RecordeProvaScreen() {
   const back = () => {
     if (mutation.current) return;
     if (router.canGoBack()) router.back();
-    else router.replace("./recordes");
+    else router.replace("/recordes");
   };
   const save = async (payload: MarcaPayload) => {
     if (mutation.current) return;
