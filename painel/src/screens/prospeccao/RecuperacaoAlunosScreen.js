@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout, Icon, IconButton, PageHeader, SelectField, TextField } from '../../components/ck';
-import { AgendarModal, RecuperacaoTabela, useFluxoContato } from '../../components/ck/prospeccao';
+import { AgendarModal, DiagnosticoProspeccao, IniciarProspeccaoModal, RecuperacaoTabela, useFluxoContato } from '../../components/ck/prospeccao';
 import prospeccaoService from '../../services/prospeccaoService';
 import { erroApi, paraApiDataHora } from '../../utils/prospeccao';
 import { showError, showSuccess } from '../../utils/toast';
@@ -45,6 +45,9 @@ export default function RecuperacaoAlunosScreen() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [agendar, setAgendar] = useState(null);
+  const [iniciar, setIniciar] = useState(false);
+  const [diagnostico, setDiagnostico] = useState(null);
+  const [sincronizando, setSincronizando] = useState(false);
   const req = useRef(0);
 
   const carregar = useCallback(async () => {
@@ -52,7 +55,11 @@ export default function RecuperacaoAlunosScreen() {
     setCarregando(true); setErro('');
     try {
       const data = await prospeccaoService.listar(paramsDe(filtros, pagina, ordem, direcao));
-      if (id === req.current) setDados(data);
+      if (id === req.current) {
+        setDados(data);
+        // Lista vazia: explica por que (quantos cancelados, quem ficou de fora e o motivo)
+        if (!data.oportunidades.length) prospeccaoService.diagnostico().then((r) => setDiagnostico(r.diagnostico)).catch(() => setDiagnostico(null));
+      }
     } catch (e) {
       if (id === req.current) setErro(erroApi(e, 'Não foi possível carregar a lista.'));
     } finally {
@@ -85,6 +92,15 @@ export default function RecuperacaoAlunosScreen() {
     await prospeccaoService.agendar({ ...f, oportunidade_id: agendar.id, agendado_para: paraApiDataHora(f.agendado_para) });
     setAgendar(null); showSuccess('Retorno agendado'); carregar();
   };
+  const sincronizar = async () => {
+    setSincronizando(true);
+    try {
+      const r = await prospeccaoService.sincronizar(!!ctx?.admin);
+      setDiagnostico(r.diagnostico);
+      showSuccess(r.executada ? `Lista atualizada${r.criadas ? `: ${r.criadas} novo${r.criadas > 1 ? 's' : ''} aluno${r.criadas > 1 ? 's' : ''}` : ''}` : r.message);
+      carregar();
+    } catch (e) { showError(erroApi(e, 'Não foi possível sincronizar.')); } finally { setSincronizando(false); }
+  };
   const { total, paginas } = dados.paginacao;
   const de = total ? (pagina - 1) * 20 + 1 : 0, ate = Math.min(total, (pagina - 1) * 20 + dados.oportunidades.length);
   const filtrosAtivos = ['modalidade_id', 'plano_id', 'inatividade', 'responsavel', 'cancelamento_de', 'cancelamento_ate', 'potencial'].filter((k) => filtros[k]).length + (filtros.sem_contato ? 1 : 0) + (filtros.com_retorno ? 1 : 0);
@@ -93,7 +109,10 @@ export default function RecuperacaoAlunosScreen() {
   return <LayoutBase title="Recuperação de Alunos" pageHeader={false}>
     <div className="ck-ml ck-pr">
       <PageHeader title="Recuperação de Alunos" description="Alunos que cancelaram a matrícula e ainda não voltaram. Uma linha por aluno, a partir do cancelamento mais recente."
-        actions={<Button icon="calendar" onClick={() => router.push('/prospeccao/contatos')}>Contatos pendentes</Button>} />
+        actions={<>
+          <Button icon="calendar" onClick={() => router.push('/prospeccao/contatos')}>Contatos pendentes</Button>
+          <Button variant="primary" icon="user-plus" onClick={() => setIniciar(true)}>Iniciar prospecção</Button>
+        </>} />
       {erroCtx ? <Callout tone="danger">{erroCtx}</Callout> : null}
       <section className="ck-card ck-ml__panel" aria-label="Alunos para recuperar">
         <div className="ck-ml__toolbar">
@@ -133,7 +152,8 @@ export default function RecuperacaoAlunosScreen() {
         {!carregando && !erro && !dados.oportunidades.length ? <div className="ck-ml__empty">
           <span className="ck-mt-empty__icon" aria-hidden><Icon name={filtros.busca ? 'search' : 'users'} size={20} /></span>
           <strong>{filtros.busca ? `Ninguém encontrado para "${filtros.busca}"` : 'Nenhum aluno neste filtro'}</strong>
-          <p>{filtros.status === 'abertas' && !filtrosAtivos && !filtros.busca ? 'Quando uma matrícula for cancelada, o aluno aparece aqui para a equipe abordar.' : 'Mude o filtro ou a busca.'}</p>
+          <p>{filtros.status === 'abertas' && !filtrosAtivos && !filtros.busca ? 'Alunos com matrícula cancelada entram aqui automaticamente. Você também pode escolher um aluno e iniciar a prospecção.' : 'Mude o filtro ou a busca.'}</p>
+          <DiagnosticoProspeccao diagnostico={diagnostico} admin={ctx?.admin} sincronizando={sincronizando} onSincronizar={sincronizar} onIniciar={() => setIniciar(true)} />
         </div> : null}
         {dados.oportunidades.length ? <div aria-busy={carregando} className={carregando ? 'ck-pr-loading' : undefined}>
           <RecuperacaoTabela rows={dados.oportunidades} ordem={ordem} direcao={direcao} onOrdenar={ordenar}
@@ -152,6 +172,8 @@ export default function RecuperacaoAlunosScreen() {
       </section>
     </div>
     {fluxo.modais}
+    <IniciarProspeccaoModal open={iniciar} buscar={prospeccaoService.alunosCancelados} iniciar={prospeccaoService.iniciar}
+      onClose={() => setIniciar(false)} onAbrir={(id) => { setIniciar(false); router.push(`/prospeccao/recuperacao/${id}`); }} />
     <AgendarModal open={!!agendar} ctx={ctx} alvoNome={agendar?.aluno_nome} onClose={() => setAgendar(null)} onSalvar={salvarAgendamento} />
   </LayoutBase>;
 }

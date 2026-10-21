@@ -140,6 +140,107 @@ class ProspeccaoSincronizacaoService
         return compact('criadas', 'atualizadas', 'recuperadas', 'scores');
     }
 
+    /**
+     * Por que cada aluno com matrícula cancelada está (ou não) na prospecção. Conta alunos, exceto
+     * `sem_aluno` (matrículas canceladas sem aluno vinculado, comuns em registros antigos).
+     *
+     * @return array<string, int|string>
+     */
+    public function diagnostico(int $tenantId): array
+    {
+        $dataMinima = AcademyDateTime::todayStart()->modify('-'.self::JANELA_MESES.' months')->format('Y-m-d');
+        $porAluno = [];
+        $semAluno = 0;
+        $total = 0;
+        foreach ($this->repo->matriculasCanceladasParaDiagnostico($tenantId) as $m) {
+            $total++;
+            if (! $m->aluno_id) {
+                $semAluno++;
+
+                continue;
+            }
+            $a = &$porAluno[(int) $m->aluno_id];
+            $a ??= ['em_andamento' => (bool) $m->em_andamento, 'vinculo' => (bool) $m->vinculo_aluno, 'validas' => 0, 'na_janela' => 0];
+            if (! $m->diaria) {
+                $a['validas']++;
+                if ($m->data_efetiva >= $dataMinima) {
+                    $a['na_janela']++;
+                }
+            }
+            unset($a);
+        }
+
+        $motivos = ['em_andamento' => 0, 'somente_diarias' => 0, 'fora_da_janela' => 0, 'sem_vinculo_aluno' => 0, 'elegiveis' => 0];
+        foreach ($porAluno as $a) {
+            $motivo = match (true) {
+                $a['em_andamento'] => 'em_andamento',
+                $a['validas'] === 0 => 'somente_diarias',
+                $a['na_janela'] === 0 => 'fora_da_janela',
+                ! $a['vinculo'] => 'sem_vinculo_aluno',
+                default => 'elegiveis',
+            };
+            $motivos[$motivo]++;
+        }
+
+        return [
+            'matriculas_canceladas' => $total,
+            'matriculas_sem_aluno' => $semAluno,
+            'alunos_com_cancelamento' => count($porAluno),
+        ] + $motivos + [
+            'oportunidades_abertas' => $this->repo->contarOportunidades($tenantId, true),
+            'oportunidades_total' => $this->repo->contarOportunidades($tenantId, false),
+            'janela_meses' => self::JANELA_MESES,
+        ];
+    }
+
+    /**
+     * Inicia a prospecção de um aluno escolhido pela equipe (inclusive fora da janela automática ou sem
+     * vínculo ativo). Continua valendo: precisa de matrícula cancelada no tenant, nenhuma em andamento e
+     * nenhuma oportunidade aberta.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function iniciarManual(int $tenantId, int $alunoId, int $usuarioId): array
+    {
+        $ref = $alunoId > 0 ? $this->repo->ultimaCanceladaDoAluno($tenantId, $alunoId) : null;
+        if (! $ref) {
+            return ['status' => 404, 'body' => ['error' => 'Este aluno não tem matrícula cancelada nesta academia']];
+        }
+        if ($this->repo->alunoTemMatriculaEmAndamento($tenantId, $alunoId)) {
+            return ['status' => 409, 'body' => ['error' => 'O aluno tem matrícula em andamento (ativa, pendente, vencida ou bloqueada); não há o que recuperar']];
+        }
+        if ($this->repo->existeOportunidadeAbertaDoAluno($tenantId, $alunoId, 0)) {
+            return ['status' => 409, 'body' => ['error' => 'O aluno já está em prospecção']];
+        }
+        $existente = $this->repo->oportunidadePorReferencia($tenantId, (int) $ref->id);
+        if ($existente) {
+            return ['status' => 409, 'body' => ['error' => 'Este cancelamento já foi prospectado. Abra a ficha para reabrir a oportunidade.', 'oportunidade_id' => (int) $existente->id]];
+        }
+
+        $agora = AcademyDateTime::nowFormatted();
+        $restrito = (bool) $this->repo->restricaoAtiva($tenantId, $alunoId);
+        $status = $restrito ? ProspeccaoStatus::NAO_CONTATAR : ProspeccaoStatus::NAO_CONTATADO;
+        $id = DB::transaction(function () use ($tenantId, $alunoId, $ref, $status, $restrito, $agora, $usuarioId) {
+            $id = $this->repo->inserirOportunidade([
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId,
+                'matricula_referencia_id' => (int) $ref->id,
+                'data_cancelamento_referencia' => substr((string) ($ref->data_cancelamento ?? $ref->data_atualizacao), 0, 10),
+                'data_cancelamento_estimada' => $ref->data_cancelamento === null,
+                'status' => $status,
+                'responsavel_id' => $usuarioId,
+                'encerrada_em' => $restrito ? $agora : null,
+            ]);
+            $this->repo->registrarHistorico($tenantId, $id, null, $status, $usuarioId, 'Prospecção iniciada manualmente (matrícula cancelada #'.$ref->id.')');
+
+            return $id;
+        });
+        $this->score->recalcular($tenantId, [$id]);
+        Log::info('prospeccao.iniciar_manual', ['tenant_id' => $tenantId, 'oportunidade_id' => $id, 'usuario_id' => $usuarioId]);
+
+        return ['status' => 201, 'body' => ['oportunidade_id' => $id, 'nao_contatar' => $restrito]];
+    }
+
     private function registrarRecuperacoes(int $tenantId, string $agora): int
     {
         $total = 0;

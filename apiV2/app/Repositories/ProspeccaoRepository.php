@@ -76,6 +76,95 @@ class ProspeccaoRepository
             ->all();
     }
 
+    /**
+     * Todas as matrículas canceladas do tenant, com o que decide a elegibilidade (para diagnóstico).
+     *
+     * @return list<object{id: int, aluno_id: ?int, diaria: int, data_efetiva: ?string, vinculo_aluno: int, em_andamento: int}>
+     */
+    public function matriculasCanceladasParaDiagnostico(int $tenantId): array
+    {
+        return DB::table('matriculas as m')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->where('m.tenant_id', $tenantId)
+            ->where('sm.codigo', 'cancelada')
+            ->select([
+                'm.id', 'm.aluno_id',
+                DB::raw("CASE WHEN m.tipo_cobranca = 'avulso' AND p.duracao_dias = 1 THEN 1 ELSE 0 END as diaria"),
+                DB::raw('COALESCE(m.data_cancelamento, DATE(m.updated_at)) as data_efetiva'),
+                DB::raw('CASE WHEN EXISTS (SELECT 1 FROM tenant_usuario_papel tup WHERE tup.usuario_id = a.usuario_id AND tup.tenant_id = m.tenant_id AND tup.papel_id = '.Papel::ALUNO.') THEN 1 ELSE 0 END as vinculo_aluno'),
+                DB::raw("CASE WHEN EXISTS (SELECT 1 FROM matriculas m2 JOIN status_matricula s2 ON s2.id = m2.status_id WHERE m2.tenant_id = m.tenant_id AND m2.aluno_id = m.aluno_id AND s2.codigo IN ('".implode("','", self::STATUS_MATRICULA_EM_ANDAMENTO)."')) THEN 1 ELSE 0 END as em_andamento"),
+            ])
+            ->get()
+            ->all();
+    }
+
+    public function contarOportunidades(int $tenantId, bool $abertas): int
+    {
+        $q = DB::table('prospeccao_oportunidades')->where('tenant_id', $tenantId);
+        if ($abertas) {
+            $q->whereNull('encerrada_em');
+        }
+
+        return $q->count();
+    }
+
+    /**
+     * Alunos com ao menos uma matrícula cancelada no tenant (para iniciar prospecção manualmente),
+     * com a cancelada mais recente e o que impede/ já existe.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function alunosComCancelamento(int $tenantId, ?string $buscaNome, ?string $buscaDigitos, int $limite): array
+    {
+        $dataEfetiva = 'COALESCE(m.data_cancelamento, DATE(m.updated_at))';
+        $ultima = DB::table('matriculas as mx')
+            ->join('status_matricula as sx', 'sx.id', '=', 'mx.status_id')
+            ->where('mx.tenant_id', $tenantId)->where('sx.codigo', 'cancelada')->whereNotNull('mx.aluno_id')
+            ->groupBy('mx.aluno_id')
+            ->select(['mx.aluno_id', DB::raw('MAX(mx.id) as matricula_id')]);
+
+        $q = DB::table('alunos as a')
+            ->joinSub($ultima, 'u', 'u.aluno_id', '=', 'a.id')
+            ->join('matriculas as m', 'm.id', '=', 'u.matricula_id')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
+            ->leftJoin('prospeccao_oportunidades as o', function ($j) use ($tenantId) {
+                $j->on('o.aluno_id', '=', 'a.id')->where('o.tenant_id', $tenantId)->whereNull('o.encerrada_em');
+            });
+        if ($buscaDigitos) {
+            $q->where(fn ($w) => $w->where('a.telefone', 'like', '%'.$buscaDigitos.'%')->orWhere('a.whatsapp', 'like', '%'.$buscaDigitos.'%'));
+        } elseif ($buscaNome) {
+            $q->where('a.nome', 'like', '%'.$buscaNome.'%');
+        }
+
+        return $q->orderByRaw($dataEfetiva.' DESC')->limit($limite)
+            ->select([
+                'a.id as aluno_id', 'a.nome', 'a.telefone', 'a.whatsapp', 'a.foto_caminho',
+                'm.id as matricula_id', DB::raw($dataEfetiva.' as data_cancelamento'), 'p.nome as plano_nome', 'md.nome as modalidade_nome',
+                'o.id as oportunidade_aberta_id',
+                DB::raw("CASE WHEN EXISTS (SELECT 1 FROM matriculas m2 JOIN status_matricula s2 ON s2.id = m2.status_id WHERE m2.tenant_id = m.tenant_id AND m2.aluno_id = a.id AND s2.codigo IN ('".implode("','", self::STATUS_MATRICULA_EM_ANDAMENTO)."')) THEN 1 ELSE 0 END as em_andamento"),
+            ])
+            ->get()->map(fn ($r) => (array) $r)->all();
+    }
+
+    /** Matrícula cancelada mais recente do aluno no tenant (ou null). */
+    public function ultimaCanceladaDoAluno(int $tenantId, int $alunoId): ?object
+    {
+        return DB::table('matriculas as m')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $alunoId)->where('sm.codigo', 'cancelada')
+            ->orderByRaw('COALESCE(m.data_cancelamento, DATE(m.updated_at)) DESC')->orderByDesc('m.id')
+            ->select(['m.id', 'm.data_cancelamento', DB::raw('DATE(m.updated_at) as data_atualizacao')])
+            ->first();
+    }
+
+    public function oportunidadePorReferencia(int $tenantId, int $matriculaId): ?object
+    {
+        return DB::table('prospeccao_oportunidades')->where('tenant_id', $tenantId)->where('matricula_referencia_id', $matriculaId)->first();
+    }
+
     private function matriculaEmAndamento(Builder $q, string $colTenant, string $colAluno): void
     {
         $q->select(DB::raw(1))

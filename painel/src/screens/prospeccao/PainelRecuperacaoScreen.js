@@ -4,7 +4,10 @@ import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout, PageHeader, SelectField, TextField } from '../../components/ck';
 import { Panel, StatTile, titleCase } from '../../components/ck/pessoas';
 import { ChartBarList, ColumnChart } from '../../components/ck/graficos';
+import { DiagnosticoProspeccao, IniciarProspeccaoModal } from '../../components/ck/prospeccao';
 import prospeccaoService from '../../services/prospeccaoService';
+import { showError, showSuccess } from '../../utils/toast';
+import { useProspeccaoContexto } from './useProspeccao';
 import { erroApi, mesCurto, moeda, numero } from '../../utils/prospeccao';
 
 const DEFINICOES = [
@@ -30,6 +33,10 @@ export default function PainelRecuperacaoScreen() {
   const [d, setD] = useState(null);
   const [rel, setRel] = useState(null);
   const [erro, setErro] = useState('');
+  const [diagnostico, setDiagnostico] = useState(null);
+  const [iniciar, setIniciar] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const { ctx } = useProspeccaoContexto();
 
   const carregar = useCallback(async () => {
     setErro('');
@@ -37,6 +44,7 @@ export default function PainelRecuperacaoScreen() {
     try {
       const [dash, relatorio] = await Promise.all([prospeccaoService.dashboard(params), prospeccaoService.relatorio(params)]);
       setD(dash); setRel(relatorio);
+      if (!dash.indicadores.cancelados) prospeccaoService.diagnostico().then((r) => setDiagnostico(r.diagnostico)).catch(() => {});
     } catch (e) { setErro(erroApi(e, 'Não foi possível carregar os indicadores.')); }
   }, [filtro.de, filtro.ate, filtro.modalidade_id]);
   useEffect(() => { carregar(); }, [carregar]);
@@ -62,6 +70,14 @@ export default function PainelRecuperacaoScreen() {
         action={<Button size="sm" onClick={() => router.push('/prospeccao/contatos')}>Ver agenda</Button>}>Alunos esperando o contato combinado.</Callout> : null}
       {!d && !erro ? <p role="status" className="ck-enrollment-state">Carregando indicadores…</p> : null}
 
+      {k && !k.cancelados ? <section className="ck-card" aria-label="Por que não há alunos no período">
+        <DiagnosticoProspeccao diagnostico={diagnostico} admin={ctx?.admin} sincronizando={sincronizando} onIniciar={() => setIniciar(true)}
+          onSincronizar={async () => {
+            setSincronizando(true);
+            try { const r = await prospeccaoService.sincronizar(!!ctx?.admin); setDiagnostico(r.diagnostico); showSuccess(r.message); carregar(); }
+            catch (e) { showError(erroApi(e, 'Não foi possível sincronizar.')); } finally { setSincronizando(false); }
+          }} />
+      </section> : null}
       {k ? <>
         <div className="ck-db__kpis">
           <StatTile label="Alunos que cancelaram" icon="users" value={numero(k.cancelados)} note={`${numero(k.elegiveis)} elegíveis para contato`} />
@@ -111,5 +127,7 @@ export default function PainelRecuperacaoScreen() {
         </details>
       </> : null}
     </div>
+    <IniciarProspeccaoModal open={iniciar} buscar={prospeccaoService.alunosCancelados} iniciar={prospeccaoService.iniciar}
+      onClose={() => setIniciar(false)} onAbrir={(id) => { setIniciar(false); router.push(`/prospeccao/recuperacao/${id}`); }} />
   </LayoutBase>;
 }

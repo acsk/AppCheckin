@@ -277,3 +277,77 @@ export function useFluxoContato({ ctx, registrar, depois }) {
     registrarDepoisDoWhatsapp: (alvo) => setRegistro({ id: alvo.id, transicoes: alvo.transicoes, inicial: { canal: 'whatsapp' } }),
   };
 }
+
+/**
+ * Escolher um aluno com matrícula cancelada e iniciar a prospecção dele.
+ * Mostra quem já está em prospecção (abre a ficha) e quem não pode (matrícula em andamento).
+ */
+export function IniciarProspeccaoModal({ open, buscar, iniciar, onClose, onAbrir }) {
+  const [termo, setTermo] = useState('');
+  const [alunos, setAlunos] = useState(null);
+  const [erro, setErro] = useState('');
+  const [iniciando, setIniciando] = useState(null);
+  useEffect(() => { if (open) { setTermo(''); setErro(''); } }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    let vivo = true;
+    const t = setTimeout(() => {
+      buscar(termo.trim()).then((r) => { if (vivo) setAlunos(r.alunos || []); }).catch((e) => { if (vivo) setErro(e?.error || 'Não foi possível buscar os alunos'); });
+    }, 300);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [termo, open]);
+  const comecar = async (a) => {
+    setIniciando(a.aluno_id); setErro('');
+    try { const r = await iniciar(a.aluno_id); onAbrir(r.oportunidade_id); }
+    catch (e) { if (e?.oportunidade_id) onAbrir(e.oportunidade_id); else setErro(e?.error || 'Não foi possível iniciar a prospecção'); }
+    finally { setIniciando(null); }
+  };
+  return <Modal open={open} onClose={onClose} title="Iniciar prospecção" size="md"
+    description="Alunos com matrícula cancelada nesta academia. Escolha quem a equipe vai abordar.">
+    <div className="ck-pr-form">
+      <div className="ck-control">
+        <Icon name="search" size={18} className="ck-control__icon" />
+        <input type="search" className="ck-control__input" value={termo} placeholder="Buscar por nome ou telefone" aria-label="Buscar aluno" onChange={(e) => setTermo(e.target.value)} />
+      </div>
+      {erro ? <Callout tone="danger">{erro}</Callout> : null}
+      {alunos === null ? <p className="ck-pr-hint">Carregando…</p> : null}
+      {alunos && !alunos.length ? <p className="ck-pr-hint">{termo ? 'Nenhum aluno com matrícula cancelada encontrado.' : 'Esta academia não tem matrículas canceladas.'}</p> : null}
+      {alunos?.length ? <ul className="ck-pr-list ck-pr-escolha">{alunos.map((a) => <li key={a.aluno_id}>
+        <AlunoFoto nome={a.nome} foto={a.foto_caminho} />
+        <span className="ck-pr-list__main">
+          <strong>{titleCase(a.nome)}</strong>
+          <small>{a.modalidade_nome ? `${a.modalidade_nome} · ` : ''}{a.plano_nome} · cancelou em {dataBR(a.data_cancelamento)}</small>
+        </span>
+        {a.oportunidade_aberta_id
+          ? <Button size="sm" onClick={() => onAbrir(a.oportunidade_aberta_id)}>Abrir ficha</Button>
+          : Number(a.em_andamento)
+            ? <Badge tone="outline" title="Já tem outra matrícula ativa, pendente, vencida ou bloqueada">Matrícula em andamento</Badge>
+            : <Button size="sm" variant="primary" loading={iniciando === a.aluno_id} onClick={() => comecar(a)}>Iniciar</Button>}
+      </li>)}</ul> : null}
+    </div>
+  </Modal>;
+}
+
+const MOTIVOS_DIAGNOSTICO = [
+  ['em_andamento', 'já têm outra matrícula em andamento (voltaram ou trocaram de plano)'],
+  ['somente_diarias', 'só cancelaram diárias avulsas'],
+  ['fora_da_janela', null],
+  ['sem_vinculo_aluno', 'não estão vinculados como aluno nesta academia'],
+];
+
+/** Explica por que alunos com matrícula cancelada estão ou não na lista. */
+export function DiagnosticoProspeccao({ diagnostico: d, admin, sincronizando, onSincronizar, onIniciar }) {
+  if (!d) return null;
+  const excluidos = MOTIVOS_DIAGNOSTICO.filter(([k]) => d[k] > 0);
+  return <div className="ck-pr-diag">
+    <p><strong>{d.matriculas_canceladas}</strong> matrícula{d.matriculas_canceladas === 1 ? '' : 's'} cancelada{d.matriculas_canceladas === 1 ? '' : 's'} nesta academia, de <strong>{d.alunos_com_cancelamento}</strong> aluno{d.alunos_com_cancelamento === 1 ? '' : 's'}. <strong>{d.elegiveis}</strong> entra{d.elegiveis === 1 ? '' : 'm'} na prospecção automaticamente; {d.oportunidades_abertas} em prospecção agora.</p>
+    {excluidos.length || d.matriculas_sem_aluno ? <ul>
+      {excluidos.map(([k, txt]) => <li key={k}><strong>{d[k]}</strong> {k === 'fora_da_janela' ? `cancelaram há mais de ${d.janela_meses} meses` : txt}</li>)}
+      {d.matriculas_sem_aluno ? <li><strong>{d.matriculas_sem_aluno}</strong> matrícula{d.matriculas_sem_aluno === 1 ? '' : 's'} sem aluno vinculado (registro antigo)</li> : null}
+    </ul> : null}
+    <div className="ck-pr-row ck-pr-row--start">
+      <Button size="sm" variant="primary" icon="user-plus" onClick={onIniciar}>Escolher aluno</Button>
+      <Button size="sm" icon="refresh-cw" loading={sincronizando} onClick={onSincronizar}>{admin ? 'Sincronizar agora' : 'Atualizar lista'}</Button>
+    </div>
+  </div>;
+}

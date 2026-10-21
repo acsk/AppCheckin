@@ -334,6 +334,60 @@ class ProspeccaoRecuperacaoTest extends TestCase
         $this->assertFalse($servico->usuarioPodeGerenciarTurma($comercial, $this->t1, 999, ['id' => Papel::COMERCIAL]));
     }
 
+    // ------------------------------------------------------------ diagnóstico e início manual
+
+    public function test_diagnostico_explica_quem_ficou_de_fora(): void
+    {
+        $this->matricula($this->t1, $this->aluno($this->t1, 'ELEGIVEL'), $this->plano, 'cancelada', $this->dia(-5));
+        $voltou = $this->aluno($this->t1, 'VOLTOU');
+        $this->matricula($this->t1, $voltou, $this->plano, 'cancelada', $this->dia(-5));
+        $this->matricula($this->t1, $voltou, $this->plano, 'ativa');
+        $this->matricula($this->t1, $this->aluno($this->t1, 'ANTIGO'), $this->plano, 'cancelada', $this->dia(-900));
+        $semVinculo = (int) DB::table('alunos')->insertGetId(['usuario_id' => $this->usuario($this->t1, Papel::PROFESSOR), 'nome' => 'SEM VINCULO']);
+        $this->matricula($this->t1, $semVinculo, $this->plano, 'cancelada', $this->dia(-5));
+        DB::table('matriculas')->insert(['tenant_id' => $this->t1, 'aluno_id' => null, 'plano_id' => $this->plano, 'data_matricula' => $this->dia(-9), 'data_inicio' => $this->dia(-9), 'data_vencimento' => $this->dia(-9), 'status_id' => 3]);
+
+        $d = $this->getJson('/v2/admin/prospeccao/diagnostico', $this->auth($this->admin, $this->t1))->assertOk()->json('diagnostico');
+
+        $this->assertSame(5, $d['matriculas_canceladas']);
+        $this->assertSame(1, $d['matriculas_sem_aluno']);
+        $this->assertSame(4, $d['alunos_com_cancelamento']);
+        $this->assertSame(1, $d['elegiveis']);
+        $this->assertSame(1, $d['em_andamento']);
+        $this->assertSame(1, $d['fora_da_janela']);
+        $this->assertSame(1, $d['sem_vinculo_aluno']);
+    }
+
+    public function test_iniciar_prospeccao_manual_de_aluno_fora_da_janela(): void
+    {
+        $antigo = $this->aluno($this->t1, 'ANTIGO');
+        $m = $this->matricula($this->t1, $antigo, $this->plano, 'cancelada', $this->dia(-900));
+        $h = $this->auth($this->admin, $this->t1);
+
+        $this->getJson('/v2/admin/prospeccao/alunos-cancelados?busca=anti', $h)->assertOk()->assertJsonPath('alunos.0.aluno_id', $antigo);
+        $id = $this->postJson('/v2/admin/prospeccao/oportunidades', ['aluno_id' => $antigo], $h)->assertCreated()->json('oportunidade_id');
+
+        $op = DB::table('prospeccao_oportunidades')->where('id', $id)->first();
+        $this->assertSame($m, (int) $op->matricula_referencia_id);
+        $this->assertSame($this->admin, (int) $op->responsavel_id);
+        $this->postJson('/v2/admin/prospeccao/oportunidades', ['aluno_id' => $antigo], $h)->assertStatus(409);
+    }
+
+    public function test_iniciar_manual_respeita_regras_e_tenant(): void
+    {
+        $ativo = $this->aluno($this->t1, 'ATIVO');
+        $this->matricula($this->t1, $ativo, $this->plano, 'cancelada', $this->dia(-5));
+        $this->matricula($this->t1, $ativo, $this->plano, 'ativa');
+        $t2 = $this->tenant('Outra');
+        $outro = $this->aluno($t2, 'DE OUTRA ACADEMIA');
+        $this->matricula($t2, $outro, $this->plano($t2), 'cancelada', $this->dia(-5));
+        $h = $this->auth($this->admin, $this->t1);
+
+        $this->postJson('/v2/admin/prospeccao/oportunidades', ['aluno_id' => $ativo], $h)->assertStatus(409);
+        $this->postJson('/v2/admin/prospeccao/oportunidades', ['aluno_id' => $outro], $h)->assertNotFound();
+        $this->getJson('/v2/admin/prospeccao/alunos-cancelados', $h)->assertJsonCount(1, 'alunos')->assertJsonPath('alunos.0.em_andamento', 1);
+    }
+
     // ------------------------------------------------------------ listagem
 
     public function test_listagem_pagina_filtra_e_ordena_no_backend(): void

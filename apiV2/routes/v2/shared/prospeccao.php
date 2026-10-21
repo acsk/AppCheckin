@@ -14,8 +14,11 @@ Route::prefix('admin/prospeccao')->middleware('prospeccao.auth')->group(function
     Route::get('/dashboard', [ProspeccaoController::class, 'dashboard']);
     Route::get('/relatorios/recuperacao', [ProspeccaoController::class, 'relatorio']);
     Route::post('/sincronizar', [ProspeccaoController::class, 'sincronizar']);
+    Route::get('/diagnostico', [ProspeccaoController::class, 'diagnostico']);
+    Route::get('/alunos-cancelados', [ProspeccaoController::class, 'alunosCancelados']);
 
     Route::get('/oportunidades', [ProspeccaoController::class, 'listar']);
+    Route::post('/oportunidades', [ProspeccaoController::class, 'iniciar']);
     Route::get('/oportunidades/{id}', [ProspeccaoController::class, 'detalhar'])->whereNumber('id');
     Route::patch('/oportunidades/{id}', [ProspeccaoController::class, 'atualizar'])->whereNumber('id');
     Route::patch('/oportunidades/{id}/status', [ProspeccaoController::class, 'alterarStatus'])->whereNumber('id');

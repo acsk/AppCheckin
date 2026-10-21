@@ -69,11 +69,41 @@ class ProspeccaoController extends Controller
         return $this->json($this->dashboard->relatorio($this->tenant($request), $request->query()));
     }
 
+    /** Admin pode forçar (?forcar=1); para os demais vale o intervalo mínimo entre execuções. */
     public function sincronizar(Request $request): JsonResponse
     {
-        $r = $this->sincronizacao->sincronizarSeNecessario($this->tenant($request), forcar: false);
+        $tenantId = $this->tenant($request);
+        $forcar = $this->ctx($request)['admin'] && filter_var($request->input('forcar', false), FILTER_VALIDATE_BOOLEAN);
+        $r = $this->sincronizacao->sincronizarSeNecessario($tenantId, $forcar);
 
-        return $this->json(['status' => 200, 'body' => $r + ['message' => $r['executada'] ? 'Oportunidades atualizadas' : 'Já sincronizado há poucos minutos']]);
+        return $this->json(['status' => 200, 'body' => $r + [
+            'message' => $r['executada'] ? 'Oportunidades atualizadas' : 'Já sincronizado há poucos minutos',
+            'diagnostico' => $this->sincronizacao->diagnostico($tenantId),
+        ]]);
+    }
+
+    public function diagnostico(Request $request): JsonResponse
+    {
+        return $this->json(['status' => 200, 'body' => ['diagnostico' => $this->sincronizacao->diagnostico($this->tenant($request))]]);
+    }
+
+    public function alunosCancelados(Request $request): JsonResponse
+    {
+        $busca = trim((string) $request->query('busca', ''));
+        $digitos = preg_replace('/\D/', '', $busca);
+        $porDigitos = $busca !== '' && ! preg_match('/\pL/u', $busca) && strlen($digitos) >= 3;
+
+        return $this->json(['status' => 200, 'body' => ['alunos' => $this->repo->alunosComCancelamento(
+            $this->tenant($request),
+            ! $porDigitos && $busca !== '' ? mb_strtoupper(mb_substr($busca, 0, 100), 'UTF-8') : null,
+            $porDigitos ? $digitos : null,
+            30,
+        )]]);
+    }
+
+    public function iniciar(Request $request): JsonResponse
+    {
+        return $this->json($this->sincronizacao->iniciarManual($this->tenant($request), (int) $request->input('aluno_id', 0), $this->ctx($request)['usuario_id']));
     }
 
     public function listar(Request $request): JsonResponse

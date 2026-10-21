@@ -16,7 +16,10 @@ const prospeccaoService = {
   contexto: () => call(api.get(`${BASE}/contexto`)),
   dashboard: (params = {}) => call(api.get(`${BASE}/dashboard`, { params })),
   relatorio: (params = {}) => call(api.get(`${BASE}/relatorios/recuperacao`, { params })),
-  sincronizar: () => call(api.post(`${BASE}/sincronizar`)),
+  sincronizar: (forcar = false) => call(api.post(`${BASE}/sincronizar`, { forcar })),
+  diagnostico: () => call(api.get(`${BASE}/diagnostico`)),
+  alunosCancelados: (busca = '') => call(api.get(`${BASE}/alunos-cancelados`, { params: busca ? { busca } : {} })),
+  iniciar: (alunoId) => call(api.post(`${BASE}/oportunidades`, { aluno_id: alunoId })),
 
   listar: (params = {}) => call(api.get(`${BASE}/oportunidades`, { params })),
   detalhar: (id) => call(api.get(`${BASE}/oportunidades/${id}`)),
