@@ -62,6 +62,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     'x': [P('M18 6 6 18'), P('m6 6 12 12')],
     'loader': [P('M21 12a9 9 0 1 1-6.22-8.56')],
     'power': [P('M12 2v10'), P('M18.4 6.6a9 9 0 1 1-12.77.04')],
+    'minus': [P('M5 12h14')],
     'plus': [P('M5 12h14'), P('M12 5v14')],
     'arrow-left': [P('m12 19-7-7 7-7'), P('M19 12H5')],
     'calendar': [R(3, 4, 18, 18, 2), P('M16 2v4'), P('M8 2v4'), P('M3 10h18')],
@@ -223,9 +224,10 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
   function TextField(p) {
     var auto = useId(), id = p.id || auto;
-    var rest = omit(p, ['label', 'hint', 'error', 'mono', 'icon', 'suffix', 'labelAside', 'className', 'id']);
+    var rest = omit(p, ['label', 'hint', 'error', 'mono', 'icon', 'suffix', 'labelAside', 'className', 'id', 'prefix']);
     var control = h('div', { className: cx('ck-control', p.error && 'is-invalid', p.readOnly && 'is-readonly') },
       p.icon ? h(Icon, { name: p.icon, size: 16, className: 'ck-control__icon' }) : null,
+      p.prefix ? h('span', { className: 'ck-control__prefix', 'aria-hidden': true }, p.prefix) : null,
       h('input', Object.assign({ id: id, className: cx('ck-control__input', p.mono && 'ck-control__input--mono'), 'aria-invalid': p.error ? true : undefined, 'aria-describedby': (p.hint || p.error) ? id + '-m' : undefined, spellCheck: p.mono ? false : undefined }, rest)),
       p.suffix ? h('div', { className: 'ck-control__actions' }, p.suffix) : null);
     return FieldShell(p, id, control);
@@ -601,7 +603,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     }, [p.open]);
     if (!p.open) return null;
     return h('div', { className: cx('ck-modal', p.inline && 'ck-modal--inline', p.sheet && 'ck-modal--sheet'), onMouseDown: function (e) { if (e.target === e.currentTarget && close.current) close.current(); } },
-      h('div', { className: cx('ck-modal__dialog', 'ck-modal__dialog--' + (p.size || 'md')), role: 'dialog', 'aria-modal': true, 'aria-labelledby': id, tabIndex: -1, ref: ref },
+      h('div', { className: cx('ck-modal__dialog', 'ck-modal__dialog--' + (p.size || 'md'), p.dialogClassName), role: 'dialog', 'aria-modal': true, 'aria-labelledby': id, tabIndex: -1, ref: ref },
         h('header', { className: 'ck-modal__head' },
           p.leading || null,
           h('div', { style: { flex: 1, minWidth: 0 } },

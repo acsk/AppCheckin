@@ -148,6 +148,19 @@ const pacoteService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  /**
+   * Dar baixa no pagamento do contrato: paga as parcelas pendentes e ativa as matrículas
+   */
+  async darBaixa(contratoId, dados) {
+    try {
+      const response = await api.post(`/admin/matriculas/pacote-contrato/${contratoId}/baixa`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao dar baixa no contrato:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default pacoteService;

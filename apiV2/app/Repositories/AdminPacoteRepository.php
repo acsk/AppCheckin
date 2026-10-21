@@ -17,8 +17,20 @@ class AdminPacoteRepository
     public function listarPacotes(int $tenantId): array
     {
         $rows = DB::select('
-            SELECT p.*
+            SELECT p.*,
+                pl.nome as plano_nome,
+                pl.valor as plano_valor,
+                mo.nome as modalidade_nome,
+                ci.meses as ciclo_meses,
+                ci.valor as ciclo_valor,
+                (
+                    SELECT COUNT(*) FROM pacote_contratos pc
+                    WHERE pc.pacote_id = p.id AND pc.status IN ("pendente", "ativo")
+                ) as contratos_abertos
             FROM pacotes p
+            LEFT JOIN planos pl ON pl.id = p.plano_id
+            LEFT JOIN modalidades mo ON mo.id = pl.modalidade_id
+            LEFT JOIN plano_ciclos ci ON ci.id = p.plano_ciclo_id
             WHERE p.tenant_id = ?
             ORDER BY p.created_at DESC
         ', [$tenantId]);
@@ -87,13 +99,21 @@ class AdminPacoteRepository
      */
     public function findPacoteAtivoComPlano(int $pacoteId, int $tenantId): ?array
     {
+        return $this->findPacoteComPlano($pacoteId, $tenantId, true);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function findPacoteComPlano(int $pacoteId, int $tenantId, bool $somenteAtivo): ?array
+    {
         $row = DB::selectOne('
             SELECT p.*, pl.duracao_dias, pl.valor as plano_valor,
                    pc.valor as ciclo_valor, pc.meses as ciclo_meses
             FROM pacotes p
             INNER JOIN planos pl ON pl.id = p.plano_id
             LEFT JOIN plano_ciclos pc ON pc.id = p.plano_ciclo_id AND pc.tenant_id = p.tenant_id
-            WHERE p.id = ? AND p.tenant_id = ? AND p.ativo = 1
+            WHERE p.id = ? AND p.tenant_id = ?'.($somenteAtivo ? ' AND p.ativo = 1' : '').'
             LIMIT 1
         ', [$pacoteId, $tenantId]);
 
@@ -307,7 +327,7 @@ class AdminPacoteRepository
     public function findContratoComLimite(int $contratoId, int $tenantId): ?array
     {
         $row = DB::selectOne('
-            SELECT pc.id, p.qtd_beneficiarios
+            SELECT pc.id, pc.status, pc.pacote_id, pc.pagante_usuario_id, p.qtd_beneficiarios
             FROM pacote_contratos pc
             INNER JOIN pacotes p ON p.id = pc.pacote_id
             WHERE pc.id = ? AND pc.tenant_id = ?
@@ -435,8 +455,10 @@ class AdminPacoteRepository
                 pc.data_fim,
                 pc.created_at,
                 pc.updated_at,
+                p.id as pacote_id,
                 p.nome as pacote_nome,
                 p.qtd_beneficiarios,
+                p.plano_id,
                 u.id as pagante_usuario_id,
                 u.nome as pagante_nome,
                 u.email as pagante_email,
