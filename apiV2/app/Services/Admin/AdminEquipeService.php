@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Repositories\AdminProfessorRepository;
 use App\Services\PermissaoService;
 use App\Support\Documento;
 use App\Support\Papel;
@@ -9,8 +10,9 @@ use App\Support\Permissao;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Equipe da academia (tela "Equipe e permissões"): Admin, Financeiro e Comercial.
- * Professor aparece e conta no limite, mas é gerido na tela Professores (turmas, cadastro de professor).
+ * Equipe da academia (tela "Equipe e permissões"): Professor, Admin, Financeiro e Comercial.
+ * Professor é um papel como os outros: ao ganhá-lo, o usuário recebe o perfil em `professores`
+ * (AdminProfessorRepository::garantirPerfil), que é o que as turmas referenciam.
  *
  * Regras:
  * - Uma pessoa = um usuário: busca por CPF e depois e-mail; existindo, só ganha o papel (sem cadastro novo).
@@ -21,10 +23,11 @@ use Illuminate\Support\Facades\DB;
 class AdminEquipeService
 {
     /** Papéis geridos nesta tela */
-    public const PAPEIS = [Papel::ADMIN, Papel::FINANCEIRO, Papel::COMERCIAL];
+    public const PAPEIS = [Papel::PROFESSOR, Papel::ADMIN, Papel::FINANCEIRO, Papel::COMERCIAL];
 
     public function __construct(
         private readonly PermissaoService $permissoes,
+        private readonly AdminProfessorRepository $professores,
     ) {}
 
     /**
@@ -100,7 +103,7 @@ class AdminEquipeService
     {
         $papeis = $this->papeisValidos($data['papeis'] ?? []);
         if ($papeis === []) {
-            return $this->erro('Escolha ao menos um papel: Admin, Financeiro ou Comercial.', 422, 'PAPEL_OBRIGATORIO');
+            return $this->erro('Escolha ao menos um papel: Professor, Admin, Financeiro ou Comercial.', 422, 'PAPEL_OBRIGATORIO');
         }
 
         $cpf = Documento::digitos((string) ($data['cpf'] ?? ''));
@@ -177,12 +180,8 @@ class AdminEquipeService
             return $this->erro('Pessoa não faz parte da equipe.', 404, 'NAO_ENCONTRADO');
         }
 
-        if (array_key_exists('papeis', $data)) {
-            $papeis = $this->papeisValidos($data['papeis'] ?? []);
-            $temProfessor = in_array(Papel::PROFESSOR, $this->permissoes->papeisAtivos($tenantId, $usuarioId), true);
-            if ($papeis === [] && ! $temProfessor) {
-                return $this->erro('Mantenha ao menos um papel ou remova a pessoa da equipe.', 422, 'PAPEL_OBRIGATORIO');
-            }
+        if (array_key_exists('papeis', $data) && $this->papeisValidos($data['papeis'] ?? []) === []) {
+            return $this->erro('Mantenha ao menos um papel ou remova a pessoa da equipe.', 422, 'PAPEL_OBRIGATORIO');
         }
 
         $conceder = array_values(array_filter((array) ($data['conceder'] ?? []), 'is_string'));
@@ -225,7 +224,8 @@ class AdminEquipeService
     }
 
     /**
-     * Tira a pessoa da equipe (Admin/Financeiro/Comercial). Professor e Aluno seguem como estão.
+     * Tira a pessoa da equipe (todos os papéis desta tela). Aluno segue como está; as turmas
+     * do professor continuam com ele (o perfil em `professores` não é apagado).
      *
      * @param  array{usuario_id: int, suporte: bool}  $ctx
      * @return array{status: int, body: array<string, mixed>}
@@ -265,7 +265,7 @@ class AdminEquipeService
     /**
      * Pode entrar na equipe? Quem já é da equipe (ex.: admin que vira professor) não ocupa vaga nova.
      *
-     * @return array{status: int, body: array<string, mixed>}|null  null = pode
+     * @return array{status: int, body: array<string, mixed>}|null null = pode
      */
     public function verificarVaga(int $tenantId, ?int $usuarioId): ?array
     {
@@ -344,6 +344,9 @@ class AdminEquipeService
                 ['tenant_id' => $tenantId, 'usuario_id' => $usuarioId, 'papel_id' => $papel],
                 ['ativo' => 1],
             );
+        }
+        if (in_array(Papel::PROFESSOR, $papeis, true)) {
+            $this->professores->garantirPerfil($usuarioId);
         }
     }
 

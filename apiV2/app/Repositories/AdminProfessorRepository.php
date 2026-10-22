@@ -135,6 +135,46 @@ class AdminProfessorRepository
         return $row ? (array) $row : null;
     }
 
+    /**
+     * Perfil de professor (professores) do usuário: reativa o existente ou cria a partir de usuarios.
+     * Quem ganha o papel Professor (Equipe, Usuários) precisa dele para aparecer nas aulas.
+     */
+    public function garantirPerfil(int $usuarioId): ?int
+    {
+        $existente = DB::table('professores')->where('usuario_id', $usuarioId)->orderBy('id')->first();
+        if ($existente) {
+            if (! (int) $existente->ativo) {
+                DB::table('professores')->where('id', $existente->id)->update(['ativo' => 1, 'updated_at' => DB::raw('CURRENT_TIMESTAMP')]);
+            }
+
+            return (int) $existente->id;
+        }
+
+        $usuario = DB::table('usuarios')->where('id', $usuarioId)->first(['nome', 'cpf', 'email']);
+        if (! $usuario) {
+            return null;
+        }
+
+        $cpf = preg_replace('/[^0-9]/', '', (string) $usuario->cpf) ?: null;
+        if ($cpf !== null && ($porCpf = DB::table('professores')->where('cpf', $cpf)->first())) {
+            // Cadastro legado sem login com o mesmo CPF: é a mesma pessoa
+            if ($porCpf->usuario_id === null) {
+                DB::table('professores')->where('id', $porCpf->id)
+                    ->update(['usuario_id' => $usuarioId, 'ativo' => 1, 'updated_at' => DB::raw('CURRENT_TIMESTAMP')]);
+
+                return (int) $porCpf->id;
+            }
+            $cpf = null; // professores.cpf é UNIQUE e o CPF já está em outro perfil (unificação pelo suporte)
+        }
+
+        return $this->criar([
+            'usuario_id' => $usuarioId,
+            'nome' => $usuario->nome,
+            'cpf' => $cpf,
+            'email' => $usuario->email,
+        ]);
+    }
+
     public function pertenceAoTenant(int $professorId, int $tenantId): bool
     {
         return DB::table('professores as p')

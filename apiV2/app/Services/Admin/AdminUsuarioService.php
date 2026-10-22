@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Repositories\AdminProfessorRepository;
 use App\Repositories\UsuarioRepository;
 use App\Support\Papel;
 
@@ -9,6 +10,7 @@ class AdminUsuarioService
 {
     public function __construct(
         private readonly UsuarioRepository $usuarios,
+        private readonly ?AdminProfessorRepository $professores = null,
     ) {}
 
     /**
@@ -89,6 +91,10 @@ class AdminUsuarioService
         $usuarioId = $this->usuarios->criarUsuarioCompleto($data, $tenantId);
         if (! $usuarioId) {
             return $this->erro('Erro ao criar usuário', 500);
+        }
+        // Professor precisa do perfil em `professores` para aparecer nas aulas
+        if ($papelId === Papel::PROFESSOR) {
+            ($this->professores ?? app(AdminProfessorRepository::class))->garantirPerfil($usuarioId);
         }
 
         return [

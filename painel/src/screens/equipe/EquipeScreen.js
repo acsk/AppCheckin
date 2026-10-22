@@ -8,10 +8,11 @@ import { showError, showSuccess } from '../../utils/toast';
 
 // Equipe e permissões da academia. Regras na API (AdminEquipeService): uma pessoa = um cadastro
 // (CPF/e-mail), limite do plano, admin principal só pelo suporte, ninguém altera a si mesmo,
-// só concede o que tem. Professor é gerido na tela Professores. Estilos: ck-ct-role* (ck-contratos.css).
+// só concede o que tem. Professor é papel da equipe (a API cria o perfil usado nas aulas). Estilos: ck-ct-role* (ck-contratos.css).
 
 const PAPEIS = { 2: 'Professor', 3: 'Admin', 5: 'Comercial', 6: 'Financeiro' };
 const DESCRICAO_PAPEL = {
+  2: 'Dá aulas: aparece na escolha do professor das turmas e faz check-in pelo app.',
   3: 'Gerencia a academia: alunos, matrículas, financeiro, aulas e configurações.',
   6: 'Alunos, matrículas e cobranças.',
   5: 'Recuperação de alunos, sem valores financeiros.',
@@ -142,7 +143,6 @@ function EditarModal({ membro, dados, minhas, onClose, onDone }) {
       )}>
       <div className="ck-mc-form">
         <PapeisCampo gerenciaveis={gerenciaveis} value={papeis} onChange={setPapeis} />
-        {outrosPapeis.includes(2) ? <p className="ck-mc-hint">Também é professor: isso é gerenciado na tela Professores.</p> : null}
         <span className="ck-field__label">Permissões</span>
         <p className="ck-mc-hint">Marcadas pelo papel automaticamente. Você pode conceder ou retirar as que também tem.</p>
         {Object.entries(modulos).map(([modulo, itens]) => (
@@ -224,7 +224,7 @@ export default function EquipeScreen() {
       {dados ? <AdicionarModal open={adicionar} gerenciaveis={dados.papeis_gerenciaveis} onClose={() => setAdicionar(false)} onDone={(r) => { setDados(r); setAdicionar(false); }} /> : null}
       {editando ? <EditarModal key={editando.id} membro={editando} dados={dados} minhas={minhas} onClose={() => setEditando(null)} onDone={(r) => { setDados(r); setEditando(null); }} /> : null}
       <Modal open={!!removendo} size="sm" title={`Remover ${removendo ? titleCase(removendo.nome) : ''} da equipe?`} dismissable={!ocupado} onClose={() => setRemovendo(null)}
-        description="A pessoa perde o acesso ao painel desta academia. Se também for professor ou aluno, isso continua."
+        description="A pessoa perde o acesso ao painel desta academia e deixa de ser escolhida como professor nas novas turmas. As turmas que já tem continuam com ela. Se também for aluno, isso continua."
         footer={(
           <>
             <span style={{ flex: 1 }} />

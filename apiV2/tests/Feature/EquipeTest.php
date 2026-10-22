@@ -60,6 +60,11 @@ class EquipeTest extends TestCase
             $t->increments('id');
             $t->integer('usuario_id')->nullable();
             $t->string('nome');
+            $t->string('cpf')->nullable()->unique();
+            $t->string('email')->nullable();
+            $t->string('foto_url')->nullable();
+            $t->boolean('ativo')->default(true);
+            $t->timestamps();
         });
         Schema::create('tenant_professor', function (Blueprint $t) {
             $t->increments('id');
@@ -180,13 +185,64 @@ class EquipeTest extends TestCase
         $this->assertNotContains(P::FINANCEIRO_BAIXAR, $p);
     }
 
-    public function test_remover_tira_da_equipe_mas_mantem_professor_e_aluno(): void
+    public function test_remover_tira_todos_os_papeis_da_equipe_mas_mantem_aluno_e_perfil_de_professor(): void
     {
-        DB::table('tenant_usuario_papel')->insert(['tenant_id' => $this->escola, 'usuario_id' => $this->admin, 'papel_id' => Papel::PROFESSOR, 'ativo' => 1]);
+        $this->putJson("/v2/admin/equipe/{$this->admin}", ['papeis' => [Papel::ADMIN, Papel::PROFESSOR]], $this->h($this->dono))->assertOk();
+        DB::table('tenant_usuario_papel')->insert(['tenant_id' => $this->escola, 'usuario_id' => $this->admin, 'papel_id' => Papel::ALUNO, 'ativo' => 1]);
 
         $this->deleteJson("/v2/admin/equipe/{$this->admin}", [], $this->h($this->dono))->assertOk();
 
-        $this->assertSame([Papel::PROFESSOR], app(PermissaoService::class)->papeisAtivos($this->escola, $this->admin));
+        $this->assertSame([Papel::ALUNO], app(PermissaoService::class)->papeisAtivos($this->escola, $this->admin));
+        $this->assertTrue(DB::table('professores')->where('usuario_id', $this->admin)->exists(), 'turmas antigas seguem com o professor');
+    }
+
+    // ------------------------------------------------------------------ professor como papel da equipe
+
+    public function test_professor_e_papel_gerenciavel_e_ganha_perfil_para_as_aulas(): void
+    {
+        $this->getJson('/v2/admin/equipe', $this->h($this->dono))->assertJsonPath('papeis_gerenciaveis', [Papel::PROFESSOR, Papel::ADMIN, Papel::FINANCEIRO, Papel::COMERCIAL]);
+
+        $id = $this->postJson('/v2/admin/equipe', ['nome' => 'Prof Novo', 'email' => 'prof@x.com', 'cpf' => $this->cpf(0), 'senha' => 'segredo1', 'papeis' => [Papel::PROFESSOR]], $this->h($this->dono))
+            ->assertCreated()->json('usuario_id');
+
+        $perfil = DB::table('professores')->where('usuario_id', $id)->first();
+        $this->assertSame('PROF NOVO', $perfil->nome);
+        $this->assertSame($this->cpf(0), $perfil->cpf);
+        $this->assertSame([], app(PermissaoService::class)->efetivas($this->escola, $id), 'professor sozinho não entra no painel');
+
+        // Admin que passa a dar aula: mesmo cadastro, um perfil só
+        $this->putJson("/v2/admin/equipe/{$this->admin}", ['papeis' => [Papel::ADMIN, Papel::PROFESSOR]], $this->h($this->dono))->assertOk();
+        $this->putJson("/v2/admin/equipe/{$this->admin}", ['papeis' => [Papel::ADMIN, Papel::PROFESSOR]], $this->h($this->dono))->assertOk();
+        $this->assertSame(1, DB::table('professores')->where('usuario_id', $this->admin)->count());
+    }
+
+    public function test_perfil_de_professor_reativa_o_existente_e_adota_o_legado_pelo_cpf(): void
+    {
+        $inativo = DB::table('professores')->insertGetId(['usuario_id' => $this->admin, 'nome' => 'Admin Dois', 'ativo' => 0]);
+        $this->putJson("/v2/admin/equipe/{$this->admin}", ['papeis' => [Papel::PROFESSOR]], $this->h($this->dono))->assertOk();
+        $this->assertSame(1, (int) DB::table('professores')->where('id', $inativo)->value('ativo'));
+
+        $legado = DB::table('professores')->insertGetId(['usuario_id' => null, 'nome' => 'Legado', 'cpf' => $this->cpf(1)]);
+        $novo = $this->postJson('/v2/admin/equipe', ['nome' => 'Legado', 'email' => 'legado@x.com', 'cpf' => $this->cpf(1), 'senha' => 'segredo1', 'papeis' => [Papel::PROFESSOR]], $this->h($this->dono))->json('usuario_id');
+        $this->assertSame($novo, (int) DB::table('professores')->where('id', $legado)->value('usuario_id'));
+        $this->assertSame(1, DB::table('professores')->where('cpf', $this->cpf(1))->count());
+    }
+
+    public function test_nao_deixa_a_pessoa_sem_papel(): void
+    {
+        $this->putJson("/v2/admin/equipe/{$this->admin}", ['papeis' => []], $this->h($this->dono))
+            ->assertStatus(422)->assertJsonPath('code', 'PAPEL_OBRIGATORIO');
+    }
+
+    public function test_migracao_cria_perfil_para_quem_ja_e_professor(): void
+    {
+        $prof = $this->usuario($this->escola, Papel::PROFESSOR, 'Sem Perfil');
+
+        (require database_path('migrations/2026_10_22_200000_professor_como_papel_da_equipe.php'))->up();
+
+        $this->assertSame(1, DB::table('professores')->where('usuario_id', $prof)->count());
+        $this->assertFalse(DB::table('professores')->where('usuario_id', $this->dono)->exists(), 'só quem tem o papel Professor');
+        $this->assertTrue(Schema::hasIndex('professores', 'uk_professores_usuario_id'));
     }
 
     public function test_suporte_pode_alterar_o_principal(): void
