@@ -1,293 +1,126 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Switch, TouchableOpacity, TextInput } from 'react-native';
-import { Feather, FontAwesome5 } from '@expo/vector-icons';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import LayoutBase from '../../components/LayoutBase';
+import { Button, Callout, Icon, PageHeader, SelectField, Switch } from '../../components/ck';
 import parametrosService from '../../services/parametrosService';
-import { showError, showLoading, showSuccess, dismissToast } from '../../utils/toast';
+import { booleanoParametro, normalizarBusca, opcoesParametro, textoParametro, tipoParametro, validarParametro } from '../../utils/parametros';
 
-const TRUE_VALUES = new Set(['1', 'true', 'sim', 'yes', 'on']);
-const FALSE_VALUES = new Set(['0', 'false', 'nao', 'não', 'no', 'off']);
+const ICONES = { pagamentos: 'wallet', checkin: 'qr-code', aulas: 'calendar', notificacoes: 'bell', matriculas: 'user-plus', prospeccao: 'target', sistema: 'settings' };
+const mensagemErro = (e) => e?.response?.data?.message || e?.response?.data?.error || e?.message || 'Não foi possível salvar. Tente novamente.';
 
-const parseBoolean = (value) => {
-  if (value === true || value === false) return value;
-  if (value === 1 || value === 0) return value === 1;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (TRUE_VALUES.has(normalized)) return true;
-    if (FALSE_VALUES.has(normalized)) return false;
-  }
-  return null;
-};
-
-const getTipoValor = (param) =>
-  String(param?.tipo_valor ?? param?.tipo ?? '').toLowerCase();
-
-const isIntegerLike = (param) => {
-  const tipo = getTipoValor(param);
-  return tipo === 'integer' || tipo === 'decimal';
-};
-
-const isBooleanLike = (param, parsed) => {
-  if (isIntegerLike(param)) return false;
-  if (parsed !== null) return true;
-  const tipo = getTipoValor(param);
-  return /bool|boolean|flag|ativo|habilitar|enable/i.test(tipo);
-};
-
-const getFaIconName = (icone) => {
-  if (!icone || typeof icone !== 'string') return 'sliders-h';
-  const normalized = icone.trim().toLowerCase();
-  if (normalized.startsWith('fa-')) {
-    return normalized.replace('fa-', '');
-  }
-  return normalized;
-};
+function CampoParametro({ param, value, disabled, onSalvar }) {
+  const [texto, setTexto] = useState(() => textoParametro(param, value));
+  const [erro, setErro] = useState('');
+  const tipo = tipoParametro(param), id = `pm-i-${param.codigo}`, descId = `pm-d-${param.codigo}`;
+  useEffect(() => { setTexto(textoParametro(param, value)); setErro(''); }, [value]);
+  const salvar = () => {
+    if (disabled || texto === textoParametro(param, value)) return;
+    const resultado = validarParametro(param, texto);
+    setErro(resultado.erro || '');
+    if (!resultado.erro) onSalvar(resultado.valor);
+  };
+  if (tipo === 'boolean') return <Switch id={id} checked={booleanoParametro(value) ?? false} ariaLabel={param.nome || param.codigo} disabled={disabled} onChange={() => onSalvar(null, true)} />;
+  if (tipo === 'select') return <div className="ck-pm-sel"><SelectField id={id} aria-label={param.nome || param.codigo} value={String(value ?? '')} disabled={disabled} options={opcoesParametro(param)} onChange={(e) => onSalvar(e.target.value)} /></div>;
+  const numerico = tipo === 'integer' || tipo === 'decimal';
+  const props = { id, className: 'ck-control__input', value: texto, disabled, 'aria-describedby': `${descId}${erro ? ` ${id}-error` : ''}`, 'aria-invalid': !!erro,
+    onChange: (e) => { setTexto(e.target.value); setErro(''); }, onBlur: salvar,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' && tipo !== 'json') { e.preventDefault(); salvar(); }
+      if (e.key === 'Escape') { setTexto(textoParametro(param, value)); setErro(''); }
+    } };
+  return <div className={`ck-pm-num${tipo === 'json' ? ' ck-pm-json' : ''}`}>
+    <div className={`ck-control ${numerico ? 'ck-pm-num__ctl' : 'ck-pm-text__ctl'}${erro ? ' is-invalid' : ''}${disabled ? ' is-disabled' : ''}`}>
+      {tipo === 'json' ? <textarea {...props} rows={5} spellCheck={false} /> : <input {...props} type="text" inputMode={numerico ? (tipo === 'integer' ? 'numeric' : 'decimal') : 'text'} />}
+    </div>
+    {erro ? <span id={`${id}-error`} className="ck-pm-err" role="alert">{erro}</span> : null}
+  </div>;
+}
 
 export default function ParametrosScreen() {
   const [loading, setLoading] = useState(true);
   const [categorias, setCategorias] = useState([]);
   const [valores, setValores] = useState({});
-  const [meta, setMeta] = useState({});
-  const [savingCodigo, setSavingCodigo] = useState(null);
+  const [status, setStatus] = useState({});
+  const [erro, setErro] = useState('');
+  const [busca, setBusca] = useState('');
+  const [chaves, setChaves] = useState(false);
+  const [ativa, setAtiva] = useState('');
+  const salvando = useRef(new Set());
+  const secoes = useRef({});
 
   const carregar = async () => {
+    if (salvando.current.size) return;
+    setLoading(true); setErro('');
     try {
-      setLoading(true);
-      const response = await parametrosService.listar();
-      if (response?.success) {
-        const data = Array.isArray(response.data) ? response.data : [];
-        const nextValores = {};
-        const nextMeta = {};
+      const r = await parametrosService.listar();
+      if (!r?.success) throw new Error(r?.message || 'Não foi possível carregar os parâmetros.');
+      const data = (Array.isArray(r.data) ? r.data : []).filter((c) => String(c.categoria?.ativo ?? 1) !== '0').sort((a, b) => Number(a.categoria?.ordem ?? 999) - Number(b.categoria?.ordem ?? 999));
+      const next = {};
+      data.forEach((c) => (c.parametros || []).forEach((p) => { if (p.codigo) next[p.codigo] = p.valor; }));
+      setCategorias(data); setValores(next); setStatus({});
+      setAtiva((atual) => data.some((c) => String(c.categoria.codigo || c.categoria.id) === atual) ? atual : String(data[0]?.categoria?.codigo || data[0]?.categoria?.id || ''));
+    } catch (e) { setErro(mensagemErro(e)); } finally { setLoading(false); }
+  };
+  useEffect(() => { carregar(); }, []);
 
-        data.forEach((categoria) => {
-          (categoria.parametros || []).forEach((param) => {
-            const codigo = param?.codigo;
-            if (!codigo) return;
-            const parsed = parseBoolean(param?.valor);
-            const boolLike = isBooleanLike(param, parsed);
-            const integerLike = isIntegerLike(param);
-            const normalized = integerLike
-              ? String(param?.valor ?? '')
-              : parsed ?? false;
-            nextValores[codigo] = normalized;
-            nextMeta[codigo] = {
-              original: param?.valor,
-              tipo: param?.tipo,
-              boolLike,
-              integerLike,
-            };
-          });
-        });
-
-        setCategorias(data);
-        setValores(nextValores);
-        setMeta(nextMeta);
-      } else {
-        showError(response?.message || 'Erro ao carregar parâmetros');
-      }
-    } catch (error) {
-      console.error('Erro ao carregar parâmetros:', error);
-      showError('Erro ao carregar parâmetros');
-    } finally {
-      setLoading(false);
-    }
+  const salvar = async (param, valor, toggle = false) => {
+    const codigo = param.codigo;
+    if (salvando.current.has(codigo)) return;
+    salvando.current.add(codigo);
+    setStatus((s) => ({ ...s, [codigo]: { tipo: 'saving' } }));
+    try {
+      const r = toggle ? await parametrosService.toggleParametro(codigo) : await parametrosService.atualizarParametro(codigo, valor);
+      if (!r?.success) throw new Error(r?.message || 'Não foi possível salvar.');
+      const salvo = toggle ? booleanoParametro(r.valor) ?? !(booleanoParametro(valores[codigo]) ?? false) : r.data?.valor ?? r.valor ?? valor;
+      setValores((v) => ({ ...v, [codigo]: salvo }));
+      setStatus((s) => ({ ...s, [codigo]: { tipo: 'saved' } }));
+    } catch (e) { setStatus((s) => ({ ...s, [codigo]: { tipo: 'error', mensagem: mensagemErro(e) } })); }
+    finally { salvando.current.delete(codigo); }
   };
 
-  useEffect(() => {
-    carregar();
-  }, []);
-
-  const categoriasOrdenadas = useMemo(() => {
-    return [...categorias]
-      .filter((item) => item?.categoria?.ativo !== 0)
-      .sort((a, b) => {
-        const ordemA = a?.categoria?.ordem ?? 999;
-        const ordemB = b?.categoria?.ordem ?? 999;
-        return ordemA - ordemB;
-      });
-  }, [categorias]);
-
-  const handleSalvarInteiro = async (codigo) => {
-    if (savingCodigo) return;
-    const raw = String(valores[codigo] ?? '').trim();
-    const numerico = raw.replace(/[^0-9]/g, '');
-    const valor = numerico === '' ? 0 : parseInt(numerico, 10);
-    const toastId = showLoading('Salvando parâmetro...');
-    setSavingCodigo(codigo);
-    try {
-      const response = await parametrosService.atualizarParametro(codigo, valor);
-      dismissToast(toastId);
-      if (response?.success) {
-        setValores((prev) => ({ ...prev, [codigo]: String(valor) }));
-        setMeta((prev) => ({
-          ...prev,
-          [codigo]: { ...prev[codigo], original: valor },
-        }));
-        showSuccess(response?.message || 'Parâmetro atualizado');
-      } else {
-        showError(response?.message || 'Erro ao atualizar parâmetro');
-      }
-    } catch (error) {
-      dismissToast(toastId);
-      console.error('Erro ao salvar parâmetro numérico:', error);
-      showError('Erro ao atualizar parâmetro');
-    } finally {
-      setSavingCodigo(null);
-    }
+  const q = normalizarBusca(busca);
+  const secoesVisiveis = useMemo(() => categorias.map((c) => ({ ...c, visiveis: (c.parametros || []).filter((p) => p.codigo && (!q || normalizarBusca(`${p.nome} ${p.descricao || ''} ${p.codigo} ${c.categoria?.nome || ''}`).includes(q))) })).filter((c) => !q || c.visiveis.length), [categorias, q]);
+  const pendente = Object.values(status).some((s) => s.tipo === 'saving');
+  const navegar = (id) => {
+    setAtiva(id);
+    secoes.current[id]?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
   };
 
-  const handleToggle = async (codigo) => {
-    if (savingCodigo) return;
-    const currentValue = !!valores[codigo];
-    const toastId = showLoading('Atualizando parâmetro...');
-    setSavingCodigo(codigo);
-    try {
-      const response = await parametrosService.toggleParametro(codigo);
-      dismissToast(toastId);
-      if (response?.success) {
-        const nextValue = parseBoolean(response?.valor);
-        setValores((prev) => ({
-          ...prev,
-          [codigo]: nextValue ?? !currentValue,
-        }));
-        setMeta((prev) => ({
-          ...prev,
-          [codigo]: {
-            ...prev[codigo],
-            original: response?.valor,
-          },
-        }));
-        showSuccess(response?.message || 'Parâmetro atualizado');
-      } else {
-        showError(response?.message || 'Erro ao atualizar parâmetro');
-      }
-    } catch (error) {
-      dismissToast(toastId);
-      console.error('Erro ao alternar parâmetro:', error);
-      showError('Erro ao atualizar parâmetro');
-    } finally {
-      setSavingCodigo(null);
-    }
-  };
-
-  if (loading) {
-    return (
-      <LayoutBase title="Parâmetros" subtitle="Configurações do sistema">
-        <View className="items-center justify-center py-16">
-          <ActivityIndicator size="large" color="#f97316" />
-          <Text className="mt-3 text-[13px] text-slate-500">Carregando parâmetros...</Text>
-        </View>
-      </LayoutBase>
-    );
-  }
-
-  return (
-    <LayoutBase title="Parâmetros" subtitle="Ative ou desative parâmetros do sistema">
-      <View className="gap-4">
-        <View className="flex-row items-center justify-between">
-          <View>
-            <Text className="text-lg font-bold text-slate-900">Parâmetros do Sistema</Text>
-            <Text className="text-[12px] text-slate-500">Alterações são salvas imediatamente</Text>
-          </View>
-          <View className="flex-row items-center gap-2">
-            <TouchableOpacity
-              className="flex-row items-center gap-1 rounded-md bg-slate-100 px-3 py-2"
-              onPress={carregar}
-              disabled={!!savingCodigo}
-            >
-              <Feather name="refresh-cw" size={14} color="#64748b" />
-              <Text className="text-[12px] font-semibold text-slate-700">Recarregar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
-          {categoriasOrdenadas.map((categoria, index) => {
-            const catInfo = categoria?.categoria || {};
-            const catKey = catInfo?.codigo || catInfo?.id || catInfo?.nome || `cat-${index}`;
-            return (
-              <View key={catKey} className="rounded-xl border border-slate-200 bg-white p-4">
-                <View className="flex-row items-start gap-3">
-                  <View className="h-9 w-9 items-center justify-center rounded-lg bg-orange-50">
-                    <FontAwesome5
-                      name={getFaIconName(catInfo?.icone)}
-                      size={16}
-                      color="#f97316"
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-sm font-bold text-slate-900">
-                      {catInfo?.nome || catInfo?.descricao || catInfo?.codigo || 'Categoria'}
-                    </Text>
-                    {catInfo?.descricao && (
-                      <Text className="mt-1 text-[11px] text-slate-500">{catInfo.descricao}</Text>
-                    )}
-                  </View>
-                </View>
-
-                <View className="mt-3 gap-3">
-                  {(categoria.parametros || []).map((param) => {
-                    const codigo = param?.codigo;
-                    if (!codigo) return null;
-                    const boolLike = meta[codigo]?.boolLike ?? true;
-                    const integerLike = meta[codigo]?.integerLike ?? false;
-                    const value = !!valores[codigo];
-                    const label = param?.nome || param?.descricao || param?.codigo;
-                    const descricao = param?.descricao && param?.descricao !== param?.nome ? param?.descricao : null;
-                    return (
-                      <View key={codigo} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                        <View className="flex-row items-start justify-between">
-                          <View className="flex-1 pr-3">
-                            <Text className="text-[13px] font-semibold text-slate-800">{label}</Text>
-                            <Text className="text-[10px] font-semibold text-slate-400">{codigo}</Text>
-                            {descricao && <Text className="text-[11px] text-slate-500">{descricao}</Text>}
-                            {integerLike && codigo === 'max_tolerancia_checkin_antes_minutos' && (
-                              <Text className="mt-1 text-[11px] text-slate-500">
-                                0 = desligado. Ex.: 30 = check-in abre no máximo 30 min antes do início.
-                              </Text>
-                            )}
-                          </View>
-                          {!integerLike && (
-                            <Switch
-                              value={value}
-                              onValueChange={() => handleToggle(codigo)}
-                              disabled={!boolLike || !!savingCodigo}
-                              trackColor={{ false: '#e2e8f0', true: '#fdba74' }}
-                              thumbColor={value ? '#f97316' : '#ffffff'}
-                            />
-                          )}
-                        </View>
-                        {integerLike && (
-                          <View className="mt-2 flex-row items-center gap-2">
-                            <TextInput
-                              className="min-w-[72px] flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800"
-                              value={String(valores[codigo] ?? '')}
-                              onChangeText={(text) => {
-                                const numerico = text.replace(/[^0-9]/g, '');
-                                setValores((prev) => ({ ...prev, [codigo]: numerico }));
-                              }}
-                              keyboardType="numeric"
-                              editable={!savingCodigo}
-                              placeholder="0"
-                            />
-                            <TouchableOpacity
-                              className="rounded-md bg-orange-500 px-3 py-2"
-                              onPress={() => handleSalvarInteiro(codigo)}
-                              disabled={!!savingCodigo}
-                            >
-                              <Text className="text-[12px] font-semibold text-white">Salvar</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            );
+  return <LayoutBase title="Parâmetros" pageHeader={false}>
+    <div className="ck-pm">
+      <PageHeader title="Parâmetros" description="Como a academia funciona no app. Cada mudança é salva na hora. Nos campos, saia da edição ou pressione Enter para salvar."
+        actions={<><div className="ck-pm-keys"><Switch checked={chaves} onChange={setChaves} ariaLabel="Mostrar chaves técnicas" /><span>Chaves técnicas</span></div><Button icon="refresh-cw" onClick={carregar} loading={loading} disabled={pendente}>Recarregar</Button></>} />
+      {erro ? <Callout tone="danger" title="Não foi possível carregar os parâmetros" action={<Button size="sm" onClick={carregar}>Tentar novamente</Button>}>{erro}</Callout> : null}
+      {loading ? <p role="status" className="ck-enrollment-state">Carregando parâmetros…</p> : !erro ? <div className="ck-pm-layout">
+        <nav className="ck-pm-nav" aria-label="Categorias de parâmetros">
+          <div className="ck-control"><Icon name="search" size={16} className="ck-control__icon" /><input type="search" className="ck-control__input" value={busca} placeholder="Buscar parâmetro" aria-label="Buscar parâmetro" onChange={(e) => setBusca(e.target.value)} /></div>
+          <ul>{categorias.map((c) => {
+            const cat = c.categoria || {}, id = String(cat.codigo || cat.id), encontrados = secoesVisiveis.find((s) => s.categoria === c.categoria)?.visiveis.length || 0;
+            return <li key={id}><button type="button" className={`ck-pm-navi${ativa === id ? ' is-on' : ''}${q && !encontrados ? ' is-dim' : ''}`} aria-current={ativa === id ? 'location' : undefined} disabled={!!q && !encontrados} onClick={() => navegar(id)}><Icon name={ICONES[cat.codigo] || 'settings'} size={16} /><span>{cat.nome || cat.codigo || 'Categoria'}</span><em>{q ? encontrados : (c.parametros || []).length || '—'}</em></button></li>;
+          })}</ul>
+        </nav>
+        <div className="ck-pm-main">
+          {secoesVisiveis.map((c) => {
+            const cat = c.categoria || {}, id = String(cat.codigo || cat.id);
+            return <section key={id} ref={(el) => { secoes.current[id] = el; }} className="ck-card ck-pm-sec" aria-labelledby={`pm-h-${id}`}>
+              <header className="ck-pm-sechead"><span className="ck-pm-secicon" aria-hidden="true"><Icon name={ICONES[cat.codigo] || 'settings'} size={18} /></span><div><h2 id={`pm-h-${id}`}>{cat.nome || cat.codigo || 'Categoria'}</h2>{cat.descricao ? <p>{cat.descricao}</p> : null}</div></header>
+              {c.visiveis.length ? <ul className="ck-pm-list">{c.visiveis.map((p) => {
+                const s = status[p.codigo], label = p.nome || p.codigo;
+                return <li key={p.codigo} className="ck-pm-row">
+                  <div className="ck-pm-row__txt"><label htmlFor={tipoParametro(p) === 'boolean' ? undefined : `pm-i-${p.codigo}`} className="ck-pm-row__label">{label}</label><span id={`pm-d-${p.codigo}`} className="ck-pm-row__desc">{p.descricao !== p.nome ? p.descricao : ''}</span>
+                    {p.codigo === 'max_tolerancia_checkin_antes_minutos' ? <span className="ck-pm-ex"><Icon name="info" size={13} />0 = desligado. Ex.: 30 = check-in abre no máximo 30 minutos antes do início.</span> : null}
+                    {chaves ? <code className="ck-pm-key">{p.codigo}</code> : null}
+                  </div>
+                  <div className="ck-pm-row__ctl">
+                    <span className={`ck-pm-st${s?.tipo === 'saved' ? ' is-ok' : s?.tipo === 'error' ? ' is-err' : ''}`} role="status">{s?.tipo === 'saving' ? 'Salvando…' : s?.tipo === 'saved' ? <><Icon name="check" size={13} />Salvo</> : s?.tipo === 'error' ? s.mensagem : null}</span>
+                    <CampoParametro param={p} value={valores[p.codigo]} disabled={s?.tipo === 'saving'} onSalvar={(valor, toggle) => salvar(p, valor, toggle)} />
+                  </div>
+                </li>;
+              })}</ul> : <p className="ck-pm-none">Nenhum parâmetro ajustável nesta categoria por enquanto.</p>}
+            </section>;
           })}
-        </ScrollView>
-      </View>
-    </LayoutBase>
-  );
+          {!secoesVisiveis.length ? <div className="ck-card ck-pm-empty" role="status"><Icon name="search" size={24} /><strong>{busca ? `Nenhum parâmetro com “${busca}”` : 'Nenhum parâmetro disponível'}</strong><p>Busque pelo nome, pela descrição ou pela chave técnica.</p></div> : null}
+        </div>
+      </div> : null}
+    </div>
+  </LayoutBase>;
 }
