@@ -54,3 +54,35 @@ test('abre em nova aba sem opener e não abre nada para telefone inválido', () 
   assert.equal(calls.length, 1);
   delete globalThis.window;
 });
+
+test('monta link do aplicativo preservando telefone e mensagem codificada', () => {
+  assert.equal(urlConversaWhatsapp('5582999999999', '', 'app'), 'whatsapp://send?phone=5582999999999');
+  const mensagem = 'Olá & até já? 😊\nLinha 2';
+  const url = new URL(urlConversaWhatsapp('5582999999999', mensagem, 'app'));
+  assert.equal(url.protocol, 'whatsapp:');
+  assert.equal(url.searchParams.get('phone'), '5582999999999');
+  assert.equal(url.searchParams.get('text'), mensagem);
+});
+
+test('a escolha aplicativo aciona o protocolo sem abrir o WhatsApp Web', () => {
+  const apps = [], abas = [];
+  globalThis.window = { location: { assign: (url) => apps.push(url) }, open: (...args) => abas.push(args) };
+  try {
+    const r = abrirConversaWhatsapp('(82) 99999-9999', 'Oi', 'app');
+    assert.equal(r.ok, true);
+    assert.deepEqual(apps, ['whatsapp://send?phone=5582999999999&text=Oi']);
+    assert.equal(abas.length, 0);
+    assert.equal(abrirConversaWhatsapp('123', 'Oi', 'app').ok, false);
+    assert.equal(apps.length, 1);
+  } finally { delete globalThis.window; }
+});
+
+test('a escolha web continua abrindo somente o navegador', () => {
+  const apps = [], abas = [];
+  globalThis.window = { location: { assign: (url) => apps.push(url) }, open: (...args) => abas.push(args) };
+  try {
+    abrirConversaWhatsapp('+1 (415) 555-2671', 'Hello', 'web');
+    assert.equal(apps.length, 0);
+    assert.deepEqual(abas, [['https://web.whatsapp.com/send?phone=14155552671&text=Hello', '_blank', 'noopener,noreferrer']]);
+  } finally { delete globalThis.window; }
+});

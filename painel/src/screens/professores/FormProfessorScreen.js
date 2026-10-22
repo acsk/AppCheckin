@@ -1,522 +1,213 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Switch } from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { professorService } from '../../services/professorService';
-import { showSuccess, showError } from '../../utils/toast';
-import { mascaraTelefone, mascaraCPF, apenasNumeros } from '../../utils/masks';
+import modalidadeService from '../../services/modalidadeService';
+import api from '../../services/api';
 import LayoutBase from '../../components/LayoutBase';
 import BuscarProfessorCpfModal from '../../components/BuscarProfessorCpfModal';
+import { Button, Modal } from '../../components/ck';
+import { ProfessorForm } from '../../components/ck/professores';
+import { titleCase } from '../../components/ck/pessoas';
+import { quandoAula } from './ProfessoresScreen';
+import { showSuccess, showError } from '../../utils/toast';
+
+const bool = (v) => v === true || v === 1 || v === '1';
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const iso = (v) => (v ? String(v).slice(0, 10) : null);
+
+// Professor da API → props do ProfessorForm
+const toTeacher = (p) => ({
+  id: p.id,
+  userId: p.usuario_id,
+  name: p.nome || '',
+  cpf: p.cpf || '',
+  birthDate: iso(p.data_nascimento),
+  email: p.email || '',
+  phone: p.telefone || '',
+  whatsapp: p.whatsapp || '',
+  cref: p.cref || '',
+  crefDue: iso(p.cref_validade),
+  bond: p.vinculo_id != null ? String(p.vinculo_id) : '',
+  hiredAt: iso(p.admitido_em),
+  modalities: (p.modalidade_ids || []).map(String),
+  emergency: { name: p.emergencia_nome, phone: p.emergencia_telefone, relation: p.emergencia_parentesco },
+  address: { cep: p.cep, street: p.logradouro, number: p.numero, complement: p.complemento, district: p.bairro, city: p.cidade, uf: p.estado },
+  notes: p.observacoes || '',
+  active: bool(p.vinculo_ativo ?? p.ativo),
+  weeklyClasses: Number(p.aulas_semana || 0),
+  nextClass: quandoAula(p.proxima_aula),
+  nextClassDate: p.proxima_aula?.data || null,
+});
+
+// Saída do ProfessorForm → payload da API (campo vazio vai como null e limpa)
+const toPayload = (d) => ({
+  nome: d.name,
+  cpf: d.cpf,
+  email: d.email,
+  telefone: d.phone,
+  whatsapp: d.whatsapp,
+  data_nascimento: d.birthDate,
+  cref: d.cref,
+  cref_validade: d.crefDue,
+  vinculo_id: d.bond ? Number(d.bond) : null,
+  admitido_em: d.hiredAt,
+  modalidade_ids: d.modalities.map(Number),
+  emergencia_nome: d.emergency?.name || null,
+  emergencia_telefone: d.emergency?.phone || null,
+  emergencia_parentesco: d.emergency?.relation || null,
+  cep: d.address.cep,
+  logradouro: d.address.street,
+  numero: d.address.number,
+  complemento: d.address.complement,
+  bairro: d.address.district,
+  cidade: d.address.city,
+  estado: d.address.uf,
+  observacoes: d.notes,
+  ativo: d.active,
+});
 
 export default function FormProfessorScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const professorId = id ? parseInt(id) : null;
+  const professorId = id ? parseInt(id, 10) : null;
   const isEdit = !!professorId;
-  
-  const [loading, setLoading] = useState(isEdit);
-  const [submitting, setSubmitting] = useState(false);
-  const [professor, setProfessor] = useState(null);
-  const [showBuscarCpfModal, setShowBuscarCpfModal] = useState(!isEdit);
-  const [formData, setFormData] = useState({
-    nome: '',
-    email: '',
-    telefone: '',
-    cpf: '',
-    ativo: true
-  });
+
+  const [teacher, setTeacher] = useState(null);
+  const [bonds, setBonds] = useState([]);
+  const [modalities, setModalities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [buscarCpf, setBuscarCpf] = useState(!isEdit);
+  const [server, setServer] = useState({ errors: null, values: null });
+  const [credenciais, setCredenciais] = useState(null);
 
   useEffect(() => {
-    if (isEdit) {
-      carregarProfessor();
-    }
-  }, []);
-
-  // Callback quando professor é associado pelo modal
-  const handleProfessorAssociado = (professor) => {
-    showSuccess(`Professor ${professor.nome} associado com sucesso!`);
-    router.push('/professores');
-  };
-
-  // Callback quando usuário decide criar novo professor
-  const handleCriarNovoProfessor = (cpf) => {
-    setShowBuscarCpfModal(false);
-    // Preenche o CPF no formulário
-    if (cpf) {
-      setFormData(prev => ({ ...prev, cpf: mascaraCPF(cpf) }));
-    }
-  };
-
-  // Fecha o modal e volta para lista
-  const handleCloseBuscarCpfModal = () => {
-    setShowBuscarCpfModal(false);
-    router.push('/professores');
-  };
-
-  const carregarProfessor = async () => {
-    try {
-      setLoading(true);
-      const data = await professorService.buscarPorId(professorId);
-      console.log('📥 Dados recebidos da API:', data);
-      console.log('📥 Telefone recebido:', data.telefone, '| Tipo:', typeof data.telefone);
-      console.log('📥 CPF recebido:', data.cpf, '| Tipo:', typeof data.cpf);
-      
-      setProfessor(data);
-      const novoFormData = {
-        nome: data.nome || '',
-        email: data.email || '',
-        telefone: data.telefone ? mascaraTelefone(data.telefone) : '',
-        cpf: data.cpf ? mascaraCPF(data.cpf) : '',
-        ativo: data.ativo === 1 || data.ativo === true
-      };
-      console.log('📝 FormData após carregar:', novoFormData);
-      setFormData(novoFormData);
-    } catch (error) {
-      showError('Erro ao carregar professor');
-      console.error(error);
-      setTimeout(() => router.back(), 1500);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const validarFormulario = () => {
-    if (!formData.nome.trim()) {
-      showError('Nome é obrigatório');
-      return false;
-    }
-
-    const cpfLimpo = apenasNumeros(formData.cpf);
-    if (cpfLimpo && cpfLimpo.length !== 11) {
-      showError('CPF deve ter 11 dígitos');
-      return false;
-    }
-
-    const telefoneLimpo = apenasNumeros(formData.telefone);
-    if (telefoneLimpo && telefoneLimpo.length < 10) {
-      showError('Telefone inválido');
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSubmit = async () => {
-    if (!validarFormulario()) return;
-
-    try {
-      setSubmitting(true);
-      
-      console.log('🔍 formData atual:', formData);
-      console.log('🔍 formData.telefone:', formData.telefone, '| Tipo:', typeof formData.telefone);
-      console.log('🔍 apenasNumeros(telefone):', apenasNumeros(formData.telefone));
-      console.log('🔍 formData.cpf:', formData.cpf, '| Tipo:', typeof formData.cpf);
-      console.log('🔍 apenasNumeros(cpf):', apenasNumeros(formData.cpf));
-      
-      // Preparar dados para envio (remover máscaras e converter ativo para número)
-      const telefoneLimpo = apenasNumeros(formData.telefone);
-      const cpfLimpo = apenasNumeros(formData.cpf);
-      
-      const dadosParaEnviar = {
-        nome: formData.nome.trim(),
-        email: formData.email.trim() || null,
-        telefone: telefoneLimpo || null,
-        cpf: cpfLimpo || null,
-        ativo: formData.ativo ? 1 : 0
-      };
-
-      console.log('📤 Enviando dados do professor:', JSON.stringify(dadosParaEnviar, null, 2));
-
-      if (professorId) {
-        await professorService.atualizar(professorId, dadosParaEnviar);
-        showSuccess('Professor atualizado com sucesso');
-      } else {
-        await professorService.criar(dadosParaEnviar);
-        showSuccess('Professor criado com sucesso');
+    (async () => {
+      try {
+        const [vinculos, mods, professor] = await Promise.all([
+          professorService.listarVinculos().catch(() => []),
+          modalidadeService.listar(true).catch(() => []),
+          isEdit ? professorService.buscarPorId(professorId) : null,
+        ]);
+        setBonds(vinculos.map((v) => ({ value: String(v.id), label: v.nome })));
+        setModalities(mods.map((m) => ({ value: String(m.id), label: m.nome })));
+        if (professor) setTeacher(toTeacher(professor));
+      } catch (error) {
+        showError(error?.response?.data?.message || 'Não foi possível carregar o professor');
+        router.push('/professores');
+      } finally {
+        setLoading(false);
       }
-      setTimeout(() => router.back(), 1500);
-    } catch (error) {
-      console.error('Erro ao salvar:', error);
-      let mensagemErro = 'Erro ao salvar professor';
-      
-      if (error.response?.data) {
-        const data = error.response.data;
-        if (data.message) {
-          const match = data.message.match(/\d+ (.*?)$/) || data.message.match(/: (.*)/);
-          mensagemErro = match ? match[1] : data.message;
-        } else if (data.error) {
-          mensagemErro = data.error;
-        }
-      }
-      
-      showError(mensagemErro);
-    } finally {
-      setSubmitting(false);
+    })();
+  }, [professorId]);
+
+  // CPF encontrado em outra academia: o modal já associou
+  const onProfessorEncontrado = (professor) => {
+    showSuccess(`${titleCase(professor.nome)} agora é professor desta academia`);
+    router.push(professor?.id ? `/professores/${professor.id}` : '/professores');
+  };
+
+  const onCriarNovo = (cpf) => {
+    setBuscarCpf(false);
+    if (cpf) setTeacher({ cpf });
+  };
+
+  const checkEmail = async (email) => {
+    const r = await professorService.emailDisponivel(email, teacher?.userId);
+    return r.disponivel ? null : { name: r.nome };
+  };
+
+  const lookupCep = async (cep) => {
+    try {
+      const response = await api.get(`/cep/${cep}`);
+      const dados = response.data?.data;
+      if (response.data?.type === 'warning' || !dados || dados.erro) return null;
+      if (!dados.logradouro && !dados.bairro && !dados.cidade) return null;
+      return { street: dados.logradouro, district: dados.bairro, city: dados.cidade, uf: dados.estado };
+    } catch {
+      return null;
     }
   };
 
-  if (loading) {
-    return (
-      <LayoutBase title={professorId ? 'Editar Professor' : 'Novo Professor'}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#f97316" />
-        </View>
-      </LayoutBase>
-    );
-  }
+  const save = async (data, values) => {
+    setSaving(true);
+    setServer({ errors: null, values: null });
+    try {
+      const payload = toPayload(data);
+      if (isEdit) {
+        await professorService.atualizar(professorId, payload);
+        showSuccess('Alterações salvas');
+        router.push('/professores');
+        return;
+      }
+      const r = await professorService.criar(payload);
+      const novo = r?.professor;
+      if (novo?.id && !data.active) await professorService.atualizar(novo.id, { ativo: false });
+      showSuccess(r?.professor_existia ? `${titleCase(data.name)} agora é professor desta academia` : `${titleCase(data.name)} cadastrado`);
+      if (r?.credenciais) setCredenciais(r.credenciais);
+      else router.push('/professores');
+    } catch (error) {
+      const d = error?.response?.data || {};
+      if (d.campos) setServer({ errors: d.campos, values });
+      const lista = Array.isArray(d.errors) ? d.errors : [];
+      showError(lista.join('\n') || d.message || `Não foi possível ${isEdit ? 'salvar as alterações' : 'cadastrar o professor'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const back = () => router.push('/professores');
 
   return (
-    <LayoutBase
-      title={professorId ? 'Editar Professor' : 'Novo Professor'}
-      subtitle="Preencha os campos obrigatórios"
-    >
-      {/* Modal de Buscar por CPF */}
-      <BuscarProfessorCpfModal
-        visible={showBuscarCpfModal}
-        onClose={handleCloseBuscarCpfModal}
-        onProfessorEncontrado={handleProfessorAssociado}
-        onCriarNovoProfessor={handleCriarNovoProfessor}
-      />
-
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            disabled={submitting}
-          >
-            <Feather name="arrow-left" size={18} color="#fff" />
-            <Text style={styles.backButtonText}>Voltar</Text>
-          </TouchableOpacity>
-
-          <View style={[styles.statusIndicator, formData.ativo ? styles.statusActive : styles.statusInactive]}>
-            <View style={[styles.statusDot, formData.ativo ? styles.statusDotActive : styles.statusDotInactive]} />
-            <Text style={[styles.statusIndicatorText, formData.ativo ? styles.statusTextActive : styles.statusTextInactive]}>
-              {formData.ativo ? 'Professor Ativo' : 'Professor Inativo'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Feather name="user" size={20} color="#f97316" />
-              </View>
-              <Text style={styles.cardTitle}>Dados do Professor</Text>
-            </View>
-
-            <View style={styles.cardBody}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Nome completo <Text style={styles.required}>*</Text></Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nome completo"
-                  placeholderTextColor="#999"
-                  value={formData.nome}
-                  onChangeText={(text) => setFormData({ ...formData, nome: text })}
-                  editable={!submitting}
-                />
-              </View>
-
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, styles.flex1]}>
-                  <Text style={styles.label}>E-mail</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="email@exemplo.com"
-                    placeholderTextColor="#999"
-                    value={formData.email}
-                    onChangeText={(text) => setFormData({ ...formData, email: text })}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    editable={!submitting}
-                  />
-                </View>
-
-                <View style={[styles.inputGroup, styles.flex1]}>
-                  <Text style={styles.label}>Telefone</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="(11) 99999-9999"
-                    placeholderTextColor="#999"
-                    value={formData.telefone}
-                    onChangeText={(text) => setFormData({ ...formData, telefone: mascaraTelefone(text) })}
-                    keyboardType="phone-pad"
-                    maxLength={15}
-                    editable={!submitting}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputGroup}>
-                  <Text style={styles.label}>CPF</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="123.456.789-00"
-                    placeholderTextColor="#999"
-                    value={formData.cpf}
-                    onChangeText={(text) => setFormData({ ...formData, cpf: mascaraCPF(text) })}
-                    keyboardType="numeric"
-                    maxLength={14}
-                    editable={!submitting}
-                  />
-                </View>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Feather name="toggle-right" size={20} color="#f97316" />
-              </View>
-              <Text style={styles.cardTitle}>Status do Professor</Text>
-            </View>
-
-            <View style={styles.cardBody}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchInfo}>
-                  <Text style={styles.switchLabel}>Professor Ativo</Text>
-                  <Text style={styles.switchDescription}>
-                    {formData.ativo
-                      ? 'O professor está ativo e disponível para aulas.'
-                      : 'O professor está inativo e não pode ser escalado.'}
-                  </Text>
-                </View>
-                <Switch
-                  value={formData.ativo}
-                  onValueChange={(value) => setFormData({ ...formData, ativo: value })}
-                  trackColor={{ false: '#d1d5db', true: '#86efac' }}
-                  thumbColor={formData.ativo ? '#22c55e' : '#9ca3af'}
-                  disabled={submitting}
-                />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-              disabled={submitting}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-              onPress={handleSubmit}
-              disabled={submitting}
-            >
-              {submitting ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Feather name="check" size={18} color="#fff" />
-                  <Text style={styles.submitButtonText}>
-                    {professorId ? 'Salvar Alterações' : 'Cadastrar Professor'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
+    <LayoutBase title={isEdit ? 'Editar professor' : 'Novo professor'} pageHeader={false}>
+      {!isEdit && (
+        <BuscarProfessorCpfModal
+          visible={buscarCpf}
+          onClose={() => { setBuscarCpf(false); back(); }}
+          onProfessorEncontrado={onProfessorEncontrado}
+          onCriarNovoProfessor={onCriarNovo}
+        />
+      )}
+      {loading ? (
+        <p className="ck-al-stamp" role="status">Carregando professor…</p>
+      ) : !buscarCpf && (
+        <ProfessorForm
+          key={teacher?.id ? `edit-${teacher.id}` : `novo-${teacher?.cpf || ''}`}
+          teacher={teacher}
+          bonds={bonds}
+          modalities={modalities}
+          today={today()}
+          saving={saving}
+          requireCpf={!isEdit}
+          serverErrors={server.errors}
+          serverValues={server.values}
+          onCheckEmail={checkEmail}
+          onCepLookup={lookupCep}
+          onSeeClasses={teacher?.weeklyClasses ? () => router.push(teacher.nextClassDate ? `/turmas?data=${teacher.nextClassDate}` : '/turmas') : undefined}
+          onSave={save}
+          onBack={back}
+          onCancel={back}
+        />
+      )}
+      <Modal
+        open={!!credenciais}
+        size="sm"
+        title="Acesso do professor criado"
+        description={credenciais?.mensagem}
+        dismissable={false}
+        onClose={back}
+        footer={<Button variant="primary" onClick={back}>Ir para professores</Button>}
+      >
+        {credenciais && (
+          <dl className="ck-pf__cred">
+            <dt>E-mail</dt><dd>{credenciais.email}</dd>
+            <dt>Senha temporária</dt><dd><code>{credenciais.senha_temporaria}</code></dd>
+          </dl>
+        )}
+      </Modal>
     </LayoutBase>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#f97316',
-    borderRadius: 8,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  statusActive: {
-    backgroundColor: '#dcfce7',
-  },
-  statusInactive: {
-    backgroundColor: '#fee2e2',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusDotActive: {
-    backgroundColor: '#22c55e',
-  },
-  statusDotInactive: {
-    backgroundColor: '#ef4444',
-  },
-  statusIndicatorText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  statusTextActive: {
-    color: '#166534',
-  },
-  statusTextInactive: {
-    color: '#991b1b',
-  },
-  formContainer: {
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    backgroundColor: '#fff7ed',
-  },
-  cardHeaderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1f2937',
-  },
-  cardBody: {
-    padding: 16,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  flex1: {
-    flex: 1,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  required: {
-    color: '#ef4444',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    fontSize: 14,
-    backgroundColor: '#fff',
-    color: '#111827',
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  switchInfo: {
-    flex: 1,
-  },
-  switchLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  switchDescription: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  cancelButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f3f4f6',
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  submitButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f97316',
-  },
-  submitButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  submitButtonDisabled: {
-    opacity: 0.7,
-  },
-});

@@ -2,6 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Repositories\UsuarioRepository;
+use App\Services\Admin\AdminProfessorService;
+use App\Services\JwtService;
+use App\Services\PermissaoService;
+use App\Support\Papel;
+use App\Support\Permissao;
 use Mockery;
 use Tests\TestCase;
 
@@ -35,7 +41,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('index')
             ->once()
             ->with(3, true)
@@ -43,7 +49,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['professores' => [['id' => 1, 'nome' => 'CARLOS MENDES']]],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->getJson('/v2/admin/professores?apenas_ativos=true', [
             'Authorization' => 'Bearer '.$token,
@@ -56,7 +62,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('show')
             ->once()
             ->with(99, 3)
@@ -64,7 +70,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 404,
                 'body' => ['type' => 'error', 'message' => 'Professor não encontrado'],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->getJson('/v2/admin/professores/99', [
             'Authorization' => 'Bearer '.$token,
@@ -77,7 +83,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('buscarPorCpf')
             ->once()
             ->with('12345678901', 3)
@@ -85,7 +91,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['professor' => ['id' => 1, 'cpf' => '12345678901']],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->getJson('/v2/admin/professores/cpf/12345678901', [
             'Authorization' => 'Bearer '.$token,
@@ -98,7 +104,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('buscarPorCpfGlobal')
             ->once()
             ->with('11122233344', 3)
@@ -106,7 +112,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['professor' => ['id' => 101, 'vinculado_ao_tenant_atual' => false]],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->getJson('/v2/admin/professores/global/cpf/11122233344', [
             'Authorization' => 'Bearer '.$token,
@@ -121,7 +127,7 @@ class V2AdminProfessorRoutesTest extends TestCase
 
         $payload = ['nome' => 'João Silva', 'email' => 'joao@x.com', 'cpf' => '12345678901'];
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('create')
             ->once()
             ->with(3, $payload)
@@ -134,7 +140,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                     'professor_existia' => false,
                 ],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->postJson('/v2/admin/professores', $payload, [
             'Authorization' => 'Bearer '.$token,
@@ -148,7 +154,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('update')
             ->once()
             ->with(9, 3, ['nome' => 'Novo Nome'])
@@ -167,7 +173,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['type' => 'success', 'message' => 'Professor deletado com sucesso'],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->putJson('/v2/admin/professores/9', ['nome' => 'Novo Nome'], [
             'Authorization' => 'Bearer '.$token,
@@ -186,7 +192,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(3);
 
-        $service = Mockery::mock(\App\Services\Admin\AdminProfessorService::class);
+        $service = Mockery::mock(AdminProfessorService::class);
         $service->shouldReceive('turmas')
             ->once()
             ->with(9, 3)
@@ -194,7 +200,7 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'status' => 200,
                 'body' => ['turmas' => [['id' => 1, 'modalidade_nome' => 'CrossFit']]],
             ]);
-        $this->app->instance(\App\Services\Admin\AdminProfessorService::class, $service);
+        $this->app->instance(AdminProfessorService::class, $service);
 
         $this->getJson('/v2/admin/professores/9/turmas', [
             'Authorization' => 'Bearer '.$token,
@@ -207,7 +213,7 @@ class V2AdminProfessorRoutesTest extends TestCase
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
 
-        $usuarios = Mockery::mock(\App\Repositories\UsuarioRepository::class);
+        $usuarios = Mockery::mock(UsuarioRepository::class);
         $usuarios->shouldReceive('findAuthContext')
             ->with(5)
             ->andReturn([
@@ -217,9 +223,16 @@ class V2AdminProfessorRoutesTest extends TestCase
                 'tenant_id' => 3,
                 'papel_id' => $papelId,
             ]);
-        $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
+        $this->app->instance(UsuarioRepository::class, $usuarios);
 
-        return app(\App\Services\JwtService::class)->encode([
+        // Permissão por rota (aulas.gerenciar) vem dos papéis no banco; aqui o papel do token decide
+        $permissoes = Mockery::mock(PermissaoService::class);
+        $permissoes->shouldReceive('papeisAtivos')->andReturn([$papelId]);
+        $permissoes->shouldReceive('tem')->andReturn($papelId === Papel::ADMIN);
+        $permissoes->shouldReceive('efetivas')->andReturn($papelId === Papel::ADMIN ? Permissao::naoSensiveis() : []);
+        $this->app->instance(PermissaoService::class, $permissoes);
+
+        return app(JwtService::class)->encode([
             'user_id' => 5,
             'email' => 'admin@example.com',
             'tenant_id' => 3,

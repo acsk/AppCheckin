@@ -1,7 +1,7 @@
 /* Prospecção → Recuperação de Alunos: tabela, filtros, badges e modais de contato.
    Estilos: src/theme/ck-prospeccao.css (+ ck-ml* de ck-enrollments.css). Primitivas de ./index. */
 import React, { useEffect, useState } from 'react';
-import { Avatar, Badge, Button, Callout, Icon, IconButton, Modal, SelectField, TextAreaField, TextField } from './index';
+import { Avatar, Badge, Button, Callout, Icon, IconButton, Modal, SegmentedControl, SelectField, TextAreaField, TextField } from './index';
 import { maskPhone, titleCase } from './pessoas';
 import { WhatsappContato } from './whatsapp';
 import { API_V2_BASE_URL } from '../../config/api';
@@ -105,6 +105,7 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, on
   const [texto, setTexto] = useState('');
   const [faltando, setFaltando] = useState([]);
   const [copiado, setCopiado] = useState(false);
+  const [destino, setDestino] = useState('web');
   const telefone = alvo ? telefoneDoAluno(alvo.aluno || alvo) : '';
   const tel = normalizarTelefoneWhatsapp(telefone);
 
@@ -113,6 +114,7 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, on
     const sugerido = modelos.find((m) => m.etapa === etapaSugerida(alvo?.status)) || modelos[0];
     setModeloId(sugerido ? String(sugerido.id) : '');
     setCopiado(false);
+    setDestino('web');
   }, [open]);
 
   useEffect(() => {
@@ -126,7 +128,7 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, on
     try { await navigator.clipboard.writeText(texto); setCopiado(true); } catch { setCopiado(false); }
   };
   const abrir = () => {
-    const r = abrirConversaWhatsapp(telefone, texto);
+    const r = abrirConversaWhatsapp(telefone, texto, destino);
     if (r.ok) onAberto({ mensagem: texto, modelo_mensagem_id: modeloId ? Number(modeloId) : null });
   };
 
@@ -139,7 +141,7 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, on
     footer={<>
       {onRegistrar ? <Button variant="ghost" className="ck-px-skip" onClick={onRegistrar}>Já falei por outro meio</Button> : null}
       <Button onClick={copiar} icon={copiado ? 'check' : 'copy'} disabled={!texto}>{copiado ? 'Copiado' : 'Copiar texto'}</Button>
-      <Button variant="primary" iconRight="external-link" onClick={abrir} disabled={!tel.ok || !texto.trim()}>Abrir WhatsApp</Button>
+      <Button variant="primary" iconRight="external-link" onClick={abrir} disabled={!tel.ok || !texto.trim()}>{destino === 'app' ? 'Abrir aplicativo' : 'Abrir WhatsApp Web'}</Button>
     </>}>
     <div className="ck-px-msg">
       <div className="ck-px-msg__form">
@@ -156,6 +158,12 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, on
             </button>)}
           </div>
         </div> : <p className="ck-pr-hint">Nenhum modelo ativo. Escreva a mensagem abaixo.</p>}
+        <div className="ck-field">
+          <span className="ck-field__label">Onde abrir</span>
+          <SegmentedControl label="Onde abrir o WhatsApp" value={destino} onChange={setDestino}
+            options={[{ value: 'web', label: 'WhatsApp Web', icon: 'external-link' }, { value: 'app', label: 'Aplicativo', icon: 'phone' }]} />
+          {destino === 'app' ? <span className="ck-field__hint">Abre o aplicativo do WhatsApp instalado neste dispositivo.</span> : null}
+        </div>
         <TextAreaField label="Mensagem" rows={7} value={texto} onChange={(e) => setTexto(e.target.value)}
           hint={selecionado && texto !== aplicarModelo(selecionado.conteudo, alvo?.variaveis || {}).texto ? 'Você editou o modelo. A mudança vale só para esta mensagem.' : 'Revise antes de enviar. Dá para editar à vontade.'} />
         {faltando.length ? <Callout tone="info">Sem dado para {faltando.map((v) => `{${v}}`).join(', ')}: o trecho ficou em branco. Ajuste o texto se precisar.</Callout> : null}

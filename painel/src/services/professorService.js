@@ -27,11 +27,25 @@ export const professorService = {
     }
   },
 
-  // Criar novo professor
+  // Tipos de vínculo (CLT, PJ…) para o formulário
+  async listarVinculos() {
+    const response = await api.get('/admin/professores/vinculos');
+    return response.data.vinculos || [];
+  },
+
+  // E-mail livre? Ocupado devolve { disponivel: false, nome } de quem já usa
+  async emailDisponivel(email, usuarioId = null) {
+    const response = await api.get('/admin/professores/email/disponivel', {
+      params: usuarioId ? { email, usuario_id: usuarioId } : { email }
+    });
+    return response.data;
+  },
+
+  // Criar novo professor (resposta completa: professor e, se criou o login, credenciais)
   async criar(data) {
     try {
       const response = await api.post('/admin/professores', data);
-      return response.data.professor;
+      return response.data;
     } catch (error) {
       console.error('Erro ao criar professor:', error);
       throw error;

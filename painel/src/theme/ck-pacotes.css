@@ -19,7 +19,7 @@
 .ck-pc__table .is-num { text-align: right; white-space: nowrap; }
 .ck-pc__name { display: flex; align-items: flex-start; gap: var(--space-3); max-width: 300px; }
 .ck-pc__name strong { display: block; font-weight: 600; color: var(--ink); }
-.ck-pc__name span:not(.ck-pc__icon) { display: block; font-size: 12px; line-height: 17px; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-pc__name > div > span { display: block; font-size: 12px; line-height: 17px; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ck-pc__icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: var(--radius-md); background: var(--primary-soft); color: var(--primary-ink); }
 .ck-pc__main { display: block; font-weight: 600; color: var(--ink); }
 .ck-pc__muted { color: var(--ink-muted); font-weight: 500; }

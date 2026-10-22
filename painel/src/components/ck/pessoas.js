@@ -645,4 +645,5 @@ import { Sparkline } from './graficos';
           h('span', null, rows.length === 1 ? '1 academia' : rows.length + ' academias', f !== 'todas' || q ? ' de ' + counts.todas : ''))));
   }
 
-export { AlunosLista, AlunoDetalhe, AlunoForm, LoginScreen, AcademiasLista, StatTile, Panel, maskCpf, maskPhone, maskCep, maskCnpj, digits, titleCase };
+export { AlunosLista, AlunoDetalhe, AlunoForm, LoginScreen, AcademiasLista, StatTile, Panel, maskCpf, maskPhone, maskCep, maskCnpj, digits, titleCase,
+  maskDate, brToIso, ageOn, firstName, fdate, dayDiff, BackLink, AlSection, UFS };

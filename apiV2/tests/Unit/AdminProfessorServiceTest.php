@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Repositories\AdminProfessorRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\Admin\AdminEquipeService;
 use App\Services\Admin\AdminProfessorService;
 use Mockery;
 use Tests\TestCase;
@@ -18,7 +19,7 @@ class AdminProfessorServiceTest extends TestCase
 
     private function service(?AdminProfessorRepository $professores = null, ?UsuarioRepository $usuarios = null): AdminProfessorService
     {
-        $equipe = Mockery::mock(\App\Services\Admin\AdminEquipeService::class);
+        $equipe = Mockery::mock(AdminEquipeService::class);
         $equipe->shouldReceive('verificarVaga')->andReturn(null);
 
         return new AdminProfessorService(
@@ -126,12 +127,12 @@ class AdminProfessorServiceTest extends TestCase
         $usuarios->shouldReceive('findByEmailGlobal')->once()->with('novo@x.com')->andReturn((object) ['id' => 8]);
 
         $repo = Mockery::mock(AdminProfessorRepository::class);
-        $repo->shouldReceive('findUsuarioByCpfGlobal')->once()->with('12345678901')->andReturn(['id' => 7]);
+        $repo->shouldReceive('findUsuarioByCpfGlobal')->once()->with('52998224725')->andReturn(['id' => 7]);
 
         $result = $this->service($repo, $usuarios)->create(3, [
             'nome' => 'João',
             'email' => 'novo@x.com',
-            'cpf' => '123.456.789-01',
+            'cpf' => '529.982.247-25',
         ]);
 
         $this->assertSame(409, $result['status']);
@@ -151,7 +152,7 @@ class AdminProfessorServiceTest extends TestCase
         $result = $this->service($repo, $usuarios)->create(3, [
             'nome' => 'João',
             'email' => 'prof@x.com',
-            'cpf' => '12345678901',
+            'cpf' => '52998224725',
         ]);
 
         $this->assertSame(409, $result['status']);
@@ -173,7 +174,7 @@ class AdminProfessorServiceTest extends TestCase
         $result = $this->service($repo, $usuarios)->create(3, [
             'nome' => 'João',
             'email' => 'prof@x.com',
-            'cpf' => '12345678901',
+            'cpf' => '52998224725',
         ]);
 
         $this->assertSame(201, $result['status']);
@@ -192,17 +193,17 @@ class AdminProfessorServiceTest extends TestCase
             ->withArgs(function (array $data, int $tenantId, int $papelId) {
                 return $tenantId === 3
                     && $papelId === 1
-                    && $data['cpf'] === '12345678901'
+                    && $data['cpf'] === '52998224725'
                     && is_string($data['senha'])
                     && strlen($data['senha']) === 8;
             })
             ->andReturn(77);
 
         $repo = Mockery::mock(AdminProfessorRepository::class);
-        $repo->shouldReceive('findUsuarioByCpfGlobal')->once()->with('12345678901')->andReturn(null);
+        $repo->shouldReceive('findUsuarioByCpfGlobal')->once()->with('52998224725')->andReturn(null);
         $repo->shouldReceive('criar')
             ->once()
-            ->withArgs(fn (array $data) => $data['usuario_id'] === 77 && $data['cpf'] === '12345678901')
+            ->withArgs(fn (array $data) => $data['usuario_id'] === 77 && $data['cpf'] === '52998224725')
             ->andReturn(12);
         $repo->shouldReceive('associarAoTenant')->once()->with(12, 3)->andReturn(true);
         $repo->shouldReceive('findById')->once()->with(12, 3)->andReturn(['id' => 12, 'nome' => 'João']);
@@ -210,8 +211,8 @@ class AdminProfessorServiceTest extends TestCase
         $result = $this->service($repo, $usuarios)->create(3, [
             'nome' => 'João',
             'email' => 'novo@x.com',
-            'cpf' => '12345678901',
-            'telefone' => '11999998888',
+            'cpf' => '52998224725',
+            'telefone' => '(11) 99999-8888',
         ]);
 
         $this->assertSame(201, $result['status']);
@@ -271,17 +272,114 @@ class AdminProfessorServiceTest extends TestCase
         $this->assertSame('novo@x.com', $result['body']['professor']['email']);
     }
 
-    public function test_delete_desativa_professor(): void
+    public function test_create_recusa_cpf_com_digito_errado(): void
+    {
+        $result = $this->service()->create(3, ['nome' => 'João Silva', 'email' => 'j@x.com', 'cpf' => '123.456.789-01']);
+
+        $this->assertSame(422, $result['status']);
+        $this->assertSame('CPF inválido', $result['body']['campos']['cpf']);
+    }
+
+    public function test_update_valida_campos_do_cadastro(): void
     {
         $repo = Mockery::mock(AdminProfessorRepository::class);
         $repo->shouldReceive('findById')->once()->with(9, 3)->andReturn(['id' => 9, 'usuario_id' => 50]);
-        $repo->shouldReceive('softDelete')->once()->with(9)->andReturn(true);
+        $repo->shouldReceive('vinculoExiste')->once()->with(99)->andReturn(false);
+        $repo->shouldReceive('modalidadesSaoDoTenant')->once()->with([7], 3)->andReturn(false);
+        $repo->shouldNotReceive('atualizar');
+
+        $result = $this->service($repo)->update(9, 3, [
+            'data_nascimento' => now()->subYears(15)->toDateString(),
+            'whatsapp' => '1133334444',
+            'cref' => '12345-G/AL',
+            'admitido_em' => now()->addDay()->toDateString(),
+            'vinculo_id' => 99,
+            'modalidade_ids' => [7],
+            'emergencia_nome' => 'Maria',
+            'emergencia_telefone' => '',
+            'cep' => '5700',
+            'estado' => 'XX',
+            'observacoes' => str_repeat('a', 501),
+        ]);
+
+        $this->assertSame(422, $result['status']);
+        $this->assertSame([
+            'whatsapp', 'data_nascimento', 'cref', 'admitido_em', 'vinculo_id', 'modalidade_ids',
+            'emergencia_telefone', 'cep', 'estado', 'observacoes',
+        ], array_keys($result['body']['campos']));
+        $this->assertCount(10, $result['body']['errors']);
+    }
+
+    public function test_update_normaliza_e_separa_dados_da_academia(): void
+    {
+        $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('findById')->with(9, 3)->andReturn(['id' => 9, 'usuario_id' => 50]);
+        $repo->shouldReceive('vinculoExiste')->with(2)->andReturn(true);
+        $repo->shouldReceive('modalidadesSaoDoTenant')->with([4, 5], 3)->andReturn(true);
+        $repo->shouldReceive('associarAoTenant')->once()->with(9, 3, false)->andReturn(true);
+        $repo->shouldReceive('atualizar')->once()->with(9, [
+            'cref' => '123456-G/AL',
+            'whatsapp' => '82999991234',
+            'cep' => '57035000',
+            'estado' => 'AL',
+            'complemento' => null,
+        ])->andReturn(true);
+        $repo->shouldReceive('salvarDadosNaAcademia')->once()->with(9, 3, [
+            'vinculo_id' => 2,
+            'modalidade_ids' => [4, 5],
+        ]);
+
+        $result = $this->service($repo)->update(9, 3, [
+            'cref' => '123456g al',
+            'whatsapp' => '(82) 99999-1234',
+            'cep' => '57035-000',
+            'estado' => 'al',
+            'complemento' => ' ',
+            'vinculo_id' => '2',
+            'modalidade_ids' => ['4', 5, 5],
+            'ativo' => false,
+        ]);
+
+        $this->assertSame(200, $result['status']);
+    }
+
+    public function test_delete_tira_professor_da_academia(): void
+    {
+        $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('findById')->once()->with(9, 3)->andReturn(['id' => 9, 'usuario_id' => 50]);
+        $repo->shouldReceive('contarTurmasAtivas')->once()->with(9, 3)->andReturn(0);
+        $repo->shouldReceive('removerDoTenant')->once()->with(9, 3);
+        $repo->shouldNotReceive('softDelete');
 
         $result = $this->service($repo)->delete(9, 3);
 
         $this->assertSame(200, $result['status']);
         $this->assertSame('success', $result['body']['type']);
-        $this->assertSame('Professor deletado com sucesso', $result['body']['message']);
+        $this->assertSame('Professor removido da academia', $result['body']['message']);
+    }
+
+    public function test_delete_recusa_professor_com_aulas(): void
+    {
+        $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('findById')->once()->with(9, 3)->andReturn(['id' => 9, 'usuario_id' => 50]);
+        $repo->shouldReceive('contarTurmasAtivas')->once()->with(9, 3)->andReturn(2);
+        $repo->shouldNotReceive('removerDoTenant');
+
+        $result = $this->service($repo)->delete(9, 3);
+
+        $this->assertSame(409, $result['status']);
+        $this->assertStringContainsString('2 aulas ativas', $result['body']['message']);
+    }
+
+    public function test_email_disponivel(): void
+    {
+        $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('usuarioPorEmail')->with('ana@x.com')->andReturn(['id' => 50, 'nome' => 'Ana']);
+        $service = $this->service($repo);
+
+        $this->assertSame(['disponivel' => false, 'nome' => 'Ana'], $service->emailDisponivel(' Ana@X.com', null)['body']);
+        $this->assertSame(['disponivel' => true, 'nome' => null], $service->emailDisponivel('ana@x.com', 50)['body']);
+        $this->assertSame(422, $service->emailDisponivel('ana@', null)['status']);
     }
 
     public function test_turmas_exige_vinculo_com_tenant(): void

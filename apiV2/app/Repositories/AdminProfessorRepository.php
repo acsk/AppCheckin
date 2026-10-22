@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\DB;
  * Queries admin de professores (painel).
  *
  * Vínculo professor↔tenant vive em tenant_usuario_papel (papel_id = 2);
- * o cadastro em professores é global (nome, cpf, email, foto, usuario_id).
+ * o cadastro em professores é global (nome, cpf, email, foto, usuario_id, CREF…);
+ * o que é de cada academia fica em professor_tenant e professor_modalidades.
  */
 class AdminProfessorRepository
 {
@@ -23,6 +24,9 @@ class AdminProfessorRepository
                     p.email,
                     p.foto_url,
                     p.ativo,
+                    p.whatsapp,
+                    p.cref,
+                    p.cref_validade,
                     u.id as usuario_id,
                     u.telefone,
                     tup.ativo as vinculo_ativo,
@@ -40,20 +44,101 @@ class AdminProfessorRepository
 
         $sql .= ' ORDER BY nome ASC';
 
-        return array_map(fn ($row) => (array) $row, DB::select($sql, [$tenantId]));
+        $professores = array_map(fn ($row) => (array) $row, DB::select($sql, [$tenantId]));
+        $ids = array_map(fn ($p) => (int) $p['id'], $professores);
+        $modalidades = $this->modalidadesPorProfessor($ids, $tenantId);
+        $aulas = $this->aulasDaSemana($ids, $tenantId);
+
+        foreach ($professores as &$p) {
+            $p['modalidades'] = $modalidades[(int) $p['id']] ?? [];
+            $p['aulas_semana'] = count($aulas[(int) $p['id']] ?? []);
+            $p['proxima_aula'] = $aulas[(int) $p['id']][0] ?? null;
+        }
+
+        return $professores;
+    }
+
+    /**
+     * Modalidades (desta academia) que cada professor dá.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, list<array{id: int, nome: string}>>
+     */
+    public function modalidadesPorProfessor(array $ids, int $tenantId): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $porProfessor = [];
+        DB::table('professor_modalidades as pm')
+            ->join('modalidades as m', 'm.id', '=', 'pm.modalidade_id')
+            ->where('m.tenant_id', $tenantId)
+            ->whereIn('pm.professor_id', $ids)
+            ->orderBy('m.nome')
+            ->get(['pm.professor_id', 'm.id', 'm.nome'])
+            ->each(function ($r) use (&$porProfessor) {
+                $porProfessor[(int) $r->professor_id][] = ['id' => (int) $r->id, 'nome' => $r->nome];
+            });
+
+        return $porProfessor;
+    }
+
+    /**
+     * Aulas de hoje até daqui a 6 dias que ainda não começaram, em ordem: a primeira é a próxima.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, list<array{data: string, horario_inicio: string, horario_fim: ?string, nome: ?string}>>
+     */
+    private function aulasDaSemana(array $ids, int $tenantId): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $agora = now();
+        $porProfessor = [];
+        DB::table('turmas as t')
+            ->join('dias as d', 'd.id', '=', 't.dia_id')
+            ->leftJoin('modalidades as m', 'm.id', '=', 't.modalidade_id')
+            ->where('t.tenant_id', $tenantId)
+            ->where('t.ativo', 1)
+            ->whereIn('t.professor_id', $ids)
+            ->whereBetween('d.data', [$agora->toDateString(), $agora->copy()->addDays(6)->toDateString()])
+            ->orderBy('d.data')->orderBy('t.horario_inicio')
+            ->get(['t.professor_id', 'd.data', 't.horario_inicio', 't.horario_fim', 't.nome', 'm.nome as modalidade'])
+            ->each(function ($r) use (&$porProfessor, $agora) {
+                $data = substr((string) $r->data, 0, 10);
+                if ($data.' '.$r->horario_inicio < $agora->format('Y-m-d H:i:s')) {
+                    return;
+                }
+                $porProfessor[(int) $r->professor_id][] = [
+                    'data' => $data,
+                    'horario_inicio' => substr((string) $r->horario_inicio, 0, 5),
+                    'horario_fim' => $r->horario_fim ? substr((string) $r->horario_fim, 0, 5) : null,
+                    'nome' => $r->modalidade ?: $r->nome,
+                ];
+            });
+
+        return $porProfessor;
     }
 
     public function findById(int $id, ?int $tenantId = null): ?array
     {
         if ($tenantId !== null) {
             $sql = 'SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
-                           u.telefone,
-                           tup.ativo as vinculo_ativo
+                           p.data_nascimento, p.whatsapp, p.cref, p.cref_validade,
+                           p.emergencia_nome, p.emergencia_telefone, p.emergencia_parentesco,
+                           u.telefone, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
+                           tup.ativo as vinculo_ativo,
+                           pt.vinculo_id, vp.codigo as vinculo_codigo, vp.nome as vinculo_nome, pt.admitido_em, pt.observacoes
                     FROM professores p
                     INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = p.usuario_id
                         AND tup.tenant_id = ?
                         AND tup.papel_id = '.self::PAPEL_PROFESSOR.'
                     LEFT JOIN usuarios u ON u.id = p.usuario_id
+                    LEFT JOIN professor_tenant pt ON pt.professor_id = p.id AND pt.tenant_id = tup.tenant_id
+                    LEFT JOIN vinculos_professor vp ON vp.id = pt.vinculo_id
                     WHERE p.id = ?';
             $bindings = [$tenantId, $id];
         } else {
@@ -66,8 +151,21 @@ class AdminProfessorRepository
         }
 
         $row = DB::selectOne($sql, $bindings);
+        if (! $row) {
+            return null;
+        }
 
-        return $row ? (array) $row : null;
+        $professor = (array) $row;
+        if ($tenantId !== null) {
+            $professor['modalidades'] = $this->modalidadesPorProfessor([$id], $tenantId)[$id] ?? [];
+            $professor['modalidade_ids'] = array_column($professor['modalidades'], 'id');
+            $professor['turmas_count'] = $this->contarTurmasAtivas($id, $tenantId);
+            $aulas = $this->aulasDaSemana([$id], $tenantId)[$id] ?? [];
+            $professor['aulas_semana'] = count($aulas);
+            $professor['proxima_aula'] = $aulas[0] ?? null;
+        }
+
+        return $professor;
     }
 
     /**
@@ -200,9 +298,14 @@ class AdminProfessorRepository
         ]);
     }
 
+    /** Campos que o formulário pode limpar (null apaga). */
+    private const PROFESSOR_OPCIONAIS = ['data_nascimento', 'whatsapp', 'cref', 'cref_validade', 'emergencia_nome', 'emergencia_telefone', 'emergencia_parentesco'];
+
+    private const ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'];
+
     /**
-     * Atualiza professores (nome, cpf, email, foto_url, ativo) e os campos
-     * espelhados em usuarios (email, telefone, cpf, nome), como na Slim.
+     * Atualiza professores (nome, cpf, email, foto_url, ativo + dados profissionais) e os campos
+     * espelhados em usuarios (email, telefone, cpf, nome + endereço), como na Slim.
      */
     public function atualizar(int $id, array $data): bool
     {
@@ -211,19 +314,105 @@ class AdminProfessorRepository
             return false;
         }
 
-        $professorPayload = $this->apenasCampos($data, ['nome', 'cpf', 'email', 'foto_url', 'ativo']);
+        $professorPayload = $this->apenasCampos($data, ['nome', 'cpf', 'email', 'foto_url', 'ativo'])
+            + array_intersect_key($data, array_flip(self::PROFESSOR_OPCIONAIS));
         if ($professorPayload !== []) {
             $professorPayload['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
             DB::table('professores')->where('id', $id)->update($professorPayload);
         }
 
-        $usuarioPayload = $this->apenasCampos($data, ['email', 'telefone', 'cpf', 'nome']);
+        $usuarioPayload = $this->apenasCampos($data, ['email', 'cpf', 'nome'])
+            + array_intersect_key($data, array_flip(['telefone', ...self::ENDERECO]));
         if ($usuarioPayload !== []) {
             $usuarioPayload['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
             DB::table('usuarios')->where('id', $professor['usuario_id'])->update($usuarioPayload);
         }
 
         return true;
+    }
+
+    /**
+     * Dados do professor nesta academia (professor_tenant) e modalidades que ele dá.
+     * Só mexe no que veio em $data; modalidade_ids substitui as modalidades desta academia.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function salvarDadosNaAcademia(int $professorId, int $tenantId, array $data): void
+    {
+        $campos = array_intersect_key($data, array_flip(['vinculo_id', 'admitido_em', 'observacoes']));
+        if ($campos !== []) {
+            $chave = ['tenant_id' => $tenantId, 'professor_id' => $professorId];
+            if (DB::table('professor_tenant')->where($chave)->exists()) {
+                DB::table('professor_tenant')->where($chave)->update($campos + ['updated_at' => now()]);
+            } else {
+                DB::table('professor_tenant')->insert($chave + $campos + ['created_at' => now(), 'updated_at' => now()]);
+            }
+        }
+
+        if (array_key_exists('modalidade_ids', $data)) {
+            $this->removerModalidadesDoTenant($professorId, $tenantId);
+            $ids = array_values(array_unique(array_map('intval', (array) $data['modalidade_ids'])));
+            DB::table('professor_modalidades')->insert(
+                array_map(fn ($m) => ['professor_id' => $professorId, 'modalidade_id' => $m], $ids)
+            );
+        }
+    }
+
+    /** Tira o professor desta academia: papel, dados e modalidades daqui. O perfil global fica. */
+    public function removerDoTenant(int $professorId, int $tenantId): void
+    {
+        $usuarioId = DB::table('professores')->where('id', $professorId)->value('usuario_id');
+        DB::table('tenant_usuario_papel')
+            ->where('tenant_id', $tenantId)
+            ->where('usuario_id', $usuarioId)
+            ->where('papel_id', self::PAPEL_PROFESSOR)
+            ->delete();
+        DB::table('professor_tenant')->where(['tenant_id' => $tenantId, 'professor_id' => $professorId])->delete();
+        $this->removerModalidadesDoTenant($professorId, $tenantId);
+    }
+
+    public function contarTurmasAtivas(int $professorId, int $tenantId): int
+    {
+        return DB::table('turmas')->where('professor_id', $professorId)->where('tenant_id', $tenantId)->where('ativo', 1)->count();
+    }
+
+    /** @return list<array{id: int, codigo: string, nome: string}> */
+    public function listarVinculos(): array
+    {
+        return DB::table('vinculos_professor')->where('ativo', 1)->orderBy('ordem')->orderBy('nome')
+            ->get(['id', 'codigo', 'nome'])
+            ->map(fn ($v) => ['id' => (int) $v->id, 'codigo' => $v->codigo, 'nome' => $v->nome])->all();
+    }
+
+    public function vinculoExiste(int $id): bool
+    {
+        return DB::table('vinculos_professor')->where('id', $id)->where('ativo', 1)->exists();
+    }
+
+    /**
+     * @param  list<int>  $ids
+     */
+    public function modalidadesSaoDoTenant(array $ids, int $tenantId): bool
+    {
+        $ids = array_values(array_unique($ids));
+
+        return DB::table('modalidades')->where('tenant_id', $tenantId)->whereIn('id', $ids)->count() === count($ids);
+    }
+
+    /** Usuário dono do e-mail (para avisar no formulário que já existe cadastro). */
+    public function usuarioPorEmail(string $email): ?array
+    {
+        $u = DB::table('usuarios')->where('email', $email)->first(['id', 'nome']);
+
+        return $u ? ['id' => (int) $u->id, 'nome' => $u->nome] : null;
+    }
+
+    private function removerModalidadesDoTenant(int $professorId, int $tenantId): void
+    {
+        DB::table('professor_modalidades')
+            ->where('professor_id', $professorId)
+            ->whereIn('modalidade_id', DB::table('modalidades')->where('tenant_id', $tenantId)->select('id'))
+            ->delete();
     }
 
     public function softDelete(int $id): bool

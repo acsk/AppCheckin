@@ -4,6 +4,8 @@ namespace App\Services\Admin;
 
 use App\Repositories\AdminProfessorRepository;
 use App\Repositories\UsuarioRepository;
+use App\Support\Documento;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 class AdminProfessorService
@@ -119,6 +121,11 @@ class AdminProfessorService
             return $this->error('CPF inválido. Deve conter 11 dígitos', 400);
         }
 
+        $data = $this->normalizar($data);
+        if (($invalido = $this->validar($data, $tenantId)) !== null) {
+            return $invalido;
+        }
+
         // Uma pessoa = um usuário: o admin que também dá aula vira professor no mesmo cadastro.
         // Antes só o e-mail era procurado e o mesmo CPF com outro e-mail era recusado (ou duplicado).
         $usuarioExistente = $this->usuarios->findByEmailGlobal((string) $data['email']);
@@ -180,6 +187,7 @@ class AdminProfessorService
                 }
 
                 $this->professores->associarAoTenant($professorId, $tenantId);
+                $this->salvarComplementos($professorId, $tenantId, $data);
 
                 return [
                     'usuario_id' => $usuarioId,
@@ -234,9 +242,20 @@ class AdminProfessorService
             return $this->error('Email já está em uso por outro usuário', 422);
         }
 
+        $data = $this->normalizar($data);
+        if (($invalido = $this->validar($data, $tenantId)) !== null) {
+            return $invalido;
+        }
+
         try {
-            DB::transaction(function () use ($id, $professor, $data) {
-                $this->professores->atualizar($id, $data);
+            DB::transaction(function () use ($id, $tenantId, $professor, $data) {
+                // Ativo/inativo é nesta academia (papel Professor), não no perfil que vale para todas
+                if (array_key_exists('ativo', $data)) {
+                    $this->professores->associarAoTenant($id, $tenantId, (bool) $data['ativo']);
+                    unset($data['ativo']);
+                }
+                $this->professores->atualizar($id, array_diff_key($data, array_flip(self::DA_ACADEMIA)));
+                $this->salvarDadosNaAcademia($id, $tenantId, $data);
 
                 if (isset($data['email']) || isset($data['senha'])) {
                     $usuarioData = [];
@@ -275,19 +294,53 @@ class AdminProfessorService
             return $this->error('Professor não encontrado', 404);
         }
 
+        $turmas = $this->professores->contarTurmasAtivas($id, $tenantId);
+        if ($turmas > 0) {
+            return $this->error("Este professor tem {$turmas} ".($turmas === 1 ? 'aula ativa' : 'aulas ativas').'. Troque o professor dessas aulas ou desative o cadastro.', 409);
+        }
+
         try {
-            $this->professores->softDelete($id);
+            // Sai só desta academia: o perfil e o login continuam valendo nas outras
+            DB::transaction(fn () => $this->professores->removerDoTenant($id, $tenantId));
 
             return [
                 'status' => 200,
                 'body' => [
                     'type' => 'success',
-                    'message' => 'Professor deletado com sucesso',
+                    'message' => 'Professor removido da academia',
                 ],
             ];
         } catch (\Throwable $e) {
             return $this->error('Erro ao deletar professor: '.$e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Tipos de vínculo (CLT, PJ…) para o formulário.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function vinculos(): array
+    {
+        return ['status' => 200, 'body' => ['vinculos' => $this->professores->listarVinculos()]];
+    }
+
+    /**
+     * E-mail livre para o professor? Ocupado por outro cadastro devolve o nome dele, para o aviso no formulário.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function emailDisponivel(string $email, ?int $usuarioId): array
+    {
+        $email = mb_strtolower(trim($email));
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->error('E-mail inválido', 422);
+        }
+
+        $dono = $this->professores->usuarioPorEmail($email);
+        $livre = ! $dono || ($usuarioId !== null && $dono['id'] === $usuarioId);
+
+        return ['status' => 200, 'body' => ['disponivel' => $livre, 'nome' => $livre ? null : $dono['nome']]];
     }
 
     /**
@@ -305,6 +358,196 @@ class AdminProfessorService
                 'turmas' => $this->professores->listarTurmas($professorId, $tenantId),
             ],
         ];
+    }
+
+    /** Campos de professor_tenant / professor_modalidades (por academia). */
+    private const DA_ACADEMIA = ['vinculo_id', 'admitido_em', 'observacoes', 'modalidade_ids'];
+
+    /** Campos do cadastro completo além de nome/e-mail/CPF/telefone. */
+    private const COMPLEMENTO = ['data_nascimento', 'whatsapp', 'cref', 'cref_validade', 'emergencia_nome', 'emergencia_telefone', 'emergencia_parentesco',
+        'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'];
+
+    private const SO_DIGITOS = ['cpf', 'telefone', 'whatsapp', 'emergencia_telefone', 'cep'];
+
+    /** Limites de tamanho (iguais às colunas). */
+    private const TAMANHOS = ['nome' => 255, 'emergencia_nome' => 120, 'emergencia_parentesco' => 60, 'logradouro' => 255,
+        'numero' => 20, 'complemento' => 100, 'bairro' => 100, 'cidade' => 100, 'observacoes' => 500];
+
+    /** Idade mínima para dar aula. */
+    private const IDADE_MINIMA = 16;
+
+    /**
+     * Texto vazio vira null (o formulário limpa o campo), documentos e telefones só dígitos, CREF e UF no formato.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizar(array $data): array
+    {
+        foreach ($data as $campo => $valor) {
+            if (is_string($valor)) {
+                $valor = trim($valor);
+                $data[$campo] = $valor === '' && $campo !== 'senha' ? null : $valor;
+            }
+        }
+        foreach (self::SO_DIGITOS as $campo) {
+            if (isset($data[$campo])) {
+                $data[$campo] = Documento::digitos((string) $data[$campo]) ?: null;
+            }
+        }
+        if (isset($data['email'])) {
+            $data['email'] = mb_strtolower((string) $data['email']);
+        }
+        if (isset($data['cref'])) {
+            $data['cref'] = Documento::normalizarCref((string) $data['cref']);
+        }
+        if (isset($data['estado'])) {
+            $data['estado'] = strtoupper((string) $data['estado']);
+        }
+        if (array_key_exists('vinculo_id', $data)) {
+            $data['vinculo_id'] = $data['vinculo_id'] !== null ? (int) $data['vinculo_id'] : null;
+        }
+        if (array_key_exists('modalidade_ids', $data)) {
+            $data['modalidade_ids'] = array_values(array_unique(array_map('intval', array_filter((array) $data['modalidade_ids'], 'is_numeric'))));
+        }
+
+        return $data;
+    }
+
+    /**
+     * Valida só o que veio (o PUT pode mandar um campo só). Devolve 422 com a lista e o erro de cada campo.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}|null
+     */
+    private function validar(array $data, int $tenantId): ?array
+    {
+        $erros = [];
+        $hoje = CarbonImmutable::today();
+        $tem = fn (string $c) => isset($data[$c]);
+
+        if (array_key_exists('nome', $data) && mb_strlen((string) $data['nome']) < 3) {
+            $erros['nome'] = 'Informe o nome completo';
+        }
+        if ($tem('cpf') && ! Documento::cpfValido((string) $data['cpf'])) {
+            $erros['cpf'] = 'CPF inválido';
+        }
+        if ($tem('email') && ! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $erros['email'] = 'E-mail inválido';
+        }
+        foreach (['telefone' => 'Celular', 'emergencia_telefone' => 'Telefone de emergência'] as $campo => $rotulo) {
+            if ($tem($campo) && ! in_array(strlen((string) $data[$campo]), [10, 11], true)) {
+                $erros[$campo] = "{$rotulo} inválido: use DDD + número";
+            }
+        }
+        if ($tem('whatsapp') && ! preg_match('/^\d{2}9\d{8}$/', (string) $data['whatsapp'])) {
+            $erros['whatsapp'] = 'WhatsApp inválido: use DDD + celular com 9 dígitos';
+        }
+
+        if ($tem('data_nascimento')) {
+            $nascimento = $this->data($data['data_nascimento']);
+            if (! $nascimento || $nascimento->isAfter($hoje)) {
+                $erros['data_nascimento'] = 'Data de nascimento inválida';
+            } elseif ($nascimento->diffInYears($hoje) < self::IDADE_MINIMA) {
+                $erros['data_nascimento'] = 'O professor precisa ter pelo menos '.self::IDADE_MINIMA.' anos';
+            } elseif ($nascimento->diffInYears($hoje) > 100) {
+                $erros['data_nascimento'] = 'Data de nascimento inválida';
+            }
+        }
+
+        if ($tem('cref') && ! Documento::crefValido((string) $data['cref'])) {
+            $erros['cref'] = 'CREF inválido: use o formato 000000-G/UF';
+        }
+        if ($tem('cref_validade') && ! $this->data($data['cref_validade'])) {
+            $erros['cref_validade'] = 'Validade da carteira inválida';
+        }
+        if ($tem('admitido_em')) {
+            $desde = $this->data($data['admitido_em']);
+            if (! $desde || $desde->isAfter($hoje)) {
+                $erros['admitido_em'] = '"Na academia desde" não pode ser uma data futura';
+            }
+        }
+
+        if ($tem('vinculo_id') && ! $this->professores->vinculoExiste((int) $data['vinculo_id'])) {
+            $erros['vinculo_id'] = 'Tipo de vínculo inválido';
+        }
+        if (! empty($data['modalidade_ids']) && ! $this->professores->modalidadesSaoDoTenant($data['modalidade_ids'], $tenantId)) {
+            $erros['modalidade_ids'] = 'Modalidade não encontrada nesta academia';
+        }
+
+        // Contato de emergência: nome e telefone andam juntos
+        if ($tem('emergencia_nome') && array_key_exists('emergencia_telefone', $data) && ! $tem('emergencia_telefone')) {
+            $erros['emergencia_telefone'] ??= 'Informe o telefone do contato de emergência';
+        }
+        if ($tem('emergencia_telefone') && array_key_exists('emergencia_nome', $data) && ! $tem('emergencia_nome')) {
+            $erros['emergencia_nome'] = 'Informe o nome do contato de emergência';
+        }
+
+        if ($tem('cep') && ! Documento::cepValido((string) $data['cep'])) {
+            $erros['cep'] = 'CEP inválido: são 8 dígitos';
+        }
+        if ($tem('estado') && ! Documento::ufValida((string) $data['estado'])) {
+            $erros['estado'] = 'UF inválida';
+        }
+
+        foreach (self::TAMANHOS as $campo => $max) {
+            if ($tem($campo) && mb_strlen((string) $data[$campo]) > $max) {
+                $erros[$campo] ??= "Máximo de {$max} caracteres";
+            }
+        }
+
+        if ($erros === []) {
+            return null;
+        }
+
+        return [
+            'status' => 422,
+            'body' => [
+                'type' => 'error',
+                'message' => reset($erros),
+                'errors' => array_values($erros),
+                'campos' => $erros,
+            ],
+        ];
+    }
+
+    /** Aceita Y-m-d (ou d/m/Y) e devolve null se não for uma data de verdade. */
+    private function data(mixed $valor): ?CarbonImmutable
+    {
+        $valor = (string) $valor;
+        foreach (['Y-m-d', 'd/m/Y'] as $formato) {
+            $d = CarbonImmutable::createFromFormat('!'.$formato, $valor);
+            if ($d && $d->format($formato) === $valor) {
+                return $d;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Depois de criar/associar: cadastro completo e dados da academia, se vieram.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function salvarComplementos(int $professorId, int $tenantId, array $data): void
+    {
+        $complemento = array_intersect_key($data, array_flip(self::COMPLEMENTO));
+        if ($complemento !== []) {
+            $this->professores->atualizar($professorId, $complemento);
+        }
+        $this->salvarDadosNaAcademia($professorId, $tenantId, $data);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function salvarDadosNaAcademia(int $professorId, int $tenantId, array $data): void
+    {
+        $daAcademia = array_intersect_key($data, array_flip(self::DA_ACADEMIA));
+        if ($daAcademia !== []) {
+            $this->professores->salvarDadosNaAcademia($professorId, $tenantId, $daAcademia);
+        }
     }
 
     private function limparCpf(string $cpf): string

@@ -39,6 +39,31 @@ class ProfessorController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function vinculos(Request $request): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->vinculos();
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function emailDisponivel(Request $request): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $usuarioId = $request->query('usuario_id');
+        $result = $this->service->emailDisponivel((string) $request->query('email', ''), is_numeric($usuarioId) ? (int) $usuarioId : null);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function buscarPorCpf(Request $request, string $cpf): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

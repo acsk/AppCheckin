@@ -30,3 +30,12 @@
   .ck-wa--icon { width: 44px; height: 44px; }
   .ck-wa--button { height: var(--control-height-lg); }
 }
+
+/* Escolha entre WhatsApp no navegador e no aplicativo. */
+.ck-wa-destinos { display: grid; gap: var(--space-3); }
+.ck-wa-destino { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ck-wa-destino:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--primary); }
+.ck-wa-destino:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-wa-destino > span { flex: 1; min-width: 0; }
+.ck-wa-destino strong { display: block; font-size: 15px; }
+.ck-wa-destino small { display: block; margin-top: 2px; font-size: 13px; line-height: 18px; color: var(--ink-muted); }

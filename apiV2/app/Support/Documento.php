@@ -2,9 +2,11 @@
 
 namespace App\Support;
 
-/** CPF e CNPJ: só dígitos e validação dos dígitos verificadores. */
+/** CPF, CNPJ, CREF, CEP e UF: só dígitos e validação. */
 final class Documento
 {
+    public const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
+
     public static function digitos(?string $valor): string
     {
         return preg_replace('/\D/', '', (string) $valor) ?? '';
@@ -49,5 +51,34 @@ final class Documento
         }
 
         return true;
+    }
+
+    public static function ufValida(?string $uf): bool
+    {
+        return in_array(strtoupper(trim((string) $uf)), self::UFS, true);
+    }
+
+    public static function cepValido(?string $cep): bool
+    {
+        return strlen(self::digitos($cep)) === 8;
+    }
+
+    /** CREF no formato 000000-G/UF (G = graduado, P = provisionado), com UF existente. */
+    public static function crefValido(?string $cref): bool
+    {
+        $cref = self::normalizarCref($cref);
+
+        return preg_match('/^\d{6}-[GP]\/([A-Z]{2})$/', $cref, $m) === 1 && self::ufValida($m[1]);
+    }
+
+    /** Aceita "123456g/al", "123456-G-AL", "123456 G AL"… e devolve 123456-G/AL. */
+    public static function normalizarCref(?string $cref): string
+    {
+        $c = strtoupper(preg_replace('/[^0-9A-Za-z]/', '', (string) $cref) ?? '');
+        if (preg_match('/^(\d{6})([GP])([A-Z]{2})$/', $c, $m) === 1) {
+            return "{$m[1]}-{$m[2]}/{$m[3]}";
+        }
+
+        return strtoupper(trim((string) $cref));
     }
 }

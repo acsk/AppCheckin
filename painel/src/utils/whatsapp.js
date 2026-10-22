@@ -1,7 +1,8 @@
-/* Conversa manual pelo WhatsApp Web: normaliza o telefone cadastrado e monta o link wa.me/web.
+/* Conversa manual pelo WhatsApp: normaliza o telefone e abre a versão web ou o aplicativo.
    Não envia nada — só abre a conversa (com texto opcional) para o atendente enviar à mão. */
 
 export const WHATSAPP_WEB_URL = 'https://web.whatsapp.com/send';
+export const WHATSAPP_APP_URL = 'whatsapp://send';
 export const PAIS_BRASIL = '55';
 
 // DDDs em uso no Brasil (Anatel)
@@ -58,21 +59,23 @@ export const telefoneDoAluno = (aluno) => (aluno && (aluno.whatsapp || aluno.tel
 /**
  * @param {string} numero - Já normalizado (normalizarTelefoneWhatsapp().numero)
  * @param {string} [texto] - Mensagem para deixar preenchida (opcional)
+ * @param {'web'|'app'} [destino='web'] - Onde abrir a conversa
  */
-export function urlConversaWhatsapp(numero, texto) {
+export function urlConversaWhatsapp(numero, texto, destino = 'web') {
   const msg = texto && String(texto).trim();
-  return `${WHATSAPP_WEB_URL}?phone=${numero}${msg ? `&text=${encodeURIComponent(msg)}` : ''}`;
+  return `${destino === 'app' ? WHATSAPP_APP_URL : WHATSAPP_WEB_URL}?phone=${numero}${msg ? `&text=${encodeURIComponent(msg)}` : ''}`;
 }
 
 /**
- * Abre a conversa numa nova aba. Deve ser chamada direto no handler de clique (evita bloqueio de pop-up).
+ * Abre a versão web em nova aba ou aciona o aplicativo instalado. Deve ser chamada direto no handler de clique (evita bloqueio de pop-up).
  * Abrir a conversa NÃO significa que a mensagem foi enviada.
  * @returns {{ ok: boolean, url?: string, mensagem?: string }}
  */
-export function abrirConversaWhatsapp(telefone, texto) {
+export function abrirConversaWhatsapp(telefone, texto, destino = 'web') {
   const tel = normalizarTelefoneWhatsapp(telefone);
   if (!tel.ok) return { ok: false, mensagem: tel.mensagem };
-  const url = urlConversaWhatsapp(tel.numero, texto);
-  window.open(url, '_blank', 'noopener,noreferrer');
+  const url = urlConversaWhatsapp(tel.numero, texto, destino);
+  if (destino === 'app') window.location.assign(url);
+  else window.open(url, '_blank', 'noopener,noreferrer');
   return { ok: true, url };
 }

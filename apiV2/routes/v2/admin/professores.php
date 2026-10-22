@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/professores', [ProfessorController::class, 'index']);
 Route::post('/professores', [ProfessorController::class, 'store']);
+Route::get('/professores/vinculos', [ProfessorController::class, 'vinculos']);
+Route::get('/professores/email/disponivel', [ProfessorController::class, 'emailDisponivel']);
 Route::get('/professores/global/cpf/{cpf}', [ProfessorController::class, 'buscarPorCpfGlobal']);
 Route::get('/professores/cpf/{cpf}', [ProfessorController::class, 'buscarPorCpf']);
 Route::get('/professores/{professorId}/turmas', [ProfessorController::class, 'turmas']);
