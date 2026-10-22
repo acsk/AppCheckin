@@ -13,7 +13,8 @@ export default function MeuPlanoScreen() {
   useEffect(() => {
     (async () => {
       const user = await authService.getCurrentUser();
-      if (!user || user.papel_id !== 3) {
+      // Plano do Check-in é do admin principal (permissão conta.gerenciar)
+      if (!user || !(await authService.temPermissao('conta.gerenciar'))) {
         router.replace('/');
         return;
       }

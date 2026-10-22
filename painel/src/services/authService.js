@@ -47,6 +47,11 @@ export const authService = {
     return this.papelIds(user).includes(papelId);
   },
 
+  /** Equipe da academia (admin, comercial, financeiro) ou super admin: entra no painel. */
+  podeAcessarPainel(user) {
+    return [3, 4].includes(this.getEffectivePapelId(user)) || FUNCIONAIS.some((p) => this.hasPapel(user, p));
+  },
+
   /** Administrador ou equipe comercial: acessa o módulo Prospecção. */
   podeProspeccao(user) {
     return [3, 4].includes(this.getEffectivePapelId(user)) || this.hasPapel(user, PAPEL_COMERCIAL);

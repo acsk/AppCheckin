@@ -16,9 +16,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * Minha Conta (painel admin). Perfil e senha valem para qualquer usuário do painel; escola e CNPJ
- * exigem papel Admin ativo no tenant do token — o admin.auth olha o maior papel do usuário em
- * qualquer academia, então a checagem aqui é por tenant.
+ * Minha Conta (painel). Quem acessa cada parte é decidido por `permissao.rota` (App\Support\PermissaoRotas):
+ * perfil/senha qualquer pessoa da equipe; escola configuracoes.editar; CNPJ e acessos conta.gerenciar.
  */
 class MinhaContaController extends Controller
 {
@@ -139,10 +138,6 @@ class MinhaContaController extends Controller
         $tenantId = (int) $request->attributes->get('tenantId', 0);
         if (! $tenantId) {
             return ApiError::json('Tenant não selecionado', 'MISSING_TENANT', 400);
-        }
-        if (! $request->attributes->get('acesso_suporte')
-            && ! in_array(Papel::ADMIN, $this->tenants->listarPapelIdsAtivos($tenantId, $this->userId($request)), true)) {
-            return ApiError::json('Apenas administradores desta academia podem acessar estes dados.', 'FORBIDDEN', 403);
         }
 
         return $tenantId;

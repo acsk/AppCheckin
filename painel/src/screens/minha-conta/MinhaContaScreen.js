@@ -403,30 +403,33 @@ function CnpjAba() {
 const ABAS = [
   { value: 'perfil', label: 'Meu perfil' },
   { value: 'seguranca', label: 'Segurança' },
-  { value: 'escola', label: 'Dados da escola', admin: true },
-  { value: 'cnpj', label: 'Dados do CNPJ', admin: true },
-  { value: 'plano', label: 'Plano e assinatura', admin: true },
+  { value: 'escola', label: 'Dados da escola', perm: 'configuracoes.editar' },
+  { value: 'cnpj', label: 'Dados do CNPJ', perm: 'conta.gerenciar' },
+  { value: 'plano', label: 'Plano e assinatura', perm: 'conta.gerenciar' },
 ];
 
 export default function MinhaContaScreen() {
   const params = useLocalSearchParams();
-  const [admin, setAdmin] = useState(null);
+  const [perms, setPerms] = useState(null);
   const [suporte, setSuporte] = useState(false);
   const [aba, setAba] = useState(ABAS.some((a) => a.value === params.aba) ? params.aba : 'perfil');
 
   useEffect(() => {
-    authService.getCurrentUser().then((u) => { setSuporte(!!u?.acesso_suporte); setAdmin(authService.getEffectivePapelId(u) === 3); }).catch(() => setAdmin(false));
+    authService.getCurrentUser().then((u) => setSuporte(!!u?.acesso_suporte)).catch(() => {});
+    authService.getPermissoes().then(setPerms).catch(() => setPerms([]));
   }, []);
 
   // No acesso de suporte o "meu perfil" seria o do super admin: fica de fora
-  const abas = ABAS.filter((a) => (!a.admin || admin) && !(suporte && a.value === 'perfil'));
+  // Cada aba segue a permissão da API (escola: configurações; CNPJ e plano: admin principal)
+  const abas = ABAS.filter((a) => (!a.perm || (perms || []).includes(a.perm)) && !(suporte && a.value === 'perfil'));
+  const admin = (perms || []).includes('conta.gerenciar'); // acessos do suporte e dados da academia
   const atual = abas.some((a) => a.value === aba) ? aba : abas[0]?.value;
 
   return (
     <LayoutBase title="Minha conta" pageHeader={false}>
       <div className="ck-mc">
         <PageHeader title="Minha conta" description={admin ? 'Seu perfil, a segurança do acesso e os dados da academia.' : 'Seu perfil e a segurança do acesso.'} />
-        {admin === null ? <p className="ck-mc-hint" role="status">Carregando…</p> : (
+        {perms === null ? <p className="ck-mc-hint" role="status">Carregando…</p> : (
           <>
             <Tabs label="Seções de Minha conta" value={atual} onChange={setAba} tabs={abas} className="ck-mc-tabs" />
             <div role="tabpanel" aria-label={abas.find((a) => a.value === atual)?.label}>

@@ -33,6 +33,9 @@ class AcessoSuporteTest extends TestCase
         $this->escolaB = $this->tenant('Escola B');
         $this->adminA = $this->usuario($this->escolaA, Papel::ADMIN, 'Admin A');
         $this->sa = $this->superAdmin();
+        // Admin A vira o admin principal (só ele vê os acessos do suporte)
+        (require database_path('migrations/2026_10_22_170000_create_tenant_usuario_permissoes.php'))->up();
+        (require database_path('migrations/2026_10_22_190000_estrutura_permissoes.php'))->up();
     }
 
     private function iniciar(int $tenantId, string $motivo = 'Ajuste de plano a pedido da academia'): \Illuminate\Testing\TestResponse

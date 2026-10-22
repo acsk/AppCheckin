@@ -46,6 +46,9 @@ class CnpjCompartilhadoTest extends TestCase
         $this->escolaB = $this->tenant('Escola B');
         $this->adminA = $this->usuario($this->escolaA, Papel::ADMIN, 'Admin A');
         $this->adminB = $this->usuario($this->escolaB, Papel::ADMIN, 'Admin B');
+        // Admins A e B viram admin principal de cada escola (dados do CNPJ são do principal)
+        (require database_path('migrations/2026_10_22_170000_create_tenant_usuario_permissoes.php'))->up();
+        (require database_path('migrations/2026_10_22_190000_estrutura_permissoes.php'))->up();
     }
 
     protected function tearDown(): void

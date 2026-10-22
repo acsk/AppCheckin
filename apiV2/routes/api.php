@@ -125,7 +125,7 @@ Route::prefix('v2')->group(function () {
         });
 
         // Painel admin (contrato Slim /admin/* sob prefixo /v2)
-        Route::prefix('admin')->middleware('admin.auth')->group(function () {
+        Route::prefix('admin')->middleware(['admin.auth', 'permissao.rota'])->group(function () {
             Route::get('/modalidades', [AdminModalidadeController::class, 'index']);
             Route::get('/modalidades/{id}', [AdminModalidadeController::class, 'show']);
             Route::post('/modalidades', [AdminModalidadeController::class, 'store']);

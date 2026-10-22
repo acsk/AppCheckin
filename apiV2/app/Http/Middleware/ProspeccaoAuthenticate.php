@@ -3,7 +3,9 @@
 namespace App\Http\Middleware;
 
 use App\Support\ApiError;
+use App\Services\PermissaoService;
 use App\Support\Papel;
+use App\Support\Permissao;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,12 +29,17 @@ class ProspeccaoAuthenticate
             return ApiError::json('Tenant não selecionado', 'MISSING_TENANT', 400);
         }
 
-        $papeis = (bool) $request->attributes->get('is_super_admin', false) || $request->attributes->get('acesso_suporte')
-            ? [Papel::ADMIN]
-            : DB::table('tenant_usuario_papel')
-                ->where('usuario_id', $userId)->where('tenant_id', $tenantId)->where('ativo', 1)
-                ->whereIn('papel_id', [Papel::ADMIN, Papel::COMERCIAL])
-                ->pluck('papel_id')->map(fn ($p) => (int) $p)->all();
+        // Por permissão (App\Support\Permissao): usar = Admin/Comercial por padrão; configurar = Admin
+        $permissoes = (bool) $request->attributes->get('is_super_admin', false) || $request->attributes->get('acesso_suporte')
+            ? [Permissao::PROSPECCAO_USAR, Permissao::PROSPECCAO_GERENCIAR]
+            : app(PermissaoService::class)->efetivas($tenantId, $userId);
+        $papeis = [];
+        if (in_array(Permissao::PROSPECCAO_USAR, $permissoes, true)) {
+            $papeis[] = Papel::COMERCIAL;
+        }
+        if (in_array(Permissao::PROSPECCAO_GERENCIAR, $permissoes, true)) {
+            $papeis[] = Papel::ADMIN;
+        }
 
         $admin = in_array(Papel::ADMIN, $papeis, true);
         if ($papeis === [] || ($nivel === 'admin' && ! $admin)) {

@@ -63,8 +63,8 @@ export default function LoginScreen() {
     try {
       const response = await authService.login(email, password);
 
-      // Administradores (3), super admins (4) e equipe comercial (5) acessam o painel
-      if (!authService.podeProspeccao(response.user)) {
+      // Equipe da academia (admin, comercial, financeiro) e super admins acessam o painel
+      if (!authService.podeAcessarPainel(response.user)) {
         await authService.logout();
         setErrorTitle('Acesso não permitido');
         setError('Este painel é exclusivo para a equipe da academia. Alunos usam o app do Check-in.');

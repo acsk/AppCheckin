@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { authService, PAPEL_COMERCIAL } from '../services/authService';
+import { authService, PAPEL_COMERCIAL, PAPEL_FINANCEIRO } from '../services/authService';
 import { AppShell, AppHeader, Button, Icon, IconButton, PageHeader, Sidebar } from './ck';
 
 // Menu do painel em seções (design system: Geral · Gestão · Sistema).
@@ -10,9 +10,9 @@ const SECTIONS = [
   {
     label: 'Geral',
     items: [
-      { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4] },
-      { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3] },
-      { id: 'minha-conta', label: 'Minha conta', path: '/minha-conta', icon: 'user', roles: [3] },
+      { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4], perm: 'financeiro.ver' },
+      { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3], perm: 'conta.gerenciar' },
+      { id: 'minha-conta', label: 'Minha conta', path: '/minha-conta', icon: 'user', roles: [3, 5, 6], perm: '*' },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
       { id: 'cnpjs', label: 'CNPJs', path: '/cnpjs', icon: 'shield-check', roles: [4] },
       { id: 'unificar', label: 'Unificar cadastros', path: '/unificar-usuarios', icon: 'users', roles: [4] },
@@ -28,13 +28,13 @@ const SECTIONS = [
         label: 'Manutenção',
         icon: 'wrench',
         children: [
-          { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3] },
-          { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3] },
-          { id: 'professores', label: 'Professores', path: '/professores', roles: [3] },
-          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3] },
-          { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3] },
-          { id: 'planos', label: 'Planos', path: '/planos', roles: [3] },
-          { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3] },
+          { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3], perm: 'alunos.ver' },
+          { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3], perm: 'matriculas.ver' },
+          { id: 'professores', label: 'Professores', path: '/professores', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3], perm: 'alunos.editar' },
+          { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'planos', label: 'Planos', path: '/planos', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3], perm: 'configuracoes.editar' },
         ],
       },
       {
@@ -42,10 +42,10 @@ const SECTIONS = [
         label: 'Financeiro',
         icon: 'wallet',
         children: [
-          { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3] },
-          { id: 'conciliacao-bancaria', label: 'Conciliação bancária', path: '/financeiro/conciliacao', roles: [3] },
-          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3] },
-          { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3] },
+          { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3], perm: 'financeiro.ver' },
+          { id: 'conciliacao-bancaria', label: 'Conciliação bancária', path: '/financeiro/conciliacao', roles: [3], perm: 'financeiro.baixar' },
+          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3], perm: 'financeiro.ver' },
+          { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3], perm: 'configuracoes.editar' },
         ],
       },
       {
@@ -53,9 +53,9 @@ const SECTIONS = [
         label: 'Academia',
         icon: 'dumbbell',
         children: [
-          { id: 'wods', label: 'WOD', path: '/wods', roles: [3] },
-          { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3] },
-          { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3] },
+          { id: 'wods', label: 'WOD', path: '/wods', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3], perm: 'aulas.gerenciar' },
         ],
       },
       {
@@ -64,11 +64,11 @@ const SECTIONS = [
         label: 'Prospecção',
         icon: 'target',
         children: [
-          { id: 'prospeccao-painel', label: 'Painel de recuperação', path: '/prospeccao', roles: [3, 5] },
-          { id: 'prospeccao-recuperacao', label: 'Recuperação de Alunos', path: '/prospeccao/recuperacao', roles: [3, 5] },
-          { id: 'prospeccao-contatos', label: 'Contatos pendentes', path: '/prospeccao/contatos', roles: [3, 5] },
-          { id: 'prospeccao-modelos', label: 'Modelos de mensagem', path: '/prospeccao/modelos', roles: [3, 5] },
-          { id: 'prospeccao-config', label: 'Equipe e score', path: '/prospeccao/configuracoes', roles: [3] },
+          { id: 'prospeccao-painel', label: 'Painel de recuperação', path: '/prospeccao', roles: [3, 5], perm: 'prospeccao.usar' },
+          { id: 'prospeccao-recuperacao', label: 'Recuperação de Alunos', path: '/prospeccao/recuperacao', roles: [3, 5], perm: 'prospeccao.usar' },
+          { id: 'prospeccao-contatos', label: 'Contatos pendentes', path: '/prospeccao/contatos', roles: [3, 5], perm: 'prospeccao.usar' },
+          { id: 'prospeccao-modelos', label: 'Modelos de mensagem', path: '/prospeccao/modelos', roles: [3, 5], perm: 'prospeccao.usar' },
+          { id: 'prospeccao-config', label: 'Equipe e score', path: '/prospeccao/configuracoes', roles: [3], perm: 'prospeccao.gerenciar' },
         ],
       },
     ],
@@ -83,8 +83,8 @@ const SECTIONS = [
         icon: 'settings',
         children: [
           { id: 'equipe', label: 'Equipe e permissões', path: '/equipe', roles: [3], perm: 'equipe.gerenciar' },
-          { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3] },
-          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3] },
+          { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3], perm: 'configuracoes.editar' },
         ],
       },
       {
@@ -92,13 +92,13 @@ const SECTIONS = [
         label: 'Auditoria',
         icon: 'shield-check',
         children: [
-          { id: 'logs', label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', roles: [3] },
-          { id: 'credito', label: 'Crédito e migração de plano', path: '/auditoria/credito-migracao-plano', roles: [3] },
-          { id: 'anomalias', label: 'Anomalias de datas', path: '/auditoria/anomalias-datas', roles: [3] },
-          { id: 'duplicados', label: 'Pagamentos duplicados', path: '/auditoria/pagamentos-duplicados', roles: [3] },
-          { id: 'reparar', label: 'Reparar próxima data', path: '/auditoria/reparar-proxima-data-vencimento', roles: [3] },
-          { id: 'acima-limite', label: 'Check-ins acima do limite', path: '/auditoria/checkins-acima-do-limite', roles: [3] },
-          { id: 'multiplos', label: 'Check-ins múltiplos no dia', path: '/auditoria/checkins-multiplos-no-dia', roles: [3] },
+          { id: 'logs', label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'credito', label: 'Crédito e migração de plano', path: '/auditoria/credito-migracao-plano', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'anomalias', label: 'Anomalias de datas', path: '/auditoria/anomalias-datas', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'duplicados', label: 'Pagamentos duplicados', path: '/auditoria/pagamentos-duplicados', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'reparar', label: 'Reparar próxima data', path: '/auditoria/reparar-proxima-data-vencimento', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'acima-limite', label: 'Check-ins acima do limite', path: '/auditoria/checkins-acima-do-limite', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'multiplos', label: 'Check-ins múltiplos no dia', path: '/auditoria/checkins-multiplos-no-dia', roles: [3], perm: 'configuracoes.editar' },
         ],
       },
     ],
@@ -108,14 +108,17 @@ const SECTIONS = [
 const BREAKPOINT_MOBILE = 768;
 const COLLAPSE_KEY = 'ck:sidebar-collapsed';
 
-const papelLabel = (papelId) => (papelId === 4 ? 'Super admin' : papelId === 3 ? 'Administrador' : papelId === PAPEL_COMERCIAL ? 'Comercial' : 'Usuário');
+const papelLabel = (papelId, user) => (papelId === 4 ? 'Super admin' : papelId === 3 ? 'Administrador'
+  : authService.hasPapel(user, PAPEL_FINANCEIRO) ? 'Financeiro' : authService.hasPapel(user, PAPEL_COMERCIAL) ? 'Comercial' : 'Usuário');
 
-// Filtra o menu pelo papel do usuário e devolve as seções no formato do Sidebar.
-// `comercial`: o usuário também tem o papel Comercial (fora da hierarquia de `role`).
-// Itens com `perm` exigem também a permissão (lista de authService.getPermissoes()).
-function buildSections(role, comercial, perms) {
-  const visivelPapel = (roles) => roles.includes(role) || (comercial && roles.includes(PAPEL_COMERCIAL));
-  const itemVisivel = (it) => visivelPapel(it.roles) && (!it.perm || perms.includes(it.perm));
+// Filtra o menu e devolve as seções no formato do Sidebar.
+// Super admin (fora do "acessar como academia"): itens com papel 4. Equipe da academia: itens cuja
+// permissão `perm` ela tem (lista de authService.getPermissoes(); '*' = qualquer pessoa da equipe).
+// A API confere a mesma permissão em cada rota (App\Support\PermissaoRotas).
+function buildSections(role, perms) {
+  const itemVisivel = (it) => (role === 4
+    ? it.roles.includes(4)
+    : !!it.perm && (it.perm === '*' ? perms.length > 0 : perms.includes(it.perm)));
   return SECTIONS.map((s) => ({
     label: s.label,
     items: s.items
@@ -154,7 +157,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   const [usuarioInfo, setUsuarioInfo] = useState(null);
   const [tenantAtual, setTenantAtual] = useState(null);
-  const [perms, setPerms] = useState([]);
+  const [perms, setPerms] = useState(null); // null = carregando
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -176,13 +179,19 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   }, [pathname]);
 
   const role = authService.getEffectivePapelId(usuarioInfo);
-  const comercial = authService.hasPapel(usuarioInfo, PAPEL_COMERCIAL);
-  const sections = useMemo(() => buildSections(role, comercial, perms), [role, comercial, perms]);
+  const sections = useMemo(() => buildSections(role, perms || []), [role, perms]);
 
-  // Quem é só comercial não tem acesso às telas de administração.
+  // Tela fora das permissões da pessoa (ex.: comercial no dashboard): vai para a primeira tela permitida.
+  // Telas fora do menu (perfil, parâmetros, detalhes) seguem a regra do item pai ou da própria API.
   useEffect(() => {
-    if (usuarioInfo && role === PAPEL_COMERCIAL && !(pathname || '').startsWith('/prospeccao')) router.replace('/prospeccao');
-  }, [usuarioInfo, role, pathname]);
+    if (!usuarioInfo || perms === null || role === 4) return;
+    const caminho = (pathname || '/').startsWith('/dashboard') ? '/' : pathname || '/';
+    if (['/minha-conta', '/parametros', '/login'].some((p) => caminho.startsWith(p))) return;
+    if (findActive(sections, caminho)) return;
+    const nos = sections.flatMap((sec) => sec.items.flatMap((it) => (it.children ? it.children : [it])));
+    const primeira = nos.find((n) => n.path !== '/minha-conta') || nos[0]; // tela de trabalho antes do perfil
+    if (primeira?.path && primeira.path !== caminho) router.replace(primeira.path);
+  }, [usuarioInfo, perms, role, pathname, sections]);
   const active = useMemo(() => findActive(sections, pathname || '/'), [sections, pathname]);
 
   const allNodes = useMemo(
@@ -217,7 +226,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   };
 
   const nome = usuarioInfo?.nome || 'Usuário';
-  const canAccessParametros = role === 3;
+  const canAccessParametros = (perms || []).includes('configuracoes.editar');
 
   // Trilha: seção/grupo → página atual.
   const breadcrumbs = [];
@@ -254,7 +263,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
         </span>
       ) : null}
       notifications={false}
-      user={{ name: nome, role: usuarioInfo?.acesso_suporte ? 'Suporte Check-in' : papelLabel(role), email: usuarioInfo?.email }}
+      user={{ name: nome, role: usuarioInfo?.acesso_suporte ? 'Suporte Check-in' : papelLabel(role, usuarioInfo), email: usuarioInfo?.email }}
       menuItems={[
         ...(role === 3 || role === 4 ? [{ label: 'Minha conta', icon: 'user', onClick: () => router.push('/minha-conta') }] : []),
         ...(canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []),

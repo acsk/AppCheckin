@@ -64,8 +64,9 @@ export default function AlunosScreen() {
     (async () => {
       try {
         const user = await authService.getCurrentUser();
-        if (!user || ![3, 4].includes(user.papel_id)) {
-          showError('Acesso restrito aos administradores');
+        // Permissão (não papel): ex. Financeiro vê alunos. Super admin sempre.
+        if (!user || (user.papel_id !== 4 && !(await authService.temPermissao('alunos.ver')))) {
+          showError('Você não tem acesso a esta tela');
           router.replace('/');
           return;
         }
