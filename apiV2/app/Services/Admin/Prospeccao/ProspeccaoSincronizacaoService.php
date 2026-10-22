@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Log;
 /**
  * Mantém prospeccao_oportunidades em dia com as matrículas. Idempotente: pode rodar a qualquer momento.
  *
- * Elegível: aluno com matrícula `cancelada` nos últimos JANELA_MESES, sem matrícula em andamento
+ * Elegível: aluno com matrícula `cancelada` dentro da janela da academia (parâmetros PARAM_JANELA e
+ * PARAM_CARENCIA: cancelou nos últimos N meses e há pelo menos M meses), sem matrícula em andamento
  * (ativa/pendente/vencida/bloqueado) no tenant e que não seja diária avulsa. A referência é a
  * cancelada mais recente (data_cancelamento; sem ela, a data da última atualização — marcada como estimada).
  *
@@ -24,7 +25,14 @@ use Illuminate\Support\Facades\Log;
  */
 class ProspeccaoSincronizacaoService
 {
+    /** Padrão de PARAM_JANELA (era fixo no código) */
     public const JANELA_MESES = 24;
+
+    /** Parâmetro: cancelados nos últimos N meses (1–120) */
+    public const PARAM_JANELA = 'prospeccao_janela_meses';
+
+    /** Parâmetro: cancelados há pelo menos M meses (0 = imediatamente; sempre menor que a janela) */
+    public const PARAM_CARENCIA = 'prospeccao_carencia_meses';
 
     /** Intervalo mínimo entre sincronizações disparadas pelo painel. */
     private const INTERVALO_MINUTOS = 10;
@@ -53,12 +61,33 @@ class ProspeccaoSincronizacaoService
     }
 
     /**
+     * Janela da academia em meses e em datas de cancelamento (de = mais antiga aceita, ate = mais recente).
+     *
+     * @return array{meses: int, carencia_meses: int, de: string, ate: string}
+     */
+    public function janela(int $tenantId): array
+    {
+        $meses = (int) ($this->repo->valorParametro($tenantId, self::PARAM_JANELA) ?? self::JANELA_MESES);
+        $meses = max(1, min(120, $meses ?: self::JANELA_MESES));
+        $carencia = max(0, min($meses - 1, (int) ($this->repo->valorParametro($tenantId, self::PARAM_CARENCIA) ?? 0)));
+        $hoje = AcademyDateTime::todayStart();
+
+        return [
+            'meses' => $meses,
+            'carencia_meses' => $carencia,
+            'de' => (clone $hoje)->modify("-{$meses} months")->format('Y-m-d'),
+            'ate' => (clone $hoje)->modify("-{$carencia} months")->format('Y-m-d'),
+        ];
+    }
+
+    /**
      * @return array{criadas: int, atualizadas: int, recuperadas: int, scores: int}
      */
     public function sincronizar(int $tenantId): array
     {
         $hoje = AcademyDateTime::todayStart();
-        $dataMinima = (clone $hoje)->modify('-'.self::JANELA_MESES.' months')->format('Y-m-d');
+        $janela = $this->janela($tenantId);
+        $dataMinima = $janela['de'];
         $agora = AcademyDateTime::nowFormatted();
 
         $recuperadas = $this->registrarRecuperacoes($tenantId, $agora);
@@ -90,6 +119,12 @@ class ProspeccaoSincronizacaoService
             }
             $estimada = $m->data_cancelamento === null;
             $data = substr((string) ($m->data_cancelamento ?? $m->data_atualizacao), 0, 10);
+
+            // Carência: o cancelamento mais recente ainda é novo demais. Aplicada aqui (e não na consulta)
+            // para não usar uma cancelada mais antiga como referência. Oportunidade já aberta segue normal.
+            if ($data > $janela['ate'] && ! isset($abertaPorAluno[$alunoId])) {
+                continue;
+            }
 
             // Aluno com oportunidade aberta e cancelamento mais novo: atualiza a referência em vez de duplicar.
             if (isset($abertaPorAluno[$alunoId])) {
@@ -148,7 +183,8 @@ class ProspeccaoSincronizacaoService
      */
     public function diagnostico(int $tenantId): array
     {
-        $dataMinima = AcademyDateTime::todayStart()->modify('-'.self::JANELA_MESES.' months')->format('Y-m-d');
+        $janela = $this->janela($tenantId);
+        $dataMinima = $janela['de'];
         $porAluno = [];
         $semAluno = 0;
         $total = 0;
@@ -160,9 +196,10 @@ class ProspeccaoSincronizacaoService
                 continue;
             }
             $a = &$porAluno[(int) $m->aluno_id];
-            $a ??= ['em_andamento' => (bool) $m->em_andamento, 'vinculo' => (bool) $m->vinculo_aluno, 'validas' => 0, 'na_janela' => 0];
+            $a ??= ['em_andamento' => (bool) $m->em_andamento, 'vinculo' => (bool) $m->vinculo_aluno, 'validas' => 0, 'na_janela' => 0, 'ultima' => ''];
             if (! $m->diaria) {
                 $a['validas']++;
+                $a['ultima'] = max($a['ultima'], (string) $m->data_efetiva);
                 if ($m->data_efetiva >= $dataMinima) {
                     $a['na_janela']++;
                 }
@@ -170,12 +207,13 @@ class ProspeccaoSincronizacaoService
             unset($a);
         }
 
-        $motivos = ['em_andamento' => 0, 'somente_diarias' => 0, 'fora_da_janela' => 0, 'sem_vinculo_aluno' => 0, 'elegiveis' => 0];
+        $motivos = ['em_andamento' => 0, 'somente_diarias' => 0, 'fora_da_janela' => 0, 'aguardando_carencia' => 0, 'sem_vinculo_aluno' => 0, 'elegiveis' => 0];
         foreach ($porAluno as $a) {
             $motivo = match (true) {
                 $a['em_andamento'] => 'em_andamento',
                 $a['validas'] === 0 => 'somente_diarias',
                 $a['na_janela'] === 0 => 'fora_da_janela',
+                $a['ultima'] > $janela['ate'] => 'aguardando_carencia',
                 ! $a['vinculo'] => 'sem_vinculo_aluno',
                 default => 'elegiveis',
             };
@@ -189,7 +227,8 @@ class ProspeccaoSincronizacaoService
         ] + $motivos + [
             'oportunidades_abertas' => $this->repo->contarOportunidades($tenantId, true),
             'oportunidades_total' => $this->repo->contarOportunidades($tenantId, false),
-            'janela_meses' => self::JANELA_MESES,
+            'janela_meses' => $janela['meses'],
+            'carencia_meses' => $janela['carencia_meses'],
         ];
     }
 

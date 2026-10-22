@@ -34,7 +34,12 @@ class ProspeccaoOportunidadeService
     public function __construct(
         private readonly ProspeccaoRepository $repo,
         private readonly ProspeccaoScoreService $score,
-    ) {}
+        ?ProspeccaoSincronizacaoService $sincronizacao = null,
+    ) {
+        $this->sincronizacao = $sincronizacao ?? app(ProspeccaoSincronizacaoService::class);
+    }
+
+    private ProspeccaoSincronizacaoService $sincronizacao;
 
     /**
      * @param  array<string, mixed>  $q
@@ -90,9 +95,15 @@ class ProspeccaoOportunidadeService
         $pagina = max(1, (int) ($q['pagina'] ?? 1));
         $porPagina = min(self::POR_PAGINA_MAX, max(1, (int) ($q['por_pagina'] ?? self::POR_PAGINA_PADRAO)));
 
+        // Janela da academia (Parâmetros): quem ainda não foi trabalhado e está fora dela não aparece
+        $janela = $this->sincronizacao->janela($tenantId);
+        $f['janela_de'] = $janela['de'];
+        $f['janela_ate'] = $janela['ate'];
+
         $r = $this->repo->listar($tenantId, $f, $pagina, $porPagina, $ordem, $direcao);
 
         return ['status' => 200, 'body' => [
+            'janela' => ['meses' => $janela['meses'], 'carencia_meses' => $janela['carencia_meses']],
             'oportunidades' => array_map(fn ($row) => $this->formatarLinha($row, $hoje), $r['rows']),
             'paginacao' => ['pagina' => $pagina, 'por_pagina' => $porPagina, 'total' => $r['total'], 'paginas' => (int) ceil($r['total'] / $porPagina)],
         ]];

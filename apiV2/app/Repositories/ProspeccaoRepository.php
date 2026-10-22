@@ -290,6 +290,13 @@ class ProspeccaoRepository
                 $q->where($coluna, (int) $f[$chave]);
             }
         }
+        // Janela da academia: só limita quem ainda não foi trabalhado (sem contato, status inicial);
+        // oportunidade em andamento continua visível mesmo se a janela for reduzida depois
+        if (! empty($f['janela_de']) && ! empty($f['janela_ate'])) {
+            $q->where(fn ($w) => $w->whereNotNull('o.ultimo_contato_em')
+                ->orWhere('o.status', '!=', ProspeccaoStatus::NAO_CONTATADO)
+                ->orWhereBetween('o.data_cancelamento_referencia', [$f['janela_de'], $f['janela_ate']]));
+        }
         if (! empty($f['cancelamento_de'])) {
             $q->where('o.data_cancelamento_referencia', '>=', $f['cancelamento_de']);
         }

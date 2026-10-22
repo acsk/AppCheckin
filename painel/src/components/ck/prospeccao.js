@@ -361,6 +361,7 @@ const MOTIVOS_DIAGNOSTICO = [
   ['em_andamento', 'já têm outra matrícula em andamento (voltaram ou trocaram de plano)'],
   ['somente_diarias', 'só cancelaram diárias avulsas'],
   ['fora_da_janela', null],
+  ['aguardando_carencia', null],
   ['sem_vinculo_aluno', 'não estão vinculados como aluno nesta academia'],
 ];
 
@@ -371,7 +372,7 @@ export function DiagnosticoProspeccao({ diagnostico: d, admin, sincronizando, on
   return <div className="ck-pr-diag">
     <p><strong>{d.matriculas_canceladas}</strong> matrícula{d.matriculas_canceladas === 1 ? '' : 's'} cancelada{d.matriculas_canceladas === 1 ? '' : 's'} nesta academia, de <strong>{d.alunos_com_cancelamento}</strong> aluno{d.alunos_com_cancelamento === 1 ? '' : 's'}. <strong>{d.elegiveis}</strong> entra{d.elegiveis === 1 ? '' : 'm'} na prospecção automaticamente; {d.oportunidades_abertas} em prospecção agora.</p>
     {excluidos.length || d.matriculas_sem_aluno ? <ul>
-      {excluidos.map(([k, txt]) => <li key={k}><strong>{d[k]}</strong> {k === 'fora_da_janela' ? `cancelaram há mais de ${d.janela_meses} meses` : txt}</li>)}
+      {excluidos.map(([k, txt]) => <li key={k}><strong>{d[k]}</strong> {k === 'fora_da_janela' ? `cancelaram há mais de ${d.janela_meses} meses` : k === 'aguardando_carencia' ? `cancelaram há menos de ${d.carencia_meses} ${d.carencia_meses === 1 ? 'mês' : 'meses'} (entram depois, conforme os Parâmetros)` : txt}</li>)}
       {d.matriculas_sem_aluno ? <li><strong>{d.matriculas_sem_aluno}</strong> matrícula{d.matriculas_sem_aluno === 1 ? '' : 's'} sem aluno vinculado (registro antigo)</li> : null}
     </ul> : null}
     <div className="ck-pr-row ck-pr-row--start">

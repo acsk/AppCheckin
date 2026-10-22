@@ -108,7 +108,7 @@ export default function RecuperacaoAlunosScreen() {
 
   return <LayoutBase title="Recuperação de Alunos" pageHeader={false}>
     <div className="ck-ml ck-pr">
-      <PageHeader title="Recuperação de Alunos" description="Alunos que cancelaram a matrícula e ainda não voltaram. Uma linha por aluno, a partir do cancelamento mais recente."
+      <PageHeader title="Recuperação de Alunos" description={`Alunos que cancelaram a matrícula e ainda não voltaram. Uma linha por aluno, a partir do cancelamento mais recente.${dados.janela ? ` Cancelamentos dos últimos ${dados.janela.meses} meses${dados.janela.carencia_meses ? `, há pelo menos ${dados.janela.carencia_meses} ${dados.janela.carencia_meses === 1 ? 'mês' : 'meses'}` : ''} (ajuste em Parâmetros → Prospecção).` : ''}`}
         actions={<>
           <Button icon="calendar" onClick={() => router.push('/prospeccao/contatos')}>Contatos pendentes</Button>
           <Button variant="primary" icon="user-plus" onClick={() => setIniciar(true)}>Iniciar prospecção</Button>
