@@ -45,7 +45,7 @@ Route::delete('/matricula-descontos/{id}', [MatriculaDescontoController::class, 
 
 // Pagamentos-plano por ID (subpaths específicos antes do DELETE genérico)
 Route::get('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'show']);
-Route::put('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'update']);
+Route::put('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'update'])->middleware('permissao:financeiro_avancado');
 Route::post('/pagamentos-plano/{id}/confirmar', [PagamentoPlanoController::class, 'confirmar']);
-Route::delete('/pagamentos-plano/{id}/excluir', [PagamentoPlanoController::class, 'excluir']);
+Route::delete('/pagamentos-plano/{id}/excluir', [PagamentoPlanoController::class, 'excluir'])->middleware('permissao:financeiro_avancado');
 Route::delete('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'cancelar']);

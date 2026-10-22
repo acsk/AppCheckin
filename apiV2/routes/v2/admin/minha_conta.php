@@ -14,3 +14,5 @@ Route::get('/minha-conta/cnpj', [MinhaContaController::class, 'cnpj']);
 Route::put('/minha-conta/cnpj', [MinhaContaController::class, 'atualizarCnpj']);
 // Acessos do suporte Check-in a esta academia ("acessar como academia" do super admin)
 Route::get('/minha-conta/acessos-suporte', [MinhaContaController::class, 'acessosSuporte']);
+// Permissões pontuais do usuário nesta academia (o painel mostra ou esconde ações)
+Route::get('/minha-conta/permissoes', [MinhaContaController::class, 'permissoes']);

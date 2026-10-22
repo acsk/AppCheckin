@@ -91,7 +91,8 @@ export default function MatriculaDetalheScreen() {
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
-  const [currentUserId, setCurrentUserId] = useState(null);
+  // Editar/excluir parcela: permissão "Ações financeiras avançadas" (a API confere a mesma)
+  const [financeiroAvancado, setFinanceiroAvancado] = useState(false);
   const [modalBloquearVisible, setModalBloquearVisible] = useState(false);
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   const [bloqueandoMatricula, setBloqueandoMatricula] = useState(false);
@@ -104,9 +105,7 @@ export default function MatriculaDetalheScreen() {
   const [adminsLista, setAdminsLista] = useState([]);
 
   useEffect(() => {
-    authService.getCurrentUser().then((user) => {
-      if (user?.id) setCurrentUserId(Number(user.id));
-    });
+    authService.temPermissao('financeiro_avancado').then(setFinanceiroAvancado);
   }, []);
 
   useEffect(() => {
@@ -1385,7 +1384,7 @@ export default function MatriculaDetalheScreen() {
             backLabel="Matrículas"
             onBack={() => router.push('/matriculas')}
             onSettle={(inv) => handleBaixaPagamento(inv.raw)}
-            invoiceMenu={currentUserId === 3}
+            invoiceMenu={financeiroAvancado}
             onEditInvoice={(inv) => handleAbrirEditarPagamento(inv.raw)}
             onDeleteInvoice={(inv) => handleAbrirExcluirPagamento(inv.raw)}
             onSettlePackage={() => setModalBaixaPacoteVisible(true)}

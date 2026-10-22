@@ -7,9 +7,11 @@ use App\Repositories\TenantRepository;
 use App\Services\Admin\AdminMinhaContaService;
 use App\Services\EntidadeJuridica\EntidadeJuridicaException;
 use App\Services\EntidadeJuridica\EntidadeJuridicaService;
+use App\Services\PermissaoService;
 use App\Services\SuperAdmin\AcessoSuporteService;
 use App\Support\ApiError;
 use App\Support\Papel;
+use App\Support\Permissao;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -102,6 +104,17 @@ class MinhaContaController extends Controller
         return $request->attributes->get('acesso_suporte')
             ? ApiError::json('Durante o acesso de suporte não é possível alterar perfil ou senha.', 'ACESSO_SUPORTE', 403)
             : null;
+    }
+
+    public function permissoes(Request $request): JsonResponse
+    {
+        $tenantId = (int) $request->attributes->get('tenantId', 0);
+        $todas = array_keys(Permissao::ROTULOS);
+        $minhas = $request->attributes->get('acesso_suporte')
+            ? $todas
+            : ($tenantId ? app(PermissaoService::class)->doUsuario($tenantId, $this->userId($request)) : []);
+
+        return $this->json(['status' => 200, 'body' => ['permissoes' => $minhas]]);
     }
 
     public function acessosSuporte(Request $request): JsonResponse

@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.auth' => \App\Http\Middleware\AdminAuthenticate::class,
             'superadmin.auth' => \App\Http\Middleware\SuperAdminAuthenticate::class,
             'prospeccao.auth' => \App\Http\Middleware\ProspeccaoAuthenticate::class,
+            'permissao' => \App\Http\Middleware\PermissaoRequerida::class,
             'ops.token' => \App\Http\Middleware\OpsViewTokenAuth::class,
         ]);
         $middleware->trustProxies(at: '*');

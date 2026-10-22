@@ -23,7 +23,9 @@ export default function MatriculasScreen() {
   const [status, setStatus] = useState('todas');
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
-  const [userId, setUserId] = useState(null);
+  // Excluir/vincular matrícula: permissão "Ações financeiras avançadas" (concedida pelo super admin)
+  // ou super admin no "Acessar como academia". A API confere a mesma permissão.
+  const [podeExcluir, setPodeExcluir] = useState(false);
   const [preview, setPreview] = useState(emptyPreview);
   const [deleting, setDeleting] = useState(false);
   const cache = useRef({});
@@ -35,7 +37,7 @@ export default function MatriculasScreen() {
 
   useEffect(() => {
     let active = true;
-    authService.getCurrentUser().then((user) => { if (active) setUserId(Number(user?.id)); }).catch((err) => {
+    authService.temPermissao('financeiro_avancado').then((pode) => { if (active) setPodeExcluir(pode); }).catch((err) => {
       console.error('Erro ao carregar permissões:', err);
       if (active) showError('Não foi possível carregar as permissões do usuário.');
     });
@@ -112,7 +114,7 @@ export default function MatriculasScreen() {
     setPreview(emptyPreview);
   };
   const openPreview = async (row) => {
-    if (userId !== 3) return;
+    if (!podeExcluir) return;
     const request = ++previewRequest.current;
     setPreview({ ...emptyPreview, row, loading: true });
     try {
@@ -126,7 +128,7 @@ export default function MatriculasScreen() {
   };
   const pacoteId = preview.data?.matricula?.pacote_contrato_id || preview.pacoteId;
   const remove = async () => {
-    if (deleteBusy.current || userId !== 3 || !preview.data || pacoteId || preview.error) return;
+    if (deleteBusy.current || !podeExcluir || !preview.data || pacoteId || preview.error) return;
     deleteBusy.current = true;
     setDeleting(true);
     try {
@@ -180,7 +182,7 @@ export default function MatriculasScreen() {
         error={error}
         onNew={() => router.push('/matriculas/novo')}
         onOpen={(row) => router.push(row.href)}
-        onDelete={userId === 3 ? (row) => openPreview(row.original) : undefined}
+        onDelete={podeExcluir ? (row) => openPreview(row.original) : undefined}
         toolbarActions={<Button size="sm" icon="refresh-cw" loading={loading} onClick={refresh}>{error ? 'Tentar novamente' : 'Atualizar'}</Button>}
       />
       <ExcluirMatriculaModal key={preview.row?.id || 'fechada'} preview={preview} deleting={deleting} pacoteId={pacoteId}

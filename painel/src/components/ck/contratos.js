@@ -145,11 +145,14 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     var a = p.admin, isNew = !a;
     var fm = useState(function () {
       var roles = (a && a.roles) || [];
-      return { name: (a && a.name) || '', email: (a && a.email) || '', phone: maskPhone(a && a.phone), cpf: maskCpf(a && a.cpf), password: '', roles: [3].concat(roles.filter(function (r) { return r !== 3; })) };
+      return { name: (a && a.name) || '', email: (a && a.email) || '', phone: maskPhone(a && a.phone), cpf: maskCpf(a && a.cpf), password: '', roles: [3].concat(roles.filter(function (r) { return r !== 3; })), perms: (a && a.permissions) || [] };
     }), f = fm[0];
     var tried = useState(false), sh = useState(false);
     function set(k, v) { var n = Object.assign({}, f); n[k] = v; fm[1](n); }
     function toggleRole(id) { set('roles', f.roles.indexOf(id) >= 0 ? f.roles.filter(function (r) { return r !== id; }) : f.roles.concat([id])); }
+    function togglePerm(c) { set('perms', f.perms.indexOf(c) >= 0 ? f.perms.filter(function (x) { return x !== c; }) : f.perms.concat([c])); }
+    // Permissões pontuais (só o super admin concede; vêm de p.permissions = catálogo da API)
+    var permOptions = p.permissions || [];
     var err = {};
     if (!f.name.trim()) err.name = 'Informe o nome.';
     if (!f.email.trim()) err.email = 'Informe o e-mail. É o login no painel.';
@@ -163,7 +166,8 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       tried[1](true);
       if (Object.keys(err).length) return;
       var roles = ROLE_OPTIONS.map(function (o) { return o.id; }).filter(function (id) { return f.roles.indexOf(id) >= 0; });
-      p.onSave({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null, password: f.password || null, roles: roles });
+      p.onSave(Object.assign({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null, password: f.password || null, roles: roles },
+        permOptions.length ? { permissions: f.perms } : {}));
     }
     var where = p.academyName ? ' de ' + p.academyName : ' desta academia';
     return h(Modal, { open: true, onClose: p.onClose, size: 'md',
@@ -193,7 +197,17 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
                 h('span', { className: 'ck-check__box', 'aria-hidden': true }, h(Icon, { name: 'check', size: 13, strokeWidth: 3 }))),
               h('span', { className: 'ck-ct-role__text' }, h('strong', null, o.label), h('span', null, o.description)),
               o.locked ? h('span', { className: 'ck-ct-role__lock' }, h(Icon, { name: 'lock', size: 13 }), 'Sempre incluído') : null);
-          }))));
+          })),
+        permOptions.length ? h('fieldset', { className: 'is-wide ck-ct-roles' },
+          h('legend', { className: 'ck-field__label' }, 'Permissões'),
+          permOptions.map(function (o) {
+            var on = f.perms.indexOf(o.codigo) >= 0;
+            return h('label', { key: o.codigo, className: cx('ck-ct-role', on && 'is-on') },
+              h('span', { className: 'ck-check' },
+                h('input', { type: 'checkbox', checked: on, onChange: function () { togglePerm(o.codigo); } }),
+                h('span', { className: 'ck-check__box', 'aria-hidden': true }, h(Icon, { name: 'check', size: 13, strokeWidth: 3 }))),
+              h('span', { className: 'ck-ct-role__text' }, h('strong', null, o.nome), h('span', null, o.descricao)));
+          })) : null));
   }
 
   function AcademiaForm(p) {
@@ -280,7 +294,8 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
         h(Avatar, { name: a.name, size: 'md', decorative: true }),
         h('div', { className: 'ck-ct-admin__who' }, h('strong', null, a.name), h('span', null, a.email)),
         h('div', { className: 'ck-ct-admin__roles' },
-          off ? h(Badge, { tone: 'outline' }, 'Inativo') : (a.roles || [3]).slice().sort(function (x, y) { return y - x; }).map(function (r) { return h(Badge, { key: r, tone: 'neutral' }, ROLE_NAMES[r] || 'Papel ' + r); })),
+          off ? h(Badge, { tone: 'outline' }, 'Inativo') : (a.roles || [3]).slice().sort(function (x, y) { return y - x; }).map(function (r) { return h(Badge, { key: r, tone: 'neutral' }, ROLE_NAMES[r] || 'Papel ' + r); })
+            .concat((p.permissions || []).filter(function (o) { return (a.permissions || []).indexOf(o.codigo) >= 0; }).map(function (o) { return h(Badge, { key: o.codigo, tone: 'info', icon: 'key' }, o.nome); }))),
         h('div', { className: 'ck-mt-actions' },
           off ? null : h(IconButton, { icon: 'pencil', label: 'Editar ' + a.name, size: 'sm', onClick: function () { dlg[1]({ admin: a }); } }),
           p.onToggleAdmin ? h(ActionMenu, { label: 'Mais ações para ' + a.name, items: [
@@ -359,7 +374,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
           h(Button, { type: 'submit', variant: 'primary', size: 'lg', block: true, icon: edit ? 'save' : 'plus', loading: p.saving, disabled: edit && !dirty }, p.saving ? 'Salvando…' : primary),
           edit && !dirty ? h('span', { className: 'ck-al-sum__note' }, 'Nenhuma alteração ainda.') : null,
           p.onCancel ? h('button', { type: 'button', className: 'ck-al-sum__cancel', onClick: p.onCancel }, 'Cancelar') : null)),
-      dlg[0] ? h(AdminDialog, { admin: dlg[0].admin, academyName: f.name.trim() || null, saving: dlgSaving[0], onClose: function () { dlg[1](null); }, onSave: saveAdmin }) : null);
+      dlg[0] ? h(AdminDialog, { admin: dlg[0].admin, academyName: f.name.trim() || null, permissions: dlg[0].admin && dlg[0].admin.id != null ? p.permissions : null, saving: dlgSaving[0], onClose: function () { dlg[1](null); }, onSave: saveAdmin }) : null);
   }
 
   /* ---------- ContratosLista ---------- */

@@ -182,7 +182,7 @@ Route::prefix('v2')->group(function () {
             Route::post('/matriculas/{id}/reativar', [AdminMatriculaController::class, 'desbloquear']);
             Route::post('/matriculas/{id}/cancelar', [AdminMatriculaController::class, 'cancelar']);
             Route::put('/matriculas/{id}/proxima-data-vencimento', [AdminMatriculaController::class, 'atualizarProximaDataVencimento']);
-            Route::delete('/matriculas/{id}', [AdminMatriculaController::class, 'destroy']);
+            Route::delete('/matriculas/{id}', [AdminMatriculaController::class, 'destroy'])->middleware('permissao:financeiro_avancado');
 
             // Auditoria
             Route::get('/auditoria/pagamentos-duplicados', [AdminAuditoriaController::class, 'pagamentosDuplicados']);

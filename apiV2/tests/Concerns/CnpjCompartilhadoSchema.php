@@ -55,6 +55,9 @@ trait CnpjCompartilhadoSchema
             $t->string('email_global')->nullable();
             $t->string('telefone')->nullable();
             $t->string('cpf')->nullable();
+            foreach (['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'] as $c) {
+                $t->string($c)->nullable();
+            }
             $t->text('foto_base64')->nullable();
             $t->string('foto_caminho')->nullable();
             $t->string('senha_hash')->default('x');

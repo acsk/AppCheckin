@@ -8,6 +8,7 @@ use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\EntidadeJuridica\EntidadeJuridicaException;
 use App\Services\EntidadeJuridica\EntidadeJuridicaService;
+use App\Services\PermissaoService;
 use App\Support\TenantWhatsappLinks;
 use App\Support\TipoCobrancaPlanoSistema;
 use Illuminate\Support\Facades\DB;
@@ -21,11 +22,15 @@ class SuperAdminAcademiaService
         private readonly SuperAdminPapelService $papeis,
         private readonly PlanoSistemaRepository $planosSistema,
         ?EntidadeJuridicaService $entidades = null,
+        ?PermissaoService $permissoes = null,
     ) {
         $this->entidades = $entidades ?? app(EntidadeJuridicaService::class);
+        $this->permissoes = $permissoes ?? app(PermissaoService::class);
     }
 
     private EntidadeJuridicaService $entidades;
+
+    private PermissaoService $permissoes;
 
     /**
      * @param  array<string, mixed>  $query
@@ -523,6 +528,7 @@ class SuperAdminAcademiaService
                 ],
                 $papelIds,
             );
+            $admin['permissoes'] = $this->permissoes->doUsuario($tenantId, (int) $admin['id']);
         }
         unset($admin);
 
@@ -532,6 +538,7 @@ class SuperAdminAcademiaService
                 'academia' => $tenant,
                 'admins' => $admins,
                 'total' => count($admins),
+                'permissoes_disponiveis' => $this->permissoes->catalogo(),
             ],
         ];
     }
@@ -771,8 +778,14 @@ class SuperAdminAcademiaService
             $this->tenants->substituirPapeis($tenantId, $adminId, $papeis);
         }
 
+        // Permissões pontuais (ex.: ações financeiras avançadas): só o super admin concede
+        if (isset($data['permissoes']) && is_array($data['permissoes']) && (int) ($usuarioLogado['papel_id'] ?? 0) === 4) {
+            $this->permissoes->definir($tenantId, $adminId, array_values($data['permissoes']), $userId ?: null);
+        }
+
         $adminAtualizado = $this->usuarios->findById($adminId, null);
         $adminAtualizado['papeis'] = $this->tenants->listarPapelIdsAtivos($tenantId, $adminId);
+        $adminAtualizado['permissoes'] = $this->permissoes->doUsuario($tenantId, $adminId);
 
         return [
             'status' => 200,

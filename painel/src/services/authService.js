@@ -194,6 +194,27 @@ export const authService = {
     return await AsyncStorage.getItem('@appcheckin:token');
   },
 
+  // Permissões pontuais do usuário na academia do token (ex.: 'financeiro_avancado'), por token.
+  // A API confere de novo em cada rota protegida; aqui é só para mostrar ou esconder ações.
+  async getPermissoes() {
+    const token = await AsyncStorage.getItem('@appcheckin:token');
+    if (!token) return [];
+    if (permissoesCache.token !== token) {
+      permissoesCache = {
+        token,
+        promessa: api.get('/admin/minha-conta/permissoes').then((r) => r.data?.permissoes || []).catch(() => {
+          permissoesCache = { token: null, promessa: null };
+          return [];
+        }),
+      };
+    }
+    return permissoesCache.promessa;
+  },
+
+  async temPermissao(codigo) {
+    return (await this.getPermissoes()).includes(codigo);
+  },
+
   // Academia do token atual ({ id, nome }) ou null (super admin / sem academia). Cache por token,
   // para o cabeçalho não buscar de novo a cada tela.
   async getTenantAtual() {
@@ -212,3 +233,4 @@ export const authService = {
 };
 
 let tenantAtualCache = { token: null, tenant: null };
+let permissoesCache = { token: null, promessa: null };

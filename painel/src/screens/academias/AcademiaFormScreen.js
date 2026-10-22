@@ -35,6 +35,7 @@ const toAdmin = (a) => ({
   cpf: a.cpf || '',
   active: bool(a.ativo),
   roles: (a.papeis || []).map((p) => (typeof p === 'object' ? Number(p.id) : Number(p))),
+  permissions: Array.isArray(a.permissoes) ? a.permissoes : [],
 });
 
 const contractSummary = (c) => {
@@ -52,6 +53,7 @@ const adminPayload = (d) => ({
   cpf: d.cpf,
   papeis: d.roles,
   ...(d.password ? { senha: d.password } : {}),
+  ...(Array.isArray(d.permissions) ? { permissoes: d.permissions } : {}),
 });
 
 export default function AcademiaFormScreen() {
@@ -73,6 +75,7 @@ export default function AcademiaFormScreen() {
   const [toggling, setToggling] = useState(false);
   const localKey = useRef(0);
   const [acessar, setAcessar] = useState(false);
+  const [permissoesDisponiveis, setPermissoesDisponiveis] = useState([]);
   const [motivo, setMotivo] = useState('');
   const [acessando, setAcessando] = useState(false);
 
@@ -137,6 +140,7 @@ export default function AcademiaFormScreen() {
     try {
       const res = await superAdminService.listarAdmins(academiaId);
       setAdmins((res.admins || res || []).map(toAdmin));
+      setPermissoesDisponiveis(Array.isArray(res.permissoes_disponiveis) ? res.permissoes_disponiveis : []);
     } catch (error) {
       showError(apiError(error, 'Erro ao carregar administradores'));
     } finally {
@@ -264,6 +268,7 @@ export default function AcademiaFormScreen() {
           mode={isEdit ? 'editar' : 'novo'}
           academy={academy}
           admins={admins}
+          permissions={permissoesDisponiveis}
           adminsLoading={adminsLoading}
           contract={contract}
           plans={plans}
