@@ -5,6 +5,8 @@ namespace App\Services\Admin;
 use App\Repositories\PagamentoContratoRepository;
 use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
+use App\Services\EntidadeJuridica\EntidadeJuridicaException;
+use App\Services\EntidadeJuridica\EntidadeJuridicaService;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Services\SuperAdmin\CobrancaTenantService;
 use App\Services\SuperAdmin\SuperAdminContratoService;
@@ -31,9 +33,13 @@ class AdminMeuContratoService
         private readonly CobrancaTenantService $cobranca,
         private readonly SuperAdminContratoService $contratoService,
         ?\Closure $buscarAcademia = null,
+        ?EntidadeJuridicaService $entidades = null,
     ) {
         $this->buscarAcademia = $buscarAcademia ?? static fn (int $id) => (array) DB::table('tenants')->where('id', $id)->first();
+        $this->entidades = $entidades ?? app(EntidadeJuridicaService::class);
     }
+
+    private EntidadeJuridicaService $entidades;
 
     /** @var \Closure(int): array<string, mixed> linha de tenants */
     private \Closure $buscarAcademia;
@@ -400,10 +406,12 @@ class AdminMeuContratoService
             if (! Documento::cnpjValido($doc)) {
                 return 'Confira o CNPJ: os dígitos não conferem.';
             }
-            if (DB::table('tenants')->where('cnpj', $doc)->where('id', '!=', $tenantId)->exists()) {
-                return 'Este CNPJ já está em outra academia do Check-in. Fale com o suporte.';
+            // Primeiro CNPJ da academia, sob a política de duplicidade; trocar um existente é só pelo suporte
+            try {
+                $this->entidades->vincular($tenantId, $doc, null, 'meu_contrato', null, true);
+            } catch (EntidadeJuridicaException $e) {
+                return $e->getMessage();
             }
-            DB::table('tenants')->where('id', $tenantId)->update(['cnpj' => $doc, 'updated_at' => DB::raw('NOW()')]);
 
             return null;
         }

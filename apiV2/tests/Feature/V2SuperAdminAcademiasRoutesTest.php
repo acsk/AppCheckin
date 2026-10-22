@@ -60,7 +60,7 @@ class V2SuperAdminAcademiasRoutesTest extends TestCase
         $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminAcademiaService::class);
         $service->shouldReceive('criarAcademia')
             ->once()
-            ->with(Mockery::subset($payload))
+            ->with(Mockery::subset($payload), 5)
             ->andReturn([
                 'status' => 201,
                 'body' => ['message' => 'Academia e administrador criados com sucesso'],

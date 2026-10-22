@@ -1,0 +1,69 @@
+/* Minha Conta (src/screens/minha-conta) e CNPJs do Super Admin (src/screens/superadmin/CnpjsScreen.js).
+   Reaproveita ck-panel (ck-pessoas.css), ck-tabs/ck-control/ck-callout (ck.css). */
+
+.ck-mc { display: grid; gap: var(--space-5); min-width: 0; }
+.ck-mc .ck-pagehead { margin-bottom: 0; }
+.ck-mc-tabs { overflow-x: auto; scrollbar-width: none; }
+.ck-mc-tabs::-webkit-scrollbar { display: none; }
+.ck-mc-tabs .ck-tab { flex: none; white-space: nowrap; }
+
+/* Celular: título do painel em cima, selos/ações embaixo */
+@media (max-width: 560px) {
+  .ck-mc .ck-panel__head { flex-direction: column; align-items: stretch; gap: var(--space-3); }
+  .ck-mc .ck-panel__actions { margin: 0; }
+  .ck-mc-badges { display: flex; justify-content: flex-start; }
+}
+
+/* Conteúdo da aba: formulário + coluna lateral */
+.ck-mc-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+@media (max-width: 1100px) { .ck-mc-cols { grid-template-columns: 1fr; } }
+
+.ck-mc-form { display: grid; gap: var(--space-4); min-width: 0; }
+.ck-mc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.ck-mc-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ck-mc-span2 { grid-column: span 2; }
+@media (max-width: 720px) {
+  .ck-mc-grid, .ck-mc-grid--2 { grid-template-columns: 1fr; }
+  .ck-mc-span2 { grid-column: auto; }
+}
+
+.ck-mc-sub { margin: var(--space-2) 0 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink); }
+.ck-mc-hint { margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+.ck-mc-mono { font-family: var(--font-mono); }
+.ck-mc-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; padding-top: var(--space-2); }
+.ck-mc-badges { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+
+/* Aviso discreto de CNPJ compartilhado (somente leitura) */
+.ck-mc-note { display: flex; gap: var(--space-2); margin: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+  background: var(--surface-muted); font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+
+.ck-mc-dl { display: grid; gap: var(--space-3); margin: 0; }
+.ck-mc-dl > div { display: flex; justify-content: space-between; gap: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
+.ck-mc-dl > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.ck-mc-dl dt { font-size: 13px; color: var(--ink-muted); }
+.ck-mc-dl dd { margin: 0; font-size: 14px; color: var(--ink); text-align: right; overflow-wrap: anywhere; }
+.ck-mc-tips { margin: 0; padding-left: 18px; display: grid; gap: var(--space-2); font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+
+/* Super Admin → CNPJs */
+.ck-cj-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr); gap: var(--space-5); align-items: start; }
+@media (max-width: 1100px) { .ck-cj-layout { grid-template-columns: 1fr; } }
+.ck-cj-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-end; }
+.ck-cj-toolbar .ck-field { flex: 1 1 260px; min-width: 0; }
+.ck-cj-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.ck-cj-list li + li { border-top: 1px solid var(--line); }
+.ck-cj-item { display: flex; width: 100%; gap: var(--space-3); align-items: center; padding: var(--space-3) var(--space-2); border: 0; border-radius: var(--radius-md);
+  background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.ck-cj-item:hover, .ck-cj-item.is-active { background: var(--surface-hover); }
+.ck-cj-item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-cj-item__main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ck-cj-item__main strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ck-cj-item__main small { font-size: 12px; color: var(--ink-muted); font-family: var(--font-mono); white-space: nowrap; }
+.ck-cj-item { flex-wrap: wrap; }
+.ck-cj-item__main { flex-basis: 160px; }
+.ck-cj-rows { list-style: none; margin: 0; padding: 0; display: grid; }
+.ck-cj-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+.ck-cj-rows li:last-child { border-bottom: 0; }
+.ck-cj-rows__main { flex: 1 1 220px; min-width: 0; display: grid; gap: 2px; }
+.ck-cj-rows__main strong { font-size: 14px; font-weight: 600; }
+.ck-cj-rows__main small { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ck-cj-stack { display: grid; gap: var(--space-5); min-width: 0; }

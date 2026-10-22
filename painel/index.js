@@ -22,5 +22,6 @@ import './src/theme/ck-aulas.css';
 import './src/theme/ck-pacotes.css';
 import './src/theme/ck-whatsapp.css';
 import './src/theme/ck-prospeccao.css';
+import './src/theme/ck-minha-conta.css';
 
 import 'expo-router/entry';

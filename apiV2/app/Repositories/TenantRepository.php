@@ -109,20 +109,16 @@ class TenantRepository
     }
 
     /**
+     * CNPJ não é gravado aqui: o vínculo (e o espelho tenants.cnpj) é do EntidadeJuridicaService.
+     *
      * @param  array<string, mixed>  $data
      */
     public function create(array $data): int
     {
-        $cnpj = isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', (string) $data['cnpj']) : null;
-        if ($cnpj === '') {
-            $cnpj = null;
-        }
-
         $tenantId = DB::table('tenants')->insertGetId([
             'nome' => $data['nome'],
             'slug' => $data['slug'],
             'email' => $data['email'],
-            'cnpj' => $cnpj,
             'telefone' => $data['telefone'] ?? null,
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::encode($data['whatsapp_links'])
@@ -158,6 +154,8 @@ class TenantRepository
     }
 
     /**
+     * Mantém tenants.cnpj intocado (ver create()).
+     *
      * @param  array<string, mixed>  $data
      */
     public function update(int $id, array $data): bool
@@ -166,7 +164,6 @@ class TenantRepository
             'nome' => $data['nome'],
             'slug' => $data['slug'],
             'email' => $data['email'],
-            'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::encode($data['whatsapp_links'])

@@ -29,14 +29,14 @@ class AcademiaController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $result = $this->service->criarAcademia($request->all());
+        $result = $this->service->criarAcademia($request->all(), $this->userId($request));
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $result = $this->service->atualizarAcademia($id, $request->all());
+        $result = $this->service->atualizarAcademia($id, $request->all(), $this->userId($request));
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }

@@ -12,7 +12,9 @@ const SECTIONS = [
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4] },
       { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3] },
+      { id: 'minha-conta', label: 'Minha conta', path: '/minha-conta', icon: 'user', roles: [3] },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
+      { id: 'cnpjs', label: 'CNPJs', path: '/cnpjs', icon: 'shield-check', roles: [4] },
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
       { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
     ],
@@ -231,7 +233,10 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       search={false}
       notifications={false}
       user={{ name: nome, role: papelLabel(role), email: usuarioInfo?.email }}
-      menuItems={canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []}
+      menuItems={[
+        ...(role === 3 || role === 4 ? [{ label: 'Minha conta', icon: 'user', onClick: () => router.push('/minha-conta') }] : []),
+        ...(canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []),
+      ]}
       onSignOut={handleLogout}
     />
   );

@@ -6,6 +6,8 @@ use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\EntidadeJuridica\EntidadeJuridicaException;
+use App\Services\EntidadeJuridica\EntidadeJuridicaService;
 use App\Support\TenantWhatsappLinks;
 use App\Support\TipoCobrancaPlanoSistema;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +20,12 @@ class SuperAdminAcademiaService
         private readonly UsuarioRepository $usuarios,
         private readonly SuperAdminPapelService $papeis,
         private readonly PlanoSistemaRepository $planosSistema,
-    ) {}
+        ?EntidadeJuridicaService $entidades = null,
+    ) {
+        $this->entidades = $entidades ?? app(EntidadeJuridicaService::class);
+    }
+
+    private EntidadeJuridicaService $entidades;
 
     /**
      * @param  array<string, mixed>  $query
@@ -101,6 +108,7 @@ class SuperAdminAcademiaService
             'status' => 200,
             'body' => ['academia' => TenantWhatsappLinks::attachToTenant($academia) + [
                 'contrato' => $this->resumoContrato($this->contratos->buscarContratoVigente($id)),
+                'cnpj_vinculo' => $this->entidades->dadosDoTenant($id),
             ]],
         ];
     }
@@ -109,7 +117,7 @@ class SuperAdminAcademiaService
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function criarAcademia(array $data): array
+    public function criarAcademia(array $data, ?int $usuarioId = null): array
     {
         $errors = [];
 
@@ -121,11 +129,9 @@ class SuperAdminAcademiaService
             $errors[] = 'Email válido é obrigatório';
         }
 
-        if (! empty($data['cnpj'])) {
-            $cnpj = preg_replace('/[^0-9]/', '', (string) $data['cnpj']);
-            if (strlen($cnpj) != 14) {
-                $errors[] = 'CNPJ inválido. Deve conter 14 dígitos';
-            }
+        $cnpj = EntidadeJuridicaService::normalizar($data['cnpj'] ?? null);
+        if ($cnpj !== '' && ($erroCnpj = EntidadeJuridicaService::erroCnpj($cnpj)) !== null) {
+            $errors[] = $erroCnpj;
         }
 
         if (empty($data['senha_admin'])) {
@@ -153,11 +159,15 @@ class SuperAdminAcademiaService
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
 
+        // Política de CNPJ duplicado: recusa cedo; vincular() decide de novo com a entidade travada
+        if ($cnpj !== '' && ($recusa = $this->entidades->avaliarCompartilhamento($cnpj)) !== null) {
+            return ['status' => 409, 'body' => ['errors' => [$recusa['message']], 'code' => $recusa['code']]];
+        }
+
         $academiaData = [
             'nome' => $data['nome'],
             'slug' => $slug,
             'email' => $data['email'],
-            'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', (string) $data['cnpj']) : null,
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null,
             'whatsapp_links' => TenantWhatsappLinks::parse($data['whatsapp_links'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
@@ -175,7 +185,17 @@ class SuperAdminAcademiaService
         ];
 
         try {
-            $tenantId = $this->tenants->create($academiaData);
+            // Tenant e vínculo do CNPJ juntos: se o CNPJ for recusado, a academia não fica criada
+            $tenantId = DB::transaction(function () use ($academiaData, $cnpj, $usuarioId) {
+                $tenantId = $this->tenants->create($academiaData);
+                if ($tenantId && $cnpj !== '') {
+                    $this->entidades->vincular($tenantId, $cnpj, $usuarioId, 'cadastro_academia');
+                }
+
+                return $tenantId;
+            }, 3);
+        } catch (EntidadeJuridicaException $e) {
+            return ['status' => $e->status, 'body' => ['errors' => [$e->getMessage()], 'code' => $e->codigo]];
         } catch (\Exception $e) {
             $statusCode = $e->getCode() == 409 ? 409 : 500;
 
@@ -306,7 +326,7 @@ class SuperAdminAcademiaService
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function atualizarAcademia(int $tenantId, array $data): array
+    public function atualizarAcademia(int $tenantId, array $data, ?int $usuarioId = null): array
     {
         $academia = $this->tenants->findById($tenantId);
         if (! $academia) {
@@ -345,11 +365,11 @@ class SuperAdminAcademiaService
             ];
         }
 
-        if (! empty($data['cnpj'])) {
-            $cnpj = preg_replace('/[^0-9]/', '', (string) $data['cnpj']);
-            if (strlen($cnpj) != 14) {
-                $errors[] = 'CNPJ inválido. Deve conter 14 dígitos';
-            }
+        // CNPJ só muda quando vem no payload e difere do atual (o vínculo segue a política de duplicidade)
+        $cnpj = EntidadeJuridicaService::normalizar($data['cnpj'] ?? null);
+        $trocarCnpj = array_key_exists('cnpj', $data) && $cnpj !== EntidadeJuridicaService::normalizar($academia['cnpj'] ?? null);
+        if ($trocarCnpj && $cnpj !== '' && ($erroCnpj = EntidadeJuridicaService::erroCnpj($cnpj)) !== null) {
+            $errors[] = $erroCnpj;
         }
 
         if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
@@ -370,7 +390,6 @@ class SuperAdminAcademiaService
             'nome' => $data['nome'],
             'slug' => $slug,
             'email' => $data['email'],
-            'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', (string) $data['cnpj']) : $academia['cnpj'],
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : $academia['telefone'],
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::parse($data['whatsapp_links'])
@@ -390,7 +409,25 @@ class SuperAdminAcademiaService
             'ativo' => isset($data['ativo']) ? (filter_var($data['ativo'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0) : 1,
         ];
 
-        if (! $this->tenants->update($tenantId, $academiaData)) {
+        try {
+            $ok = DB::transaction(function () use ($tenantId, $academiaData, $trocarCnpj, $cnpj, $usuarioId) {
+                if (! $this->tenants->update($tenantId, $academiaData)) {
+                    return false;
+                }
+                if ($trocarCnpj) {
+                    $this->entidades->definirCnpjDoTenant($tenantId, $cnpj, $usuarioId, 'superadmin_academia');
+                }
+
+                return true;
+            }, 3);
+        } catch (EntidadeJuridicaException $e) {
+            return [
+                'status' => $e->status,
+                'body' => ['type' => 'error', 'code' => $e->codigo, 'message' => $e->getMessage()],
+            ];
+        }
+
+        if (! $ok) {
             return [
                 'status' => 500,
                 'body' => [

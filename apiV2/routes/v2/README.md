@@ -36,6 +36,7 @@ Denylist do painel: `painel/src/config/apiRouting.js`
 | `relatorios.php` | `GET /relatorios/planos-ciclos` |
 | `wods.php` | WOD admin (CRUD, blocos, variações, resultados) — 22 rotas |
 | `recordes.php` | Recordes pessoais admin (definições, recordes, ranking) — 11 rotas |
+| `minha_conta.php` | Minha Conta: perfil, senha, dados da escola e dados do CNPJ (plano em `meu_contrato.php`) |
 
 ## Módulos em `shared/` (migrados)
 
@@ -58,6 +59,7 @@ Denylist do painel: `painel/src/config/apiRouting.js`
 | `pagamentos_contrato.php` | pagamentos de contratos |
 | `assinaturas.php` | assinaturas multi-tenant |
 | `misc.php` | debug env |
+| `cnpj.php` | CNPJ compartilhado: política de duplicidade, exceções, gestor cadastral |
 
 ## Pendente (criar arquivo quando migrar)
 
