@@ -1,0 +1,59 @@
+/* ---------- MembroEquipeModal (ck-tm) ---------- */
+.ck-tm.ck-modal__dialog--lg { max-width: 920px; }
+.ck-tm__body { display: grid; gap: var(--space-5); }
+.ck-tm__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin-bottom: var(--space-3); }
+.ck-tm__head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.ck-tm__head > span { font-size: 13px; color: var(--ink-muted); }
+.ck-tm__head b { font-weight: 600; }
+.ck-tm__head .is-extra { color: var(--info); }
+.ck-tm__head .is-rev { color: var(--warning); }
+.ck-tm__head .ck-linkbtn { margin-left: auto; font-size: 13px; }
+.ck-tm__roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-radius: var(--radius-lg); }
+.ck-tm__roles.is-invalid { box-shadow: 0 0 0 2px var(--danger); }
+.ck-tm__role { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.ck-tm__role:hover { border-color: var(--ink-subtle); }
+.ck-tm__role:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-tm__role.is-on { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary); }
+.ck-tm__box { display: grid; place-items: center; width: 18px; height: 18px; flex: none; margin-top: 1px; border: 1.5px solid var(--control-border); border-radius: 5px; background: var(--surface); }
+.ck-tm__role.is-on .ck-tm__box { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.ck-tm__roletxt { flex: 1; min-width: 0; }
+.ck-tm__roletxt strong { display: block; font-size: 14px; }
+.ck-tm__roletxt span { display: block; font-size: 12.5px; line-height: 17px; color: var(--ink-muted); }
+.ck-tm__role em { font-style: normal; font-size: 11.5px; color: var(--ink-subtle); white-space: nowrap; }
+.ck-tm__groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); align-items: start; }
+.ck-tm__group { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.ck-tm__gh { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg); border-bottom: 1px solid var(--line); color: var(--ink-muted); }
+.ck-tm__gh h4 { margin: 0; font-weight: 600; flex: 1; font-size: 13px; color: var(--ink); }
+.ck-tm__gh span { font-size: 12px; font-variant-numeric: tabular-nums; }
+.ck-tm__group ul { list-style: none; margin: 0; padding: 0; }
+.ck-tm__group li { display: flex; align-items: center; gap: 12px; padding: 9px 12px; }
+.ck-tm__group li + li { border-top: 1px solid var(--line); }
+.ck-tm__ptxt { flex: 1; min-width: 0; }
+.ck-tm__ptxt strong { display: block; font-size: 14px; font-weight: 600; color: var(--ink-muted); }
+.ck-tm__group li.is-on .ck-tm__ptxt strong { color: var(--ink); }
+.ck-tm__ptxt > span:not(.ck-tm__why) { display: block; font-size: 12px; line-height: 17px; color: var(--ink-muted); }
+.ck-tm__why { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.ck-tm__why:empty { display: none; }
+.ck-tm__why em { display: inline-flex; align-items: center; gap: 4px; font-style: normal; font-size: 11.5px; font-weight: 500; color: var(--ink-subtle); }
+.ck-tm__why em.is-extra, .ck-tm__why em.is-rev { font-weight: 600; padding: 0 6px; border-radius: var(--radius-full); }
+.ck-tm__why em.is-extra { background: var(--info-soft); color: var(--info); }
+.ck-tm__why em.is-rev { background: var(--warning-soft); color: var(--warning); }
+.ck-tm__why em.is-lock { background: transparent; padding: 0; color: var(--ink-subtle); }
+.ck-tm__group li.is-rev .ck-tm__ptxt strong { text-decoration: line-through; text-decoration-color: var(--warning); }
+@media (max-width: 760px) { .ck-tm__roles, .ck-tm__groups { grid-template-columns: 1fr; } }
+
+/* Integração da modal de acesso com o catálogo de permissões. */
+.ck-tm__unsaved, .ck-tm__spacer { flex: 1; min-width: 0; }
+.ck-tm__unsaved { font-size: 13px; color: var(--ink-muted); }
+.ck-tm .ck-modal__foot { flex-wrap: wrap; justify-content: flex-end; }
+.ck-tm .ck-modal__body, .ck-tm__body, .ck-tm__group, .ck-tm__head { min-width: 0; }
+.ck-tm__role:disabled { opacity: .6; cursor: wait; }
+.ck-tm__role em { white-space: normal; text-align: right; }
+.ck-tm__gh h4 { line-height: 20px; }
+.ck-tm__head .ck-linkbtn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.ck-tm__ptxt, .ck-tm__roletxt { overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .ck-tm .ck-modal__head, .ck-tm .ck-modal__body, .ck-tm .ck-modal__foot { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .ck-tm__unsaved { flex-basis: 100%; }
+  .ck-tm__head .ck-linkbtn { margin-left: 0; text-align: left; }
+}

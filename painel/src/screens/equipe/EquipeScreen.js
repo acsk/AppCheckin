@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import LayoutBase from '../../components/LayoutBase';
-import { Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, TextField } from '../../components/ck';
+import { Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, Switch, TextField } from '../../components/ck';
 import { Panel, digits, maskCpf, maskPhone, titleCase } from '../../components/ck/pessoas';
 import { authService } from '../../services/authService';
 import equipeService from '../../services/equipeService';
@@ -104,62 +104,99 @@ function AdicionarModal({ open, gerenciaveis, onClose, onDone }) {
   );
 }
 
+const ICONES_MODULO = { Alunos: 'users', Matrículas: 'layers', Financeiro: 'wallet', Prospecção: 'target', Aulas: 'calendar', Equipe: 'users', Configurações: 'settings', Conta: 'building-2' };
+const mesmosItens = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+
 function EditarModal({ membro, dados, minhas, onClose, onDone }) {
   const gerenciaveis = dados.papeis_gerenciaveis;
   const [papeis, setPapeis] = useState(() => membro.papeis.filter((p) => gerenciaveis.includes(p)));
   const [marcadas, setMarcadas] = useState(() => membro.permissoes);
   const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState('');
+  const ocupado = useRef(false);
   const outrosPapeis = membro.papeis.filter((p) => !gerenciaveis.includes(p));
   const padrao = useMemo(() => [...new Set([...papeis, ...outrosPapeis].flatMap((p) => dados.padrao[p] || []))], [papeis]);
   const modulos = useMemo(() => dados.catalogo.reduce((acc, p) => ({ ...acc, [p.modulo]: [...(acc[p.modulo] || []), p] }), {}), [dados.catalogo]);
 
-  // Ao trocar papéis, as permissões acompanham o padrão (os ajustes manuais continuam valendo)
+  // Ao trocar papéis, as permissões acompanham o padrão e os ajustes cadastrados.
   useEffect(() => {
     const ajustesC = membro.ajustes?.conceder || [];
     const ajustesR = membro.ajustes?.retirar || [];
     setMarcadas([...new Set([...padrao.filter((c) => !ajustesR.includes(c)), ...ajustesC])]);
   }, [padrao]);
 
+  const naoSensiveis = dados.catalogo.filter((p) => !p.sensivel).map((p) => p.codigo);
+  const conceder = marcadas.filter((c) => naoSensiveis.includes(c) && !padrao.includes(c));
+  const retirar = padrao.filter((c) => naoSensiveis.includes(c) && !marcadas.includes(c));
+  const alterado = !mesmosItens([...papeis, ...outrosPapeis], membro.papeis) || !mesmosItens(marcadas, membro.permissoes);
+  const total = dados.catalogo.filter((p) => marcadas.includes(p.codigo)).length;
+  const podeAlterar = (p) => !p.sensivel && minhas.includes(p.codigo);
+  const restaurarPadrao = () => setMarcadas((atuais) => {
+    const editaveis = dados.catalogo.filter(podeAlterar).map((p) => p.codigo);
+    return [...new Set([...atuais.filter((c) => !editaveis.includes(c)), ...padrao.filter((c) => editaveis.includes(c))])];
+  });
+  const temAjustesEditaveis = dados.catalogo.some((p) => podeAlterar(p) && (conceder.includes(p.codigo) || retirar.includes(p.codigo)));
   const salvar = async () => {
-    setSalvando(true);
+    if (ocupado.current || !alterado || (!papeis.length && !outrosPapeis.length)) return;
+    ocupado.current = true; setSalvando(true); setErro('');
     try {
-      const naoSensiveis = dados.catalogo.filter((p) => !p.sensivel).map((p) => p.codigo);
-      const conceder = marcadas.filter((c) => naoSensiveis.includes(c) && !padrao.includes(c));
-      const retirar = padrao.filter((c) => naoSensiveis.includes(c) && !marcadas.includes(c));
       const r = await equipeService.atualizar(membro.id, { papeis, conceder, retirar });
-      showSuccess(r.message);
-      onDone(r);
-    } catch (e) { showError(e.message); } finally { setSalvando(false); }
+      showSuccess(r.message); onDone(r);
+    } catch (e) { setErro(e.message || 'Não foi possível salvar o acesso.'); }
+    finally { ocupado.current = false; setSalvando(false); }
   };
 
-  return (
-    <Modal open size="lg" title={titleCase(membro.nome)} description={membro.email} dismissable={!salvando} onClose={onClose}
-      footer={(
-        <>
-          <span style={{ flex: 1 }} />
-          <Button variant="ghost" disabled={salvando} onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" icon="save" loading={salvando} disabled={!papeis.length && !outrosPapeis.length} onClick={salvar}>Salvar</Button>
-        </>
-      )}>
-      <div className="ck-mc-form">
-        <PapeisCampo gerenciaveis={gerenciaveis} value={papeis} onChange={setPapeis} />
-        <span className="ck-field__label">Permissões</span>
-        <p className="ck-mc-hint">Marcadas pelo papel automaticamente. Você pode conceder ou retirar as que também tem.</p>
-        {Object.entries(modulos).map(([modulo, itens]) => (
-          <fieldset key={modulo} className="ck-ct-roles">
-            <legend className="ck-field__label">{modulo}</legend>
-            {itens.map((p) => {
-              const on = marcadas.includes(p.codigo);
-              const travada = p.sensivel || !minhas.includes(p.codigo);
-              const origem = p.sensivel ? 'Só o suporte' : !minhas.includes(p.codigo) ? 'Você não tem' : padrao.includes(p.codigo) ? (on ? 'Do papel' : 'Retirada') : (on ? 'Concedida' : null);
-              return <Opcao key={p.codigo} on={on} disabled={travada} titulo={p.nome} descricao={p.descricao} aviso={origem}
-                onToggle={() => setMarcadas(on ? marcadas.filter((x) => x !== p.codigo) : [...marcadas, p.codigo])} />;
-            })}
-          </fieldset>
-        ))}
-      </div>
-    </Modal>
-  );
+  return <Modal open size="lg" dialogClassName="ck-tm" autoFocus={false}
+    leading={<Avatar name={titleCase(membro.nome)} size="lg" decorative />}
+    title={titleCase(membro.nome)} description={[membro.email, membro.voce ? 'Você' : null].filter(Boolean).join(' · ')} dismissable={!salvando} onClose={onClose}
+    footer={<>
+      {alterado ? <span className="ck-tm__unsaved">Alterações não salvas</span> : <span className="ck-tm__spacer" />}
+      <Button variant="ghost" disabled={salvando} onClick={onClose}>Cancelar</Button>
+      <Button variant="primary" icon="save" loading={salvando} disabled={!alterado || (!papeis.length && !outrosPapeis.length)} onClick={salvar}>Salvar acesso</Button>
+    </>}>
+    <div className="ck-tm__body">
+      {erro ? <Callout tone="danger">{erro}</Callout> : null}
+      <section aria-labelledby="equipe-papeis">
+        <div className="ck-tm__head"><h3 id="equipe-papeis">Papel</h3><span>Pode ter mais de um. Cada papel já traz um conjunto de permissões.</span></div>
+        <div className="ck-tm__roles" role="group" aria-label="Papéis do membro">
+          {gerenciaveis.map((p) => {
+            const on = papeis.includes(p);
+            return <button key={p} type="button" role="checkbox" aria-checked={on} disabled={salvando} className={`ck-tm__role${on ? ' is-on' : ''}`}
+              onClick={() => setPapeis((atuais) => atuais.includes(p) ? atuais.filter((x) => x !== p) : [...atuais, p])}>
+              <span className="ck-tm__box" aria-hidden="true">{on ? <Icon name="check" size={13} strokeWidth={3} /> : null}</span>
+              <span className="ck-tm__roletxt"><strong>{PAPEIS[p]}</strong><span>{DESCRICAO_PAPEL[p]}</span></span>
+              <em>{(dados.padrao[p] || []).length} permissões</em>
+            </button>;
+          })}
+        </div>
+        {!papeis.length && !outrosPapeis.length ? <p className="ck-field__error" role="alert">Escolha pelo menos um papel.</p> : null}
+      </section>
+      <section aria-labelledby="equipe-permissoes">
+        <div className="ck-tm__head">
+          <h3 id="equipe-permissoes">O que pode fazer</h3>
+          <span>{total} de {dados.catalogo.length} permissões{conceder.length ? <b className="is-extra">, {conceder.length} {conceder.length === 1 ? 'extra' : 'extras'}</b> : null}{retirar.length ? <b className="is-rev">, {retirar.length} {retirar.length === 1 ? 'retirada' : 'retiradas'}</b> : null}</span>
+          {temAjustesEditaveis ? <button type="button" className="ck-linkbtn" disabled={salvando} onClick={restaurarPadrao}>Usar só o que o papel dá</button> : null}
+        </div>
+        <div className="ck-tm__groups">
+          {Object.entries(modulos).map(([modulo, itens], index) => <section key={modulo} className="ck-tm__group" aria-labelledby={`equipe-modulo-${index}`}>
+            <header className="ck-tm__gh"><Icon name={ICONES_MODULO[modulo] || 'layers'} size={15} /><h4 id={`equipe-modulo-${index}`}>{modulo}</h4><span>{itens.filter((p) => marcadas.includes(p.codigo)).length} de {itens.length}</span></header>
+            <ul>{itens.map((p) => {
+              const on = marcadas.includes(p.codigo), extra = conceder.includes(p.codigo), retirada = retirar.includes(p.codigo);
+              const travada = !podeAlterar(p);
+              const origem = [...papeis, ...outrosPapeis].filter((papel) => (dados.padrao[papel] || []).includes(p.codigo)).map((papel) => PAPEIS[papel] || `Papel ${papel}`).join(' e ');
+              return <li key={p.codigo} className={`${on ? 'is-on' : ''}${retirada ? ' is-rev' : ''}`}>
+                <div className="ck-tm__ptxt"><strong>{p.nome}</strong><span>{p.descricao}</span><span className="ck-tm__why">
+                  {retirada ? <em className="is-rev">Retirada, o papel {origem} daria</em> : extra ? <em className="is-extra">Extra, além do papel</em> : origem ? <em>Pelo papel {origem}</em> : null}
+                  {travada ? <em className="is-lock"><Icon name="lock" size={11} />{p.sensivel ? 'Liberado só pelo suporte' : 'Você não tem esta permissão'}</em> : null}
+                </span></div>
+                <Switch checked={on} disabled={travada || salvando} ariaLabel={p.nome} onChange={() => setMarcadas((atuais) => atuais.includes(p.codigo) ? atuais.filter((c) => c !== p.codigo) : [...atuais, p.codigo])} />
+              </li>;
+            })}</ul>
+          </section>)}
+        </div>
+      </section>
+    </div>
+  </Modal>;
 }
 
 export default function EquipeScreen() {
