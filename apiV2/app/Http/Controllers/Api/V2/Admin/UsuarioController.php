@@ -128,6 +128,10 @@ class UsuarioController extends Controller
     private function usuarioLogado(Request $request): ?array
     {
         $usuario = $request->attributes->get('usuario');
+        if (is_array($usuario) && $request->attributes->get('acesso_suporte')) {
+            // Super admin no "acessar como academia": age como admin, mas pode ver/editar a equipe toda
+            $usuario['acesso_suporte'] = true;
+        }
 
         return is_array($usuario) ? $usuario : null;
     }

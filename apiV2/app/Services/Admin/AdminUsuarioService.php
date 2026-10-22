@@ -59,7 +59,7 @@ class AdminUsuarioService
             ];
         }
 
-        if (! $isSuperAdmin && (int) ($usuario['papel_id'] ?? 0) >= 3) {
+        if (! $isSuperAdmin && $this->soAdministrador($usuario, $tenantId, $usuarioLogado)) {
             return [
                 'status' => 403,
                 'body' => ['error' => 'Usuários administradores só podem ser visualizados pela tela de Academia'],
@@ -121,8 +121,16 @@ class AdminUsuarioService
             return $this->erro('Usuário não encontrado', 404);
         }
 
-        if (! $isSuperAdmin && (int) ($existente['papel_id'] ?? 0) >= 3) {
+        if (! $isSuperAdmin && $this->soAdministrador($existente, $tenantId, $usuarioLogado)) {
             return $this->erro('Usuários administradores só podem ser editados pela tela de Academia', 403);
+        }
+        // Admin que também é aluno/professor: a academia edita o cadastro, mas e-mail e senha
+        // (o login de administrador) continuam só pela tela de Academia
+        if (! $isSuperAdmin && empty($usuarioLogado['acesso_suporte']) && (int) ($existente['papel_id'] ?? 0) >= Papel::ADMIN) {
+            $trocaEmail = isset($data['email']) && mb_strtolower(trim((string) $data['email'])) !== mb_strtolower((string) ($existente['email'] ?? ''));
+            if ($trocaEmail || ! empty($data['senha'])) {
+                return $this->erro('E-mail e senha de administradores só podem ser alterados pela tela de Academia', 403);
+            }
         }
 
         $errors = $this->validarDadosUsuario($data, $id);
@@ -327,6 +335,22 @@ class AdminUsuarioService
     /**
      * @param  array<string, mixed>|null  $usuarioLogado
      */
+    /**
+     * Admin sem papel de aluno/professor nesta academia: fica de fora da tela de usuários.
+     * Quem também é aluno ou professor aparece na lista e pode ser aberto. O suporte vê todos.
+     *
+     * @param  array<string, mixed>  $usuario
+     * @param  array<string, mixed>|null  $usuarioLogado
+     */
+    private function soAdministrador(array $usuario, int $tenantId, ?array $usuarioLogado): bool
+    {
+        if (! empty($usuarioLogado['acesso_suporte']) || (int) ($usuario['papel_id'] ?? 0) < Papel::ADMIN) {
+            return false;
+        }
+
+        return array_intersect([Papel::ALUNO, Papel::PROFESSOR], $this->usuarios->papeisAtivosNoTenant((int) $usuario['id'], $tenantId)) === [];
+    }
+
     private function isSuperAdmin(?array $usuarioLogado): bool
     {
         return isset($usuarioLogado['papel_id']) && (int) $usuarioLogado['papel_id'] === 4;

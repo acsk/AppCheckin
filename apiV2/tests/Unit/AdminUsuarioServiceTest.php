@@ -74,6 +74,7 @@ class AdminUsuarioServiceTest extends TestCase
             'nome' => 'OUTRO ADMIN',
             'papel_id' => 3,
         ]);
+        $repo->shouldReceive('papeisAtivosNoTenant')->once()->with(7, 3)->andReturn([3]);
 
         $service = new AdminUsuarioService($repo);
         $result = $service->show(7, 3, ['papel_id' => 3]);
@@ -83,6 +84,39 @@ class AdminUsuarioServiceTest extends TestCase
             'Usuários administradores só podem ser visualizados pela tela de Academia',
             $result['body']['error'],
         );
+    }
+
+    public function test_show_libera_admin_que_tambem_e_aluno_ou_professor(): void
+    {
+        $repo = Mockery::mock(UsuarioRepository::class);
+        $repo->shouldReceive('findById')->with(7, 3)->andReturn(['id' => 7, 'nome' => 'ADMIN PROFESSOR', 'papel_id' => 3]);
+        $repo->shouldReceive('papeisAtivosNoTenant')->with(7, 3)->andReturn([1, 2, 3]);
+
+        $result = (new AdminUsuarioService($repo))->show(7, 3, ['papel_id' => 3]);
+
+        $this->assertSame(200, $result['status']);
+    }
+
+    public function test_acesso_suporte_ve_e_edita_admin(): void
+    {
+        $repo = Mockery::mock(UsuarioRepository::class);
+        $repo->shouldReceive('findById')->with(7, 3)->andReturn(['id' => 7, 'nome' => 'ADMIN', 'email' => 'a@x.com', 'papel_id' => 3]);
+        $repo->shouldNotReceive('papeisAtivosNoTenant');
+        $suporte = ['papel_id' => 3, 'acesso_suporte' => true];
+
+        $this->assertSame(200, (new AdminUsuarioService($repo))->show(7, 3, $suporte)['status']);
+    }
+
+    public function test_update_admin_aluno_nao_troca_email_nem_senha_pela_academia(): void
+    {
+        $repo = Mockery::mock(UsuarioRepository::class);
+        $repo->shouldReceive('findById')->with(7, 3)->andReturn(['id' => 7, 'nome' => 'ADMIN', 'email' => 'a@x.com', 'papel_id' => 3]);
+        $repo->shouldReceive('papeisAtivosNoTenant')->with(7, 3)->andReturn([1, 3]);
+        $repo->shouldNotReceive('atualizarPerfil');
+
+        $result = (new AdminUsuarioService($repo))->update(7, 3, ['nome' => 'Admin', 'senha' => 'nova123'], ['papel_id' => 3]);
+
+        $this->assertSame(403, $result['status']);
     }
 
     public function test_create_exige_nome_email_e_senha(): void

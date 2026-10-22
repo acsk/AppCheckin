@@ -201,6 +201,14 @@ class UsuarioRepository
             ->exists();
     }
 
+    /** @return list<int> papéis ativos do usuário na academia */
+    public function papeisAtivosNoTenant(int $userId, int $tenantId): array
+    {
+        return DB::table('tenant_usuario_papel')
+            ->where('usuario_id', $userId)->where('tenant_id', $tenantId)->where('ativo', 1)
+            ->pluck('papel_id')->map(fn ($p) => (int) $p)->unique()->values()->all();
+    }
+
     public function findById(int $userId, ?int $tenantId = null): ?array
     {
         return $this->findProfile($userId, $tenantId);
