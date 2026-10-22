@@ -152,4 +152,20 @@ export const authService = {
   async getToken() {
     return await AsyncStorage.getItem('@appcheckin:token');
   },
+
+  // Academia do token atual ({ id, nome }) ou null (super admin / sem academia). Cache por token,
+  // para o cabeçalho não buscar de novo a cada tela.
+  async getTenantAtual() {
+    const token = await AsyncStorage.getItem('@appcheckin:token');
+    if (!token) return null;
+    if (tenantAtualCache.token === token) return tenantAtualCache.tenant;
+    const response = await api.get('/auth/tenants');
+    const atualId = Number(response.data?.current_tenant_id) || null;
+    const vinculo = (response.data?.tenants || []).find((t) => Number(t.tenant?.id) === atualId);
+    const tenant = vinculo ? { id: atualId, nome: vinculo.tenant.nome } : null;
+    tenantAtualCache = { token, tenant };
+    return tenant;
+  },
 };
+
+let tenantAtualCache = { token: null, tenant: null };

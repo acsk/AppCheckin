@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { authService, PAPEL_COMERCIAL } from '../services/authService';
-import { AppShell, AppHeader, IconButton, PageHeader, Sidebar } from './ck';
+import { AppShell, AppHeader, Icon, IconButton, PageHeader, Sidebar } from './ck';
 
 // Menu do painel em seções (design system: Geral · Gestão · Sistema).
 // Itens de primeiro nível têm ícone; filhos não. `roles` = papéis que veem o item.
@@ -149,6 +149,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const isMobile = width < BREAKPOINT_MOBILE;
 
   const [usuarioInfo, setUsuarioInfo] = useState(null);
+  const [tenantAtual, setTenantAtual] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -160,6 +161,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   useEffect(() => {
     authService.getCurrentUser().then(setUsuarioInfo).catch(() => {});
+    authService.getTenantAtual().then(setTenantAtual).catch(() => {});
   }, []);
 
   // Fecha o menu do celular ao trocar de rota.
@@ -231,6 +233,12 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       }
       breadcrumbs={breadcrumbs}
       search={false}
+      actions={tenantAtual ? (
+        <span className="ck-tenant-chip" title={`Academia logada: ${tenantAtual.nome}`}>
+          <Icon name="building-2" size={15} />
+          <span className="ck-tenant-chip__name">{tenantAtual.nome}</span>
+        </span>
+      ) : null}
       notifications={false}
       user={{ name: nome, role: papelLabel(role), email: usuarioInfo?.email }}
       menuItems={[

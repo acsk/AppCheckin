@@ -64,6 +64,25 @@ class EntidadeJuridicaRepository
         );
     }
 
+    /**
+     * Ponto de partida dos dados jurídicos de um CNPJ novo: nome e endereço da academia.
+     *
+     * @return array<string, mixed>
+     */
+    public function dadosIniciaisDoTenant(int $tenantId): array
+    {
+        $t = DB::table('tenants')->where('id', $tenantId)
+            ->first(['nome', 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado']);
+        if (! $t) {
+            return [];
+        }
+        $dados = (array) $t;
+        $dados['razao_social'] = $dados['nome'];
+        unset($dados['nome']);
+
+        return array_map(fn ($v) => $v === '' ? null : $v, $dados);
+    }
+
     /** @param  array<string, mixed>  $dados */
     public function atualizarDados(int $id, array $dados, ?int $usuarioId): void
     {
@@ -298,7 +317,7 @@ class EntidadeJuridicaRepository
      *
      * @return list<array<string, mixed>>
      */
-    public function listar(string $busca = '', bool $somenteCompartilhados = false, int $limite = 100): array
+    public function listar(string $busca = '', bool $somenteCompartilhados = false, int $limite = 100, bool $incluirSemAcademia = false): array
     {
         $ativos = DB::table('tenant_entidade_juridica')
             ->where('status', VinculoCnpj::ATIVO)
@@ -309,7 +328,7 @@ class EntidadeJuridicaRepository
             ->leftJoinSub($ativos, 'va', 'va.entidade_juridica_id', '=', 'e.id')
             ->select('e.id', 'e.cnpj', 'e.razao_social', 'e.nome_fantasia', 'e.updated_at', DB::raw('COALESCE(va.total, 0) as tenants_ativos'))
             ->orderByDesc(DB::raw('COALESCE(va.total, 0)'))
-            ->orderBy('e.razao_social')
+            ->orderBy('e.cnpj')
             ->limit($limite);
 
         $busca = trim($busca);
@@ -332,16 +351,30 @@ class EntidadeJuridicaRepository
         }
         if ($somenteCompartilhados) {
             $query->where('va.total', '>', 1);
+        } elseif (! $incluirSemAcademia) {
+            // CNPJ que ficou sem academia (ex.: a academia trocou de CNPJ) só aparece se pedido
+            $query->where('va.total', '>', 0);
         }
 
-        $vigentes = DB::table('cnpj_excecoes')->whereNull('revogado_em')->pluck('entidade_juridica_id')->map(fn ($id) => (int) $id)->all();
+        $rows = $query->get();
+        $ids = $rows->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $vigentes = DB::table('cnpj_excecoes')->whereNull('revogado_em')->whereIn('entidade_juridica_id', $ids)
+            ->pluck('entidade_juridica_id')->map(fn ($id) => (int) $id)->all();
+        $academias = [];
+        foreach (DB::table('tenant_entidade_juridica as v')->join('tenants as t', 't.id', '=', 'v.tenant_id')
+            ->whereIn('v.entidade_juridica_id', $ids)->where('v.status', VinculoCnpj::ATIVO)
+            ->orderByRaw("CASE WHEN v.papel = 'gestor' THEN 0 ELSE 1 END")->orderBy('t.nome')
+            ->get(['v.entidade_juridica_id', 'v.tenant_id', 't.nome', 'v.papel']) as $a) {
+            $academias[(int) $a->entidade_juridica_id][] = ['id' => (int) $a->tenant_id, 'nome' => $a->nome, 'papel' => $a->papel];
+        }
 
-        return $query->get()->map(fn ($r) => [
+        return $rows->map(fn ($r) => [
             'id' => (int) $r->id,
             'cnpj' => $r->cnpj,
             'razao_social' => $r->razao_social,
             'nome_fantasia' => $r->nome_fantasia,
             'tenants_ativos' => (int) $r->tenants_ativos,
+            'academias' => $academias[(int) $r->id] ?? [],
             'excecao_vigente' => in_array((int) $r->id, $vigentes, true),
             'updated_at' => $r->updated_at,
         ])->all();

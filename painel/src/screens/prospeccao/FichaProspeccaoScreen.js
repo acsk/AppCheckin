@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import { Badge, Button, Callout, IconButton, Modal, SelectField, TextAreaField, TextField } from '../../components/ck';
+import { ActionMenu, Badge, Button, Callout, Icon, IconButton, Modal, SelectField, TextAreaField, TextField } from '../../components/ck';
 import { Panel, titleCase, maskPhone } from '../../components/ck/pessoas';
 import { ColumnChart } from '../../components/ck/graficos';
-import { WhatsappContato } from '../../components/ck/whatsapp';
 import { AgendarModal, AlunoFoto, ScoreBadge, StatusBadge, StatusModal, useFluxoContato } from '../../components/ck/prospeccao';
 import prospeccaoService from '../../services/prospeccaoService';
 import { telefoneDoAluno } from '../../utils/whatsapp';
@@ -72,6 +71,19 @@ export default function FichaProspeccaoScreen() {
     try { aplicar(await prospeccaoService.removerRestricao(o.id, motivoAutorizacao)); setModal(null); setMotivoAutorizacao(''); showSuccess('Restrição removida'); }
     catch (e) { showError(erroApi(e, 'Não foi possível remover a restrição.')); }
   };
+  const etapas = [['nao_contatado', 'Não contatado'], ['contatado', 'Contatado'], ['interessado', 'Interessado'], ['em_negociacao', 'Negociação'], ['recuperado', 'Recuperado']];
+  const etapaAtual = etapas.findIndex(([status]) => status === (o.status === 'retorno_agendado' ? 'contatado' : o.status));
+  const proximo = {
+    nao_contatado: ['Fazer o primeiro contato', 'Mande uma mensagem de boas-vindas de volta e registre como foi.'],
+    contatado: ['Aguardando resposta', 'No próximo retorno, tente de novo com outra mensagem.'],
+    interessado: ['Apresentar horários e planos', 'Mostre as opções e combine o plano.'],
+    em_negociacao: ['Fechar a volta', 'Combinado o plano, crie a matrícula de retorno.'],
+    retorno_agendado: [o.proximo_contato_em ? `Retornar em ${dataHoraBR(o.proximo_contato_em)}` : 'Fazer o retorno agendado', 'Confira o retorno em Contatos pendentes.'],
+    recuperado: ['Aluno recuperado', 'A matrícula de retorno já está ativa.'],
+    sem_interesse: ['Sem interesse por agora', 'Registre o motivo e avalie uma nova abordagem mais adiante.'],
+    nao_contatar: ['Não contatar', 'O aluno pediu para não receber novos contatos.'],
+  }[o.status] || [o.status_rotulo, 'Acompanhe o histórico da prospecção.'];
+  const alterado = JSON.stringify(form) !== JSON.stringify({ responsavel_id: o.responsavel_id ? String(o.responsavel_id) : '', motivo_categoria: o.motivo_categoria || '', interesse: o.interesse || '', condicoes_apresentadas: o.condicoes_apresentadas || '', observacoes: o.observacoes || '' });
   const fin = d.financeiro;
   const meses = Object.keys(d.checkins.por_mes || {}).sort();
   const timeline = [
@@ -81,24 +93,37 @@ export default function FichaProspeccaoScreen() {
 
   return <LayoutBase title={nome} pageHeader={false} parent={{ label: 'Recuperação de Alunos', path: '/prospeccao/recuperacao' }}>
     <div className="ck-pr ck-pr-ficha">
-      <header className="ck-card ck-pr-head">
-        <AlunoFoto nome={aluno.nome} foto={aluno.foto_caminho} size="lg" />
-        <div className="ck-pr-head__main">
-          <h1 className="ck-pr-head__nome">{nome}</h1>
-          <div className="ck-pr-head__meta">
-            <StatusBadge status={o.status} rotulo={o.status_rotulo} />
-            <ScoreBadge score={o.score} potencial={o.potencial} confianca={o.score_confianca} />
-            <span>{o.modalidade_nome} · {o.plano_nome}</span>
-            <span>Cancelou em {dataBR(o.data_cancelamento)}{o.data_cancelamento_estimada ? ' (estimado)' : ''}, há {tempoInativo(o.dias_inatividade)}</span>
+      <header className="ck-card ck-px-head">
+        <div className="ck-px-head__who">
+          <AlunoFoto nome={aluno.nome} foto={aluno.foto_caminho} size="lg" />
+          <div className="ck-pr-head__main">
+            <h1 className="ck-pr-head__nome">{nome}</h1>
+            <p>{[o.modalidade_nome, o.plano_nome].filter(Boolean).join(', ')} · cancelou em {dataBR(o.data_cancelamento)}{o.data_cancelamento_estimada ? ' (estimado)' : ''} (há {tempoInativo(o.dias_inatividade)})</p>
+            <div className="ck-px-head__tags">
+              <StatusBadge status={o.status} rotulo={o.status_rotulo} />
+              <span className="ck-px-score">Score <ScoreBadge score={o.score} potencial={o.potencial} confianca={o.score_confianca} /></span>
+              <span className="ck-px-owner"><Icon name="user" size={13} />{titleCase(o.responsavel_nome || ctx.responsaveis.find((u) => String(u.id) === String(o.responsavel_id))?.nome || '') || 'Sem responsável'}</span>
+            </div>
           </div>
         </div>
-        <div className="ck-pr-head__acoes">
-          {podeContatar ? <WhatsappContato variant="button" telefone={telefoneDoAluno(aluno)} nome={nome} onAbrir={() => fluxo.registrarDepoisDoWhatsapp(alvo)} /> : null}
-          {podeContatar ? <Button icon="message-circle" onClick={abordar}>Mensagem pronta</Button> : null}
-          {podeContatar ? <Button icon="phone" onClick={() => fluxo.registrarDepoisDoWhatsapp({ ...alvo })}>Registrar contato</Button> : null}
-          {aberta && podeContatar ? <Button icon="calendar" onClick={() => setModal('agendar')}>Agendar retorno</Button> : null}
-          {o.transicoes.length ? <Button onClick={() => setModal('status')}>Mudar status</Button> : null}
-          {ctx.admin && o.status !== 'recuperado' ? <Button variant="primary" icon="user-plus" onClick={recuperar}>Recuperar aluno</Button> : null}
+        <ol className="ck-px-track" aria-label="Etapa da prospecção">
+          {etapas.map(([status, label], i) => <li key={status} className={i < etapaAtual ? 'is-done' : i === etapaAtual ? 'is-on' : ''} aria-current={i === etapaAtual ? 'step' : undefined}>
+            <span aria-hidden="true">{i < etapaAtual ? <Icon name="check" size={11} /> : null}</span><span className="ck-px-track__label">{label}</span>
+          </li>)}
+        </ol>
+        <div className="ck-px-next">
+          <div className="ck-px-next__txt"><span>Próximo passo</span><strong>{proximo[0]}</strong><p>{proximo[1]}</p></div>
+          <div className="ck-px-next__acts">
+            {podeContatar && (o.status !== 'em_negociacao' || !ctx.admin) ? <Button variant="primary" icon="message-circle" onClick={abordar}>Chamar no WhatsApp</Button> : null}
+            {o.status === 'em_negociacao' && ctx.admin && podeContatar ? <Button variant="primary" icon="user-plus" onClick={recuperar}>Recuperar aluno</Button> : null}
+            {aberta && podeContatar ? <Button icon="calendar" onClick={() => setModal('agendar')}>Agendar retorno</Button> : null}
+            <ActionMenu label="Mais ações" variant="secondary" size="md" items={[
+              podeContatar ? { label: 'Registrar contato sem WhatsApp', icon: 'phone', onClick: () => fluxo.registrarContato({ ...alvo, canal: 'telefone' }) } : null,
+              podeContatar && o.status === 'em_negociacao' && ctx.admin ? { label: 'Chamar no WhatsApp', icon: 'message-circle', onClick: abordar } : null,
+              ctx.admin && o.status !== 'recuperado' && o.status !== 'em_negociacao' ? { label: 'Recuperar aluno', icon: 'user-plus', onClick: recuperar } : null,
+              o.transicoes.length ? { label: 'Mudar status', icon: 'refresh-cw', onClick: () => setModal('status') } : null,
+            ].filter(Boolean)} />
+          </div>
         </div>
       </header>
 
@@ -110,40 +135,26 @@ export default function FichaProspeccaoScreen() {
       {o.ultimo_contato_por && o.ultimo_contato_por !== ctx.usuario_id && o.ultimo_contato_em && (Date.now() - new Date(String(o.ultimo_contato_em).replace(' ', 'T')).getTime()) < 86400000
         ? <Callout tone="info">{titleCase(o.ultimo_contato_por_nome || 'Outra pessoa')} falou com o aluno em {dataHoraBR(o.ultimo_contato_em)}. Combine antes de abordar de novo.</Callout> : null}
 
-      <div className="ck-pr-cols">
+      <div className="ck-pr-cols ck-px-cols">
         <div className="ck-pr-col">
-          <Panel title="Dados do aluno">
-            <dl className="ck-pr-kv">
-              <dt>Telefone</dt><dd>{aluno.telefone ? maskPhone(aluno.telefone) : '—'}</dd>
-              <dt>WhatsApp</dt><dd>{aluno.whatsapp ? maskPhone(aluno.whatsapp) : 'Usa o telefone'}</dd>
-              <dt>E-mail</dt><dd className="ck-pr-kv__cut" title={aluno.email || undefined}>{aluno.email || '—'}</dd>
-              <dt>Nascimento</dt><dd>{dataBR(aluno.data_nascimento)}</dd>
-              <dt>Cadastro</dt><dd>{aluno.ativo ? 'Ativo' : 'Inativo'}</dd>
-            </dl>
+          <Panel title="Histórico">
+            {timeline.length ? <ol className="ck-px-hist">{timeline.map((t) => {
+              const contato = t.tipo === 'contato';
+              const item = contato ? t.i : t.h;
+              const canal = contato ? item.canal : null;
+              return <li key={`${contato ? 'c' : 's'}${item.id}`} className={canal === 'whatsapp' ? 'is-whatsapp' : undefined}>
+                <span className="ck-px-hist__dot" aria-hidden="true"><Icon name={canal === 'whatsapp' ? 'message-circle' : canal === 'telefone' ? 'phone' : 'clock'} size={13} /></span>
+                <div>
+                  <strong>{contato ? `${ctx.resultados[item.resultado] || item.resultado} · ${ctx.canais[canal] || canal}` : item.status_anterior && item.status_anterior !== item.status_novo ? `${ctx.status[item.status_anterior]} → ${ctx.status[item.status_novo]}` : ctx.status[item.status_novo]}</strong>
+                  <span>{dataHoraBR(t.quando)}, {item.usuario_nome ? titleCase(item.usuario_nome) : 'Sistema'}{contato && item.modelo_nome ? ` · modelo "${item.modelo_nome}"` : ''}</span>
+                  {item.observacao ? <p>{item.observacao}</p> : null}
+                </div>
+              </li>;
+            })}</ol> : <p className="ck-pr-hint">Os contatos registrados aparecem aqui.</p>}
           </Panel>
-          <Panel title="Score de recuperação" description="Heurística sem IA. Critério sem dado não pontua nem conta no total."
-            actions={<IconButton icon="refresh-cw" label="Recalcular score" onClick={async () => { try { aplicar(await prospeccaoService.recalcularScore(o.id)); } catch (e) { showError(erroApi(e, 'Falhou')); } }} />}>
-            <ul className="ck-pr-score-list">{(o.score_detalhes || []).map((c) => <li key={c.criterio}>
-              <span><strong>{c.rotulo}</strong><small>{c.detalhe}</small></span>
-              <span className={c.pontos == null ? 'is-muted' : ''}>{c.pontos == null ? 'sem dado' : `${String(c.pontos).replace('.', ',')}/${c.peso}`}</span>
-            </li>)}</ul>
-            <p className="ck-pr-hint">Confiança: {o.score_confianca ?? 0}% dos critérios avaliados{o.score_calculado_em ? ` · calculado em ${dataHoraBR(o.score_calculado_em)}` : ''}.</p>
-          </Panel>
-          <Panel title="Frequência e financeiro">
-            <dl className="ck-pr-kv">
-              <dt>Check-ins (total)</dt><dd>{d.checkins.total}</dd>
-              <dt>Último check-in</dt><dd>{dataBR(d.checkins.ultimo)}</dd>
-              <dt>Parcelas pagas</dt><dd>{fin.pagas} ({fin.pagas ? Math.round((fin.pagas_em_dia / fin.pagas) * 100) : 0}% em dia)</dd>
-              <dt>Em atraso</dt><dd>{fin.em_atraso}{fin.valor_em_atraso != null && fin.em_atraso ? ` · ${moeda(fin.valor_em_atraso)}` : ''}</dd>
-              {fin.valor_pago != null ? <><dt>Total pago</dt><dd>{moeda(fin.valor_pago)}</dd></> : null}
-            </dl>
-            {meses.length ? <ColumnChart height={120} data={meses.map((m) => ({ label: mesCurto(m), value: d.checkins.por_mes[m], tip: mesCurto(m) }))} caption="Check-ins por mês nos últimos 12 meses" /> : <p className="ck-pr-hint">Sem check-ins nos últimos 12 meses.</p>}
-          </Panel>
-        </div>
 
-        <div className="ck-pr-col">
-          <Panel title="Prospecção" description="Informações comerciais. Não alteram o cadastro do aluno."
-            actions={<Button size="sm" variant="primary" loading={salvando} onClick={salvarComercial}>Salvar</Button>}>
+          <Panel title="Prospecção" description="Anotações comerciais. Não mudam o cadastro do aluno."
+            actions={alterado ? <Button size="sm" variant="primary" icon="save" loading={salvando} onClick={salvarComercial}>Salvar</Button> : <span className="ck-px-saved">Salvo</span>}>
             <div className="ck-pr-form">
               <div className="ck-pr-grid2">
                 <SelectField label="Responsável" value={form.responsavel_id} onChange={(e) => set('responsavel_id', e.target.value)}
@@ -165,21 +176,6 @@ export default function FichaProspeccaoScreen() {
             </li>)}</ul> : <p className="ck-pr-hint">Nenhum retorno agendado.</p>}
           </Panel>
 
-          <Panel title="Histórico">
-            {timeline.length ? <ol className="ck-pr-timeline">{timeline.map((t, k) => t.tipo === 'contato'
-              ? <li key={`c${t.i.id}`} className="is-contato">
-                <span className="ck-pr-timeline__when">{dataHoraBR(t.quando)}</span>
-                <strong>{ctx.resultados[t.i.resultado] || t.i.resultado} · {ctx.canais[t.i.canal] || t.i.canal}</strong>
-                <small>{titleCase(t.i.usuario_nome || '')}{t.i.modelo_nome ? ` · modelo "${t.i.modelo_nome}"` : ''}</small>
-                {t.i.observacao ? <p>{t.i.observacao}</p> : null}
-              </li>
-              : <li key={`s${t.h.id}`}>
-                <span className="ck-pr-timeline__when">{dataHoraBR(t.quando)}</span>
-                <strong>{t.h.status_anterior && t.h.status_anterior !== t.h.status_novo ? `${ctx.status[t.h.status_anterior]} → ${ctx.status[t.h.status_novo]}` : ctx.status[t.h.status_novo]}</strong>
-                <small>{t.h.usuario_nome ? titleCase(t.h.usuario_nome) : 'Sistema'}{t.h.observacao ? ` · ${t.h.observacao}` : ''}</small>
-              </li>)}</ol> : <p className="ck-pr-hint">Sem movimentações.</p>}
-          </Panel>
-
           <Panel title="Matrículas na academia">
             <div className="ck-mt-table-wrap"><table className="ck-mt-table ck-pr-mini">
               <thead><tr><th scope="col">Plano</th><th scope="col">Período</th><th scope="col">Situação</th></tr></thead>
@@ -192,6 +188,37 @@ export default function FichaProspeccaoScreen() {
             {d.ciclos.length ? <p className="ck-pr-hint">Prospecções anteriores: {d.ciclos.map((c) => `${ctx.status[c.status]} (cancelou ${dataBR(c.data_cancelamento_referencia)})`).join('; ')}.</p> : null}
           </Panel>
         </div>
+
+        <aside className="ck-pr-col">
+          <Panel title="Dados do aluno">
+            <dl className="ck-pr-kv">
+              <dt>Telefone</dt><dd>{aluno.telefone ? maskPhone(aluno.telefone) : '—'}</dd>
+              <dt>WhatsApp</dt><dd>{aluno.whatsapp ? maskPhone(aluno.whatsapp) : 'Usa o telefone'}</dd>
+              <dt>E-mail</dt><dd className="ck-pr-kv__cut" title={aluno.email || undefined}>{aluno.email || '—'}</dd>
+              <dt>Nascimento</dt><dd>{dataBR(aluno.data_nascimento)}</dd>
+              <dt>Cadastro</dt><dd>{aluno.ativo ? 'Ativo' : 'Inativo'}</dd>
+            </dl>
+          </Panel>
+          <Panel title={`Por que o score é ${o.score ?? '—'}`} description="Quanto cada critério somou."
+            actions={<IconButton icon="refresh-cw" label="Recalcular score" onClick={async () => { try { aplicar(await prospeccaoService.recalcularScore(o.id)); } catch (e) { showError(erroApi(e, 'Falhou')); } }} />}>
+            <ul className="ck-pr-score-list ck-px-score-list">{(o.score_detalhes || []).map((c) => <li key={c.criterio}>
+              <span><strong>{c.rotulo}</strong><small>{c.detalhe}</small></span>
+              <span className={c.pontos == null ? 'is-muted' : ''}>{c.pontos == null ? 'sem dado' : `${String(c.pontos).replace('.', ',')} de ${c.peso}`}</span>
+              <i className="ck-px-score-bar" aria-hidden="true"><i style={{ width: `${c.pontos == null || !c.peso ? 0 : Math.max(0, Math.min(100, c.pontos / c.peso * 100))}%` }} /></i>
+            </li>)}</ul>
+            <p className="ck-pr-hint">Confiança: {o.score_confianca ?? 0}% dos critérios avaliados{o.score_calculado_em ? ` · calculado em ${dataHoraBR(o.score_calculado_em)}` : ''}.</p>
+          </Panel>
+          <Panel title="Frequência e financeiro">
+            <dl className="ck-pr-kv">
+              <dt>Check-ins (total)</dt><dd>{d.checkins.total}</dd>
+              <dt>Último check-in</dt><dd>{dataBR(d.checkins.ultimo)}</dd>
+              <dt>Parcelas pagas</dt><dd>{fin.pagas} ({fin.pagas ? Math.round((fin.pagas_em_dia / fin.pagas) * 100) : 0}% em dia)</dd>
+              <dt>Em atraso</dt><dd>{fin.em_atraso}{fin.valor_em_atraso != null && fin.em_atraso ? ` · ${moeda(fin.valor_em_atraso)}` : ''}</dd>
+              {fin.valor_pago != null ? <><dt>Total pago</dt><dd>{moeda(fin.valor_pago)}</dd></> : null}
+            </dl>
+            {meses.length ? <ColumnChart height={120} data={meses.map((m) => ({ label: mesCurto(m), value: d.checkins.por_mes[m], tip: mesCurto(m) }))} caption="Check-ins por mês nos últimos 12 meses" /> : <p className="ck-pr-hint">Sem check-ins nos últimos 12 meses.</p>}
+          </Panel>
+        </aside>
       </div>
     </div>
 

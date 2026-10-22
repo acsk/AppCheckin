@@ -2,7 +2,7 @@
    Estilos: src/theme/ck-prospeccao.css (+ ck-ml* de ck-enrollments.css). Primitivas de ./index. */
 import React, { useEffect, useState } from 'react';
 import { Avatar, Badge, Button, Callout, Icon, IconButton, Modal, SelectField, TextAreaField, TextField } from './index';
-import { titleCase } from './pessoas';
+import { maskPhone, titleCase } from './pessoas';
 import { WhatsappContato } from './whatsapp';
 import { API_V2_BASE_URL } from '../../config/api';
 import { abrirConversaWhatsapp, normalizarTelefoneWhatsapp, telefoneDoAluno } from '../../utils/whatsapp';
@@ -100,7 +100,7 @@ export const hojeIso = () => {
  * Abordagem com modelo: escolhe o modelo, revisa o texto, copia ou abre o WhatsApp.
  * Abrir o WhatsApp NÃO registra contato: chama onAberto para o atendente confirmar o que aconteceu.
  */
-export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto }) {
+export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto, onRegistrar }) {
   const [modeloId, setModeloId] = useState('');
   const [texto, setTexto] = useState('');
   const [faltando, setFaltando] = useState([]);
@@ -130,24 +130,45 @@ export function AbordagemModal({ open, alvo, modelos = [], onClose, onAberto }) 
     if (r.ok) onAberto({ mensagem: texto, modelo_mensagem_id: modeloId ? Number(modeloId) : null });
   };
 
-  return <Modal open={open} onClose={onClose} title="Abordar pelo WhatsApp" size="md"
-    description={alvo ? `${titleCase(alvo.nome)} · ${tel.ok ? (tel.nacional ? `(${tel.nacional.slice(0, 2)}) ${tel.nacional.slice(2)}` : `+${tel.numero}`) : 'telefone inválido'}` : ''}
+  const sugerido = modelos.find((m) => m.etapa === etapaSugerida(alvo?.status)) || modelos[0];
+  const selecionado = modelos.find((m) => String(m.id) === modeloId);
+  const nome = titleCase(alvo?.nome || alvo?.aluno?.nome || 'Aluno');
+  return <Modal open={open} onClose={onClose} title="Chamar no WhatsApp" size="lg" dialogClassName="ck-px-dlg" autoFocus={false}
+    leading={<span className="ck-px-modal-icon"><Icon name="message-circle" size={20} /></span>}
+    description="Escolha o modelo, revise e abra o WhatsApp com a mensagem pronta."
     footer={<>
-      <Button onClick={copiar} icon={copiado ? 'check' : 'copy'} disabled={!texto}>{copiado ? 'Copiado' : 'Copiar mensagem'}</Button>
-      <Button variant="primary" icon="message-circle" onClick={abrir} disabled={!tel.ok}>Abrir WhatsApp</Button>
+      {onRegistrar ? <Button variant="ghost" className="ck-px-skip" onClick={onRegistrar}>Já falei por outro meio</Button> : null}
+      <Button onClick={copiar} icon={copiado ? 'check' : 'copy'} disabled={!texto}>{copiado ? 'Copiado' : 'Copiar texto'}</Button>
+      <Button variant="primary" iconRight="external-link" onClick={abrir} disabled={!tel.ok || !texto.trim()}>Abrir WhatsApp</Button>
     </>}>
-    <div className="ck-pr-form">
-      {!tel.ok ? <Callout tone="warning" title="Não dá para abrir o WhatsApp">{tel.mensagem} Você ainda pode copiar a mensagem.</Callout> : null}
-      <SelectField label="Modelo" value={modeloId} onChange={(e) => setModeloId(e.target.value)}
-        options={modelos.map((m) => ({ value: String(m.id), label: m.nome }))} placeholder={modelos.length ? undefined : 'Nenhum modelo ativo'} />
-      <TextAreaField label="Mensagem" rows={8} value={texto} onChange={(e) => setTexto(e.target.value)}
-        hint="Revise antes de enviar. O envio é feito por você no WhatsApp." />
-      {faltando.length ? <Callout tone="info">Sem dado para {faltando.map((v) => `{${v}}`).join(', ')}: o trecho ficou em branco. Ajuste o texto se precisar.</Callout> : null}
+    <div className="ck-px-msg">
+      <div className="ck-px-msg__form">
+        <div className="ck-px-to">
+          <AlunoFoto nome={nome} foto={alvo?.aluno?.foto_caminho} size="md" />
+          <div><strong>{nome}</strong><span><Icon name="message-circle" size={14} />{tel.ok ? (tel.nacional ? maskPhone(tel.nacional) : `+${tel.numero}`) : 'Sem telefone válido'}</span></div>
+        </div>
+        {!tel.ok ? <Callout tone="warning" title="Não dá para abrir o WhatsApp">{tel.mensagem} Você ainda pode copiar a mensagem.</Callout> : null}
+        {modelos.length ? <div className="ck-field">
+          <span className="ck-field__label">Modelo</span>
+          <div className="ck-ml__filters" role="group" aria-label="Modelo de mensagem">
+            {modelos.map((m) => <button key={m.id} type="button" className="ck-ml__chip" aria-pressed={modeloId === String(m.id)} onClick={() => setModeloId(String(m.id))}>
+              {m.nome}{m.id === sugerido?.id ? <span className="ck-px-sug">sugerido</span> : null}
+            </button>)}
+          </div>
+        </div> : <p className="ck-pr-hint">Nenhum modelo ativo. Escreva a mensagem abaixo.</p>}
+        <TextAreaField label="Mensagem" rows={7} value={texto} onChange={(e) => setTexto(e.target.value)}
+          hint={selecionado && texto !== aplicarModelo(selecionado.conteudo, alvo?.variaveis || {}).texto ? 'Você editou o modelo. A mudança vale só para esta mensagem.' : 'Revise antes de enviar. Dá para editar à vontade.'} />
+        {faltando.length ? <Callout tone="info">Sem dado para {faltando.map((v) => `{${v}}`).join(', ')}: o trecho ficou em branco. Ajuste o texto se precisar.</Callout> : null}
+      </div>
+      <section className="ck-px-phone" aria-label="Prévia da mensagem no WhatsApp">
+        <div className="ck-px-phone__head"><AlunoFoto nome={nome} foto={alvo?.aluno?.foto_caminho} />{nome.split(' ')[0]}</div>
+        <div className="ck-px-phone__chat">{texto ? <p className="ck-px-bubble">{texto}</p> : <p className="ck-px-empty">A mensagem aparece aqui.</p>}</div>
+      </section>
     </div>
   </Modal>;
 }
 
-const etapaSugerida = (status) => ({ interessado: 'interessado', em_negociacao: 'negociacao', retorno_agendado: 'negociacao' }[status] || 'primeiro_contato');
+const etapaSugerida = (status) => ({ contatado: 'negociacao', interessado: 'interessado', em_negociacao: 'negociacao', retorno_agendado: 'negociacao' }[status] || 'primeiro_contato');
 
 /** Registro manual do contato. `inicial` pode trazer canal/mensagem/modelo vindos da abordagem. */
 export function RegistrarContatoModal({ open, ctx, inicial, transicoes = [], onClose, onSalvar }) {
@@ -155,7 +176,7 @@ export function RegistrarContatoModal({ open, ctx, inicial, transicoes = [], onC
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   useEffect(() => {
-    if (open) { setF({ canal: 'whatsapp', resultado: inicial?.mensagem ? 'mensagem_enviada' : '', observacao: '', novo_status: '', ...inicial }); setErro(''); }
+    if (open) { setF({ canal: 'whatsapp', resultado: '', observacao: '', novo_status: '', ...inicial }); setErro(''); }
   }, [open]);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
   const salvar = async () => {
@@ -163,15 +184,21 @@ export function RegistrarContatoModal({ open, ctx, inicial, transicoes = [], onC
     setSalvando(true); setErro('');
     try { await onSalvar(f); } catch (e) { setErro(e?.error || 'Não foi possível registrar o contato'); } finally { setSalvando(false); }
   };
-  return <Modal open={open} onClose={onClose} title="Registrar contato" size="sm"
+  return <Modal open={open} onClose={onClose} title="Registrar o contato" size="md"
     description="Registre só o que de fato aconteceu. Abrir o WhatsApp não conta como contato."
-    footer={<><Button onClick={onClose}>Agora não</Button><Button variant="primary" loading={salvando} onClick={salvar}>Registrar</Button></>}>
+    footer={<><Button onClick={onClose}>Agora não</Button><Button variant="primary" loading={salvando} onClick={salvar}>Salvar contato</Button></>}>
     <div className="ck-pr-form">
       {erro ? <Callout tone="danger">{erro}</Callout> : null}
-      <div className="ck-pr-grid2">
-        <SelectField label="Canal" value={f.canal || ''} onChange={(e) => set('canal', e.target.value)} options={opcoes(ctx?.canais)} />
-        <SelectField label="Resultado" value={f.resultado || ''} placeholder="Escolha…" onChange={(e) => set('resultado', e.target.value)} options={opcoes(ctx?.resultados)} />
-      </div>
+      {inicial?.mensagem ? <div className="ck-px-sent"><Icon name="message-circle" size={20} /><div><strong>WhatsApp aberto</strong><span>Envie por lá e volte aqui para registrar como foi.</span></div></div> : null}
+      <SelectField label="Canal" value={f.canal || ''} onChange={(e) => set('canal', e.target.value)} options={opcoes(ctx?.canais)} />
+      <fieldset className="ck-px-results">
+        <legend>Como foi?</legend>
+        <div className="ck-px-outs">
+          {opcoes(ctx?.resultados).map(({ value, label }) => <label key={value} className={`ck-px-out${f.resultado === value ? ' is-selected' : ''}${value === 'pediu_nao_contatar' ? ' is-danger' : ''}`}>
+            <span>{label}</span><input type="radio" name="resultado-contato" value={value} checked={f.resultado === value} onChange={() => set('resultado', value)} />
+          </label>)}
+        </div>
+      </fieldset>
       {transicoes.length ? <SelectField label="Mudar status (opcional)" value={f.novo_status || ''} onChange={(e) => set('novo_status', e.target.value)}
         options={[{ value: '', label: 'Automático pelo resultado' }, ...transicoes.filter((s) => s !== 'nao_contatar').map((s) => ({ value: s, label: ctx?.status?.[s] || s }))]} /> : null}
       <TextAreaField label="Observação" rows={3} value={f.observacao || ''} onChange={(e) => set('observacao', e.target.value)} />
@@ -263,6 +290,7 @@ export function useFluxoContato({ ctx, registrar, depois }) {
   };
   const modais = <>
     <AbordagemModal open={!!abordagem} alvo={abordagem} modelos={abordagem?.modelos || []} onClose={() => setAbordagem(null)}
+      onRegistrar={() => { const alvo = abordagem; setAbordagem(null); setRegistro({ id: alvo.id, transicoes: alvo.transicoes, inicial: { canal: 'telefone' } }); }}
       onAberto={(extra) => { const alvo = abordagem; setAbordagem(null); setRegistro({ id: alvo.id, transicoes: alvo.transicoes, inicial: { canal: 'whatsapp', ...extra } }); }} />
     <RegistrarContatoModal open={!!registro && !duplicado} ctx={ctx} inicial={registro?.inicial} transicoes={registro?.transicoes}
       onClose={() => setRegistro(null)} onSalvar={salvar} />
@@ -274,6 +302,7 @@ export function useFluxoContato({ ctx, registrar, depois }) {
   return {
     modais,
     abordar: (alvo) => setAbordagem(alvo),
+    registrarContato: (alvo) => setRegistro({ id: alvo.id, transicoes: alvo.transicoes, inicial: { canal: alvo.canal || 'telefone' } }),
     registrarDepoisDoWhatsapp: (alvo) => setRegistro({ id: alvo.id, transicoes: alvo.transicoes, inicial: { canal: 'whatsapp' } }),
   };
 }

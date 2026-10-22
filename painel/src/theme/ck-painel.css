@@ -41,3 +41,11 @@
 .ck-mt-others__main strong { font-size: 14px; line-height: 20px; font-weight: 600; }
 .ck-mt-others__main span { font-size: 13px; line-height: 18px; color: var(--ink-muted); }
 .ck-mt-others__value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Cabeçalho: academia do token atual (LayoutBase) */
+.ck-tenant-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; min-width: 0; height: 32px; padding: 0 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-full); background: var(--surface-muted);
+  font-size: 13px; font-weight: 600; color: var(--ink); }
+.ck-tenant-chip svg { flex: none; color: var(--ink-muted); }
+.ck-tenant-chip__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px) { .ck-tenant-chip { max-width: 140px; padding: 0 10px; } }

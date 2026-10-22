@@ -59,6 +59,7 @@
 .ck-cj-item__main strong { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ck-cj-item__main small { font-size: 12px; color: var(--ink-muted); font-family: var(--font-mono); white-space: nowrap; }
 .ck-cj-item { flex-wrap: wrap; }
+.ck-cj-item__main small.ck-cj-item__sub { font-family: var(--font-sans); white-space: normal; }
 .ck-cj-item__main { flex-basis: 160px; }
 .ck-cj-rows { list-style: none; margin: 0; padding: 0; display: grid; }
 .ck-cj-rows li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }

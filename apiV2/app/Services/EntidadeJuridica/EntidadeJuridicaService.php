@@ -172,7 +172,7 @@ class EntidadeJuridicaService
                 );
             }
 
-            $entidade = $this->entidadeTravada($cnpj, $usuarioId);
+            $entidade = $this->entidadeTravada($cnpj, $usuarioId, $tenantId);
             $entidadeId = (int) $entidade['id'];
             $outros = $this->repo->contarVinculosAtivos($entidadeId, $tenantId);
             if ($outros > 0) {
@@ -228,9 +228,12 @@ class EntidadeJuridicaService
      * Entidade do CNPJ travada para a transação; cria se não existir. Se outra requisição criar no
      * meio do caminho, o UNIQUE de cnpj recusa o insert e a entidade dela é usada.
      *
+     * CNPJ novo nasce com razão social e endereço fiscal copiados da academia (como na migração),
+     * para o gestor revisar em vez de começar em branco.
+     *
      * @return array<string, mixed>
      */
-    private function entidadeTravada(string $cnpj, ?int $usuarioId): array
+    private function entidadeTravada(string $cnpj, ?int $usuarioId, int $tenantId): array
     {
         $entidade = $this->repo->buscarPorCnpj($cnpj, true);
         if ($entidade) {
@@ -238,7 +241,7 @@ class EntidadeJuridicaService
         }
 
         try {
-            DB::transaction(fn () => $this->repo->criar($cnpj, [], $usuarioId));
+            DB::transaction(fn () => $this->repo->criar($cnpj, $this->repo->dadosIniciaisDoTenant($tenantId), $usuarioId));
         } catch (UniqueConstraintViolationException) {
             // criada em paralelo: segue com a existente
         }
@@ -392,12 +395,17 @@ class EntidadeJuridicaService
     // ------------------------------------------------------------------ super admin
 
     /** @return list<array<string, mixed>> */
-    public function listar(string $busca = '', bool $somenteCompartilhados = false): array
+    public function listar(string $busca = '', bool $somenteCompartilhados = false, bool $incluirSemAcademia = false): array
     {
-        return array_map(
+        $lista = array_map(
             fn (array $e) => $e + ['cnpj_formatado' => self::formatar($e['cnpj'])],
-            $this->repo->listar($busca, $somenteCompartilhados),
+            $this->repo->listar($busca, $somenteCompartilhados, 100, $incluirSemAcademia),
         );
+        // Ordem da tela: pelo nome da (primeira) academia; sem academia por último
+        usort($lista, fn ($a, $b) => [$a['academias'] === [], mb_strtolower($a['academias'][0]['nome'] ?? $a['razao_social'] ?? '')]
+            <=> [$b['academias'] === [], mb_strtolower($b['academias'][0]['nome'] ?? $b['razao_social'] ?? '')]);
+
+        return $lista;
     }
 
     /** @return array<string, mixed> */

@@ -7,9 +7,10 @@ const erro = (error, fallback) => {
 
 // Super Admin: política de CNPJ duplicado, exceções e gestor cadastral
 const cnpjService = {
-  async listar({ busca = '', compartilhados = false } = {}) {
+  // Por padrão só CNPJs em uso por alguma academia; semAcademia inclui os que ficaram sem vínculo
+  async listar({ busca = '', compartilhados = false, semAcademia = false } = {}) {
     try {
-      return (await api.get('/superadmin/cnpj', { params: { busca: busca || undefined, compartilhados: compartilhados ? 1 : undefined } })).data;
+      return (await api.get('/superadmin/cnpj', { params: { busca: busca || undefined, compartilhados: compartilhados ? 1 : undefined, sem_academia: semAcademia ? 1 : undefined } })).data;
     } catch (error) {
       throw erro(error, 'Não foi possível carregar os CNPJs');
     }

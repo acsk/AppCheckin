@@ -94,11 +94,12 @@ function Detalhe({ cnpj, onChanged }) {
 
   return (
     <div className="ck-cj-stack">
-      <Panel title={d.entidade.razao_social || 'Sem razão social'} description={`CNPJ ${d.entidade.cnpj_formatado}`}
+      <Panel title={ativos.length ? ativos.map((v) => v.tenant_nome).join(', ') : 'Sem academia vinculada'}
+        description={`CNPJ ${d.entidade.cnpj_formatado}${d.entidade.razao_social ? ` · ${d.entidade.razao_social}` : ''}`}
         actions={(
           <span className="ck-mc-badges">
             {ativos.length > 1 ? <Badge tone="info">{`${ativos.length} academias`}</Badge> : null}
-            {gestor ? null : ativos.length ? <Badge tone="warning" icon="alert-triangle">Sem gestor</Badge> : null}
+            {gestor ? null : ativos.length ? <Badge tone="warning" icon="alert-triangle">Sem gestor</Badge> : <Badge tone="warning">Sem academia</Badge>}
           </span>
         )}>
         <div className="ck-mc-form">
@@ -216,6 +217,7 @@ export default function CnpjsScreen() {
   const [salvandoPolitica, setSalvandoPolitica] = useState(false);
   const [busca, setBusca] = useState('');
   const [compartilhados, setCompartilhados] = useState(false);
+  const [semAcademia, setSemAcademia] = useState(false);
   const [lista, setLista] = useState(null);
   const [erro, setErro] = useState('');
   const [selecionado, setSelecionado] = useState(null);
@@ -230,13 +232,13 @@ export default function CnpjsScreen() {
   const carregar = useCallback(async () => {
     setErro('');
     try {
-      const r = await cnpjService.listar({ busca, compartilhados });
+      const r = await cnpjService.listar({ busca, compartilhados, semAcademia });
       setLista(r.cnpjs);
       setPolitica(r.politica);
     } catch (e) {
       setErro(e.message);
     }
-  }, [busca, compartilhados]);
+  }, [busca, compartilhados, semAcademia]);
 
   useEffect(() => {
     if (!ok) return undefined;
@@ -282,6 +284,7 @@ export default function CnpjsScreen() {
                   onChange={(e) => setBusca(/^[\d./-]+$/.test(e.target.value) ? maskCnpj(e.target.value) : e.target.value)} />
               </div>
               <Switch label="Só CNPJs compartilhados" checked={compartilhados} onChange={setCompartilhados} />
+              <Switch label="Mostrar CNPJs sem academia" checked={semAcademia} onChange={setSemAcademia} />
               {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
               {!lista ? <p className="ck-mc-hint" role="status">Carregando…</p> : lista.length ? (
                 <ul className="ck-cj-list">
@@ -289,11 +292,14 @@ export default function CnpjsScreen() {
                     <li key={c.id}>
                       <button type="button" className={`ck-cj-item${selecionado === c.cnpj ? ' is-active' : ''}`} aria-current={selecionado === c.cnpj || undefined} onClick={() => setSelecionado(c.cnpj)}>
                         <span className="ck-cj-item__main">
-                          <strong>{c.razao_social || 'Sem razão social'}</strong>
+                          <strong>{c.academias.length ? c.academias.map((a) => a.nome).join(', ') : 'Sem academia vinculada'}</strong>
                           <small>{c.cnpj_formatado}</small>
+                          {c.razao_social && !c.academias.some((a) => a.nome.toLowerCase() === c.razao_social.toLowerCase())
+                            ? <small className="ck-cj-item__sub">{c.razao_social}</small> : null}
                         </span>
                         {c.excecao_vigente ? <Badge tone="success">Exceção</Badge> : null}
-                        <Badge tone={c.tenants_ativos > 1 ? 'info' : 'neutral'}>{c.tenants_ativos === 1 ? '1 academia' : `${c.tenants_ativos} academias`}</Badge>
+                        {c.tenants_ativos > 1 ? <Badge tone="info">{`${c.tenants_ativos} academias`}</Badge> : null}
+                        {!c.tenants_ativos ? <Badge tone="warning">Sem academia</Badge> : null}
                       </button>
                     </li>
                   ))}
@@ -303,7 +309,7 @@ export default function CnpjsScreen() {
           </Panel>
           <div className="ck-cj-stack">
             {selecionado ? <Detalhe key={selecionado} cnpj={selecionado} onChanged={carregar} /> : (
-              <Callout tone="info" title="Escolha um CNPJ">Pesquise pelo CNPJ, razão social ou nome da academia para ver as academias vinculadas, as exceções e o histórico.</Callout>
+              <Callout tone="info" title="Escolha um CNPJ">Escolha uma academia na lista (ou pesquise pelo CNPJ ou razão social) para ver as academias vinculadas, as exceções e o histórico.</Callout>
             )}
           </div>
         </div>

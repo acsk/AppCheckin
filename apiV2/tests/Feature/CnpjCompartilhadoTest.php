@@ -288,6 +288,34 @@ class CnpjCompartilhadoTest extends TestCase
         $this->getJson('/v2/superadmin/cnpj?busca=escola', $this->auth($sa, null))->assertOk()->assertJsonPath('cnpjs.0.cnpj', self::CNPJ_A);
     }
 
+    // ------------------------------------------------------------------ listagem
+
+    public function test_troca_de_cnpj_cria_entidade_com_dados_da_academia_e_a_antiga_sai_da_lista(): void
+    {
+        DB::table('tenants')->where('id', $this->escolaA)->update(['cidade' => 'Arapiraca', 'estado' => 'AL']);
+        $this->autorizar(); // exceção no CNPJ antigo, como em produção
+        $sa = $this->superAdmin();
+
+        $this->service()->definirCnpjDoTenant($this->escolaA, self::CNPJ_B, $sa, 'superadmin_academia');
+
+        $nova = DB::table('entidades_juridicas')->where('cnpj', self::CNPJ_B)->first();
+        $this->assertSame('Escola A', $nova->razao_social, 'não nasce em branco');
+        $this->assertSame('Arapiraca', $nova->cidade);
+
+        $this->getJson('/v2/superadmin/cnpj', $this->auth($sa, null))
+            ->assertOk()
+            ->assertJsonCount(1, 'cnpjs')
+            ->assertJsonPath('cnpjs.0.cnpj', self::CNPJ_B)
+            ->assertJsonPath('cnpjs.0.academias.0.nome', 'Escola A')
+            ->assertJsonPath('cnpjs.0.academias.0.papel', 'gestor');
+
+        $this->getJson('/v2/superadmin/cnpj?sem_academia=1', $this->auth($sa, null))
+            ->assertOk()
+            ->assertJsonCount(2, 'cnpjs')
+            ->assertJsonPath('cnpjs.1.cnpj', self::CNPJ_A)
+            ->assertJsonPath('cnpjs.1.academias', []);
+    }
+
     // ------------------------------------------------------------------ remoção / troca
 
     public function test_saida_do_gestor_deixa_cnpj_sem_gestor_ate_o_super_admin_definir(): void

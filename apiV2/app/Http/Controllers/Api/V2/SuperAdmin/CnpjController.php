@@ -34,6 +34,7 @@ class CnpjController extends Controller
             'cnpjs' => $this->service->listar(
                 (string) $request->query('busca', ''),
                 filter_var($request->query('compartilhados', false), FILTER_VALIDATE_BOOLEAN),
+                filter_var($request->query('sem_academia', false), FILTER_VALIDATE_BOOLEAN),
             ),
         ]);
     }
