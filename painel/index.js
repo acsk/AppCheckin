@@ -26,5 +26,6 @@ import './src/theme/ck-minha-conta.css';
 import './src/theme/ck-parametros.css';
 import './src/theme/ck-equipe.css';
 import './src/theme/ck-professores.css';
+import './src/theme/ck-usuarios.css';
 
 import 'expo-router/entry';
