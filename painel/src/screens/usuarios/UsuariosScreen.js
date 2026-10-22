@@ -133,19 +133,28 @@ export default function UsuariosScreen() {
     return roles[roleId] || roles[1];
   };
 
+  // Quem é aluno e professor na academia mostra os dois selos (a API manda `papeis`)
+  const getRoleBadges = (usuario) => {
+    const papeis = Array.isArray(usuario.papeis) && usuario.papeis.length ? usuario.papeis : [usuario.papel_id];
+    const visiveis = papeis.filter((p) => p === 1 || p === 2);
+    return (visiveis.length ? visiveis : [usuario.papel_id]).map((p) => ({ id: p, ...getRoleBadge(p) }));
+  };
+
   const renderMobileCard = (usuario) => {
-    const roleBadge = getRoleBadge(usuario.papel_id);
-    
+    const roleBadges = getRoleBadges(usuario);
+
     return (
     <View key={usuario.id} style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
           <View style={styles.nameWithRole}>
             <Text style={styles.cardName}>{usuario.nome}</Text>
-            <View style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
-              <Feather name={roleBadge.icon} size={12} color="#fff" />
-              <Text style={styles.roleText}>{roleBadge.label}</Text>
-            </View>
+            {roleBadges.map((roleBadge) => (
+              <View key={roleBadge.id} style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
+                <Feather name={roleBadge.icon} size={12} color="#fff" />
+                <Text style={styles.roleText}>{roleBadge.label}</Text>
+              </View>
+            ))}
           </View>
           <View style={[
             styles.statusBadge,
@@ -214,17 +223,19 @@ export default function UsuariosScreen() {
       {/* Linhas da Tabela */}
       <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {usuariosFiltrados.map((usuario) => {
-          const roleBadge = getRoleBadge(usuario.papel_id);
-          
+          const roleBadges = getRoleBadges(usuario);
+
           return (
           <View key={usuario.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
             <Text className="text-[13px] font-semibold text-slate-800" style={styles.colNome} numberOfLines={2}>{usuario.nome}</Text>
             <Text className="text-[13px] text-slate-600" style={styles.colEmail} numberOfLines={1}>{usuario.email}</Text>
-            <View style={styles.colTipo}>
-              <View style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
-                <Feather name={roleBadge.icon} size={10} color="#fff" />
-                <Text style={styles.roleText}>{roleBadge.label}</Text>
-              </View>
+            <View style={[styles.colTipo, { flexDirection: 'row', flexWrap: 'wrap', gap: 4 }]}>
+              {roleBadges.map((roleBadge) => (
+                <View key={roleBadge.id} style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
+                  <Feather name={roleBadge.icon} size={10} color="#fff" />
+                  <Text style={styles.roleText}>{roleBadge.label}</Text>
+                </View>
+              ))}
             </View>
             {isSuperAdmin && (
               <Text className="text-[13px] text-slate-600" style={styles.colTenant} numberOfLines={1}>

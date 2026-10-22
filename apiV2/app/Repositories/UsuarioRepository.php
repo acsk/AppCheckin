@@ -3,6 +3,8 @@
 namespace App\Repositories;
 
 use App\Support\Papel;
+use App\Support\SexoAluno;
+use App\Support\TenantWhatsappLinks;
 use Illuminate\Support\Facades\DB;
 
 class UsuarioRepository
@@ -88,7 +90,7 @@ class UsuarioRepository
                         'slug' => $row->tenant_slug,
                         'email' => $row->tenant_email,
                         'telefone' => $row->tenant_telefone,
-                        'whatsapp_links' => \App\Support\TenantWhatsappLinks::parse($row->tenant_whatsapp_links ?? null),
+                        'whatsapp_links' => TenantWhatsappLinks::parse($row->tenant_whatsapp_links ?? null),
                     ],
                     'papeis' => [],
                     'plano' => null,
@@ -457,13 +459,37 @@ class UsuarioRepository
             $sql .= ' AND tup.ativo = 1';
         }
 
-        $sql .= ' ORDER BY u.nome ASC';
+        $sql .= ' ORDER BY u.nome ASC, u.id ASC';
 
-        return array_map(
-            fn ($row) => $this->mapLinhaListagem($row),
-            DB::select($sql, [$tenantId]),
-        );
+        // Uma linha por pessoa: quem é aluno e professor vinha duas vezes (mesmo id)
+        $usuarios = [];
+        foreach (DB::select($sql, [$tenantId]) as $row) {
+            $id = (int) $row->id;
+            $papel = $row->papel_id !== null ? (int) $row->papel_id : null;
+            if (! isset($usuarios[$id])) {
+                $usuarios[$id] = $this->mapLinhaListagem($row) + ['papeis' => []];
+                $usuarios[$id]['_nomes'] = [];
+            }
+            if ($papel !== null && ! in_array($papel, $usuarios[$id]['papeis'], true)) {
+                $usuarios[$id]['papeis'][] = $papel;
+                $usuarios[$id]['_nomes'][$papel] = $row->papel_nome;
+            }
+        }
+
+        return array_values(array_map(function (array $u) {
+            // papel_id = o principal na tela de usuários: professor, depois aluno, depois os demais
+            $principal = current(array_intersect(self::PRIORIDADE_LISTAGEM, $u['papeis'])) ?: ($u['papeis'][0] ?? null);
+            sort($u['papeis']);
+            $u['papel_id'] = $principal;
+            $u['papel_nome'] = $principal !== null ? ($u['_nomes'][$principal] ?? null) : null;
+            unset($u['_nomes']);
+
+            return $u;
+        }, $usuarios));
     }
+
+    /** Ordem do papel principal quando a pessoa tem vários na academia. */
+    private const PRIORIDADE_LISTAGEM = [2, 1, 3, 4];
 
     /**
      * Espelha Usuario::listarTodos da Slim (dedup por usuário).
@@ -888,8 +914,8 @@ class UsuarioRepository
                     'ativo' => $data['ativo'] ?? 1,
                 ]);
 
-                $sexo = \App\Support\SexoAluno::colunaExiste()
-                    ? ['sexo' => \App\Support\SexoAluno::normalizar($data['sexo'] ?? null)]
+                $sexo = SexoAluno::colunaExiste()
+                    ? ['sexo' => SexoAluno::normalizar($data['sexo'] ?? null)]
                     : [];
 
                 DB::table('alunos')->insert($sexo + [
