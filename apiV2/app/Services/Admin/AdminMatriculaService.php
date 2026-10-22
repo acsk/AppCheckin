@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
+use App\Services\MatriculaEncadeamentoService;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
@@ -24,7 +25,12 @@ class AdminMatriculaService
         private readonly AdminPagamentoPlanoService $pagamentosPlanoAdmin,
         private readonly AdminAssinaturaRepository $assinaturas,
         private readonly MatriculaMigracaoAptidaoService $migracaoAptidao,
-    ) {}
+        ?MatriculaEncadeamentoService $encadeamento = null,
+    ) {
+        $this->encadeamento = $encadeamento ?? app(MatriculaEncadeamentoService::class);
+    }
+
+    private MatriculaEncadeamentoService $encadeamento;
 
     /**
      * @param  array<string, mixed>  $query
@@ -682,6 +688,7 @@ class AdminMatriculaService
             ? $this->matriculas->ultimaMatriculaNaModalidade($alunoId, $tenantId, $modalidadeAtual)
             : null;
         $reutilizandoMatricula = false;
+        $matriculaAnteriorEncadeada = null;
 
         if ($matriculaVencida) {
             $statusCodigo = $matriculaVencida['status_codigo'] ?? null;
@@ -698,7 +705,12 @@ class AdminMatriculaService
             }
 
             if ($statusCodigo === 'vencida' || $statusCodigo === 'cancelada' || $vencidaPorData) {
-                $reutilizandoMatricula = true;
+                // Ciclo com dinheiro recebido não é sobrescrito: a nova matrícula é criada e ligada a ele
+                if ($this->encadeamento->podeReaproveitar((int) $matriculaVencida['id'])) {
+                    $reutilizandoMatricula = true;
+                } elseif (! $matriculaMesmaModalidade) {
+                    $matriculaAnteriorEncadeada = $matriculaVencida;
+                }
             }
         }
 
@@ -777,6 +789,14 @@ class AdminMatriculaService
         $statusId = $this->matriculas->statusIdPorCodigo($codigoStatus)
             ?? ($periodoTeste === 1 ? 1 : 5);
         $motivoId = $this->matriculas->motivoIdPorCodigo((string) $motivo);
+
+        if ($matriculaAnteriorEncadeada) {
+            $matriculaAnteriorId = (int) $matriculaAnteriorEncadeada['id'];
+            $planoAnteriorId = (int) $matriculaAnteriorEncadeada['plano_id'];
+            $motivo = $this->encadeamento->motivoCodigo($planoAnteriorId, $planoId, (float) ($matriculaAnteriorEncadeada['valor'] ?? 0), (float) $valorMatricula);
+            $motivoId = $this->matriculas->motivoIdPorCodigo($motivo);
+            $this->encadeamento->encerrarAnterior($matriculaAnteriorId);
+        }
 
         if ($reutilizandoMatricula && $matriculaVencida) {
             $matriculaId = (int) $matriculaVencida['id'];
@@ -1569,6 +1589,8 @@ class AdminMatriculaService
         $totalAssinaturasMp = count($assinaturasMp);
         $valorTotalPlano = (float) array_sum(array_column($pagamentosPlano, 'valor'));
         $valorTotalMp = (float) array_sum(array_column($pagamentosMp, 'transaction_amount'));
+        $confirmados = $this->encadeamento->pagamentosConfirmados($id);
+        $podeExcluir = $confirmados['pagamentos_plano'] === 0 && $confirmados['pagamentos_provedor'] === 0;
 
         return [
             'status' => 200,
@@ -1584,6 +1606,13 @@ class AdminMatriculaService
                     'total_assinaturas_mercadopago' => $totalAssinaturasMp,
                     'valor_total_pagamentos_plano' => $valorTotalPlano,
                     'valor_total_pagamentos_provedor' => $valorTotalMp,
+                    // Com dinheiro recebido a matrícula é histórico: não se exclui, vincula-se à atual
+                    'pode_excluir' => $podeExcluir,
+                    'bloqueio' => $podeExcluir ? null : [
+                        'code' => 'MATRICULA_COM_PAGAMENTO',
+                        'message' => 'Esta matrícula tem pagamento confirmado (R$ '.number_format($confirmados['valor'], 2, ',', '.').'). Ela faz parte do histórico financeiro e não pode ser excluída.',
+                    ],
+                    'vinculo_sugerido' => $podeExcluir ? null : $this->encadeamento->sugerirAtual($id, $tenantId),
                     'impacto' => [
                         'pagamentos_plano' => ['acao' => 'deletar', 'total' => $totalPagamentosPlano],
                         'pagamentos_mercadopago' => ['acao' => 'deletar', 'total' => $totalPagamentosMp],
@@ -1669,6 +1698,16 @@ class AdminMatriculaService
             ];
         }
 
+        if ($this->encadeamento->temPagamentoConfirmado($id)) {
+            return [
+                'status' => 422,
+                'body' => [
+                    'error' => 'Esta matrícula tem pagamento confirmado e faz parte do histórico financeiro. Em vez de excluir, vincule-a à matrícula atual da aluna.',
+                    'code' => 'MATRICULA_COM_PAGAMENTO',
+                ],
+            ];
+        }
+
         try {
             DB::transaction(function () use ($id, $tenantId, $matricula) {
                 $this->matriculas->desvincularAssinaturas($id, $tenantId);
@@ -1701,6 +1740,16 @@ class AdminMatriculaService
                 'matricula_id' => $id,
             ],
         ];
+    }
+
+    /**
+     * Liga uma matrícula encerrada (com pagamentos) à matrícula atual da mesma aluna/modalidade.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function vincularAtual(int $id, int $tenantId, ?int $atualId, ?int $usuarioId): array
+    {
+        return $this->encadeamento->vincularManual($id, $tenantId, $atualId, $usuarioId);
     }
 
     /**

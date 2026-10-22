@@ -6,6 +6,7 @@ use App\Support\ReferenciaExterna;
 use App\Repositories\AlunoRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\MatriculaEncadeamentoService;
 use App\Services\Asaas\AsaasService;
 use App\Services\MercadoPagoService;
 use App\Services\CobrancaAnteriorService;
@@ -28,7 +29,12 @@ class MobileCompraPlanoService
         private readonly MobilePagamentoService $mobilePagamento,
         private readonly PaymentGatewayFactory $gateways,
         private readonly CobrancaAnteriorService $cobrancasAnteriores,
-    ) {}
+        ?MatriculaEncadeamentoService $encadeamento = null,
+    ) {
+        $this->encadeamento = $encadeamento ?? app(MatriculaEncadeamentoService::class);
+    }
+
+    private MatriculaEncadeamentoService $encadeamento;
 
     /**
      * @param  array<string, mixed>  $data
@@ -400,6 +406,13 @@ class MobileCompraPlanoService
                 }
             }
 
+            // Ciclo com dinheiro recebido não é sobrescrito: cria matrícula nova ligada a ele
+            $matriculaEncadear = null;
+            if ($reutilizandoMatricula && $matriculaExistente && ! $this->encadeamento->podeReaproveitar((int) $matriculaExistente['id'])) {
+                $reutilizandoMatricula = false;
+                $matriculaEncadear = $matriculaExistente;
+            }
+
             $motivoId = (int) (DB::table('motivo_matricula')->where('codigo', $motivoCodigo)->value('id') ?? 1);
 
             if ($reutilizandoMatricula && $matriculaExistente) {
@@ -467,6 +480,15 @@ class MobileCompraPlanoService
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                if ($matriculaEncadear) {
+                    $anteriorId = (int) $matriculaEncadear['id'];
+                    $this->encadeamento->ligar($matriculaId, $matriculaEncadear, $planoId, $valorCompra);
+                    $this->encadeamento->encerrarAnterior($anteriorId);
+                    // Mesmo efeito do reaproveitamento: parcelas em aberto do ciclo anterior não ficam cobrando
+                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
+                    Log::info("comprarPlano v2: matrícula #{$matriculaId} criada como continuação da #{$anteriorId} (tinha pagamento confirmado)");
+                }
             }
 
             $this->pagamentosPlano->garantirParcelaPendenteUnica(

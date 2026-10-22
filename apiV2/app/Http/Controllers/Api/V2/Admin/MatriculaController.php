@@ -217,6 +217,20 @@ class MatriculaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    /** Vincula matrícula encerrada com pagamentos à matrícula atual da aluna (em vez de excluir). */
+    public function vincularAtual(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $atualId = $request->input('matricula_atual_id');
+        $result = $this->service->vincularAtual($id, $tenantId, $atualId ? (int) $atualId : null, (int) $request->attributes->get('userId', 0) ?: null);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function destroy(Request $request, int $id): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

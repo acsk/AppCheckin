@@ -43,6 +43,17 @@ export const matriculaService = {
     }
   },
 
+  // Matrícula encerrada com pagamento: finaliza e liga à matrícula atual da aluna (em vez de excluir)
+  async vincularAtual(id, matriculaAtualId) {
+    try {
+      const response = await api.post(`/admin/matriculas/${id}/vincular-atual`, { matricula_atual_id: matriculaAtualId || undefined });
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao vincular matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async criar(data) {
     try {
       const response = await api.post('/admin/matriculas', data);

@@ -147,6 +147,21 @@ export default function MatriculasScreen() {
     }
   };
 
+  const [vinculando, setVinculando] = useState(false);
+  const vincular = async (id, atualId) => {
+    setVinculando(true);
+    try {
+      const result = await matriculaService.vincularAtual(id, atualId);
+      showSuccess(result?.message || 'Matrícula vinculada');
+      setPreview(emptyPreview);
+      refresh();
+    } catch (err) {
+      showError(obterMensagemErro(err, 'Não foi possível vincular a matrícula.'));
+    } finally {
+      setVinculando(false);
+    }
+  };
+
   return (
     <LayoutBase title="Matrículas" pageHeader={false}>
       <MatriculasLista
@@ -170,7 +185,7 @@ export default function MatriculasScreen() {
       />
       <ExcluirMatriculaModal key={preview.row?.id || 'fechada'} preview={preview} deleting={deleting} pacoteId={pacoteId}
         onClose={closePreview} onConfirm={remove} onPacotes={() => router.push('/pacotes')}
-        onRetry={() => openPreview(preview.row)} />
+        onRetry={() => openPreview(preview.row)} onVincular={vincular} vinculando={vinculando} />
     </LayoutBase>
   );
 }
