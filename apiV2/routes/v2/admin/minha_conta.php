@@ -12,3 +12,5 @@ Route::get('/minha-conta/escola', [MinhaContaController::class, 'escola']);
 Route::put('/minha-conta/escola', [MinhaContaController::class, 'atualizarEscola']);
 Route::get('/minha-conta/cnpj', [MinhaContaController::class, 'cnpj']);
 Route::put('/minha-conta/cnpj', [MinhaContaController::class, 'atualizarCnpj']);
+// Acessos do suporte Check-in a esta academia ("acessar como academia" do super admin)
+Route::get('/minha-conta/acessos-suporte', [MinhaContaController::class, 'acessosSuporte']);

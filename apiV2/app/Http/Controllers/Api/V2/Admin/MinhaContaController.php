@@ -7,6 +7,7 @@ use App\Repositories\TenantRepository;
 use App\Services\Admin\AdminMinhaContaService;
 use App\Services\EntidadeJuridica\EntidadeJuridicaException;
 use App\Services\EntidadeJuridica\EntidadeJuridicaService;
+use App\Services\SuperAdmin\AcessoSuporteService;
 use App\Support\ApiError;
 use App\Support\Papel;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,7 @@ class MinhaContaController extends Controller
         private readonly AdminMinhaContaService $service,
         private readonly EntidadeJuridicaService $entidades,
         private readonly TenantRepository $tenants,
+        private readonly AcessoSuporteService $acessos,
     ) {}
 
     public function perfil(Request $request): JsonResponse
@@ -32,11 +34,19 @@ class MinhaContaController extends Controller
 
     public function atualizarPerfil(Request $request): JsonResponse
     {
+        if ($bloqueio = $this->bloquearNoAcessoSuporte($request)) {
+            return $bloqueio;
+        }
+
         return $this->json($this->service->atualizarPerfil($this->userId($request), $request->all()));
     }
 
     public function alterarSenha(Request $request): JsonResponse
     {
+        if ($bloqueio = $this->bloquearNoAcessoSuporte($request)) {
+            return $bloqueio;
+        }
+
         return $this->json($this->service->alterarSenha($this->userId($request), $request->all()));
     }
 
@@ -86,13 +96,32 @@ class MinhaContaController extends Controller
         return $this->json(['status' => 200, 'body' => ['type' => 'success', 'message' => 'Dados do CNPJ atualizados', 'cnpj' => $dados]]);
     }
 
+    /** No acesso de suporte o "meu perfil" seria o do super admin, não de alguém da academia */
+    private function bloquearNoAcessoSuporte(Request $request): ?JsonResponse
+    {
+        return $request->attributes->get('acesso_suporte')
+            ? ApiError::json('Durante o acesso de suporte não é possível alterar perfil ou senha.', 'ACESSO_SUPORTE', 403)
+            : null;
+    }
+
+    public function acessosSuporte(Request $request): JsonResponse
+    {
+        $tenantId = $this->adminDoTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        return $this->json(['status' => 200, 'body' => ['acessos' => $this->acessos->listarDoTenant($tenantId)]]);
+    }
+
     private function adminDoTenant(Request $request): int|JsonResponse
     {
         $tenantId = (int) $request->attributes->get('tenantId', 0);
         if (! $tenantId) {
             return ApiError::json('Tenant não selecionado', 'MISSING_TENANT', 400);
         }
-        if (! in_array(Papel::ADMIN, $this->tenants->listarPapelIdsAtivos($tenantId, $this->userId($request)), true)) {
+        if (! $request->attributes->get('acesso_suporte')
+            && ! in_array(Papel::ADMIN, $this->tenants->listarPapelIdsAtivos($tenantId, $this->userId($request)), true)) {
             return ApiError::json('Apenas administradores desta academia podem acessar estes dados.', 'FORBIDDEN', 403);
         }
 

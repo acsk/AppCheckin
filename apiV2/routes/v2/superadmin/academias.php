@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V2\SuperAdmin\AcademiaController;
+use App\Http\Controllers\Api\V2\SuperAdmin\AcessoSuporteController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/academias', [AcademiaController::class, 'index']);
@@ -17,3 +18,6 @@ Route::delete('/academias/{tenantId}/admins/{adminId}', [AcademiaController::cla
     ->where(['tenantId' => '[0-9]+', 'adminId' => '[0-9]+']);
 Route::post('/academias/{tenantId}/admins/{adminId}/reativar', [AcademiaController::class, 'reativarAdmin'])
     ->where(['tenantId' => '[0-9]+', 'adminId' => '[0-9]+']);
+
+// Acessar como academia: token de 2h com motivo, registrado e visível para a academia
+Route::post('/academias/{tenantId}/acessar', [AcessoSuporteController::class, 'iniciar'])->where('tenantId', '[0-9]+');

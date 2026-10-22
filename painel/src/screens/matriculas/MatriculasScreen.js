@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import { MatriculasLista, Button, Modal } from '../../components/ck';
+import { MatriculasLista, Button } from '../../components/ck';
+import ExcluirMatriculaModal from '../../components/ck/ExcluirMatriculaModal';
 import { matriculaService } from '../../services/matriculaService';
 import { authService } from '../../services/authService';
 import { obterMensagemErro } from '../../utils/errorHandler';
@@ -11,10 +12,6 @@ const STATUS = { 1: 'ativa', 2: 'vencida', 3: 'cancelada', 4: 'finalizada', 5: '
 const normalize = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 const statusOf = (row) => STATUS[Number(row.status_id)] || (row.status === 'bloqueado' ? 'bloqueada' : normalize(row.status));
 const listOf = (data) => Array.isArray(data) ? data : data?.matriculas || data?.data?.matriculas || [];
-const text = (value) => value == null ? '-' : typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
-const count = (value) => Array.isArray(value) ? value.length : value ? 1 : 0;
-const formatDate = (value) => value ? String(value).slice(0, 10).split('-').reverse().join('/') : '-';
-const money = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 const emptyPreview = { row: null, data: null, loading: false, error: '', pacoteId: null };
 
 export default function MatriculasScreen() {
@@ -134,7 +131,7 @@ export default function MatriculasScreen() {
     setDeleting(true);
     try {
       const result = await matriculaService.deletar(preview.data.matricula?.id || preview.row.id);
-      showSuccess(result?.message || 'Matrícula cancelada com sucesso');
+      showSuccess(result?.message || 'Matrícula excluída com sucesso');
       setPreview(emptyPreview);
       refresh();
     } catch (err) {
@@ -149,13 +146,6 @@ export default function MatriculasScreen() {
       setDeleting(false);
     }
   };
-  const data = preview.data;
-  const enrollment = data?.matricula || {};
-  const summary = data?.resumo;
-  const previewRow = (label, value) => value == null || value === '' ? null : <div key={label}><dt>{label}</dt><dd>{text(value)}</dd></div>;
-  const summaryText = typeof summary === 'object' && summary && !Array.isArray(summary)
-    ? summary.message || summary.mensagem || text(Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'impacto')))
-    : Array.isArray(summary) ? summary.join('\n') : summary;
 
   return (
     <LayoutBase title="Matrículas" pageHeader={false}>
@@ -178,52 +168,9 @@ export default function MatriculasScreen() {
         onDelete={userId === 3 ? (row) => openPreview(row.original) : undefined}
         toolbarActions={<Button size="sm" icon="refresh-cw" loading={loading} onClick={refresh}>{error ? 'Tentar novamente' : 'Atualizar'}</Button>}
       />
-      <Modal
-        open={!!preview.row}
-        title="Revisar exclusão"
-        description="Confira os registros relacionados antes de confirmar."
-        dismissable={!deleting}
-        onClose={closePreview}
-        footer={<>
-          <Button variant="ghost" disabled={deleting} onClick={closePreview}>Cancelar</Button>
-          {!preview.error && !pacoteId ? <Button variant="primary" disabled={preview.loading || !data} loading={deleting} onClick={remove}>Confirmar exclusão</Button> : null}
-        </>}
-      >
-        {preview.loading ? <p role="status">Carregando prévia…</p> : preview.error || pacoteId ? (
-          <div role="alert">
-            <p>{preview.error || 'Não é possível excluir esta matrícula diretamente. Exclua pelo módulo de pacotes.'}</p>
-            {pacoteId ? <Button onClick={() => router.push('/pacotes')}>Ir para Pacotes (Contrato #{pacoteId})</Button> : null}
-          </div>
-        ) : data ? (
-          <div className="ck-enrollment-review">
-            {summaryText ? <><h3>Resumo</h3><p style={{ whiteSpace: 'pre-wrap' }}>{summaryText}</p></> : null}
-            <h3>Aluno</h3><dl>
-              {previewRow('Nome', data.aluno?.nome)}{previewRow('Email', data.aluno?.email)}{previewRow('Telefone', data.aluno?.telefone)}
-            </dl>
-            <h3>Plano</h3><dl>
-              {previewRow('Plano', data.plano?.nome)}{previewRow('Modalidade', data.plano?.modalidade?.nome)}
-              {previewRow('Valor do plano', data.plano?.valor != null ? money(data.plano.valor) : null)}
-              {previewRow('Duração', data.plano?.duracao_dias != null ? `${data.plano.duracao_dias} dias` : null)}
-              {previewRow('Check-ins semanais', data.plano?.checkins_semanais)}
-            </dl>
-            <h3>Matrícula</h3><dl>
-              {previewRow('ID', enrollment.id)}{previewRow('Status', enrollment.status_nome || STATUS[enrollment.status_id])}
-              {previewRow('Valor', enrollment.valor != null ? money(enrollment.valor) : null)}
-              {previewRow('Data matrícula', enrollment.data_matricula ? formatDate(enrollment.data_matricula) : null)}
-              {previewRow('Início', enrollment.data_inicio ? formatDate(enrollment.data_inicio) : null)}
-              {previewRow('Vencimento', enrollment.data_vencimento ? formatDate(enrollment.data_vencimento) : null)}
-              {previewRow('Próximo vencimento', enrollment.proxima_data_vencimento ? formatDate(enrollment.proxima_data_vencimento) : null)}
-              {previewRow('Tipo cobrança', enrollment.tipo_cobranca)}{previewRow('Dia vencimento', enrollment.dia_vencimento)}{previewRow('Observações', enrollment.observacoes)}
-            </dl>
-            <h3>Registros relacionados</h3><dl>
-              {previewRow('Pagamentos do plano', count(data.pagamentos_plano))}
-              {previewRow('Assinaturas', count(data.assinaturas))}
-              {previewRow('Assinaturas Mercado Pago', count(data.assinaturas_mercadopago))}
-              {previewRow('Pagamentos Mercado Pago', count(data.pagamentos_mercadopago))}
-            </dl>
-          </div>
-        ) : null}
-      </Modal>
+      <ExcluirMatriculaModal key={preview.row?.id || 'fechada'} preview={preview} deleting={deleting} pacoteId={pacoteId}
+        onClose={closePreview} onConfirm={remove} onPacotes={() => router.push('/pacotes')}
+        onRetry={() => openPreview(preview.row)} />
     </LayoutBase>
   );
 }

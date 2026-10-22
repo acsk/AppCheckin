@@ -27,7 +27,7 @@ class ProspeccaoAuthenticate
             return ApiError::json('Tenant não selecionado', 'MISSING_TENANT', 400);
         }
 
-        $papeis = (bool) $request->attributes->get('is_super_admin', false)
+        $papeis = (bool) $request->attributes->get('is_super_admin', false) || $request->attributes->get('acesso_suporte')
             ? [Papel::ADMIN]
             : DB::table('tenant_usuario_papel')
                 ->where('usuario_id', $userId)->where('tenant_id', $tenantId)->where('ativo', 1)

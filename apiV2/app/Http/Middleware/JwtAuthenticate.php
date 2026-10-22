@@ -4,7 +4,9 @@ namespace App\Http\Middleware;
 
 use App\Repositories\UsuarioRepository;
 use App\Services\JwtService;
+use App\Services\SuperAdmin\AcessoSuporteService;
 use App\Support\ApiError;
+use App\Support\Papel;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -66,6 +68,18 @@ class JwtAuthenticate
         $tenantFromJwt = isset($payload['tenant_id']) ? (int) $payload['tenant_id'] : null;
         $resolvedTenantId = $tenantFromJwt ?: (int) ($usuario['tenant_id'] ?? 0);
 
+        // "Acessar como academia": a sessão é conferida a cada requisição (encerrar/expirar corta na
+        // hora). Durante o acesso o super admin age como admin desta academia, e só dela.
+        $acessoSuporte = null;
+        if (! empty($payload['acesso_suporte_id'])) {
+            $acessoSuporte = app(AcessoSuporteService::class)->sessaoValida((int) $payload['acesso_suporte_id'], $userId, (int) $resolvedTenantId);
+            if (! $acessoSuporte) {
+                return ApiError::json('O acesso de suporte a esta academia terminou. Entre de novo pelo Super Admin.', 'ACESSO_SUPORTE_ENCERRADO', 401);
+            }
+            $usuario['papel_id'] = Papel::ADMIN;
+            $usuario['tenant_id'] = $resolvedTenantId;
+        }
+
         $request->attributes->set('userId', $userId);
         $request->attributes->set('userEmail', $payload['email'] ?? $usuario['email']);
         $request->attributes->set('tenantId', $resolvedTenantId ?: null);
@@ -73,8 +87,15 @@ class JwtAuthenticate
         $request->attributes->set('aluno_id', $payload['aluno_id'] ?? null);
         $request->attributes->set('jwt_payload', $payload);
         $request->attributes->set('usuario', $usuario);
-        $request->attributes->set('is_super_admin', (bool) ($payload['is_super_admin'] ?? false));
+        $request->attributes->set('is_super_admin', $acessoSuporte ? false : (bool) ($payload['is_super_admin'] ?? false));
+        $request->attributes->set('acesso_suporte', $acessoSuporte);
 
-        return $next($request);
+        $response = $next($request);
+
+        if ($acessoSuporte && ! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
+            app(AcessoSuporteService::class)->registrarAcao((int) $acessoSuporte['id'], $request->method(), '/'.$request->path(), $response->getStatusCode());
+        }
+
+        return $response;
     }
 }

@@ -3,6 +3,15 @@
 return [
     'jwt_secret' => env('JWT_SECRET', ''),
     'jwt_expiration' => (int) env('JWT_EXPIRATION', 86400),
+
+    // Usuário de suporte do Check-in: Admin + Aluno em toda academia, oculto para o tenant
+    // (App\Support\UsuarioSuporte). A senha nunca fica no código: SUPORTE_SENHA só no .env.
+    'suporte' => [
+        'nome' => env('SUPORTE_NOME', 'André Cabral'),
+        'email' => env('SUPORTE_EMAIL', 'andrecabrall@gmail.com'),
+        'cpf' => env('SUPORTE_CPF'),
+        'senha' => env('SUPORTE_SENHA'),
+    ],
     'api_version' => 'v2',
     'rate_limit_register_max' => (int) env('RATE_LIMIT_REGISTER_MAX_ATTEMPTS', 5),
     'rate_limit_register_decay' => (int) env('RATE_LIMIT_REGISTER_DECAY_MINUTES', 15),
