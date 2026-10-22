@@ -47,6 +47,43 @@ class MatriculaEncadeamentoService
         return $p['pagamentos_plano'] > 0 || $p['pagamentos_provedor'] > 0;
     }
 
+    /**
+     * Para a lista do painel (uma consulta por tabela): quem tem pagamento confirmado e quem já tem continuação.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array{pagamento_confirmado: bool, continuada_por: ?int}>
+     */
+    public function resumoParaLista(array $ids): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        if ($ids === []) {
+            return [];
+        }
+        $pagas = DB::table('pagamentos_plano')->whereIn('matricula_id', $ids)->where('status_pagamento_id', self::PAGO)
+            ->distinct()->pluck('matricula_id')->map(fn ($id) => (int) $id)->all();
+        if (Schema::hasTable('pagamentos_mercadopago')) {
+            $pagas = array_merge($pagas, DB::table('pagamentos_mercadopago')->whereIn('matricula_id', $ids)->where('status', 'approved')
+                ->distinct()->pluck('matricula_id')->map(fn ($id) => (int) $id)->all());
+        }
+        $continuacoes = DB::table('matriculas')->whereIn('matricula_anterior_id', $ids)
+            ->pluck('id', 'matricula_anterior_id')->map(fn ($id) => (int) $id)->all();
+
+        $out = [];
+        foreach ($ids as $id) {
+            $out[$id] = ['pagamento_confirmado' => in_array($id, $pagas, true), 'continuada_por' => $continuacoes[$id] ?? null];
+        }
+
+        return $out;
+    }
+
+    /** Matrícula que já é continuação desta, ou null. */
+    public function continuadaPor(int $matriculaId): ?int
+    {
+        $id = DB::table('matriculas')->where('matricula_anterior_id', $matriculaId)->value('id');
+
+        return $id ? (int) $id : null;
+    }
+
     /** Pode ser sobrescrita por uma nova compra/matrícula? Só se nenhum dinheiro passou por ela. */
     public function podeReaproveitar(int $matriculaId): bool
     {

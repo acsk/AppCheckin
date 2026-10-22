@@ -987,8 +987,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
                 h('td', null, h(Badge, { tone: st[0], dot: st[0] !== 'outline', icon: r.status === 'bloqueada' ? 'lock' : undefined }, st[1])),
                 h('td', { className: 'ck-mt-actions' },
                   h(ActionMenu, { label: 'Ações da matrícula ' + r.code, items: [
-                    { label: 'Abrir matrícula', icon: 'arrow-right', onClick: function () { p.onOpen && p.onOpen(r); } }].concat(p.onDelete ? ['-',
-                    { label: 'Excluir matrícula', icon: 'trash', danger: true, onClick: function () { p.onDelete(r); } }] : []) })));
+                    { label: 'Abrir matrícula', icon: 'arrow-right', onClick: function () { p.onOpen && p.onOpen(r); } }].concat(p.onDelete && r.deleteAction !== null ? ['-',
+                    Object.assign({ label: 'Excluir matrícula', icon: 'trash', danger: true }, r.deleteAction || {}, { onClick: function () { p.onDelete(r); } })] : []) })));
             })))) :
           h('div', { className: 'ck-ml__empty' },
             h('span', { className: 'ck-mt-empty__icon', 'aria-hidden': true }, h(Icon, { name: 'search', size: 20 })),

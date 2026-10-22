@@ -66,9 +66,10 @@ export default function ExcluirMatriculaModal({ preview, deleting, pacoteId, onC
         </div>
         {comPagamento ? <>
           <Callout tone="warning" title="Excluir apagaria o registro do dinheiro recebido">{data.resumo.bloqueio?.message}</Callout>
+          {data.resumo.continuada_por ? <Callout tone="success" title={`Já vinculada à matrícula #${data.resumo.continuada_por}`}>Nada a fazer: o ciclo pago fica no histórico e a #{data.resumo.continuada_por} é a continuação dele.</Callout> : null}
           {sugerida ? <Callout tone="info" title={`Próxima matrícula: #${sugerida.id} · ${sugerida.plano_nome}`}>
             {`Desde ${dataBR(sugerida.data_inicio)} (${sugerida.status_nome}). Ao vincular, a #${e.id} vira Finalizada e a #${sugerida.id} passa a ser a continuação dela. Os pagamentos continuam no ciclo em que foram feitos.`}
-          </Callout> : <p className="ck-xm__hint"><Icon name="info" size={15} />Não há matrícula posterior desta aluna na mesma modalidade. Ela pode ficar como está: o status já a separa das ativas.</p>}
+          </Callout> : data.resumo.continuada_por ? null : <p className="ck-xm__hint"><Icon name="info" size={15} />Não há matrícula posterior desta aluna na mesma modalidade. Ela pode ficar como está: o status já a separa das ativas.</p>}
         </> : null}
         {!comPagamento ? <div className="ck-field">
           <span className="ck-field__label">{itens.length ? 'Também será excluído' : 'Registros ligados'}</span>

@@ -41,8 +41,10 @@ class AdminMatriculaService
         $this->syncParcelasAtrasadas($tenantId);
 
         $result = $this->matriculas->listar($tenantId, $query);
-        $rows = $result['rows'];
         $meta = $result['meta'];
+        // O painel decide por linha: excluir (sem pagamento), vincular (paga, sem continuação) ou nada
+        $resumo = $this->encadeamento->resumoParaLista(array_map(fn ($r) => (int) ((array) $r)['id'], $result['rows']));
+        $rows = array_map(fn ($r) => (array) $r + ($resumo[(int) ((array) $r)['id']] ?? []), $result['rows']);
 
         if ($meta !== null) {
             return [
@@ -1591,6 +1593,7 @@ class AdminMatriculaService
         $valorTotalMp = (float) array_sum(array_column($pagamentosMp, 'transaction_amount'));
         $confirmados = $this->encadeamento->pagamentosConfirmados($id);
         $podeExcluir = $confirmados['pagamentos_plano'] === 0 && $confirmados['pagamentos_provedor'] === 0;
+        $continuadaPor = $podeExcluir ? null : $this->encadeamento->continuadaPor($id);
 
         return [
             'status' => 200,
@@ -1612,7 +1615,8 @@ class AdminMatriculaService
                         'code' => 'MATRICULA_COM_PAGAMENTO',
                         'message' => 'Esta matrícula tem pagamento confirmado (R$ '.number_format($confirmados['valor'], 2, ',', '.').'). Ela faz parte do histórico financeiro e não pode ser excluída.',
                     ],
-                    'vinculo_sugerido' => $podeExcluir ? null : $this->encadeamento->sugerirAtual($id, $tenantId),
+                    'continuada_por' => $continuadaPor,
+                    'vinculo_sugerido' => $podeExcluir || $continuadaPor ? null : $this->encadeamento->sugerirAtual($id, $tenantId),
                     'impacto' => [
                         'pagamentos_plano' => ['acao' => 'deletar', 'total' => $totalPagamentosPlano],
                         'pagamentos_mercadopago' => ['acao' => 'deletar', 'total' => $totalPagamentosMp],

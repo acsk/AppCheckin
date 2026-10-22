@@ -163,6 +163,23 @@ class MatriculaEncadeamentoTest extends TestCase
         $this->assertSame($m240, (int) DB::table('matriculas')->where('id', $m241)->value('matricula_anterior_id'));
     }
 
+    public function test_resumo_da_lista_indica_pagamento_e_continuacao(): void
+    {
+        $paga = $this->matricula($this->plano3x, 'cancelada', '2026-03-03 10:00:00');
+        $this->pagar($paga, 2, null);
+        $nova = $this->matricula($this->plano3x, 'ativa', '2026-10-01 10:00:00');
+        $semPagamento = $this->matricula($this->plano3x, 'pendente', '2026-10-02 10:00:00', 135);
+
+        $antes = $this->servico()->resumoParaLista([$paga, $nova, $semPagamento]);
+        $this->assertSame(['pagamento_confirmado' => true, 'continuada_por' => null], $antes[$paga]);
+        $this->assertFalse($antes[$semPagamento]['pagamento_confirmado']);
+
+        $this->servico()->vincularManual($paga, self::T, null, 1);
+
+        $this->assertSame($nova, $this->servico()->resumoParaLista([$paga])[$paga]['continuada_por']);
+        $this->assertSame($nova, $this->servico()->continuadaPor($paga));
+    }
+
     public function test_motivo_upgrade_quando_plano_novo_e_mais_caro(): void
     {
         $antiga = $this->matricula($this->plano3x, 'vencida', '2026-03-03 10:00:00');

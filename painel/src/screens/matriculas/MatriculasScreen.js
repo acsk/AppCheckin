@@ -98,6 +98,10 @@ export default function MatriculasScreen() {
   }, { todas: matriculas.length }) : undefined;
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
   const rows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row) => ({
+    // Sem pagamento: excluir. Paga e sem continuação: vincular à próxima. Paga e já vinculada: nada a fazer.
+    deleteAction: !row.pagamento_confirmado ? undefined
+      : !row.continuada_por && ['cancelada', 'vencida', 'finalizada'].includes(statusOf(row)) ? { label: 'Vincular à próxima matrícula', icon: 'repeat', danger: false }
+        : null,
     id: row.id, code: `#${row.id}`, student: { name: row.usuario_nome || 'Aluno', email: row.usuario_email || '' },
     modality: row.modalidade_nome || row.modalidade?.nome, plan: row.plano_nome, amount: Number(row.valor),
     modalityIcon: row.modalidade_icone || row.modalidade?.icone, modalityColor: row.modalidade_cor || row.modalidade?.cor,
