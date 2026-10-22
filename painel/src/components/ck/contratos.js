@@ -294,12 +294,13 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
         h(Avatar, { name: a.name, size: 'md', decorative: true }),
         h('div', { className: 'ck-ct-admin__who' }, h('strong', null, a.name), h('span', null, a.email)),
         h('div', { className: 'ck-ct-admin__roles' },
+          a.principal ? h(Badge, { tone: 'success', icon: 'key' }, 'Principal') : null,
           off ? h(Badge, { tone: 'outline' }, 'Inativo') : (a.roles || [3]).slice().sort(function (x, y) { return y - x; }).map(function (r) { return h(Badge, { key: r, tone: 'neutral' }, ROLE_NAMES[r] || 'Papel ' + r); })
             .concat((p.permissions || []).filter(function (o) { return (a.permissions || []).indexOf(o.codigo) >= 0; }).map(function (o) { return h(Badge, { key: o.codigo, tone: 'info', icon: 'key' }, o.nome); }))),
         h('div', { className: 'ck-mt-actions' },
           off ? null : h(IconButton, { icon: 'pencil', label: 'Editar ' + a.name, size: 'sm', onClick: function () { dlg[1]({ admin: a }); } }),
-          p.onToggleAdmin ? h(ActionMenu, { label: 'Mais ações para ' + a.name, items: [
-            off ? { label: 'Reativar acesso', icon: 'power', onClick: function () { p.onToggleAdmin(a); } } : { label: 'Desativar acesso', icon: 'ban', danger: true, onClick: function () { p.onToggleAdmin(a); } }] }) : null,
+          p.onToggleAdmin ? h(ActionMenu, { label: 'Mais ações para ' + a.name, items: (p.onSetPrincipal && !off && !a.principal ? [{ label: 'Tornar admin principal', icon: 'key', onClick: function () { p.onSetPrincipal(a); } }] : []).concat([
+            off ? { label: 'Reativar acesso', icon: 'power', onClick: function () { p.onToggleAdmin(a); } } : (a.principal ? { label: 'Admin principal não pode ser desativado', icon: 'lock', disabled: true, onClick: function () {} } : { label: 'Desativar acesso', icon: 'ban', danger: true, onClick: function () { p.onToggleAdmin(a); } })]) }) : null,
           p.onRemoveAdmin ? h(IconButton, { icon: 'trash', label: 'Remover ' + a.name, size: 'sm', onClick: function () { p.onRemoveAdmin(a); } }) : null));
     })) : h('div', { className: cx('ck-ct-admins__empty', show.admins && 'is-error') },
       h('span', { className: 'ck-ct-admins__emptyicon', 'aria-hidden': true }, h(Icon, { name: 'user-plus', size: 18 })),

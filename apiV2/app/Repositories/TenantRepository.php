@@ -295,11 +295,16 @@ class TenantRepository
         }
     }
 
+    /**
+     * Substitui só os papéis hierárquicos (aluno/professor/admin). Comercial e Financeiro são
+     * funcionais e geridos à parte: antes eram apagados em silêncio ao editar o admin.
+     */
     public function substituirPapeis(int $tenantId, int $usuarioId, array $papeis): void
     {
         DB::table('tenant_usuario_papel')
             ->where('tenant_id', $tenantId)
             ->where('usuario_id', $usuarioId)
+            ->whereIn('papel_id', [1, 2, 3])
             ->delete();
 
         foreach ($papeis as $papelId) {

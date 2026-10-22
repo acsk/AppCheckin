@@ -3,24 +3,114 @@
 namespace App\Support;
 
 /**
- * Permissões pontuais por usuário/academia (tabela tenant_usuario_permissoes), além do papel.
- * Para criar uma nova: constante aqui + rótulo em ROTULOS + `->middleware('permissao:codigo')` na rota.
+ * Catálogo de permissões da academia (código `modulo.acao`) e o padrão de cada papel.
+ *
+ * Permissão efetiva (App\Services\PermissaoService) = padrão dos papéis ativos do usuário na academia
+ * + concedidas − retiradas (tenant_usuario_permissoes). O admin principal tem todas as não sensíveis.
+ * Sensíveis só o super admin concede e nunca vêm de papel.
+ *
+ * Nova permissão: constante + entrada em CATALOGO (+ papéis em PADRAO) + `->middleware('permissao:codigo')`.
  */
 final class Permissao
 {
-    /** Excluir/vincular matrícula e editar/excluir parcela */
+    public const ALUNOS_VER = 'alunos.ver';
+
+    public const ALUNOS_EDITAR = 'alunos.editar';
+
+    public const MATRICULAS_VER = 'matriculas.ver';
+
+    public const MATRICULAS_GERENCIAR = 'matriculas.gerenciar';
+
+    public const FINANCEIRO_VER = 'financeiro.ver';
+
+    public const FINANCEIRO_BAIXAR = 'financeiro.baixar';
+
+    /** Excluir/vincular matrícula e editar/excluir parcela (código anterior ao catálogo, mantido) */
     public const FINANCEIRO_AVANCADO = 'financeiro_avancado';
 
-    /** @var array<string, array{nome: string, descricao: string}> */
-    public const ROTULOS = [
-        self::FINANCEIRO_AVANCADO => [
-            'nome' => 'Ações financeiras avançadas',
-            'descricao' => 'Excluir ou vincular matrículas e editar ou excluir parcelas.',
+    public const PROSPECCAO_USAR = 'prospeccao.usar';
+
+    public const PROSPECCAO_GERENCIAR = 'prospeccao.gerenciar';
+
+    public const AULAS_GERENCIAR = 'aulas.gerenciar';
+
+    public const EQUIPE_GERENCIAR = 'equipe.gerenciar';
+
+    public const CONFIGURACOES_EDITAR = 'configuracoes.editar';
+
+    /** Plano do Check-in e dados do CNPJ */
+    public const CONTA_GERENCIAR = 'conta.gerenciar';
+
+    /**
+     * @var array<string, array{modulo: string, nome: string, descricao: string, sensivel?: bool}>
+     */
+    public const CATALOGO = [
+        self::ALUNOS_VER => ['modulo' => 'Alunos', 'nome' => 'Ver alunos', 'descricao' => 'Lista, ficha e contatos dos alunos.'],
+        self::ALUNOS_EDITAR => ['modulo' => 'Alunos', 'nome' => 'Cadastrar e editar alunos', 'descricao' => 'Criar, editar e desativar alunos.'],
+        self::MATRICULAS_VER => ['modulo' => 'Matrículas', 'nome' => 'Ver matrículas', 'descricao' => 'Matrículas, planos e vencimentos.'],
+        self::MATRICULAS_GERENCIAR => ['modulo' => 'Matrículas', 'nome' => 'Gerenciar matrículas', 'descricao' => 'Matricular, trocar plano, cancelar, bloquear.'],
+        self::FINANCEIRO_VER => ['modulo' => 'Financeiro', 'nome' => 'Ver financeiro', 'descricao' => 'Cobranças, recebimentos e relatórios.'],
+        self::FINANCEIRO_BAIXAR => ['modulo' => 'Financeiro', 'nome' => 'Dar baixa em cobranças', 'descricao' => 'Registrar pagamentos e créditos.'],
+        self::FINANCEIRO_AVANCADO => ['modulo' => 'Financeiro', 'nome' => 'Ações financeiras avançadas', 'descricao' => 'Excluir ou vincular matrículas e editar ou excluir parcelas.', 'sensivel' => true],
+        self::PROSPECCAO_USAR => ['modulo' => 'Prospecção', 'nome' => 'Usar a Prospecção', 'descricao' => 'Recuperação de alunos, contatos e mensagens.'],
+        self::PROSPECCAO_GERENCIAR => ['modulo' => 'Prospecção', 'nome' => 'Configurar a Prospecção', 'descricao' => 'Equipe comercial e pesos do score.'],
+        self::AULAS_GERENCIAR => ['modulo' => 'Aulas', 'nome' => 'Gerenciar aulas', 'descricao' => 'Turmas, horários, WOD e recordes.'],
+        self::EQUIPE_GERENCIAR => ['modulo' => 'Equipe', 'nome' => 'Gerenciar equipe', 'descricao' => 'Cadastrar usuários da equipe, papéis e permissões.'],
+        self::CONFIGURACOES_EDITAR => ['modulo' => 'Configurações', 'nome' => 'Editar configurações', 'descricao' => 'Parâmetros, formas de pagamento e grupos.'],
+        self::CONTA_GERENCIAR => ['modulo' => 'Conta', 'nome' => 'Gerenciar a conta', 'descricao' => 'Plano do Check-in e dados do CNPJ.'],
+    ];
+
+    /**
+     * Padrão por papel (decisões: Financeiro vê alunos e cobranças; Comercial sem valores financeiros;
+     * Professor só no app; equipe e conta só com o admin principal, que recebe tudo o que não é sensível).
+     *
+     * @var array<int, list<string>>
+     */
+    public const PADRAO = [
+        Papel::ADMIN => [
+            self::ALUNOS_VER, self::ALUNOS_EDITAR, self::MATRICULAS_VER, self::MATRICULAS_GERENCIAR,
+            self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR, self::PROSPECCAO_USAR, self::PROSPECCAO_GERENCIAR,
+            self::AULAS_GERENCIAR, self::CONFIGURACOES_EDITAR,
         ],
+        Papel::FINANCEIRO => [self::ALUNOS_VER, self::MATRICULAS_VER, self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR],
+        Papel::COMERCIAL => [self::PROSPECCAO_USAR],
+        Papel::PROFESSOR => [],
+        Papel::ALUNO => [],
     ];
 
     public static function valida(string $codigo): bool
     {
-        return isset(self::ROTULOS[$codigo]);
+        return isset(self::CATALOGO[$codigo]);
+    }
+
+    public static function sensivel(string $codigo): bool
+    {
+        return (bool) (self::CATALOGO[$codigo]['sensivel'] ?? false);
+    }
+
+    /** @return list<string> */
+    public static function todas(): array
+    {
+        return array_keys(self::CATALOGO);
+    }
+
+    /** @return list<string> */
+    public static function naoSensiveis(): array
+    {
+        return array_values(array_filter(self::todas(), fn ($c) => ! self::sensivel($c)));
+    }
+
+    /**
+     * @param  list<int>  $papeis
+     * @return list<string>
+     */
+    public static function padraoDosPapeis(array $papeis): array
+    {
+        $out = [];
+        foreach ($papeis as $papel) {
+            $out = array_merge($out, self::PADRAO[$papel] ?? []);
+        }
+
+        return array_values(array_unique($out));
     }
 }

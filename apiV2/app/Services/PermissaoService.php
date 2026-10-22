@@ -7,56 +7,142 @@ use App\Support\Permissao;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Permissões pontuais por usuário em cada academia (App\Support\Permissao).
- * Só valem para quem é admin ativo da academia; o super admin no "acessar como academia" tem todas.
+ * Permissões efetivas de um usuário numa academia (App\Support\Permissao):
+ * padrão dos papéis ativos + concedidas − retiradas (tenant_usuario_permissoes.efeito).
+ *
+ * - Só a equipe (Papel::EQUIPE) tem permissões; aluno não tem nenhuma no painel.
+ * - O admin principal (tenants.admin_principal_id) tem todas as não sensíveis e não pode ter nada retirado.
+ * - Sensíveis só existem por concessão do super admin.
+ * - O super admin no "acessar como academia" tem todas (tratado no middleware/controller).
  */
 class PermissaoService
 {
-    /** @return list<string> */
-    public function doUsuario(int $tenantId, int $usuarioId): array
+    public const CONCEDER = 'conceder';
+
+    public const RETIRAR = 'retirar';
+
+    /** @return list<int> */
+    public function papeisAtivos(int $tenantId, int $usuarioId): array
     {
-        $admin = DB::table('tenant_usuario_papel')
-            ->where('tenant_id', $tenantId)->where('usuario_id', $usuarioId)->where('papel_id', Papel::ADMIN)->where('ativo', 1)->exists();
-        if (! $admin) {
+        return DB::table('tenant_usuario_papel')
+            ->where('tenant_id', $tenantId)->where('usuario_id', $usuarioId)->where('ativo', 1)
+            ->pluck('papel_id')->map(fn ($p) => (int) $p)->unique()->values()->all();
+    }
+
+    public function adminPrincipalId(int $tenantId): ?int
+    {
+        $id = DB::table('tenants')->where('id', $tenantId)->value('admin_principal_id');
+
+        return $id ? (int) $id : null;
+    }
+
+    public function ehAdminPrincipal(int $tenantId, int $usuarioId): bool
+    {
+        return $this->adminPrincipalId($tenantId) === $usuarioId
+            && in_array(Papel::ADMIN, $this->papeisAtivos($tenantId, $usuarioId), true);
+    }
+
+    /** @return list<string> */
+    public function efetivas(int $tenantId, int $usuarioId): array
+    {
+        $papeis = $this->papeisAtivos($tenantId, $usuarioId);
+        if (array_intersect($papeis, Papel::EQUIPE) === []) {
             return [];
         }
 
-        return DB::table('tenant_usuario_permissoes')
-            ->where('tenant_id', $tenantId)->where('usuario_id', $usuarioId)
-            ->pluck('permissao')->filter(fn ($p) => Permissao::valida((string) $p))->values()->all();
+        $principal = $this->ehAdminPrincipal($tenantId, $usuarioId);
+        $codigos = Permissao::padraoDosPapeis($papeis);
+        if ($principal) {
+            $codigos = array_merge($codigos, Permissao::naoSensiveis());
+        }
+
+        $ajustes = $this->ajustes($tenantId, $usuarioId);
+        $codigos = array_merge($codigos, $ajustes[self::CONCEDER]);
+        if (! $principal) {
+            $codigos = array_diff($codigos, $ajustes[self::RETIRAR]);
+        }
+
+        // Na ordem do catálogo
+        return array_values(array_intersect(Permissao::todas(), $codigos));
     }
 
     public function tem(int $tenantId, int $usuarioId, string $permissao): bool
     {
-        return in_array($permissao, $this->doUsuario($tenantId, $usuarioId), true);
+        return in_array($permissao, $this->efetivas($tenantId, $usuarioId), true);
     }
 
     /**
-     * Substitui as permissões do usuário na academia (códigos desconhecidos são ignorados).
+     * Ajustes individuais válidos do usuário na academia.
      *
-     * @param  list<string>  $permissoes
+     * @return array{conceder: list<string>, retirar: list<string>}
+     */
+    public function ajustes(int $tenantId, int $usuarioId): array
+    {
+        $out = [self::CONCEDER => [], self::RETIRAR => []];
+        $rows = DB::table('tenant_usuario_permissoes')->where('tenant_id', $tenantId)->where('usuario_id', $usuarioId)->get(['permissao', 'efeito']);
+        foreach ($rows as $r) {
+            $efeito = $r->efeito ?? self::CONCEDER;
+            if (Permissao::valida((string) $r->permissao) && isset($out[$efeito])) {
+                $out[$efeito][] = (string) $r->permissao;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Concessões do usuário (usado pela ficha da academia no super admin para as sensíveis).
+     *
      * @return list<string>
      */
-    public function definir(int $tenantId, int $usuarioId, array $permissoes, ?int $concedidoPor): array
+    public function concedidas(int $tenantId, int $usuarioId, bool $somenteSensiveis = false): array
     {
-        $validas = array_values(array_unique(array_filter($permissoes, fn ($p) => is_string($p) && Permissao::valida($p))));
+        if (array_intersect($this->papeisAtivos($tenantId, $usuarioId), Papel::EQUIPE) === []) {
+            return [];
+        }
+        $codigos = $this->ajustes($tenantId, $usuarioId)[self::CONCEDER];
 
-        DB::transaction(function () use ($tenantId, $usuarioId, $validas, $concedidoPor) {
+        return array_values(array_filter($codigos, fn ($c) => ! $somenteSensiveis || Permissao::sensivel($c)));
+    }
+
+    /**
+     * Substitui as concessões do usuário dentro de um escopo de códigos (o resto não é tocado).
+     *
+     * @param  list<string>  $permissoes
+     * @param  list<string>  $escopo  códigos que esta tela administra
+     * @return list<string>
+     */
+    public function definirConcessoes(int $tenantId, int $usuarioId, array $permissoes, array $escopo, ?int $concedidoPor): array
+    {
+        $validas = array_values(array_unique(array_filter($permissoes, fn ($p) => is_string($p) && in_array($p, $escopo, true))));
+
+        DB::transaction(function () use ($tenantId, $usuarioId, $validas, $escopo, $concedidoPor) {
             DB::table('tenant_usuario_permissoes')->where('tenant_id', $tenantId)->where('usuario_id', $usuarioId)
-                ->whereNotIn('permissao', $validas ?: [''])->delete();
+                ->whereIn('permissao', $escopo)->whereNotIn('permissao', $validas ?: [''])->delete();
             foreach ($validas as $p) {
-                DB::table('tenant_usuario_permissoes')->insertOrIgnore([
-                    'tenant_id' => $tenantId, 'usuario_id' => $usuarioId, 'permissao' => $p, 'concedido_por' => $concedidoPor, 'created_at' => now(),
-                ]);
+                DB::table('tenant_usuario_permissoes')->updateOrInsert(
+                    ['tenant_id' => $tenantId, 'usuario_id' => $usuarioId, 'permissao' => $p],
+                    ['efeito' => self::CONCEDER, 'concedido_por' => $concedidoPor],
+                );
             }
         });
 
         return $validas;
     }
 
-    /** @return list<array{codigo: string, nome: string, descricao: string}> */
-    public function catalogo(): array
+    /**
+     * @return list<array{codigo: string, modulo: string, nome: string, descricao: string, sensivel: bool}>
+     */
+    public function catalogo(bool $somenteSensiveis = false): array
     {
-        return array_map(fn ($codigo, $r) => ['codigo' => $codigo] + $r, array_keys(Permissao::ROTULOS), Permissao::ROTULOS);
+        $out = [];
+        foreach (Permissao::CATALOGO as $codigo => $p) {
+            if ($somenteSensiveis && ! Permissao::sensivel($codigo)) {
+                continue;
+            }
+            $out[] = ['codigo' => $codigo, 'modulo' => $p['modulo'], 'nome' => $p['nome'], 'descricao' => $p['descricao'], 'sensivel' => Permissao::sensivel($codigo)];
+        }
+
+        return $out;
     }
 }

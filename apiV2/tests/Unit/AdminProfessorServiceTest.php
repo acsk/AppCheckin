@@ -18,9 +18,13 @@ class AdminProfessorServiceTest extends TestCase
 
     private function service(?AdminProfessorRepository $professores = null, ?UsuarioRepository $usuarios = null): AdminProfessorService
     {
+        $equipe = Mockery::mock(\App\Services\Admin\AdminEquipeService::class);
+        $equipe->shouldReceive('verificarVaga')->andReturn(null);
+
         return new AdminProfessorService(
             $professores ?? Mockery::mock(AdminProfessorRepository::class),
             $usuarios ?? Mockery::mock(UsuarioRepository::class),
+            $equipe,
         );
     }
 
@@ -116,10 +120,10 @@ class AdminProfessorServiceTest extends TestCase
         $this->assertSame('CPF inválido. Deve conter 11 dígitos', $cpfInvalido['body']['message']);
     }
 
-    public function test_create_rejeita_cpf_de_outro_usuario(): void
+    public function test_create_recusa_cpf_e_email_de_cadastros_diferentes(): void
     {
         $usuarios = Mockery::mock(UsuarioRepository::class);
-        $usuarios->shouldReceive('findByEmailGlobal')->once()->with('novo@x.com')->andReturn(null);
+        $usuarios->shouldReceive('findByEmailGlobal')->once()->with('novo@x.com')->andReturn((object) ['id' => 8]);
 
         $repo = Mockery::mock(AdminProfessorRepository::class);
         $repo->shouldReceive('findUsuarioByCpfGlobal')->once()->with('12345678901')->andReturn(['id' => 7]);
@@ -131,7 +135,7 @@ class AdminProfessorServiceTest extends TestCase
         ]);
 
         $this->assertSame(409, $result['status']);
-        $this->assertSame('CPF já cadastrado para outro usuário no sistema', $result['body']['message']);
+        $this->assertStringContainsString('cadastros diferentes', $result['body']['message']);
     }
 
     public function test_create_rejeita_professor_ja_vinculado(): void
@@ -140,6 +144,7 @@ class AdminProfessorServiceTest extends TestCase
         $usuarios->shouldReceive('findByEmailGlobal')->once()->with('prof@x.com')->andReturn((object) ['id' => 50]);
 
         $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('findUsuarioByCpfGlobal')->andReturn(null);
         $repo->shouldReceive('findByUsuarioId')->once()->with(50)->andReturn(['id' => 9, 'usuario_id' => 50]);
         $repo->shouldReceive('pertenceAoTenant')->once()->with(9, 3)->andReturn(true);
 
@@ -159,6 +164,7 @@ class AdminProfessorServiceTest extends TestCase
         $usuarios->shouldReceive('findByEmailGlobal')->once()->with('prof@x.com')->andReturn((object) ['id' => 50]);
 
         $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('findUsuarioByCpfGlobal')->andReturn(null);
         $repo->shouldReceive('findByUsuarioId')->once()->with(50)->andReturn(['id' => 9, 'usuario_id' => 50]);
         $repo->shouldReceive('pertenceAoTenant')->once()->with(9, 3)->andReturn(false);
         $repo->shouldReceive('associarAoTenant')->once()->with(9, 3)->andReturn(true);

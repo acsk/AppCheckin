@@ -2,6 +2,9 @@ import api from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const PAPEL_COMERCIAL = 5;
+export const PAPEL_FINANCEIRO = 6;
+// Papéis funcionais: ficam fora da hierarquia (nunca viram o papel "efetivo" de quem é admin)
+const FUNCIONAIS = [PAPEL_COMERCIAL, PAPEL_FINANCEIRO];
 const SUPORTE_BACKUP = '@appcheckin:suporte_backup';
 
 export const authService = {
@@ -17,12 +20,13 @@ export const authService = {
     return normalized;
   },
 
-  // Papel efetivo = maior papel hierárquico (1 aluno … 4 super admin). Comercial (5) é funcional e
-  // fica de fora, senão um admin que também é comercial perderia o menu de admin.
+  // Papel efetivo = maior papel hierárquico (1 aluno … 4 super admin). Comercial (5) e Financeiro (6)
+  // são funcionais e ficam de fora, senão um admin que também é comercial perderia o menu de admin.
+  // (Menu por permissão para quem é só Financeiro: fase 3 da estrutura de permissões.)
   getEffectivePapelId(user) {
     if (!user) return 1;
     const ids = this.papelIds(user);
-    const hierarquicos = ids.filter((id) => id !== PAPEL_COMERCIAL);
+    const hierarquicos = ids.filter((id) => !FUNCIONAIS.includes(id));
     if (hierarquicos.length) return Math.max(...hierarquicos);
     return ids.includes(PAPEL_COMERCIAL) ? PAPEL_COMERCIAL : 1;
   },

@@ -15,6 +15,7 @@ const SECTIONS = [
       { id: 'minha-conta', label: 'Minha conta', path: '/minha-conta', icon: 'user', roles: [3] },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
       { id: 'cnpjs', label: 'CNPJs', path: '/cnpjs', icon: 'shield-check', roles: [4] },
+      { id: 'unificar', label: 'Unificar cadastros', path: '/unificar-usuarios', icon: 'users', roles: [4] },
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
       { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
     ],
@@ -81,6 +82,7 @@ const SECTIONS = [
         label: 'Configurações',
         icon: 'settings',
         children: [
+          { id: 'equipe', label: 'Equipe e permissões', path: '/equipe', roles: [3], perm: 'equipe.gerenciar' },
           { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3] },
           { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3] },
         ],
@@ -110,17 +112,19 @@ const papelLabel = (papelId) => (papelId === 4 ? 'Super admin' : papelId === 3 ?
 
 // Filtra o menu pelo papel do usuário e devolve as seções no formato do Sidebar.
 // `comercial`: o usuário também tem o papel Comercial (fora da hierarquia de `role`).
-function buildSections(role, comercial) {
-  const visivel = (roles) => roles.includes(role) || (comercial && roles.includes(PAPEL_COMERCIAL));
+// Itens com `perm` exigem também a permissão (lista de authService.getPermissoes()).
+function buildSections(role, comercial, perms) {
+  const visivelPapel = (roles) => roles.includes(role) || (comercial && roles.includes(PAPEL_COMERCIAL));
+  const itemVisivel = (it) => visivelPapel(it.roles) && (!it.perm || perms.includes(it.perm));
   return SECTIONS.map((s) => ({
     label: s.label,
     items: s.items
       .map((it) => {
         if (it.children) {
-          const children = it.children.filter((c) => visivel(c.roles));
+          const children = it.children.filter(itemVisivel);
           return children.length ? { ...it, children: children.map((c) => ({ ...c, href: c.path })) } : null;
         }
-        return visivel(it.roles) ? { ...it, href: it.path } : null;
+        return itemVisivel(it) ? { ...it, href: it.path } : null;
       })
       .filter(Boolean),
   })).filter((s) => s.items.length);
@@ -150,6 +154,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   const [usuarioInfo, setUsuarioInfo] = useState(null);
   const [tenantAtual, setTenantAtual] = useState(null);
+  const [perms, setPerms] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -162,6 +167,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   useEffect(() => {
     authService.getCurrentUser().then(setUsuarioInfo).catch(() => {});
     authService.getTenantAtual().then(setTenantAtual).catch(() => {});
+    authService.getPermissoes().then(setPerms).catch(() => {});
   }, []);
 
   // Fecha o menu do celular ao trocar de rota.
@@ -171,7 +177,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   const role = authService.getEffectivePapelId(usuarioInfo);
   const comercial = authService.hasPapel(usuarioInfo, PAPEL_COMERCIAL);
-  const sections = useMemo(() => buildSections(role, comercial), [role, comercial]);
+  const sections = useMemo(() => buildSections(role, comercial, perms), [role, comercial, perms]);
 
   // Quem é só comercial não tem acesso às telas de administração.
   useEffect(() => {

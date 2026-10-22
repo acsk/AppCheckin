@@ -54,7 +54,7 @@ class UsuarioRepository
             ->join('tenants as t', 't.id', '=', 'tup.tenant_id')
             ->leftJoin('papeis as p', 'p.id', '=', 'tup.papel_id')
             ->where('tup.usuario_id', $usuarioId)
-            ->whereIn('tup.papel_id', [Papel::ALUNO, Papel::PROFESSOR, Papel::ADMIN, Papel::COMERCIAL])
+            ->whereIn('tup.papel_id', [Papel::ALUNO, Papel::PROFESSOR, Papel::ADMIN, Papel::COMERCIAL, Papel::FINANCEIRO])
             ->where('tup.ativo', 1)
             ->where('t.ativo', 1)
             ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))

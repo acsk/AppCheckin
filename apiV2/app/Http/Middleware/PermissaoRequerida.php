@@ -28,7 +28,7 @@ class PermissaoRequerida
         $tenantId = (int) ($request->attributes->get('tenantId') ?? 0);
         $userId = (int) $request->attributes->get('userId', 0);
         if ($tenantId <= 0 || $userId <= 0 || ! $this->permissoes->tem($tenantId, $userId, $permissao)) {
-            $nome = Permissao::ROTULOS[$permissao]['nome'] ?? $permissao;
+            $nome = Permissao::CATALOGO[$permissao]['nome'] ?? $permissao;
 
             return ApiError::json("Você não tem a permissão \"{$nome}\" nesta academia. Peça ao suporte do Check-in.", 'PERMISSAO_NEGADA', 403);
         }

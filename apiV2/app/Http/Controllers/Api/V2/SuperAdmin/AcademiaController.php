@@ -109,6 +109,13 @@ class AcademiaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function definirAdminPrincipal(Request $request, int $tenantId, int $adminId): JsonResponse
+    {
+        $result = $this->service->definirAdminPrincipal($tenantId, $adminId, $this->usuario($request), $this->userId($request));
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     /** @return array<string, mixed>|null */
     private function usuario(Request $request): ?array
     {

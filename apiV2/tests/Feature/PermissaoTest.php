@@ -34,6 +34,7 @@ class PermissaoTest extends TestCase
         $this->admin = $this->usuario($this->escola, Papel::ADMIN, 'Admin A');
         // Ocupa os ids 1–2 para o usuário 3 da migration existir de propósito abaixo
         (require database_path('migrations/2026_10_22_170000_create_tenant_usuario_permissoes.php'))->up();
+        (require database_path('migrations/2026_10_22_190000_estrutura_permissoes.php'))->up();
 
         $service = Mockery::mock(AdminMatriculaService::class);
         $service->shouldReceive('destroy')->andReturn(['status' => 200, 'body' => ['message' => 'ok']]);
@@ -65,8 +66,8 @@ class PermissaoTest extends TestCase
         $this->conceder($this->admin, $this->escola);
 
         $this->deleteJson('/v2/admin/matriculas/10', [], $this->auth($this->admin, $this->escola))->assertOk();
-        $this->getJson('/v2/admin/minha-conta/permissoes', $this->auth($this->admin, $this->escola))
-            ->assertOk()->assertJsonPath('permissoes', [Permissao::FINANCEIRO_AVANCADO]);
+        $this->assertContains(Permissao::FINANCEIRO_AVANCADO,
+            $this->getJson('/v2/admin/minha-conta/permissoes', $this->auth($this->admin, $this->escola))->assertOk()->json('permissoes'));
     }
 
     public function test_permissao_vale_so_na_academia_concedida_e_enquanto_for_admin(): void
@@ -87,8 +88,8 @@ class PermissaoTest extends TestCase
         $token = $this->postJson("/v2/superadmin/academias/{$this->escola}/acessar", ['motivo' => 'Vincular matrícula da aluna'], $this->auth($sa, null))->json('token');
 
         $this->deleteJson('/v2/admin/matriculas/10', [], ['Authorization' => 'Bearer '.$token])->assertOk();
-        $this->getJson('/v2/admin/minha-conta/permissoes', ['Authorization' => 'Bearer '.$token])
-            ->assertJsonPath('permissoes', [Permissao::FINANCEIRO_AVANCADO]);
+        $this->assertSame(Permissao::todas(),
+            $this->getJson('/v2/admin/minha-conta/permissoes', ['Authorization' => 'Bearer '.$token])->json('permissoes'));
     }
 
     public function test_so_super_admin_concede_e_codigo_desconhecido_e_ignorado(): void

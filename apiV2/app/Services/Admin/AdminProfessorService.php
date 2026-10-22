@@ -11,7 +11,12 @@ class AdminProfessorService
     public function __construct(
         private readonly AdminProfessorRepository $professores,
         private readonly UsuarioRepository $usuarios,
-    ) {}
+        ?AdminEquipeService $equipe = null,
+    ) {
+        $this->equipe = $equipe ?? app(AdminEquipeService::class);
+    }
+
+    private AdminEquipeService $equipe;
 
     /**
      * @return array{status: int, body: array<string, mixed>}
@@ -114,10 +119,18 @@ class AdminProfessorService
             return $this->error('CPF inválido. Deve conter 11 dígitos', 400);
         }
 
+        // Uma pessoa = um usuário: o admin que também dá aula vira professor no mesmo cadastro.
+        // Antes só o e-mail era procurado e o mesmo CPF com outro e-mail era recusado (ou duplicado).
         $usuarioExistente = $this->usuarios->findByEmailGlobal((string) $data['email']);
+        $porCpf = $this->professores->findUsuarioByCpfGlobal($cpfLimpo);
+        if ($usuarioExistente && $porCpf && (int) $porCpf['id'] !== (int) $usuarioExistente->id) {
+            return $this->error('Este CPF e este e-mail pertencem a cadastros diferentes no Check-in. Use o e-mail do cadastro desta pessoa ou peça ao suporte para unificar.', 409);
+        }
+        $usuarioExistente ??= $porCpf ? (object) $porCpf : null;
 
-        if (! $usuarioExistente && $this->professores->findUsuarioByCpfGlobal($cpfLimpo)) {
-            return $this->error('CPF já cadastrado para outro usuário no sistema', 409);
+        // Limite do plano: conta toda a equipe; quem já é da equipe (ex.: admin) não ocupa vaga nova
+        if (($limite = $this->equipe->verificarVaga($tenantId, $usuarioExistente ? (int) $usuarioExistente->id : null)) !== null) {
+            return $limite;
         }
 
         $professorExistente = null;

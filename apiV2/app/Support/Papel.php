@@ -21,14 +21,23 @@ final class Papel
 
     public const COMERCIAL = 5;
 
+    /** Funcional como o Comercial: dados de alunos e cobranças (App\Support\Permissao) */
+    public const FINANCEIRO = 6;
+
     /** @var list<int> */
     public const HIERARQUICOS = [self::ALUNO, self::PROFESSOR, self::ADMIN, self::SUPER_ADMIN];
 
+    /** Fora da hierarquia: nunca viram o papel "efetivo" de quem também é admin/professor/aluno. */
+    public const FUNCIONAIS = [self::COMERCIAL, self::FINANCEIRO];
+
+    /** Papéis da equipe da academia (contam no limite de usuários do plano). */
+    public const EQUIPE = [self::PROFESSOR, self::ADMIN, self::COMERCIAL, self::FINANCEIRO];
+
     /**
-     * ORDER BY que põe os papéis hierárquicos na frente (maior primeiro) e o Comercial por último.
+     * ORDER BY que põe os papéis hierárquicos na frente (maior primeiro) e os funcionais por último.
      */
     public static function ordemHierarquicaSql(string $coluna): string
     {
-        return 'CASE WHEN '.$coluna.' = '.self::COMERCIAL.' THEN 0 ELSE '.$coluna.' END DESC';
+        return 'CASE WHEN '.$coluna.' IN ('.implode(', ', self::FUNCIONAIS).') THEN 0 ELSE '.$coluna.' END DESC';
     }
 }

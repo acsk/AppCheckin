@@ -36,6 +36,7 @@ const toAdmin = (a) => ({
   active: bool(a.ativo),
   roles: (a.papeis || []).map((p) => (typeof p === 'object' ? Number(p.id) : Number(p))),
   permissions: Array.isArray(a.permissoes) ? a.permissoes : [],
+  principal: !!a.admin_principal,
 });
 
 const contractSummary = (c) => {
@@ -76,6 +77,17 @@ export default function AcademiaFormScreen() {
   const localKey = useRef(0);
   const [acessar, setAcessar] = useState(false);
   const [permissoesDisponiveis, setPermissoesDisponiveis] = useState([]);
+
+  // Admin principal (titular): só aqui, pelo super admin; os outros admins não o alteram
+  const tornarPrincipal = async (a) => {
+    try {
+      await superAdminService.definirAdminPrincipal(academiaId, a.id);
+      showSuccess(`${a.name} agora é o admin principal`);
+      loadAdmins();
+    } catch (error) {
+      showError(apiError(error, 'Não foi possível definir o admin principal'));
+    }
+  };
   const [motivo, setMotivo] = useState('');
   const [acessando, setAcessando] = useState(false);
 
@@ -269,6 +281,7 @@ export default function AcademiaFormScreen() {
           academy={academy}
           admins={admins}
           permissions={permissoesDisponiveis}
+          onSetPrincipal={isEdit ? tornarPrincipal : undefined}
           adminsLoading={adminsLoading}
           contract={contract}
           plans={plans}

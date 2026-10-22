@@ -106,15 +106,22 @@ class MinhaContaController extends Controller
             : null;
     }
 
+    /** Permissões efetivas nesta academia (o painel mostra/esconde ações; a API confere de novo). */
     public function permissoes(Request $request): JsonResponse
     {
         $tenantId = (int) $request->attributes->get('tenantId', 0);
-        $todas = array_keys(Permissao::ROTULOS);
-        $minhas = $request->attributes->get('acesso_suporte')
-            ? $todas
-            : ($tenantId ? app(PermissaoService::class)->doUsuario($tenantId, $this->userId($request)) : []);
+        $userId = $this->userId($request);
+        $servico = app(PermissaoService::class);
 
-        return $this->json(['status' => 200, 'body' => ['permissoes' => $minhas]]);
+        if ($request->attributes->get('acesso_suporte')) {
+            return $this->json(['status' => 200, 'body' => ['permissoes' => Permissao::todas(), 'papeis' => [Papel::ADMIN], 'admin_principal' => false, 'suporte' => true]]);
+        }
+
+        return $this->json(['status' => 200, 'body' => [
+            'permissoes' => $tenantId ? $servico->efetivas($tenantId, $userId) : [],
+            'papeis' => $tenantId ? $servico->papeisAtivos($tenantId, $userId) : [],
+            'admin_principal' => $tenantId && $servico->ehAdminPrincipal($tenantId, $userId),
+        ]]);
     }
 
     public function acessosSuporte(Request $request): JsonResponse

@@ -237,7 +237,24 @@ export const superAdminService = {
       console.error('❌ Erro ao reativar admin:', error);
       throw error.response?.data || error;
     }
-  }
+  },
+
+  // Admin principal (titular) da academia: só o super admin define
+  async definirAdminPrincipal(tenantId, adminId) {
+    const response = await api.post(`/superadmin/academias/${tenantId}/admins/${adminId}/principal`);
+    return response.data;
+  },
+
+  // Unificar dois cadastros da mesma pessoa (origem some, destino fica)
+  async previaUnificacao(origem, destino) {
+    const response = await api.get('/superadmin/usuarios-unificar/previa', { params: { origem, destino } });
+    return response.data;
+  },
+
+  async unificarUsuarios(origem, destino) {
+    const response = await api.post('/superadmin/usuarios-unificar', { origem, destino });
+    return response.data;
+  },
 };
 
 export default superAdminService;

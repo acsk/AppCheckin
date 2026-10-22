@@ -528,7 +528,8 @@ class SuperAdminAcademiaService
                 ],
                 $papelIds,
             );
-            $admin['permissoes'] = $this->permissoes->doUsuario($tenantId, (int) $admin['id']);
+            $admin['permissoes'] = $this->permissoes->concedidas($tenantId, (int) $admin['id'], true);
+            $admin['admin_principal'] = (int) ($tenant['admin_principal_id'] ?? 0) === (int) $admin['id'];
         }
         unset($admin);
 
@@ -538,7 +539,8 @@ class SuperAdminAcademiaService
                 'academia' => $tenant,
                 'admins' => $admins,
                 'total' => count($admins),
-                'permissoes_disponiveis' => $this->permissoes->catalogo(),
+                // Aqui só as sensíveis (só o super admin concede); o resto é da tela de equipe da academia
+                'permissoes_disponiveis' => $this->permissoes->catalogo(true),
             ],
         ];
     }
@@ -587,10 +589,18 @@ class SuperAdminAcademiaService
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
 
+        // Uma pessoa = um usuário: procura por e-mail e por CPF (ex.: o professor que vira admin)
         $usuarioExistente = null;
         if (! empty($data['email'])) {
             $usuarioExistente = $this->usuarios->findByEmailGlobal((string) $data['email']);
         }
+        $cpfInformado = preg_replace('/[^0-9]/', '', (string) ($data['cpf'] ?? ''));
+        $porCpf = $cpfInformado !== '' ? DB::table('usuarios')->where('cpf', $cpfInformado)->first() : null;
+        if ($usuarioExistente && $porCpf && (int) $porCpf->id !== (int) $usuarioExistente->id) {
+            return ['status' => 422, 'body' => ['errors' => ['Este CPF e este e-mail pertencem a cadastros diferentes. Unifique os cadastros antes.']]];
+        }
+        $achadoPeloCpf = ! $usuarioExistente && $porCpf;
+        $usuarioExistente ??= $porCpf;
 
         $adminId = null;
 
@@ -601,7 +611,8 @@ class SuperAdminAcademiaService
             if (! empty($data['nome'])) {
                 $updateData['nome'] = $data['nome'];
             }
-            if (! empty($data['email'])) {
+            // Achado pelo CPF: o e-mail de login da pessoa não é trocado por este cadastro
+            if (! empty($data['email']) && ! $achadoPeloCpf) {
                 $updateData['email'] = $data['email'];
             }
             if (isset($data['telefone'])) {
@@ -625,11 +636,13 @@ class SuperAdminAcademiaService
                 $this->usuarios->atualizarPerfil($adminId, $updateData);
             }
 
-            if ($this->tenants->usuarioTemVinculoTenant($tenantId, $adminId)) {
+            // Já na academia como professor/aluno: ganha o papel Admin (antes era recusado e
+            // levava a cadastrar a mesma pessoa de novo com outro e-mail)
+            if (in_array(3, $this->tenants->listarPapelIdsAtivos($tenantId, $adminId), true)) {
                 return [
                     'status' => 422,
                     'body' => [
-                        'error' => 'Usuário já está vinculado a esta academia. Use o endpoint de atualização para modificar os papéis.',
+                        'error' => 'Esta pessoa já é admin desta academia. Edite-a na lista de administradores.',
                     ],
                 ];
             }
@@ -664,6 +677,8 @@ class SuperAdminAcademiaService
         }
 
         $this->tenants->atribuirPapeis($tenantId, $adminId, $papeis);
+        // Academia sem titular: o primeiro admin vira o admin principal
+        DB::table('tenants')->where('id', $tenantId)->whereNull('admin_principal_id')->update(['admin_principal_id' => $adminId]);
 
         $admin = $this->usuarios->findById($adminId, null);
 
@@ -780,12 +795,13 @@ class SuperAdminAcademiaService
 
         // Permissões pontuais (ex.: ações financeiras avançadas): só o super admin concede
         if (isset($data['permissoes']) && is_array($data['permissoes']) && (int) ($usuarioLogado['papel_id'] ?? 0) === 4) {
-            $this->permissoes->definir($tenantId, $adminId, array_values($data['permissoes']), $userId ?: null);
+            $sensiveis = array_column($this->permissoes->catalogo(true), 'codigo');
+            $this->permissoes->definirConcessoes($tenantId, $adminId, array_values($data['permissoes']), $sensiveis, $userId ?: null);
         }
 
         $adminAtualizado = $this->usuarios->findById($adminId, null);
         $adminAtualizado['papeis'] = $this->tenants->listarPapelIdsAtivos($tenantId, $adminId);
-        $adminAtualizado['permissoes'] = $this->permissoes->doUsuario($tenantId, $adminId);
+        $adminAtualizado['permissoes'] = $this->permissoes->concedidas($tenantId, $adminId, true);
 
         return [
             'status' => 200,
@@ -794,6 +810,32 @@ class SuperAdminAcademiaService
                 'admin' => $adminAtualizado,
             ],
         ];
+    }
+
+    /**
+     * Define/transfere o admin principal (titular). Só o super admin; o alvo precisa ser admin ativo.
+     *
+     * @param  array<string, mixed>|null  $usuarioLogado
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function definirAdminPrincipal(int $tenantId, int $adminId, ?array $usuarioLogado, int $userId): array
+    {
+        if ((int) ($usuarioLogado['papel_id'] ?? 0) !== 4) {
+            return ['status' => 403, 'body' => ['error' => 'Apenas o Super Admin define o admin principal']];
+        }
+        $tenant = $this->tenants->findById($tenantId);
+        if (! $tenant) {
+            return ['status' => 404, 'body' => ['error' => 'Academia não encontrada']];
+        }
+        if (! in_array(3, $this->tenants->listarPapelIdsAtivos($tenantId, $adminId), true)) {
+            return ['status' => 422, 'body' => ['error' => 'O admin principal precisa ser um admin ativo desta academia']];
+        }
+
+        $anterior = $tenant['admin_principal_id'] ?? null;
+        DB::table('tenants')->where('id', $tenantId)->update(['admin_principal_id' => $adminId, 'updated_at' => now()]);
+        \Illuminate\Support\Facades\Log::info('academia.admin_principal', ['tenant_id' => $tenantId, 'anterior' => $anterior, 'novo' => $adminId, 'por' => $userId]);
+
+        return ['status' => 200, 'body' => ['message' => 'Admin principal definido', 'admin_principal_id' => $adminId]];
     }
 
     /**
@@ -830,6 +872,14 @@ class SuperAdminAcademiaService
         }
 
         if (in_array(3, $papeisDesativar, true)) {
+            if ((int) ($tenant['admin_principal_id'] ?? 0) === $adminId) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'error' => 'Este é o admin principal da academia. Defina outro admin principal antes de desativá-lo.',
+                    ],
+                ];
+            }
             if ($this->tenants->contarAdminsAtivos($tenantId) <= 1) {
                 return [
                     'status' => 400,
