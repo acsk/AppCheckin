@@ -26,7 +26,8 @@ return new class extends Migration
             $professores->garantirPerfil((int) $usuarioId);
         }
 
-        $duplicado = DB::table('professores')->whereNotNull('usuario_id')
+        // select só da coluna agrupada: o MySQL com only_full_group_by recusa o select * do exists()
+        $duplicado = DB::table('professores')->whereNotNull('usuario_id')->select('usuario_id')
             ->groupBy('usuario_id')->havingRaw('COUNT(*) > 1')->exists();
         if (! $duplicado && ! Schema::hasIndex('professores', 'uk_professores_usuario_id')) {
             Schema::table('professores', function (Blueprint $t) {

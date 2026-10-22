@@ -20,12 +20,18 @@ class AcessoSuporteController extends Controller
         $result = $this->service->iniciar(
             $tenantId,
             (int) $request->attributes->get('userId', 0),
-            $request->input('motivo'),
+            $request->input('motivo_id'),
+            $request->input('detalhe'),
             $request->ip(),
             $request->userAgent(),
         );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function motivos(): JsonResponse
+    {
+        return response()->json(['motivos' => $this->service->motivos()], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     /** Chamado com o token do próprio acesso. */

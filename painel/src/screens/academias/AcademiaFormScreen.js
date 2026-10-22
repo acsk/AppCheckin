@@ -5,7 +5,7 @@ import superAdminService from '../../services/superAdminService';
 import planosSistemaService from '../../services/planosSistemaService';
 import cepService from '../../services/cepService';
 import LayoutBase from '../../components/LayoutBase';
-import { Button, Modal, TextAreaField } from '../../components/ck';
+import { Button, Modal, SelectField, TextAreaField } from '../../components/ck';
 import { AcademiaForm, planFromApi } from '../../components/ck/contratos';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -88,15 +88,23 @@ export default function AcademiaFormScreen() {
       showError(apiError(error, 'Não foi possível definir o admin principal'));
     }
   };
-  const [motivo, setMotivo] = useState('');
+  const [motivos, setMotivos] = useState(null); // lista de motivos_acesso_suporte (carregada ao abrir)
+  const [motivoId, setMotivoId] = useState('');
+  const [detalhe, setDetalhe] = useState('');
   const [acessando, setAcessando] = useState(false);
+  const motivo = (motivos || []).find((m) => String(m.id) === motivoId);
+  const podeAcessar = !!motivo && (!motivo.exige_detalhe || detalhe.trim().length >= 10);
+  const abrirAcesso = () => {
+    setMotivoId(''); setDetalhe(''); setAcessar(true);
+    if (!motivos) superAdminService.listarMotivosAcesso().then(setMotivos).catch((e) => { setMotivos([]); showError(apiError(e, 'Não foi possível carregar os motivos')); });
+  };
 
   // "Acessar como academia": entra como admin desta academia por até 2h. Motivo e alterações
   // ficam registrados e a academia vê o acesso em Minha conta → Segurança.
   const iniciarAcesso = async () => {
     setAcessando(true);
     try {
-      await authService.iniciarAcessoSuporte(academiaId, motivo.trim());
+      await authService.iniciarAcessoSuporte(academiaId, { motivoId: Number(motivoId), detalhe: detalhe.trim() || null });
       router.replace('/');
     } catch (error) {
       showError(apiError(error, 'Não foi possível acessar a academia'));
@@ -298,7 +306,7 @@ export default function AcademiaFormScreen() {
           onBack={() => router.push('/academias')}
           onCancel={() => router.push('/academias')}
           headerActions={isEdit && academy?.active ? (
-            <Button icon="key" onClick={() => { setMotivo(''); setAcessar(true); }}>Acessar como academia</Button>
+            <Button icon="key" onClick={abrirAcesso}>Acessar como academia</Button>
           ) : null}
         />
       )}
@@ -313,12 +321,20 @@ export default function AcademiaFormScreen() {
           <>
             <span style={{ flex: 1 }} />
             <Button variant="ghost" disabled={acessando} onClick={() => setAcessar(false)}>Cancelar</Button>
-            <Button variant="primary" icon="key" loading={acessando} disabled={motivo.trim().length < 10} onClick={iniciarAcesso}>Acessar</Button>
+            <Button variant="primary" icon="key" loading={acessando} disabled={!podeAcessar} onClick={iniciarAcesso}>Acessar</Button>
           </>
         )}
       >
-        <TextAreaField label="Motivo do acesso" value={motivo} onChange={(e) => setMotivo(e.target.value)}
-          hint="Mínimo de 10 caracteres. A academia vai ver este texto." />
+        <div className="ck-mc-form">
+          <SelectField label="Motivo do acesso" placeholder={motivos ? 'Escolha o motivo' : 'Carregando…'} disabled={!motivos}
+            value={motivoId} options={(motivos || []).map((m) => ({ value: String(m.id), label: m.nome }))}
+            onChange={(e) => setMotivoId(e.target.value)} hint="A academia vai ver o motivo." />
+          {motivo ? (
+            <TextAreaField label={motivo.exige_detalhe ? 'Descreva o motivo' : 'Detalhe (opcional)'} value={detalhe} maxLength={500}
+              onChange={(e) => setDetalhe(e.target.value)}
+              hint={motivo.exige_detalhe ? 'Mínimo de 10 caracteres. A academia vai ver este texto.' : 'Ex.: número do chamado. A academia vai ver este texto.'} />
+          ) : null}
+        </div>
       </Modal>
       <Modal
         open={!!toToggle}

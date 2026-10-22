@@ -241,7 +241,7 @@ function AcessosSuporte() {
             {dados.map((a) => (
               <li key={a.id}>
                 <span className="ck-cj-rows__main">
-                  <strong>{a.motivo}</strong>
+                  <strong>{a.motivo}{a.detalhe ? `: ${a.detalhe}` : ''}</strong>
                   <small>{`${a.usuario_nome} · ${fhora(a.iniciado_em)}${a.encerrado_em ? ` até ${String(a.encerrado_em).slice(11, 16)}` : ''} · ${plural(a.alteracoes, 'alteração', 'alterações')}`}</small>
                 </span>
                 {a.em_andamento ? <Badge tone="warning">Em andamento</Badge> : <Badge>Encerrado</Badge>}

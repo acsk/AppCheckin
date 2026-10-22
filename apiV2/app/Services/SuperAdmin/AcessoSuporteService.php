@@ -17,13 +17,32 @@ class AcessoSuporteService
     public const DURACAO = 2 * 3600;
 
     /**
+     * Motivos ativos para escolher ao acessar (motivos_acesso_suporte).
+     *
+     * @return list<array{id: int, nome: string, exige_detalhe: bool}>
+     */
+    public function motivos(): array
+    {
+        return DB::table('motivos_acesso_suporte')->where('ativo', 1)->orderBy('ordem')->orderBy('nome')
+            ->get(['id', 'nome', 'exige_detalhe'])
+            ->map(fn ($m) => ['id' => (int) $m->id, 'nome' => $m->nome, 'exige_detalhe' => (bool) $m->exige_detalhe])
+            ->all();
+    }
+
+    /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function iniciar(int $tenantId, int $superAdminId, ?string $motivo, ?string $ip, ?string $userAgent): array
+    public function iniciar(int $tenantId, int $superAdminId, mixed $motivoId, ?string $detalhe, ?string $ip, ?string $userAgent): array
     {
-        $motivo = trim((string) $motivo);
-        if (mb_strlen($motivo) < 10) {
-            return $this->erro('Informe o motivo do acesso (mínimo 10 caracteres). A academia vai ver esse motivo.', 422, 'MOTIVO_OBRIGATORIO');
+        $motivo = is_numeric($motivoId)
+            ? DB::table('motivos_acesso_suporte')->where('id', (int) $motivoId)->where('ativo', 1)->first(['id', 'exige_detalhe'])
+            : null;
+        if (! $motivo) {
+            return $this->erro('Escolha o motivo do acesso. A academia vai ver esse motivo.', 422, 'MOTIVO_OBRIGATORIO');
+        }
+        $detalhe = mb_substr(trim((string) $detalhe), 0, 500);
+        if ($motivo->exige_detalhe && mb_strlen($detalhe) < 10) {
+            return $this->erro('Descreva o motivo do acesso (mínimo 10 caracteres). A academia vai ver esse texto.', 422, 'DETALHE_OBRIGATORIO');
         }
         if ($tenantId === 1) {
             return $this->erro('A academia do sistema não pode ser acessada assim', 422, 'TENANT_SISTEMA');
@@ -36,13 +55,13 @@ class AcessoSuporteService
 
         $agora = now();
         $expira = $agora->copy()->addSeconds(self::DURACAO);
-        $acessoId = DB::transaction(function () use ($tenantId, $superAdminId, $motivo, $ip, $userAgent, $agora, $expira) {
+        $acessoId = DB::transaction(function () use ($tenantId, $superAdminId, $motivo, $detalhe, $ip, $userAgent, $agora, $expira) {
             // Um acesso aberto por super admin: entrar em outra academia encerra o anterior
             DB::table('acessos_suporte')->where('usuario_id', $superAdminId)->whereNull('encerrado_em')
                 ->update(['encerrado_em' => $agora, 'updated_at' => $agora]);
 
             return (int) DB::table('acessos_suporte')->insertGetId([
-                'tenant_id' => $tenantId, 'usuario_id' => $superAdminId, 'motivo' => mb_substr($motivo, 0, 1000),
+                'tenant_id' => $tenantId, 'usuario_id' => $superAdminId, 'motivo_id' => (int) $motivo->id, 'detalhe' => $detalhe !== '' ? $detalhe : null,
                 'iniciado_em' => $agora, 'expira_em' => $expira,
                 'ip' => $ip, 'user_agent' => $userAgent ? mb_substr($userAgent, 0, 255) : null,
                 'created_at' => $agora, 'updated_at' => $agora,
@@ -115,15 +134,17 @@ class AcessoSuporteService
 
         return DB::table('acessos_suporte as a')
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->leftJoin('motivos_acesso_suporte as m', 'm.id', '=', 'a.motivo_id')
             ->leftJoinSub($acoes, 'x', 'x.acesso_suporte_id', '=', 'a.id')
             ->where('a.tenant_id', $tenantId)
             ->orderByDesc('a.iniciado_em')
             ->limit($limite)
-            ->get(['a.id', 'u.nome as usuario_nome', 'a.motivo', 'a.iniciado_em', 'a.expira_em', 'a.encerrado_em', DB::raw('COALESCE(x.total, 0) as alteracoes')])
+            ->get(['a.id', 'u.nome as usuario_nome', 'm.nome as motivo', 'a.detalhe', 'a.iniciado_em', 'a.expira_em', 'a.encerrado_em', DB::raw('COALESCE(x.total, 0) as alteracoes')])
             ->map(fn ($r) => [
                 'id' => (int) $r->id,
                 'usuario_nome' => $r->usuario_nome,
                 'motivo' => $r->motivo,
+                'detalhe' => $r->detalhe,
                 'iniciado_em' => $r->iniciado_em,
                 'encerrado_em' => $r->encerrado_em ?? (strtotime((string) $r->expira_em) < time() ? $r->expira_em : null),
                 'em_andamento' => $r->encerrado_em === null && strtotime((string) $r->expira_em) > time(),

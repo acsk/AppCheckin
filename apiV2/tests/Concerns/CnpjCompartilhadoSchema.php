@@ -128,6 +128,14 @@ trait CnpjCompartilhadoSchema
         return ['Authorization' => 'Bearer '.app(JwtService::class)->encode($payload)];
     }
 
+    /** id de um motivo de acesso de suporte (seed de motivos_acesso_suporte) */
+    protected function motivoAcesso(string $nome = 'Ajuste de plano ou cobrança a pedido da academia'): ?int
+    {
+        $id = DB::table('motivos_acesso_suporte')->where('nome', $nome)->value('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
     protected function superAdmin(): int
     {
         return $this->usuario(null, Papel::SUPER_ADMIN, 'Super');

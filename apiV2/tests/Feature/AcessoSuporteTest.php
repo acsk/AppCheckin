@@ -4,7 +4,10 @@ namespace Tests\Feature;
 
 use App\Services\JwtService;
 use App\Support\Papel;
+use Database\Seeders\MotivoAcessoSuporteSeeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Testing\TestResponse;
 use Tests\Concerns\CnpjCompartilhadoSchema;
 use Tests\TestCase;
 
@@ -29,6 +32,7 @@ class AcessoSuporteTest extends TestCase
         $this->criarSchemaCnpj();
         $this->rodarMigrationCnpj();
         (require database_path('migrations/2026_10_22_160000_create_acessos_suporte_tables.php'))->up();
+        (require database_path('migrations/2026_10_22_210000_create_motivos_acesso_suporte.php'))->up();
         $this->escolaA = $this->tenant('Escola A');
         $this->escolaB = $this->tenant('Escola B');
         $this->adminA = $this->usuario($this->escolaA, Papel::ADMIN, 'Admin A');
@@ -38,9 +42,9 @@ class AcessoSuporteTest extends TestCase
         (require database_path('migrations/2026_10_22_190000_estrutura_permissoes.php'))->up();
     }
 
-    private function iniciar(int $tenantId, string $motivo = 'Ajuste de plano a pedido da academia'): \Illuminate\Testing\TestResponse
+    private function iniciar(int $tenantId, string $motivo = 'Ajuste de plano ou cobrança a pedido da academia', ?string $detalhe = null): TestResponse
     {
-        return $this->postJson("/v2/superadmin/academias/{$tenantId}/acessar", ['motivo' => $motivo], $this->auth($this->sa, null));
+        return $this->postJson("/v2/superadmin/academias/{$tenantId}/acessar", ['motivo_id' => $this->motivoAcesso($motivo), 'detalhe' => $detalhe], $this->auth($this->sa, null));
     }
 
     /** @return array<string, string> */
@@ -51,11 +55,55 @@ class AcessoSuporteTest extends TestCase
 
     public function test_so_super_admin_inicia_e_motivo_e_obrigatorio(): void
     {
-        $this->postJson("/v2/superadmin/academias/{$this->escolaA}/acessar", ['motivo' => 'Quero ver tudo aqui'], $this->auth($this->adminA, $this->escolaA))
+        $this->postJson("/v2/superadmin/academias/{$this->escolaA}/acessar", ['motivo_id' => $this->motivoAcesso()], $this->auth($this->adminA, $this->escolaA))
             ->assertForbidden();
-        $this->iniciar($this->escolaA, 'curto')->assertStatus(422)->assertJsonPath('code', 'MOTIVO_OBRIGATORIO');
+        $this->postJson("/v2/superadmin/academias/{$this->escolaA}/acessar", ['detalhe' => 'Sem motivo escolhido'], $this->auth($this->sa, null))
+            ->assertStatus(422)->assertJsonPath('code', 'MOTIVO_OBRIGATORIO');
+        DB::table('motivos_acesso_suporte')->where('nome', 'Configuração inicial da academia')->update(['ativo' => 0]);
+        $this->iniciar($this->escolaA, 'Configuração inicial da academia')->assertStatus(422)->assertJsonPath('code', 'MOTIVO_OBRIGATORIO');
+        // "Outro" exige o detalhe
+        $this->iniciar($this->escolaA, 'Outro', 'curto')->assertStatus(422)->assertJsonPath('code', 'DETALHE_OBRIGATORIO');
         $this->iniciar(1)->assertStatus(422);
         $this->assertSame(0, DB::table('acessos_suporte')->count());
+    }
+
+    public function test_motivos_vem_da_tabela_e_cada_acesso_guarda_so_a_referencia(): void
+    {
+        $motivos = $this->getJson('/v2/superadmin/academias/acesso-motivos', $this->auth($this->sa, null))->assertOk()->json('motivos');
+        $this->assertSame('Outro', end($motivos)['nome']);
+        $this->assertTrue(end($motivos)['exige_detalhe']);
+        $this->getJson('/v2/superadmin/academias/acesso-motivos', $this->auth($this->adminA, $this->escolaA))->assertForbidden();
+
+        $this->iniciar($this->escolaA)->assertCreated();
+        $this->iniciar($this->escolaB, 'Outro', 'Conferir importação de alunos')->assertCreated();
+
+        $this->assertSame(1, DB::table('acessos_suporte')->where('motivo_id', $this->motivoAcesso())->count());
+        $this->assertNull(DB::table('acessos_suporte')->where('tenant_id', $this->escolaA)->value('detalhe'));
+        $this->assertSame('Conferir importação de alunos', DB::table('acessos_suporte')->where('tenant_id', $this->escolaB)->value('detalhe'));
+    }
+
+    public function test_migracao_converte_motivo_em_texto_livre_para_outro_com_detalhe(): void
+    {
+        $migracao = require database_path('migrations/2026_10_22_210000_create_motivos_acesso_suporte.php');
+        $migracao->down();
+        DB::table('acessos_suporte')->insert([
+            'tenant_id' => $this->escolaA, 'usuario_id' => $this->sa, 'motivo' => 'Texto livre antigo do suporte',
+            'iniciado_em' => now(), 'expira_em' => now()->addHour(),
+        ]);
+
+        $migracao->up();
+
+        $a = DB::table('acessos_suporte')->first();
+        $this->assertSame($this->motivoAcesso('Outro'), (int) $a->motivo_id);
+        $this->assertSame('Texto livre antigo do suporte', $a->detalhe);
+        $this->assertFalse(Schema::hasColumn('acessos_suporte', 'motivo'));
+    }
+
+    public function test_seeder_e_idempotente(): void
+    {
+        $total = DB::table('motivos_acesso_suporte')->count();
+        (new MotivoAcessoSuporteSeeder)->run();
+        $this->assertSame($total, DB::table('motivos_acesso_suporte')->count());
     }
 
     public function test_acesso_age_como_admin_so_da_academia_escolhida(): void
@@ -87,7 +135,8 @@ class AcessoSuporteTest extends TestCase
         $this->getJson('/v2/admin/minha-conta/acessos-suporte', $this->auth($this->adminA, $this->escolaA))
             ->assertOk()
             ->assertJsonPath('acessos.0.usuario_nome', 'Super')
-            ->assertJsonPath('acessos.0.motivo', 'Ajuste de plano a pedido da academia')
+            ->assertJsonPath('acessos.0.motivo', 'Ajuste de plano ou cobrança a pedido da academia')
+            ->assertJsonPath('acessos.0.detalhe', null)
             ->assertJsonPath('acessos.0.alteracoes', 1)
             ->assertJsonPath('acessos.0.em_andamento', true);
         $this->assertSame('/v2/admin/minha-conta/escola', DB::table('acessos_suporte_acoes')->value('rota'));

@@ -31,6 +31,7 @@ class EquipeTest extends TestCase
         $this->criarSchemaCnpj();
         $this->rodarMigrationCnpj();
         (require database_path('migrations/2026_10_22_160000_create_acessos_suporte_tables.php'))->up();
+        (require database_path('migrations/2026_10_22_210000_create_motivos_acesso_suporte.php'))->up();
         (require database_path('migrations/2026_10_22_170000_create_tenant_usuario_permissoes.php'))->up();
         Schema::create('planos_sistema', function (Blueprint $t) {
             $t->increments('id');
@@ -248,7 +249,7 @@ class EquipeTest extends TestCase
     public function test_suporte_pode_alterar_o_principal(): void
     {
         $sa = $this->superAdmin();
-        $token = $this->postJson("/v2/superadmin/academias/{$this->escola}/acessar", ['motivo' => 'Ajustar equipe a pedido'], $this->auth($sa, null))->json('token');
+        $token = $this->postJson("/v2/superadmin/academias/{$this->escola}/acessar", ['motivo_id' => $this->motivoAcesso(), 'detalhe' => 'Ajustar equipe a pedido'], $this->auth($sa, null))->json('token');
 
         $this->putJson("/v2/admin/equipe/{$this->dono}", ['papeis' => [Papel::ADMIN, Papel::FINANCEIRO]], ['Authorization' => 'Bearer '.$token])->assertOk();
     }

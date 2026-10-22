@@ -255,6 +255,12 @@ export const superAdminService = {
     const response = await api.post('/superadmin/usuarios-unificar', { origem, destino });
     return response.data;
   },
+
+  // Motivos do "Acessar como academia" (motivos_acesso_suporte)
+  async listarMotivosAcesso() {
+    const response = await api.get('/superadmin/academias/acesso-motivos');
+    return response.data?.motivos || [];
+  },
 };
 
 export default superAdminService;

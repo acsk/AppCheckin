@@ -29,6 +29,7 @@ class PermissaoTest extends TestCase
         $this->criarSchemaCnpj();
         $this->rodarMigrationCnpj();
         (require database_path('migrations/2026_10_22_160000_create_acessos_suporte_tables.php'))->up();
+        (require database_path('migrations/2026_10_22_210000_create_motivos_acesso_suporte.php'))->up();
         $this->escola = $this->tenant('Escola A');
         $this->outraEscola = $this->tenant('Escola B');
         $this->admin = $this->usuario($this->escola, Papel::ADMIN, 'Admin A');
@@ -85,7 +86,7 @@ class PermissaoTest extends TestCase
     public function test_super_admin_no_acesso_de_suporte_tem_a_permissao(): void
     {
         $sa = $this->superAdmin();
-        $token = $this->postJson("/v2/superadmin/academias/{$this->escola}/acessar", ['motivo' => 'Vincular matrícula da aluna'], $this->auth($sa, null))->json('token');
+        $token = $this->postJson("/v2/superadmin/academias/{$this->escola}/acessar", ['motivo_id' => $this->motivoAcesso(), 'detalhe' => 'Vincular matrícula da aluna'], $this->auth($sa, null))->json('token');
 
         $this->deleteJson('/v2/admin/matriculas/10', [], ['Authorization' => 'Bearer '.$token])->assertOk();
         $this->assertSame(Permissao::todas(),

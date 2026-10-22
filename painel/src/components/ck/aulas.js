@@ -20,8 +20,11 @@ export function AulaEditor({ id, date, diaId, draft, onCancel, onSaved }) {
     Promise.all([modalidadeService.listar(), professorService.listar(false), id ? turmaService.buscarPorId(id) : null])
       .then(([modalities, teachers, row]) => {
         if (id && !row?.id) throw new Error('A API não retornou os dados da aula.');
-        const available = (items, selected) => items.filter(item => item.ativo == null || isEnabled(item.ativo) || String(item.id) === String(selected));
-        if (active) setData({ modalities: available(modalities, row?.modalidade_id), teachers: available(teachers, row?.professor_id), aula: row ? officialAula(row, date) : null });
+        const on = (v) => v == null || isEnabled(v);
+        const available = (items, selected) => items.filter(item => on(item.ativo) || String(item.id) === String(selected));
+        // Professor = papel Professor ativo nesta academia (Equipe): vinculo_ativo, além do cadastro ativo
+        const teachersOn = teachers.filter(t => (on(t.ativo) && on(t.vinculo_ativo)) || String(t.id) === String(row?.professor_id));
+        if (active) setData({ modalities: available(modalities, row?.modalidade_id), teachers: teachersOn, aula: row ? officialAula(row, date) : null });
       })
       .catch(err => { console.error('Erro ao carregar aula:', err); if (active) setError(aulaError(err, 'Não foi possível carregar o formulário.')); });
     return () => { active = false; };

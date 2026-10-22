@@ -148,10 +148,10 @@ export const authService = {
 
   // "Acessar como academia" (super admin): guarda a sessão do super admin e entra com o token do acesso,
   // como admin daquela academia. A API confere a sessão a cada requisição.
-  async iniciarAcessoSuporte(tenantId, motivo) {
+  async iniciarAcessoSuporte(tenantId, { motivoId, detalhe }) {
     const atualToken = await AsyncStorage.getItem('@appcheckin:token');
     const atualUser = await AsyncStorage.getItem('@appcheckin:user');
-    const { data } = await api.post(`/superadmin/academias/${tenantId}/acessar`, { motivo });
+    const { data } = await api.post(`/superadmin/academias/${tenantId}/acessar`, { motivo_id: motivoId, detalhe });
     const sa = atualUser ? JSON.parse(atualUser) : {};
     await AsyncStorage.setItem(SUPORTE_BACKUP, JSON.stringify({ token: atualToken, user: atualUser }));
     await AsyncStorage.setItem('@appcheckin:token', data.token);

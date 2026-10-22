@@ -20,6 +20,7 @@ Route::post('/academias/{tenantId}/admins/{adminId}/reativar', [AcademiaControll
     ->where(['tenantId' => '[0-9]+', 'adminId' => '[0-9]+']);
 
 // Acessar como academia: token de 2h com motivo, registrado e visível para a academia
+Route::get('/academias/acesso-motivos', [AcessoSuporteController::class, 'motivos']);
 Route::post('/academias/{tenantId}/acessar', [AcessoSuporteController::class, 'iniciar'])->where('tenantId', '[0-9]+');
 // Admin principal (titular): só o super admin define; outros admins não o alteram
 Route::post('/academias/{tenantId}/admins/{adminId}/principal', [AcademiaController::class, 'definirAdminPrincipal'])

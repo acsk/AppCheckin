@@ -29,6 +29,7 @@ class PermissaoRotasTest extends TestCase
         parent::setUp();
         $this->criarSchemaCnpj();
         (require database_path('migrations/2026_10_22_160000_create_acessos_suporte_tables.php'))->up();
+        (require database_path('migrations/2026_10_22_210000_create_motivos_acesso_suporte.php'))->up();
         (require database_path('migrations/2026_10_22_170000_create_tenant_usuario_permissoes.php'))->up();
         $this->escola = $this->tenant('Escola A');
         $this->outra = $this->tenant('Escola B');
