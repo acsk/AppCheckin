@@ -56,6 +56,18 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (error.response?.status === 401 && error.response?.data?.code === 'ACESSO_SUPORTE_ENCERRADO') {
+      const backup = await AsyncStorage.getItem('@appcheckin:suporte_backup');
+      const { token, user } = backup ? JSON.parse(backup) : {};
+      await AsyncStorage.removeItem('@appcheckin:suporte_backup');
+      if (token && user) {
+        await AsyncStorage.setItem('@appcheckin:token', token);
+        await AsyncStorage.setItem('@appcheckin:user', user);
+        // Recarrega já como super admin (reload respeita o base path do deploy)
+        if (typeof window !== 'undefined') window.location.reload();
+        return Promise.reject(error);
+      }
+    }
     if (error.response?.status === 401) {
       await AsyncStorage.removeItem('@appcheckin:token');
       await AsyncStorage.removeItem('@appcheckin:user');

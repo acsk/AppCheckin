@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { authService, PAPEL_COMERCIAL } from '../services/authService';
-import { AppShell, AppHeader, Icon, IconButton, PageHeader, Sidebar } from './ck';
+import { AppShell, AppHeader, Button, Icon, IconButton, PageHeader, Sidebar } from './ck';
 
 // Menu do painel em seções (design system: Geral · Gestão · Sistema).
 // Itens de primeiro nível têm ícone; filhos não. `roles` = papéis que veem o item.
@@ -197,6 +197,14 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
     }
   };
 
+  const acessoSuporte = usuarioInfo?.acesso_suporte || null;
+  const [encerrando, setEncerrando] = useState(false);
+  const encerrarAcesso = async () => {
+    setEncerrando(true);
+    const voltou = await authService.encerrarAcessoSuporte();
+    router.replace(voltou ? (acessoSuporte?.tenant_id ? `/academias/${acessoSuporte.tenant_id}` : '/academias') : '/login');
+  };
+
   const handleLogout = async () => {
     await authService.logout();
     router.replace('/login');
@@ -240,7 +248,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
         </span>
       ) : null}
       notifications={false}
-      user={{ name: nome, role: papelLabel(role), email: usuarioInfo?.email }}
+      user={{ name: nome, role: usuarioInfo?.acesso_suporte ? 'Suporte Check-in' : papelLabel(role), email: usuarioInfo?.email }}
       menuItems={[
         ...(role === 3 || role === 4 ? [{ label: 'Minha conta', icon: 'user', onClick: () => router.push('/minha-conta') }] : []),
         ...(canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []),
@@ -256,6 +264,16 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
         header={header}
         className={noPadding ? 'ck-shell--flush' : undefined}
       >
+        {acessoSuporte ? (
+          <div className="ck-suporte-bar" role="status">
+            <Icon name="key" size={16} />
+            <span className="ck-suporte-bar__text">
+              <strong>{`Acesso de suporte: ${acessoSuporte.tenant_nome}`}</strong>
+              {` · até ${String(acessoSuporte.expira_em || '').slice(11, 16)}. Suas alterações ficam registradas e a academia vê este acesso.`}
+            </span>
+            <Button size="sm" variant="primary" loading={encerrando} onClick={encerrarAcesso}>Encerrar acesso</Button>
+          </div>
+        ) : null}
         {/* Telas com cabeçalho próprio (ex.: Matricula) passam pageHeader={false} */}
         {pageHeader ? <PageHeader title={title} description={subtitle || undefined} /> : null}
         {children}

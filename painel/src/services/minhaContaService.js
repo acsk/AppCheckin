@@ -49,6 +49,14 @@ const minhaContaService = {
     }
   },
 
+  async acessosSuporte() {
+    try {
+      return (await api.get('/admin/minha-conta/acessos-suporte')).data.acessos;
+    } catch (error) {
+      throw erro(error, 'Não foi possível carregar os acessos do suporte');
+    }
+  },
+
   async cnpj() {
     try {
       return (await api.get('/admin/minha-conta/cnpj')).data.cnpj;

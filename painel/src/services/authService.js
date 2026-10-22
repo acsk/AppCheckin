@@ -2,6 +2,7 @@ import api from './api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const PAPEL_COMERCIAL = 5;
+const SUPORTE_BACKUP = '@appcheckin:suporte_backup';
 
 export const authService = {
   normalizeUser(user) {
@@ -136,7 +137,47 @@ export const authService = {
     }
   },
 
+  // "Acessar como academia" (super admin): guarda a sessão do super admin e entra com o token do acesso,
+  // como admin daquela academia. A API confere a sessão a cada requisição.
+  async iniciarAcessoSuporte(tenantId, motivo) {
+    const atualToken = await AsyncStorage.getItem('@appcheckin:token');
+    const atualUser = await AsyncStorage.getItem('@appcheckin:user');
+    const { data } = await api.post(`/superadmin/academias/${tenantId}/acessar`, { motivo });
+    const sa = atualUser ? JSON.parse(atualUser) : {};
+    await AsyncStorage.setItem(SUPORTE_BACKUP, JSON.stringify({ token: atualToken, user: atualUser }));
+    await AsyncStorage.setItem('@appcheckin:token', data.token);
+    await AsyncStorage.setItem('@appcheckin:user', JSON.stringify({
+      ...sa,
+      papel_id: 3,
+      papeis: [{ id: 3, nome: 'admin' }],
+      tenant_id: data.academia.id,
+      acesso_suporte: { id: data.acesso.id, tenant_id: data.academia.id, tenant_nome: data.academia.nome, expira_em: data.acesso.expira_em },
+    }));
+    return data;
+  },
+
+  // Encerra o acesso na API (se ainda válido) e volta para a sessão do super admin.
+  async encerrarAcessoSuporte() {
+    try {
+      await api.post('/suporte/acesso/encerrar');
+    } catch {
+      // acesso já expirado/encerrado: só restaura a sessão
+    }
+    return this.restaurarSessaoSuperAdmin();
+  },
+
+  async restaurarSessaoSuperAdmin() {
+    const backup = await AsyncStorage.getItem(SUPORTE_BACKUP);
+    await AsyncStorage.removeItem(SUPORTE_BACKUP);
+    const { token, user } = backup ? JSON.parse(backup) : {};
+    if (!token || !user) return false;
+    await AsyncStorage.setItem('@appcheckin:token', token);
+    await AsyncStorage.setItem('@appcheckin:user', user);
+    return true;
+  },
+
   async logout() {
+    await AsyncStorage.removeItem(SUPORTE_BACKUP);
     await AsyncStorage.removeItem('@appcheckin:token');
     await AsyncStorage.removeItem('@appcheckin:user');
     await AsyncStorage.removeItem('@appcheckin:temp_user');
@@ -158,6 +199,8 @@ export const authService = {
   async getTenantAtual() {
     const token = await AsyncStorage.getItem('@appcheckin:token');
     if (!token) return null;
+    const acesso = (await this.getCurrentUser())?.acesso_suporte;
+    if (acesso) return { id: acesso.tenant_id, nome: acesso.tenant_nome };
     if (tenantAtualCache.token === token) return tenantAtualCache.tenant;
     const response = await api.get('/auth/tenants');
     const atualId = Number(response.data?.current_tenant_id) || null;

@@ -95,6 +95,7 @@ class AcessoSuporteTest extends TestCase
         $token = $this->iniciar($this->escolaA)->json('token');
 
         $this->postJson('/v2/suporte/acesso/encerrar', [], $this->bearer($token))->assertOk();
+        $this->assertSame(0, DB::table('acessos_suporte_acoes')->count(), 'encerrar não conta como alteração');
 
         $this->getJson('/v2/admin/minha-conta/escola', $this->bearer($token))
             ->assertUnauthorized()->assertJsonPath('code', 'ACESSO_SUPORTE_ENCERRADO');

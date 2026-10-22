@@ -155,7 +155,17 @@ function PerfilAba() {
 
 // ------------------------------------------------------------------ Segurança
 
-function SegurancaAba() {
+function SegurancaAba({ admin, suporte }) {
+  if (suporte) return <AcessosSuporte />;
+  return (
+    <div className="ck-cj-stack">
+      <AlterarSenha />
+      {admin ? <AcessosSuporte /> : null}
+    </div>
+  );
+}
+
+function AlterarSenha() {
   const vazio = { senhaAtual: '', novaSenha: '', confirmacao: '' };
   const [f, setF] = useState(vazio);
   const [salvando, setSalvando] = useState(false);
@@ -216,6 +226,31 @@ function SegurancaAba() {
           </>
         )} />
     </div>
+  );
+}
+
+/** Acessos do suporte Check-in a esta academia ("acessar como academia" do super admin). */
+function AcessosSuporte() {
+  const { dados, erro, carregar } = useCarregar(minhaContaService.acessosSuporte);
+  const fhora = (v) => (v ? `${fdate(v)} ${String(v).slice(11, 16)}` : '');
+  return (
+    <Panel title="Acessos do suporte Check-in" description="Quando o suporte entra no painel da sua academia, fica registrado aqui com o motivo.">
+      <Estado erro={erro} onRetry={carregar} carregando={!dados}>
+        {dados?.length ? (
+          <ul className="ck-cj-rows">
+            {dados.map((a) => (
+              <li key={a.id}>
+                <span className="ck-cj-rows__main">
+                  <strong>{a.motivo}</strong>
+                  <small>{`${a.usuario_nome} · ${fhora(a.iniciado_em)}${a.encerrado_em ? ` até ${String(a.encerrado_em).slice(11, 16)}` : ''} · ${plural(a.alteracoes, 'alteração', 'alterações')}`}</small>
+                </span>
+                {a.em_andamento ? <Badge tone="warning">Em andamento</Badge> : <Badge>Encerrado</Badge>}
+              </li>
+            ))}
+          </ul>
+        ) : <p className="ck-mc-hint">Nenhum acesso do suporte até agora.</p>}
+      </Estado>
+    </Panel>
   );
 }
 
@@ -376,14 +411,16 @@ const ABAS = [
 export default function MinhaContaScreen() {
   const params = useLocalSearchParams();
   const [admin, setAdmin] = useState(null);
+  const [suporte, setSuporte] = useState(false);
   const [aba, setAba] = useState(ABAS.some((a) => a.value === params.aba) ? params.aba : 'perfil');
 
   useEffect(() => {
-    authService.getCurrentUser().then((u) => setAdmin(authService.getEffectivePapelId(u) === 3)).catch(() => setAdmin(false));
+    authService.getCurrentUser().then((u) => { setSuporte(!!u?.acesso_suporte); setAdmin(authService.getEffectivePapelId(u) === 3); }).catch(() => setAdmin(false));
   }, []);
 
-  const abas = ABAS.filter((a) => !a.admin || admin);
-  const atual = abas.some((a) => a.value === aba) ? aba : 'perfil';
+  // No acesso de suporte o "meu perfil" seria o do super admin: fica de fora
+  const abas = ABAS.filter((a) => (!a.admin || admin) && !(suporte && a.value === 'perfil'));
+  const atual = abas.some((a) => a.value === aba) ? aba : abas[0]?.value;
 
   return (
     <LayoutBase title="Minha conta" pageHeader={false}>
@@ -394,7 +431,7 @@ export default function MinhaContaScreen() {
             <Tabs label="Seções de Minha conta" value={atual} onChange={setAba} tabs={abas} className="ck-mc-tabs" />
             <div role="tabpanel" aria-label={abas.find((a) => a.value === atual)?.label}>
               {atual === 'perfil' ? <PerfilAba /> : null}
-              {atual === 'seguranca' ? <SegurancaAba /> : null}
+              {atual === 'seguranca' ? <SegurancaAba admin={admin} suporte={suporte} /> : null}
               {atual === 'escola' ? <EscolaAba /> : null}
               {atual === 'cnpj' ? <CnpjAba /> : null}
               {atual === 'plano' ? <MeuPlanoPainel /> : null}

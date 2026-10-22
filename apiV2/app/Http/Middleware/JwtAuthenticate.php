@@ -92,7 +92,7 @@ class JwtAuthenticate
 
         $response = $next($request);
 
-        if ($acessoSuporte && ! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
+        if ($acessoSuporte && ! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && ! $request->is('v2/suporte/acesso/encerrar')) {
             app(AcessoSuporteService::class)->registrarAcao((int) $acessoSuporte['id'], $request->method(), '/'.$request->path(), $response->getStatusCode());
         }
 

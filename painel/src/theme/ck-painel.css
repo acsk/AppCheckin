@@ -49,3 +49,9 @@
 .ck-tenant-chip svg { flex: none; color: var(--ink-muted); }
 .ck-tenant-chip__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 767px) { .ck-tenant-chip { max-width: 140px; padding: 0 10px; } }
+
+/* Faixa do "acessar como academia" (LayoutBase) */
+.ck-suporte-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--warning-soft); color: var(--ink); font-size: 13px; line-height: 18px; }
+.ck-suporte-bar > svg { flex: none; color: var(--warning); }
+.ck-suporte-bar__text { flex: 1 1 260px; min-width: 0; }

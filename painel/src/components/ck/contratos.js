@@ -294,7 +294,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     return h('form', { className: 'ck-al-form ck-ct-form', onSubmit: submit, noValidate: true, ref: rootRef },
       h('div', null,
         h(BackLink, { onClick: p.onBack }, 'Academias'),
-        h(PageHeader, { title: edit ? 'Editar academia' : 'Nova academia', description: edit ? 'Os dados aparecem para os alunos no app e nas cobranças.' : 'Só o nome, o e-mail e um administrador são obrigatórios. O resto pode ser completado depois.' })),
+        h(PageHeader, { actions: p.headerActions, title: edit ? 'Editar academia' : 'Nova academia', description: edit ? 'Os dados aparecem para os alunos no app e nas cobranças.' : 'Só o nome, o e-mail e um administrador são obrigatórios. O resto pode ser completado depois.' })),
       h('div', { className: 'ck-al-form__grid' },
         h('div', { className: 'ck-card ck-al-form__main' },
           h(Section, { id: 'ac-s1', icon: 'building', title: 'Dados da academia', done: dataOk },
