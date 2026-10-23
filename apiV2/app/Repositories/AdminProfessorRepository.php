@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,16 +16,22 @@ class AdminProfessorRepository
 {
     private const PAPEL_PROFESSOR = 2;
 
+    /** Campo pessoal para SQL cru: usuarios primeiro, cópia antiga em professores se vazio. */
+    private function pessoal(string $campo, bool $comAlias = true): string
+    {
+        return Pessoa::col($campo, 'u', 'p')->getValue(DB::getQueryGrammar()).($comAlias ? " as {$campo}" : '');
+    }
+
     public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
     {
         $sql = 'SELECT DISTINCT
                     p.id,
                     UPPER(p.nome) as nome,
-                    p.cpf,
+                    '.$this->pessoal('cpf').',
                     p.email,
                     p.foto_url,
                     p.ativo,
-                    p.whatsapp,
+                    '.$this->pessoal('whatsapp').',
                     p.cref,
                     p.cref_validade,
                     u.id as usuario_id,
@@ -126,8 +133,8 @@ class AdminProfessorRepository
     public function findById(int $id, ?int $tenantId = null): ?array
     {
         if ($tenantId !== null) {
-            $sql = 'SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
-                           p.data_nascimento, p.whatsapp, p.cref, p.cref_validade,
+            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+                           '.$this->pessoal('data_nascimento').', '.$this->pessoal('whatsapp').', p.cref, p.cref_validade,
                            p.emergencia_nome, p.emergencia_telefone, p.emergencia_parentesco,
                            u.telefone, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                            tup.ativo as vinculo_ativo,
@@ -142,7 +149,7 @@ class AdminProfessorRepository
                     WHERE p.id = ?';
             $bindings = [$tenantId, $id];
         } else {
-            $sql = 'SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                            u.telefone
                     FROM professores p
                     LEFT JOIN usuarios u ON u.id = p.usuario_id
@@ -175,7 +182,7 @@ class AdminProfessorRepository
     public function findByCpf(string $cpf, int $tenantId): ?array
     {
         $row = DB::selectOne(
-            'SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone,
                     tup.ativo as vinculo_ativo,
                     (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1) as turmas_count
@@ -184,7 +191,7 @@ class AdminProfessorRepository
                 AND tup.tenant_id = ?
                 AND tup.papel_id = '.self::PAPEL_PROFESSOR.'
              LEFT JOIN usuarios u ON u.id = p.usuario_id
-             WHERE p.cpf = ?',
+             WHERE '.$this->pessoal('cpf', false).' = ?',
             [$tenantId, $cpf]
         );
 
@@ -215,11 +222,11 @@ class AdminProfessorRepository
     public function findByCpfGlobal(string $cpf): ?array
     {
         $row = DB::selectOne(
-            'SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone
              FROM professores p
              LEFT JOIN usuarios u ON u.id = p.usuario_id
-             WHERE p.cpf = ?',
+             WHERE '.$this->pessoal('cpf', false).' = ?',
             [$cpf]
         );
 
@@ -298,14 +305,12 @@ class AdminProfessorRepository
         ]);
     }
 
-    /** Campos que o formulário pode limpar (null apaga). */
-    private const PROFESSOR_OPCIONAIS = ['data_nascimento', 'whatsapp', 'cref', 'cref_validade', 'emergencia_nome', 'emergencia_telefone', 'emergencia_parentesco'];
-
-    private const ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'];
+    /** Campos profissionais que o formulário pode limpar (null apaga). Os pessoais vão para usuarios. */
+    private const PROFESSOR_OPCIONAIS = ['cref', 'cref_validade', 'emergencia_nome', 'emergencia_telefone', 'emergencia_parentesco'];
 
     /**
-     * Atualiza professores (nome, cpf, email, foto_url, ativo + dados profissionais) e os campos
-     * espelhados em usuarios (email, telefone, cpf, nome + endereço), como na Slim.
+     * Atualiza professores (nome, email, foto_url, ativo + dados profissionais) e os dados pessoais
+     * em usuarios (CPF, telefone, WhatsApp, nascimento, endereço), que é a fonte.
      */
     public function atualizar(int $id, array $data): bool
     {
@@ -314,18 +319,20 @@ class AdminProfessorRepository
             return false;
         }
 
-        $professorPayload = $this->apenasCampos($data, ['nome', 'cpf', 'email', 'foto_url', 'ativo'])
+        $professorPayload = $this->apenasCampos($data, ['nome', 'email', 'foto_url', 'ativo'])
             + array_intersect_key($data, array_flip(self::PROFESSOR_OPCIONAIS));
         if ($professorPayload !== []) {
             $professorPayload['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
             DB::table('professores')->where('id', $id)->update($professorPayload);
         }
 
-        $usuarioPayload = $this->apenasCampos($data, ['email', 'cpf', 'nome'])
-            + array_intersect_key($data, array_flip(['telefone', ...self::ENDERECO]));
-        if ($usuarioPayload !== []) {
-            $usuarioPayload['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
-            DB::table('usuarios')->where('id', $professor['usuario_id'])->update($usuarioPayload);
+        // Dados pessoais ficam em usuarios (Pessoa), inclusive o que o professor tinha só aqui
+        if ($professor['usuario_id']) {
+            if (isset($data['email'])) {
+                DB::table('usuarios')->where('id', $professor['usuario_id'])->update(['email' => $data['email'], 'updated_at' => now()]);
+            }
+            app(UsuarioRepository::class)->gravarDadosPessoais((int) $professor['usuario_id'], $this->apenasCampos($data, ['cpf', 'nome'])
+                + array_intersect_key($data, array_flip(['telefone', 'whatsapp', 'data_nascimento', ...Pessoa::ENDERECO])));
         }
 
         return true;

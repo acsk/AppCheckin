@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
 
 class AlunoRepository
@@ -21,8 +22,9 @@ class AlunoRepository
                     ->where('tup.tenant_id', $tenantId)
                     ->where('tup.papel_id', 1);
             })
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.usuario_id', $usuarioId)
-            ->select(['a.id', 'a.foto_caminho'])
+            ->select(['a.id', Pessoa::select('foto_caminho')])
             ->first();
 
         return $row ? (array) $row : null;
@@ -36,19 +38,9 @@ class AlunoRepository
                     ->where('tup.tenant_id', $tenantId)
                     ->where('tup.papel_id', 1);
             })
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.usuario_id', $usuarioId)
-            ->select([
-                'a.id',
-                'a.foto_caminho',
-                'a.data_nascimento',
-                'a.cep',
-                'a.logradouro',
-                'a.numero',
-                'a.complemento',
-                'a.bairro',
-                'a.cidade',
-                'a.estado',
-            ])
+            ->select(['a.id', ...Pessoa::selects(['foto_caminho', 'data_nascimento', ...Pessoa::ENDERECO])])
             ->first();
 
         return $row ? (array) $row : null;
@@ -71,19 +63,21 @@ class AlunoRepository
                     ->where('tup.tenant_id', $tenantId)
                     ->where('tup.papel_id', 1);
             })
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.usuario_id', $usuarioId)
-            ->select(['a.id', 'a.foto_caminho'])
+            ->select(['a.id', Pessoa::select('foto_caminho')])
             ->first();
 
         return $row ? (array) $row : null;
     }
 
+    /** A foto é da pessoa (usuarios), não do papel de aluno: vale também como professor/admin. */
     public function updateFotoCaminho(int $alunoId, string $caminho): void
     {
-        DB::table('alunos')->where('id', $alunoId)->update([
-            'foto_caminho' => $caminho,
-            'updated_at' => DB::raw('NOW()'),
-        ]);
+        $usuarioId = (int) DB::table('alunos')->where('id', $alunoId)->value('usuario_id');
+        if ($usuarioId) {
+            app(UsuarioRepository::class)->gravarDadosPessoais($usuarioId, ['foto_caminho' => $caminho]);
+        }
     }
 
     public function findAlunoNoTenantPorId(int $alunoId, int $tenantId): ?array
@@ -162,7 +156,8 @@ class AlunoRepository
 
         $sql = 'SELECT a.id as aluno_id, u.id as usuario_id,
                 COALESCE(NULLIF(a.nome, \'\'), u.nome) as nome,
-                u.email, u.cpf, a.foto_caminho, a.data_nascimento
+                u.email, u.cpf, '.Pessoa::col('foto_caminho')->getValue(DB::getQueryGrammar()).' as foto_caminho,
+                '.Pessoa::col('data_nascimento')->getValue(DB::getQueryGrammar()).' as data_nascimento
                 FROM usuarios u
                 INNER JOIN tenant_usuario_papel tup
                     ON tup.usuario_id = u.id

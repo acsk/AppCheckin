@@ -64,6 +64,7 @@ class ProfessorCadastroTest extends TestCase
             $t->boolean('ativo')->default(true);
         });
         (require database_path('migrations/2026_10_22_220000_dados_profissionais_do_professor.php'))->up();
+        (require database_path('migrations/2026_10_23_100000_dados_pessoais_em_usuarios.php'))->up();
 
         $this->escola = $this->tenant('Escola A');
         $this->dono = $this->usuario($this->escola, Papel::ADMIN, 'Dono');

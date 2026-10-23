@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -267,7 +268,7 @@ class DashboardRepository
 
         // Mesmo critério de data dos cards: dia da aula quando há turma, senão o dia do check-in
         $dia = 'DATE(COALESCE(d.data, c.data_checkin_date, c.data_checkin))';
-        $base = "FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id WHERE c.tenant_id = ?";
+        $base = 'FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id WHERE c.tenant_id = ?';
 
         $porDia = [];
         foreach (DB::select("SELECT {$dia} AS dia, COUNT(*) AS total {$base} AND {$dia} BETWEEN ? AND ? GROUP BY dia", [$tenantId, $inicio30, $hoje]) as $r) {
@@ -297,11 +298,11 @@ class DashboardRepository
 
         // Alunos com matrícula vigente no fim de cada mês (o último ponto é hoje)
         $ativosEm = function (string $ref) use ($tenantId): int {
-            return (int) (DB::selectOne("
+            return (int) (DB::selectOne('
                 SELECT COUNT(DISTINCT aluno_id) AS total FROM matriculas
                 WHERE tenant_id = ? AND status_id <> 5 AND data_inicio <= ? AND data_vencimento >= ?
                 AND (data_cancelamento IS NULL OR DATE(data_cancelamento) > ?)
-            ", [$tenantId, $ref, $ref, $ref])->total ?? 0);
+            ', [$tenantId, $ref, $ref, $ref])->total ?? 0);
         };
         $ativosHistorico = [];
         for ($i = 5; $i >= 1; $i--) {
@@ -317,11 +318,11 @@ class DashboardRepository
             GROUP BY plano ORDER BY alunos DESC, plano
         ", [$tenantId]));
 
-        $saidas = (int) (DB::selectOne("
+        $saidas = (int) (DB::selectOne('
             SELECT COUNT(DISTINCT aluno_id) AS total FROM matriculas
             WHERE tenant_id = ? AND status_id IN (3, 4)
             AND DATE(COALESCE(data_cancelamento, updated_at)) BETWEEN ? AND ?
-        ", [$tenantId, $mesInicio, $hoje])->total ?? 0);
+        ', [$tenantId, $mesInicio, $hoje])->total ?? 0);
 
         // Acesso vigente que termina em até 15 dias, sem outra matrícula do aluno criada depois (renovação)
         $terminando = array_map(fn ($r) => [
@@ -331,10 +332,13 @@ class DashboardRepository
             'plano_nome' => $r->plano_nome,
             'data_vencimento' => (string) $r->data_vencimento,
             'telefone' => $r->whatsapp ?: $r->telefone,
-        ], DB::select("
-            SELECT m.id, m.aluno_id, m.data_vencimento, a.nome AS aluno_nome, a.telefone, a.whatsapp, p.nome AS plano_nome
+        ], DB::select('
+            SELECT m.id, m.aluno_id, m.data_vencimento, a.nome AS aluno_nome,
+                '.Pessoa::col('telefone', 'pu')->getValue(DB::getQueryGrammar()).' AS telefone,
+                '.Pessoa::col('whatsapp', 'pu')->getValue(DB::getQueryGrammar()).' AS whatsapp, p.nome AS plano_nome
             FROM matriculas m
             INNER JOIN alunos a ON a.id = m.aluno_id
+            LEFT JOIN usuarios pu ON pu.id = a.usuario_id
             LEFT JOIN planos p ON p.id = m.plano_id
             WHERE m.tenant_id = ? AND m.status_id = 1 AND m.data_vencimento BETWEEN ? AND ?
             AND NOT EXISTS (
@@ -342,7 +346,7 @@ class DashboardRepository
                 AND n.id > m.id AND n.status_id IN (1, 5)
             )
             ORDER BY m.data_vencimento, a.nome LIMIT 8
-        ", [$tenantId, $hoje, date('Y-m-d', strtotime($hoje.' +15 days'))]));
+        ', [$tenantId, $hoje, date('Y-m-d', strtotime($hoje.' +15 days'))]));
 
         return [
             'hoje' => $hoje,

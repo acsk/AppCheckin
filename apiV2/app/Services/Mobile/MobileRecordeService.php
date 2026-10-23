@@ -3,6 +3,7 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\RecordePessoalRepository;
+use App\Support\Pessoa;
 use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
@@ -436,11 +437,8 @@ class MobileRecordeService
      */
     private function aluno(int $userId): ?array
     {
-        $cols = ['id', 'nome'];
-        if (SexoAluno::colunaExiste()) {
-            $cols[] = 'sexo';
-        }
-        $row = DB::table('alunos')->where('usuario_id', $userId)->orderBy('id')->first($cols);
+        $row = DB::table('alunos as a')->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->where('a.usuario_id', $userId)->orderBy('a.id')->first(['a.id', 'a.nome', Pessoa::select('sexo')]);
 
         return $row ? ['id' => (int) $row->id, 'nome' => (string) $row->nome, 'sexo' => SexoAluno::normalizar($row->sexo ?? null)] : null;
     }
@@ -496,14 +494,14 @@ class MobileRecordeService
                 $j->on('rdm.id', '=', 'rv.metrica_id')->on('rdm.definicao_id', '=', 'r.definicao_id');
             })
             ->leftJoin('alunos as a', 'a.id', '=', 'r.aluno_id')
+            ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('r.tenant_id', $tenantId)
             ->where('r.valido', 1)
             ->whereIn('r.definicao_id', array_keys($principal))
             ->orderBy('r.data_recorde')
             ->orderBy('r.id')
             ->get(array_merge(
-                ['r.id', 'r.definicao_id', 'r.aluno_id', 'r.data_recorde', 'r.origem', 'rv.metrica_id', 'rv.valor_int', 'rv.valor_decimal', 'rv.valor_tempo_ms', 'a.nome as aluno_nome', 'a.foto_caminho'],
-                SexoAluno::colunaExiste() ? ['a.sexo'] : [],
+                ['r.id', 'r.definicao_id', 'r.aluno_id', 'r.data_recorde', 'r.origem', 'rv.metrica_id', 'rv.valor_int', 'rv.valor_decimal', 'rv.valor_tempo_ms', 'a.nome as aluno_nome', Pessoa::select('foto_caminho'), Pessoa::select('sexo')],
             ));
 
         $out = [];

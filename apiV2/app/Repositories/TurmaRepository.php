@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
 
 class TurmaRepository
@@ -144,14 +145,14 @@ class TurmaRepository
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->join('checkins as c', 'a.id', '=', 'c.aluno_id')
             ->where('c.turma_id', $turmaId)
-            ->groupBy('a.id', 'a.nome', 'a.data_nascimento', 'u.email', 'a.foto_caminho')
+            ->groupBy('a.id', 'a.nome', 'u.email', 'u.nome', Pessoa::col('data_nascimento'), Pessoa::col('foto_caminho'))
             ->orderBy('u.nome')
             ->get([
                 'a.id',
                 'a.nome',
-                'a.data_nascimento',
+                Pessoa::select('data_nascimento'),
                 'u.email',
-                'a.foto_caminho',
+                Pessoa::select('foto_caminho'),
                 DB::raw('COUNT(c.id) as checkins_do_aluno'),
             ])
             ->map(static fn ($row) => (array) $row)
@@ -165,6 +166,7 @@ class TurmaRepository
     {
         return DB::table('checkins as c')
             ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
             ->where('c.turma_id', $turmaId)
             ->orderByDesc('c.created_at')
             ->limit($limit)
@@ -172,7 +174,7 @@ class TurmaRepository
                 'c.id as checkin_id',
                 'c.aluno_id',
                 'a.nome as usuario_nome',
-                'a.data_nascimento',
+                Pessoa::select('data_nascimento'),
                 'c.created_at as data_checkin',
                 DB::raw("TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin"),
                 DB::raw("DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada"),
@@ -198,7 +200,7 @@ class TurmaRepository
                 'c.id as checkin_id',
                 'c.aluno_id',
                 'a.nome as usuario_nome',
-                'a.data_nascimento',
+                Pessoa::select('data_nascimento'),
                 'u.email',
                 'c.created_at as data_checkin',
                 DB::raw("TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin"),

@@ -3,6 +3,8 @@
 namespace App\Repositories;
 
 use App\Support\AcademyDateTime;
+use App\Support\Pessoa;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -197,7 +199,7 @@ class CheckinRepository
                 'p.nome as plano_nome',
                 'p.modalidade_id',
                 'p.duracao_dias',
-                DB::raw("CASE
+                DB::raw('CASE
                     WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
                     ELSE COALESCE((
                         SELECT MAX(pc2.permite_reposicao)
@@ -206,7 +208,7 @@ class CheckinRepository
                           AND pc2.tenant_id = m.tenant_id
                           AND pc2.ativo = 1
                     ), 0)
-                END as permite_reposicao"),
+                END as permite_reposicao'),
             ])
             ->orderByDesc('m.proxima_data_vencimento')
             ->limit(1);
@@ -366,7 +368,7 @@ class CheckinRepository
         return ['checkins' => $checkins, 'total' => $total];
     }
 
-    private function historicoCheckinsBaseQuery(int $userId): \Illuminate\Database\Query\Builder
+    private function historicoCheckinsBaseQuery(int $userId): Builder
     {
         return DB::table('checkins as c')
             ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
@@ -456,14 +458,14 @@ class CheckinRepository
         }
 
         return $query
-            ->groupBy('a.id', 'a.nome', 'u.email', 'a.foto_caminho')
+            ->groupBy('a.id', 'a.nome', 'u.email', Pessoa::col('foto_caminho'))
             ->orderByDesc(DB::raw('COUNT(c.id)'))
             ->limit($limite)
             ->get([
                 'a.id as aluno_id',
                 'a.nome',
                 'u.email',
-                'a.foto_caminho',
+                Pessoa::select('foto_caminho'),
                 DB::raw('COUNT(c.id) as total_checkins'),
             ])
             ->map(fn ($row) => (array) $row)
@@ -512,14 +514,14 @@ class CheckinRepository
         }
 
         return $query
-            ->groupBy('a.id', 'a.nome', 'u.email', 'a.foto_caminho')
+            ->groupBy('a.id', 'a.nome', 'u.email', Pessoa::col('foto_caminho'))
             ->orderByDesc(DB::raw('COUNT(c.id)'))
             ->limit($limite)
             ->get([
                 'a.id as aluno_id',
                 'a.nome',
                 'u.email',
-                'a.foto_caminho',
+                Pessoa::select('foto_caminho'),
                 DB::raw('COUNT(c.id) as total_checkins'),
             ])
             ->map(fn ($row) => (array) $row)

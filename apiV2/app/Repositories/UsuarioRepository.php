@@ -3,7 +3,7 @@
 namespace App\Repositories;
 
 use App\Support\Papel;
-use App\Support\SexoAluno;
+use App\Support\Pessoa;
 use App\Support\TenantWhatsappLinks;
 use Illuminate\Support\Facades\DB;
 
@@ -146,6 +146,10 @@ class UsuarioRepository
         $query
             ->leftJoin('papeis as p', 'p.id', '=', 'tup.papel_id')
             ->where('u.id', $userId);
+        $comCopia = Pessoa::existe('alunos', 'usuario_id');
+        if ($comCopia) {
+            $query->leftJoin('alunos as a', 'a.usuario_id', '=', 'u.id');
+        }
 
         $user = $query
             ->orderByRaw(Papel::ordemHierarquicaSql('tup.papel_id'))
@@ -158,16 +162,7 @@ class UsuarioRepository
                 'u.email_global',
                 'tup.papel_id',
                 'u.foto_base64',
-                'u.foto_caminho',
-                'u.telefone',
-                'u.cpf',
-                'u.cep',
-                'u.logradouro',
-                'u.numero',
-                'u.complemento',
-                'u.bairro',
-                'u.cidade',
-                'u.estado',
+                ...Pessoa::selects(null, 'u', $comCopia ? 'a' : null),
                 'u.created_at',
                 'u.updated_at',
                 'p.nome as role_nome',
@@ -273,12 +268,10 @@ class UsuarioRepository
                 ]);
 
                 if (in_array($papelId, [Papel::ALUNO, Papel::PROFESSOR], true)) {
+                    // Dados pessoais ficam em usuarios (Pessoa); alunos guarda só o vínculo
                     DB::table('alunos')->insert([
                         'usuario_id' => $usuarioId,
                         'nome' => $nome,
-                        'telefone' => $telefone,
-                        'cpf' => $cpf ?: null,
-                        'cep' => $cep ?: null,
                         'ativo' => $data['ativo'] ?? 1,
                     ]);
                 }
@@ -679,32 +672,18 @@ class UsuarioRepository
             $update['foto_base64'] = $data['foto_base64'];
         }
 
-        if (isset($data['telefone'])) {
-            $update['telefone'] = preg_replace('/[^0-9]/', '', (string) $data['telefone']);
-        }
+        // Dados pessoais: usuarios é a fonte (Pessoa); isset mantém o contrato antigo (null não apaga)
+        $pessoais = array_filter(array_intersect_key($data, array_flip([...Pessoa::CAMPOS, 'nome'])), fn ($v) => $v !== null);
+        unset($update['nome']);
 
-        foreach (['cpf', 'cep'] as $campo) {
-            if (isset($data[$campo])) {
-                $update[$campo] = preg_replace('/[^0-9]/', '', (string) $data[$campo]) ?: null;
-            }
-        }
-
-        if (isset($data['numero'])) {
-            $update['numero'] = $data['numero'];
-        }
-
-        foreach (['logradouro', 'complemento', 'bairro', 'cidade', 'estado'] as $campo) {
-            if (isset($data[$campo])) {
-                $update[$campo] = mb_strtoupper(trim((string) $data[$campo]), 'UTF-8');
-            }
-        }
-
-        if ($update === []) {
+        if ($update === [] && Pessoa::normalizar($pessoais) === []) {
             return false;
         }
 
-        DB::table('usuarios')->where('id', $id)->update($update);
-        $this->sincronizarAluno($id, $data);
+        if ($update !== []) {
+            DB::table('usuarios')->where('id', $id)->update($update);
+        }
+        $this->gravarDadosPessoais($id, $pessoais);
 
         return true;
     }
@@ -850,39 +829,38 @@ class UsuarioRepository
     }
 
     /**
+     * Grava os dados pessoais em usuarios (a fonte) e limpa as cópias antigas em alunos/professores,
+     * para o fallback de leitura (Pessoa::col) não trazer de volta um valor apagado.
+     * O nome também vai para alunos/professores (espelho até a fase 3).
+     * Só mexe nos campos presentes em $data; null apaga.
+     *
      * @param  array<string, mixed>  $data
+     *
+     * @throws \DomainException CPF já usado por outro cadastro
      */
-    private function sincronizarAluno(int $usuarioId, array $data): void
+    public function gravarDadosPessoais(int $usuarioId, array $data): void
     {
-        $camposPerfil = ['nome', 'telefone', 'whatsapp', 'cpf', 'cep', 'logradouro', 'numero',
-            'complemento', 'bairro', 'cidade', 'estado', 'foto_base64'];
-
-        $update = [];
-        foreach ($camposPerfil as $campo) {
-            if (! array_key_exists($campo, $data)) {
-                continue;
-            }
-
-            $valor = $data[$campo];
-            if ($campo === 'cpf' || $campo === 'cep') {
-                $valor = $valor ? preg_replace('/[^0-9]/', '', (string) $valor) : null;
-            } elseif (in_array($campo, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'], true)) {
-                $valor = $valor ? mb_strtoupper(trim((string) $valor), 'UTF-8') : null;
-            }
-
-            $update[$campo] = $valor;
-        }
-
-        if ($update === []) {
+        $campos = Pessoa::normalizar($data);
+        $campos = array_filter($campos, fn ($c) => $c === 'nome' || Pessoa::existe('usuarios', $c), ARRAY_FILTER_USE_KEY);
+        if ($campos === []) {
             return;
         }
 
-        $update['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
+        if (! empty($campos['cpf'])
+            && DB::table('usuarios')->where('cpf', $campos['cpf'])->where('id', '<>', $usuarioId)->exists()) {
+            throw new \DomainException('Este CPF já pertence a outro cadastro no Check-in.');
+        }
 
-        try {
-            DB::table('alunos')->where('usuario_id', $usuarioId)->update($update);
-        } catch (\Throwable) {
-            // A Slim loga e segue: falha de sincronia não aborta a atualização.
+        DB::table('usuarios')->where('id', $usuarioId)->update($campos + ['updated_at' => now()]);
+
+        foreach (['alunos', 'professores'] as $tabela) {
+            $copia = array_fill_keys(Pessoa::copiasEm($tabela, array_keys($campos)), null);
+            if (isset($campos['nome']) && Pessoa::existe($tabela, 'nome')) {
+                $copia['nome'] = $campos['nome'];
+            }
+            if ($copia !== []) {
+                DB::table($tabela)->where('usuario_id', $usuarioId)->update($copia + ['updated_at' => now()]);
+            }
         }
     }
 
@@ -900,7 +878,6 @@ class UsuarioRepository
                 $cpf = preg_replace('/[^0-9]/', '', (string) ($data['cpf'] ?? '')) ?: null;
                 $cep = isset($data['cep']) ? preg_replace('/[^0-9]/', '', (string) $data['cep']) : null;
                 $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
-                $whatsapp = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', (string) $data['whatsapp']) : null;
                 $senha = self::normalizarSenhaCpf((string) ($data['senha'] ?? ''), $cpf);
 
                 $usuarioId = (int) DB::table('usuarios')->insertGetId([
@@ -922,26 +899,11 @@ class UsuarioRepository
                     'ativo' => $data['ativo'] ?? 1,
                 ]);
 
-                $sexo = SexoAluno::colunaExiste()
-                    ? ['sexo' => SexoAluno::normalizar($data['sexo'] ?? null)]
-                    : [];
-
-                DB::table('alunos')->insert($sexo + [
+                // Dados pessoais ficam em usuarios (Pessoa); alunos guarda só o vínculo
+                $this->gravarDadosPessoais($usuarioId, array_intersect_key($data, array_flip(['whatsapp', 'data_nascimento', 'sexo'])));
+                DB::table('alunos')->insert([
                     'usuario_id' => $usuarioId,
                     'nome' => $nome,
-                    'telefone' => $telefone,
-                    'whatsapp' => $whatsapp,
-                    'cpf' => $cpf,
-                    'data_nascimento' => $data['data_nascimento'] ?? null,
-                    'cep' => $cep ?: null,
-                    'logradouro' => isset($data['logradouro']) ? mb_strtoupper(trim((string) $data['logradouro']), 'UTF-8') : null,
-                    'numero' => $data['numero'] ?? null,
-                    'complemento' => isset($data['complemento']) ? mb_strtoupper(trim((string) $data['complemento']), 'UTF-8') : null,
-                    'bairro' => isset($data['bairro']) ? mb_strtoupper(trim((string) $data['bairro']), 'UTF-8') : null,
-                    'cidade' => isset($data['cidade']) ? mb_strtoupper(trim((string) $data['cidade']), 'UTF-8') : null,
-                    'estado' => isset($data['estado'])
-                        ? mb_substr(mb_strtoupper(trim((string) $data['estado']), 'UTF-8'), 0, 2)
-                        : null,
                     'ativo' => $data['ativo'] ?? 1,
                 ]);
 

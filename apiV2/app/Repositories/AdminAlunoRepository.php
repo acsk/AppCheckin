@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
@@ -20,10 +21,8 @@ class AdminAlunoRepository
             })
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->select([
-                'a.id', 'a.nome', 'a.telefone', 'a.cpf', 'a.foto_caminho', 'a.ativo', 'a.usuario_id',
-                'u.email',
-                'a.cep', 'a.logradouro', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.estado',
-                ...(SexoAluno::colunaExiste() ? ['a.sexo'] : []),
+                'a.id', 'a.nome', 'a.ativo', 'a.usuario_id', 'u.email',
+                ...Pessoa::selects(['telefone', 'cpf', 'foto_caminho', ...Pessoa::ENDERECO, 'sexo']),
             ])
             ->orderBy('a.nome');
 
@@ -63,8 +62,8 @@ class AdminAlunoRepository
             ->where('a.ativo', 1)
             ->where('tup.ativo', 1)
             ->select([
-                'a.id', 'a.nome', 'a.telefone', 'a.cpf', 'a.foto_caminho', 'a.ativo', 'a.usuario_id',
-                'u.email',
+                'a.id', 'a.nome', 'a.ativo', 'a.usuario_id', 'u.email',
+                ...Pessoa::selects(['telefone', 'cpf', 'foto_caminho']),
             ])
             ->orderBy('a.nome');
 
@@ -73,7 +72,7 @@ class AdminAlunoRepository
             $query->where(function ($q) use ($like) {
                 $q->where('a.nome', 'like', $like)
                     ->orWhere('u.email', 'like', $like)
-                    ->orWhere('a.cpf', 'like', $like);
+                    ->orWhere(Pessoa::col('cpf'), 'like', $like);
             });
         }
 
@@ -106,7 +105,7 @@ class AdminAlunoRepository
         $query = DB::table('alunos as a')
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.id', $id)
-            ->select('a.*', 'u.email');
+            ->select('a.*', 'u.email', ...Pessoa::selects());
 
         if ($tenantId !== null) {
             $query->join('tenant_usuario_papel as tup', function ($join) use ($tenantId) {
@@ -126,7 +125,7 @@ class AdminAlunoRepository
         $row = DB::table('alunos as a')
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.usuario_id', $usuarioId)
-            ->select('a.*', 'u.email')
+            ->select('a.*', 'u.email', ...Pessoa::selects())
             ->first();
 
         return $row ? (array) $row : null;
@@ -143,7 +142,7 @@ class AdminAlunoRepository
             })
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.usuario_id', $usuarioId)
-            ->select('a.*', 'u.email')
+            ->select('a.*', 'u.email', ...Pessoa::selects())
             ->first();
 
         return $row ? (array) $row : null;
@@ -154,8 +153,8 @@ class AdminAlunoRepository
         $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
         $row = DB::table('alunos as a')
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
-            ->where('a.cpf', $cpfLimpo)
-            ->select('a.*', 'u.email')
+            ->where(Pessoa::col('cpf'), $cpfLimpo)
+            ->select('a.*', 'u.email', ...Pessoa::selects())
             ->first();
 
         return $row ? (array) $row : null;
@@ -168,14 +167,24 @@ class AdminAlunoRepository
         return $row ? (array) $row : null;
     }
 
+    /** Dados pessoais vão para usuarios (Pessoa); alunos guarda o vínculo, o nome (espelho) e o ativo. */
     public function create(array $data): int
     {
-        return (int) DB::table('alunos')->insertGetId($this->normalizeAlunoPayload($data, true));
+        $id = (int) DB::table('alunos')->insertGetId(array_diff_key($this->normalizeAlunoPayload($data, true), array_flip(Pessoa::CAMPOS)));
+        if (! empty($data['usuario_id'])) {
+            app(UsuarioRepository::class)->gravarDadosPessoais((int) $data['usuario_id'], array_intersect_key($data, array_flip(Pessoa::CAMPOS)));
+        }
+
+        return $id;
     }
 
     public function update(int $id, array $data): void
     {
-        $payload = $this->normalizeAlunoPayload($data, false);
+        $payload = array_diff_key($this->normalizeAlunoPayload($data, false), array_flip([...Pessoa::CAMPOS, 'nome']));
+        $pessoais = array_intersect_key($data, array_flip([...Pessoa::CAMPOS, 'nome']));
+        if ($pessoais !== [] && ($usuarioId = (int) DB::table('alunos')->where('id', $id)->value('usuario_id'))) {
+            app(UsuarioRepository::class)->gravarDadosPessoais($usuarioId, $pessoais);
+        }
         if ($payload === []) {
             return;
         }

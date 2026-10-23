@@ -3,8 +3,10 @@
 namespace App\Repositories;
 
 use App\Support\Papel;
+use App\Support\Pessoa;
 use App\Support\ProspeccaoStatus;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -127,6 +129,7 @@ class ProspeccaoRepository
 
         $q = DB::table('alunos as a')
             ->joinSub($ultima, 'u', 'u.aluno_id', '=', 'a.id')
+            ->leftJoin('usuarios as pu', 'pu.id', '=', 'a.usuario_id')
             ->join('matriculas as m', 'm.id', '=', 'u.matricula_id')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
@@ -134,14 +137,14 @@ class ProspeccaoRepository
                 $j->on('o.aluno_id', '=', 'a.id')->where('o.tenant_id', $tenantId)->whereNull('o.encerrada_em');
             });
         if ($buscaDigitos) {
-            $q->where(fn ($w) => $w->where('a.telefone', 'like', '%'.$buscaDigitos.'%')->orWhere('a.whatsapp', 'like', '%'.$buscaDigitos.'%'));
+            $q->where(fn ($w) => $w->where(Pessoa::col('telefone', 'pu'), 'like', '%'.$buscaDigitos.'%')->orWhere(Pessoa::col('whatsapp', 'pu'), 'like', '%'.$buscaDigitos.'%'));
         } elseif ($buscaNome) {
             $q->where('a.nome', 'like', '%'.$buscaNome.'%');
         }
 
         return $q->orderByRaw($dataEfetiva.' DESC')->limit($limite)
             ->select([
-                'a.id as aluno_id', 'a.nome', 'a.telefone', 'a.whatsapp', 'a.foto_caminho',
+                'a.id as aluno_id', 'a.nome', Pessoa::select('telefone', 'pu'), Pessoa::select('whatsapp', 'pu'), Pessoa::select('foto_caminho', 'pu'),
                 'm.id as matricula_id', DB::raw($dataEfetiva.' as data_cancelamento'), 'p.nome as plano_nome', 'md.nome as modalidade_nome',
                 'o.id as oportunidade_aberta_id',
                 DB::raw("CASE WHEN EXISTS (SELECT 1 FROM matriculas m2 JOIN status_matricula s2 ON s2.id = m2.status_id WHERE m2.tenant_id = m.tenant_id AND m2.aluno_id = a.id AND s2.codigo IN ('".implode("','", self::STATUS_MATRICULA_EM_ANDAMENTO)."')) THEN 1 ELSE 0 END as em_andamento"),
@@ -242,6 +245,7 @@ class ProspeccaoRepository
     {
         return DB::table('prospeccao_oportunidades as o')
             ->join('alunos as a', 'a.id', '=', 'o.aluno_id')
+            ->leftJoin('usuarios as pu', 'pu.id', '=', 'a.usuario_id')
             ->join('matriculas as mr', 'mr.id', '=', 'o.matricula_referencia_id')
             ->join('planos as p', 'p.id', '=', 'mr.plano_id')
             ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
@@ -252,13 +256,13 @@ class ProspeccaoRepository
             ->where('o.tenant_id', $tenantId);
     }
 
-    /** @return list<string> */
+    /** @return list<string|Expression> */
     private function colunasLista(): array
     {
         return [
             'o.id', 'o.aluno_id', 'o.status', 'o.score', 'o.score_confianca', 'o.data_cancelamento_referencia', 'o.data_cancelamento_estimada',
             'o.ultimo_contato_em', 'o.proximo_contato_em', 'o.motivo_categoria', 'o.responsavel_id', 'o.convertida_em', 'o.matricula_referencia_id',
-            'a.nome as aluno_nome', 'a.telefone', 'a.whatsapp', 'a.foto_caminho', 'a.usuario_id',
+            'a.nome as aluno_nome', Pessoa::select('telefone', 'pu'), Pessoa::select('whatsapp', 'pu'), Pessoa::select('foto_caminho', 'pu'), 'a.usuario_id',
             'mr.data_inicio as matricula_data_inicio', 'mr.data_matricula', 'mr.motivo_cancelamento',
             'p.id as plano_id', 'p.nome as plano_nome', 'md.id as modalidade_id', 'md.nome as modalidade_nome', 'md.cor as modalidade_cor',
             'ur.nome as responsavel_nome',
@@ -281,7 +285,7 @@ class ProspeccaoRepository
         }
         if (! empty($f['busca_digitos'])) {
             $like = '%'.$f['busca_digitos'].'%';
-            $q->where(fn ($w) => $w->where('a.telefone', 'like', $like)->orWhere('a.whatsapp', 'like', $like));
+            $q->where(fn ($w) => $w->where(Pessoa::col('telefone', 'pu'), 'like', $like)->orWhere(Pessoa::col('whatsapp', 'pu'), 'like', $like));
         } elseif (! empty($f['busca_nome'])) {
             $q->where('a.nome', 'like', '%'.$f['busca_nome'].'%');
         }
@@ -339,7 +343,7 @@ class ProspeccaoRepository
             ->select(array_merge($this->colunasLista(), [
                 'o.interesse', 'o.condicoes_apresentadas', 'o.observacoes', 'o.score_detalhes', 'o.score_calculado_em', 'o.matricula_conversao_id',
                 'o.encerrada_em', 'o.created_at', 'o.ultimo_contato_por', 'uc.nome as ultimo_contato_por_nome',
-                'a.data_nascimento', 'a.ativo as aluno_ativo', 'uu.email', 'rc.motivo as restricao_motivo', 'rc.solicitado_em as restricao_desde',
+                Pessoa::select('data_nascimento', 'pu'), 'a.ativo as aluno_ativo', 'uu.email', 'rc.motivo as restricao_motivo', 'rc.solicitado_em as restricao_desde',
             ]))
             ->first();
 
@@ -677,6 +681,7 @@ class ProspeccaoRepository
         $q = DB::table('prospeccao_agendamentos as g')
             ->join('prospeccao_oportunidades as o', 'o.id', '=', 'g.oportunidade_id')
             ->join('alunos as a', 'a.id', '=', 'o.aluno_id')
+            ->leftJoin('usuarios as pu', 'pu.id', '=', 'a.usuario_id')
             ->join('matriculas as mr', 'mr.id', '=', 'o.matricula_referencia_id')
             ->join('planos as p', 'p.id', '=', 'mr.plano_id')
             ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
@@ -705,7 +710,7 @@ class ProspeccaoRepository
             ->select([
                 'g.id', 'g.oportunidade_id', 'g.agendado_para', 'g.tipo_contato', 'g.observacao', 'g.situacao', 'g.responsavel_id', 'g.finalizado_em',
                 'ur.nome as responsavel_nome', 'o.status as oportunidade_status', 'o.aluno_id', 'o.score',
-                'a.nome as aluno_nome', 'a.telefone', 'a.whatsapp', 'a.foto_caminho', 'p.nome as plano_nome', 'md.nome as modalidade_nome',
+                'a.nome as aluno_nome', Pessoa::select('telefone', 'pu'), Pessoa::select('whatsapp', 'pu'), Pessoa::select('foto_caminho', 'pu'), 'p.nome as plano_nome', 'md.nome as modalidade_nome',
                 DB::raw('CASE WHEN rc.id IS NULL THEN 0 ELSE 1 END as nao_contatar'),
             ])
             ->get()->map(fn ($r) => (array) $r)->all();
