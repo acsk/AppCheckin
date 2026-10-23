@@ -146,6 +146,14 @@ class AdminPlanoRepository
         return true;
     }
 
+    public function updateValor(int $id, int $tenantId, float $valor): void
+    {
+        DB::table('planos')
+            ->where('id', $id)
+            ->where('tenant_id', $tenantId)
+            ->update(['valor' => $valor]);
+    }
+
     public function softDelete(int $id, int $tenantId): bool
     {
         return DB::table('planos')

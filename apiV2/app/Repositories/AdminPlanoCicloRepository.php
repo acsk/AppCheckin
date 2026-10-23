@@ -79,7 +79,7 @@ class AdminPlanoCicloRepository
             ->where('pc.id', $cicloId)
             ->where('pc.plano_id', $planoId)
             ->where('pc.tenant_id', $tenantId)
-            ->select('pc.*', 'p.valor as plano_valor', 'af.meses as tipo_meses')
+            ->select('pc.*', 'p.valor as plano_valor', 'af.meses as tipo_meses', 'af.codigo as tipo_codigo')
             ->first();
 
         return $row ? (array) $row : null;
@@ -125,6 +125,13 @@ class AdminPlanoCicloRepository
                 'ativo' => $data['ativo'],
                 'updated_at' => now(),
             ]);
+    }
+
+    public function updateDesconto(int $cicloId, float $desconto): void
+    {
+        DB::table('plano_ciclos')
+            ->where('id', $cicloId)
+            ->update(['desconto_percentual' => $desconto, 'updated_at' => now()]);
     }
 
     public function countMatriculas(int $cicloId): int

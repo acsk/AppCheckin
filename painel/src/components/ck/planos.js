@@ -198,13 +198,7 @@ function ModalityBadge({ icon, color, size = 'md' }) {
 
 /* ---------- PlanoForm ---------- */
 const FREQ_OPTIONS = [1, 2, 3, 4, 5, 6, 7, UNLIMITED];
-const DURATION_OPTIONS = [
-  { value: 1, label: '1 dia' },
-  { value: 30, label: '30 dias' },
-  { value: 90, label: '90 dias' },
-  { value: 180, label: '180 dias' },
-  { value: 365, label: '365 dias' },
-];
+export const isDailyPlan = (values) => Number(values?.duracao_dias) === 1;
 
 function FormSection({ n, title, description, aside, children }) {
   return (
@@ -278,14 +272,14 @@ export function PlanoForm({
   cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onToggleCycleBlock, blockingCycleId, onGenerateCycles, generating, missingCount = 0,
 }) {
   const set = (k) => (v) => onChange({ ...values, [k]: v });
-  const monthly = parseMoney(values.valor);
+  const daily = isDailyPlan(values);
+  const monthly = monthlyBase(cycles);
+  const dailyCycle = cycles.find((c) => c.active && isDaily(c));
   const modality = modalities.find((m) => String(m.id) === String(values.modalidade_id));
   const freqOptions = FREQ_OPTIONS.map((v) => ({ value: v, label: v >= UNLIMITED ? 'Livre' : `${v}x`, icon: v >= UNLIMITED ? 'infinity' : undefined }));
   const checkins = Number(values.checkins_semanais) || 0;
   if (checkins && !FREQ_OPTIONS.includes(checkins)) freqOptions.splice(7, 0, { value: checkins, label: `${checkins}x` });
-  const durationOptions = DURATION_OPTIONS.some((o) => o.value === Number(values.duracao_dias))
-    ? DURATION_OPTIONS
-    : [...DURATION_OPTIONS, { value: Number(values.duracao_dias), label: `${values.duracao_dias} dias` }];
+  const setDaily = (on) => onChange({ ...values, duracao_dias: on ? '1' : '30', checkins_semanais: on ? '1' : values.checkins_semanais });
   const sellable = cycles.filter((c) => c.active);
   const cheapest = sellable.reduce((min, c) => {
     if (isDaily(c)) return min;
@@ -298,7 +292,7 @@ export function PlanoForm({
       <button type="button" className="ck-mt-back" onClick={onBack}><Icon name="arrow-left" size={16} />Planos</button>
       <PageHeader
         title={readOnly ? values.nome || 'Plano' : isEdit ? 'Editar plano' : 'Novo plano'}
-        description={isEdit ? 'Ajuste o valor, o acesso e os ciclos em que o aluno pode pagar.' : 'Preencha os dados do plano. Depois de salvar, você adiciona os ciclos de cobrança.'}
+        description={isEdit ? 'Ajuste o acesso e os ciclos em que o aluno pode pagar.' : 'Preencha os dados do plano. Depois de salvar, você adiciona os ciclos de cobrança.'}
       />
       <div className="ck-nm__grid ck-pf__grid">
         <fieldset className="ck-card ck-nm__form ck-enrollment-fields" disabled={saving || readOnly}>
@@ -319,23 +313,14 @@ export function PlanoForm({
             <TextAreaField label="Descrição" value={values.descricao} placeholder="O que está incluído no plano" onChange={(e) => set('descricao')(e.target.value)} labelAside={<span className="ck-field__hint">Opcional</span>} />
           </FormSection>
 
-          <FormSection n={2} title="Valor e acesso">
-            <div className="ck-pf__money">
-              <TextField
-                label="Valor mensal"
-                inputMode="numeric"
-                value={values.valor}
-                placeholder="0,00"
-                className="ck-pf__amount"
-                onChange={(e) => set('valor')(maskMoney(e.target.value))}
-                error={errors.valor}
-                hint={monthly > 0 ? 'Base para calcular o desconto de cada ciclo.' : 'Deixe 0,00 para um plano sem custo.'}
-                icon="banknote"
-              />
-            </div>
-            <OptionChips label="Check-ins por semana" options={freqOptions} value={checkins} onChange={(v) => set('checkins_semanais')(String(v))} />
-            {errors.checkins_semanais ? <span className="ck-field__error"><Icon name="alert-triangle" size={13} />{errors.checkins_semanais}</span> : null}
-            <OptionChips label="Duração do acesso" options={durationOptions} value={values.duracao_dias} onChange={(v) => set('duracao_dias')(String(v))} />
+          <FormSection n={2} title="Acesso">
+            <Switch label="Plano diária" description={daily ? 'Vale 1 check-in no dia da compra. Cadastre o ciclo Diária com o valor.' : 'Plano por período: o valor e a duração vêm dos ciclos de cobrança.'} checked={daily} disabled={saving || readOnly} onChange={setDaily} />
+            {daily ? null : (
+              <>
+                <OptionChips label="Check-ins por semana" options={freqOptions} value={checkins} onChange={(v) => set('checkins_semanais')(String(v))} />
+                {errors.checkins_semanais ? <span className="ck-field__error"><Icon name="alert-triangle" size={13} />{errors.checkins_semanais}</span> : null}
+              </>
+            )}
           </FormSection>
 
           <FormSection
@@ -344,13 +329,13 @@ export function PlanoForm({
             description="Em quais períodos o aluno pode pagar este plano."
             aside={isEdit && !readOnly ? (
               <div className="ck-pf__cycleactions">
-                {onGenerateCycles && missingCount > 0 ? <Button size="sm" variant="ghost" icon="zap" loading={generating} onClick={onGenerateCycles}>{`Gerar ${missingCount === 1 ? 'ciclo que falta' : `${missingCount} ciclos que faltam`}`}</Button> : null}
+                {onGenerateCycles && !daily && missingCount > 0 ? <Button size="sm" variant="ghost" icon="zap" loading={generating} onClick={onGenerateCycles}>{`Gerar ${missingCount === 1 ? 'ciclo que falta' : `${missingCount} ciclos que faltam`}`}</Button> : null}
                 <Button size="sm" icon="plus" onClick={onAddCycle}>Novo ciclo</Button>
               </div>
             ) : null}
           >
             {!isEdit ? (
-              <Callout tone="info" title="Salve o plano para adicionar ciclos">Depois de criar, você volta para esta tela e cadastra Mensal, Trimestral e os outros períodos.</Callout>
+              <Callout tone="info" title="Salve o plano para adicionar ciclos">{daily ? 'Depois de criar, você volta para esta tela e cadastra o ciclo Diária com o valor.' : 'Depois de criar, você volta para esta tela e cadastra Mensal, Trimestral e os outros períodos. O ciclo Mensal é a base do desconto dos demais.'}</Callout>
             ) : cyclesLoading ? <p role="status" className="ck-nm__wait">Carregando ciclos…</p>
               : cycles.length ? (
                 <ul className="ck-pf__cyclelist">
@@ -378,13 +363,22 @@ export function PlanoForm({
               </div>
             </div>
             <div className="ck-mt-plan__price">
-              <span className="ck-mt-plan__value">{monthly > 0 ? money(monthly) : 'Sem custo'}</span>
-              {monthly > 0 ? <span className="ck-mt-plan__per">por mês</span> : null}
+              {daily ? (
+                <>
+                  <span className="ck-mt-plan__value">{dailyCycle ? money(dailyCycle.amount) : 'Sem valor'}</span>
+                  {dailyCycle ? <span className="ck-mt-plan__per">por dia</span> : null}
+                </>
+              ) : (
+                <>
+                  <span className="ck-mt-plan__value">{monthly > 0 ? money(monthly) : 'Sem valor'}</span>
+                  {monthly > 0 ? <span className="ck-mt-plan__per">por mês</span> : null}
+                </>
+              )}
             </div>
-            {cheapest != null && cheapest < monthly ? <p className="ck-mt-plan__note">A partir de {money(cheapest)} por mês no ciclo mais longo</p> : null}
+            {!daily && cheapest != null && cheapest < monthly ? <p className="ck-mt-plan__note">A partir de {money(cheapest)} por mês no ciclo mais longo</p> : null}
             <dl className="ck-mt-plan__facts">
-              <div><dt>Frequência</dt><dd>{frequencyLabel(checkins)}</dd></div>
-              <div><dt>Acesso</dt><dd>{Number(values.duracao_dias) === 1 ? '1 dia' : `${values.duracao_dias || 30} dias`}</dd></div>
+              <div><dt>Frequência</dt><dd>{daily ? '1 check-in' : frequencyLabel(checkins)}</dd></div>
+              <div><dt>Acesso</dt><dd>{daily ? '1 dia' : 'Conforme o ciclo'}</dd></div>
             </dl>
             {isEdit ? (
               <div className="ck-pf__previewcycles">
@@ -436,7 +430,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
   const daily = isDaily(type);
   const months = Number(type?.meses) || 1;
   const value = parseMoney(amount);
-  const base = daily ? 0 : monthly * months;
+  const base = daily || months === 1 ? 0 : monthly * months;
   const perMonth = daily ? null : value / months;
   const diff = base > 0 && value > 0 ? (1 - value / base) * 100 : null;
 
@@ -460,7 +454,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
       dismissable={!saving}
       size="md"
       title={editing ? `Editar ciclo ${cycle.label || ''}`.trim() : 'Novo ciclo'}
-      description={monthly > 0 ? `Valor mensal do plano: ${money(monthly)}` : 'Plano sem valor mensal definido'}
+      description={monthly > 0 ? `Base mensal (ciclo ${baseCycle(cycles)?.label || 'Mensal'}): ${money(monthly)}` : 'Cadastre o ciclo Mensal: ele é a base do desconto dos demais.'}
       footer={(
         <>
           <span style={{ flex: 1 }} />
@@ -535,9 +529,18 @@ export const missingTypes = (types = [], cycles = []) => types
   .filter((t) => !isDaily(t) && !cycles.some((c) => String(c.typeId) === String(t.id)))
   .sort((a, b) => typeMonths(a) - typeMonths(b));
 
+// Semanal e quinzenal vêm com meses = 1 e não servem de base mensal.
+const SUBMONTHLY = ['semanal', 'quinzenal'];
+
 export const baseCycle = (cycles = []) => {
-  const regular = cycles.filter((c) => !isDaily(c)).sort((a, b) => (a.months - b.months) || (Number(b.active) - Number(a.active)));
-  return regular.find((c) => c.months === 1) || regular[0] || null;
+  const regular = cycles.filter((c) => !isDaily(c) && !SUBMONTHLY.includes(c.codigo)).sort((a, b) => (a.months - b.months) || (Number(b.active) - Number(a.active)));
+  return regular.find((c) => c.codigo === 'mensal') || regular[0] || null;
+};
+
+/* Valor por mês do ciclo base (Mensal, ou o menor período): base do desconto dos demais. */
+export const monthlyBase = (cycles = []) => {
+  const base = baseCycle(cycles);
+  return base ? base.amount / (Number(base.months) || 1) : 0;
 };
 
 export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, saving, onConfirm, onCancel }) {
@@ -579,7 +582,7 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
   }, [types, cycles, monthly, step, recurring]);
 
   const toCreate = rows.filter((r) => !r.existing);
-  const blocked = recurring && monthly <= 0;
+  const blocked = monthly <= 0;
 
   const confirm = () => {
     if (!toCreate.length || blocked || saving) return;
@@ -593,7 +596,7 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
       dismissable={!saving}
       size="md"
       title={toCreate.length === 1 ? 'Gerar o ciclo que falta' : `Gerar ${toCreate.length} ciclos que faltam`}
-      description={monthly > 0 ? `Valor mensal do plano: ${money(monthly)}. Os ciclos que já existem não mudam.` : 'Plano sem valor mensal definido. Os ciclos que já existem não mudam.'}
+      description={monthly > 0 ? `Base mensal: ${money(monthly)}. Os ciclos que já existem não mudam.` : 'Sem ciclo Mensal para usar como base. Os ciclos que já existem não mudam.'}
       footer={(
         <>
           <span style={{ flex: 1 }} />
@@ -641,7 +644,7 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
         </div>
 
         {!toCreate.length ? <Callout tone="success" title="Todos os períodos já têm ciclo">Não há nada para gerar neste plano.</Callout> : null}
-        {blocked ? <Callout tone="warning" title="Defina o valor mensal do plano">Ciclo recorrente precisa ter valor maior que zero. Salve um valor mensal ou desligue a cobrança recorrente.</Callout> : null}
+        {blocked ? <Callout tone="warning" title="Cadastre o ciclo Mensal primeiro">Os valores dos outros períodos são calculados a partir dele.</Callout> : null}
 
         <div className="ck-cm__switches">
           <p className="ck-gc__from">

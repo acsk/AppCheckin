@@ -5,13 +5,12 @@ import modalidadeService from '../../services/modalidadeService';
 import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Modal } from '../../components/ck';
-import { PlanoForm, CicloModal, GerarCiclosModal, missingTypes, parseMoney, UNLIMITED } from '../../components/ck/planos';
+import { PlanoForm, CicloModal, GerarCiclosModal, missingTypes, monthlyBase, isDailyPlan, UNLIMITED } from '../../components/ck/planos';
 import { showSuccess, showError } from '../../utils/toast';
 
 const bool = (v) => v === true || v === 1 || v === '1';
-const toMoneyText = (v) => (v != null && v !== '' ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 
-const EMPTY = { modalidade_id: '', nome: '', descricao: '', valor: '', checkins_semanais: '', duracao_dias: '30', ativo: true, atual: true };
+const EMPTY = { modalidade_id: '', nome: '', descricao: '', checkins_semanais: '', duracao_dias: '30', ativo: true, atual: true };
 
 const toCycle = (c, types) => {
   const type = types.find((t) => t.codigo === c.codigo || t.id === c.assinatura_frequencia_id || t.id === c.tipo_ciclo_id);
@@ -85,7 +84,6 @@ export default function FormPlanoScreen() {
             modalidade_id: plano.modalidade_id?.toString() || '',
             nome: plano.nome || '',
             descricao: plano.descricao || '',
-            valor: toMoneyText(plano.valor),
             checkins_semanais: plano.checkins_semanais?.toString() || '',
             duracao_dias: plano.duracao_dias ? String(plano.duracao_dias) : '30',
             ativo: bool(plano.ativo),
@@ -113,7 +111,6 @@ export default function FormPlanoScreen() {
     const e = {};
     if (!values.modalidade_id) e.modalidade_id = 'Escolha a modalidade.';
     if (!values.nome.trim()) e.nome = 'Dê um nome ao plano.';
-    if (values.valor === '' || parseMoney(values.valor) < 0) e.valor = 'Informe o valor mensal (use 0,00 para sem custo).';
     const ck = parseInt(values.checkins_semanais, 10);
     if (!ck || ck < 1) e.checkins_semanais = 'Escolha quantos check-ins por semana.';
     setErrors(e);
@@ -128,18 +125,18 @@ export default function FormPlanoScreen() {
         modalidade_id: parseInt(values.modalidade_id, 10),
         nome: values.nome.trim(),
         descricao: values.descricao,
-        valor: parseMoney(values.valor),
-        checkins_semanais: parseInt(values.checkins_semanais, 10) || UNLIMITED,
+        checkins_semanais: isDailyPlan(values) ? 1 : parseInt(values.checkins_semanais, 10) || UNLIMITED,
         duracao_dias: parseInt(values.duracao_dias, 10) || 30,
         ativo: values.ativo ? 1 : 0,
         atual: values.atual ? 1 : 0,
       };
       if (isEdit) {
+        // planos.valor é mantido pelo backend a partir do ciclo Mensal.
         const result = await planoService.atualizar(planoId, payload);
         showSuccess(result.message || 'Plano atualizado');
         router.push('/planos');
       } else {
-        const result = await planoService.criar(payload);
+        const result = await planoService.criar({ ...payload, valor: 0 });
         showSuccess('Plano criado. Agora adicione os ciclos de cobrança.');
         const novoId = result?.plano?.id;
         router.replace(novoId ? `/planos/${novoId}` : '/planos');
@@ -267,7 +264,7 @@ export default function FormPlanoScreen() {
         cycle={cycleModal.cycle}
         types={types}
         cycles={cycles}
-        monthly={parseMoney(values.valor)}
+        monthly={monthlyBase(cycles)}
         saving={savingCycle}
         onSave={saveCycle}
         onCancel={() => setCycleModal({ open: false, cycle: null })}
@@ -313,7 +310,7 @@ export default function FormPlanoScreen() {
         open={confirmGenerate}
         types={types}
         cycles={cycles}
-        monthly={parseMoney(values.valor)}
+        monthly={monthlyBase(cycles)}
         saving={generating}
         onConfirm={generate}
         onCancel={() => setConfirmGenerate(false)}

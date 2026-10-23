@@ -107,7 +107,9 @@ class AdminPlanoCicloService
             }
 
             $meses = (int) $tipo['meses'];
-            $valorMensalBase = (float) $plano['valor'];
+            $valorMensalBase = $this->ehMensal($tipo['codigo'] ?? null)
+                ? (float) $data['valor']
+                : (float) $plano['valor'];
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0
                 ? round((($valorTotalSemDesconto - (float) $data['valor']) / $valorTotalSemDesconto) * 100, 2)
@@ -124,6 +126,10 @@ class AdminPlanoCicloService
                 'permite_reposicao' => $permiteReposicao,
                 'ativo' => isset($data['ativo']) ? (int) $data['ativo'] : 1,
             ]);
+
+            if ($valorMensalBase !== (float) $plano['valor']) {
+                $this->sincronizarValorBase($planoId, $tenantId, $valorMensalBase);
+            }
 
             return [
                 'status' => 201,
@@ -157,7 +163,9 @@ class AdminPlanoCicloService
             if ($meses < 1) {
                 $meses = 1;
             }
-            $valorMensalBase = (float) ($ciclo['plano_valor'] ?? 0);
+            $valorMensalBase = $this->ehMensal($ciclo['tipo_codigo'] ?? null)
+                ? $valor
+                : (float) ($ciclo['plano_valor'] ?? 0);
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0
                 ? round((($valorTotalSemDesconto - $valor) / $valorTotalSemDesconto) * 100, 2)
@@ -175,6 +183,10 @@ class AdminPlanoCicloService
                     : (int) $ciclo['permite_reposicao'],
                 'ativo' => isset($data['ativo']) ? (int) $data['ativo'] : (int) $ciclo['ativo'],
             ]);
+
+            if ($valorMensalBase !== (float) ($ciclo['plano_valor'] ?? 0)) {
+                $this->sincronizarValorBase($planoId, $tenantId, $valorMensalBase);
+            }
 
             return [
                 'status' => 200,
@@ -429,5 +441,27 @@ class AdminPlanoCicloService
         }
 
         return $out;
+    }
+
+    /** O ciclo Mensal é a base do plano (diário, semanal e quinzenal também têm meses = 1). */
+    private function ehMensal(?string $codigo): bool
+    {
+        return $codigo === 'mensal';
+    }
+
+    /**
+     * O plano não tem mais "valor mensal" próprio: planos.valor espelha o ciclo
+     * mensal e o desconto dos demais ciclos é recalculado sobre ele.
+     */
+    private function sincronizarValorBase(int $planoId, int $tenantId, float $valorMensal): void
+    {
+        $this->planos->updateValor($planoId, $tenantId, $valorMensal);
+
+        foreach ($this->ciclos->listarPorPlano($planoId, $tenantId) as $c) {
+            $meses = max(1, (int) $c['meses']);
+            $total = $valorMensal * $meses;
+            $desconto = $total > 0 ? round((($total - (float) $c['valor']) / $total) * 100, 2) : 0;
+            $this->ciclos->updateDesconto((int) $c['id'], max(-999.99, min(999.99, $desconto)));
+        }
     }
 }
