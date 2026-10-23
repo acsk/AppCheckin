@@ -25,6 +25,8 @@ class AdminProfessorService
      */
     public function index(int $tenantId, bool $apenasAtivos): array
     {
+        $this->professores->garantirPerfisDoTenant($tenantId);
+
         return [
             'status' => 200,
             'body' => [

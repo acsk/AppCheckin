@@ -32,6 +32,7 @@ class AdminProfessorServiceTest extends TestCase
     public function test_index_returns_professores(): void
     {
         $repo = Mockery::mock(AdminProfessorRepository::class);
+        $repo->shouldReceive('garantirPerfisDoTenant')->once()->with(3);
         $repo->shouldReceive('listarPorTenant')
             ->once()
             ->with(3, true)

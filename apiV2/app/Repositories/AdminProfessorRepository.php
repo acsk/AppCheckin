@@ -286,6 +286,23 @@ class AdminProfessorRepository
         ]);
     }
 
+    /**
+     * Quem tem o papel Professor no tenant mas nunca ganhou perfil em professores
+     * (ex.: admin cadastrado como Admin + Professor pelo super admin) não aparecia na lista.
+     */
+    public function garantirPerfisDoTenant(int $tenantId): void
+    {
+        DB::table('tenant_usuario_papel as tup')
+            ->leftJoin('professores as p', 'p.usuario_id', '=', 'tup.usuario_id')
+            ->where('tup.tenant_id', $tenantId)
+            ->where('tup.papel_id', self::PAPEL_PROFESSOR)
+            ->where('tup.ativo', 1)
+            ->whereNull('p.id')
+            ->distinct()
+            ->pluck('tup.usuario_id')
+            ->each(fn ($usuarioId) => $this->garantirPerfil((int) $usuarioId));
+    }
+
     public function pertenceAoTenant(int $professorId, int $tenantId): bool
     {
         return DB::table('professores as p')
