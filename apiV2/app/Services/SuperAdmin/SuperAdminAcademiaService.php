@@ -2,6 +2,7 @@
 
 namespace App\Services\SuperAdmin;
 
+use App\Repositories\AdminProfessorRepository;
 use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\TenantRepository;
@@ -23,14 +24,18 @@ class SuperAdminAcademiaService
         private readonly PlanoSistemaRepository $planosSistema,
         ?EntidadeJuridicaService $entidades = null,
         ?PermissaoService $permissoes = null,
+        ?AdminProfessorRepository $professores = null,
     ) {
         $this->entidades = $entidades ?? app(EntidadeJuridicaService::class);
         $this->permissoes = $permissoes ?? app(PermissaoService::class);
+        $this->professores = $professores ?? app(AdminProfessorRepository::class);
     }
 
     private EntidadeJuridicaService $entidades;
 
     private PermissaoService $permissoes;
+
+    private AdminProfessorRepository $professores;
 
     /**
      * @param  array<string, mixed>  $query
@@ -677,6 +682,7 @@ class SuperAdminAcademiaService
         }
 
         $this->tenants->atribuirPapeis($tenantId, $adminId, $papeis);
+        $this->garantirPerfilProfessor($adminId, $papeis);
         // Academia sem titular: o primeiro admin vira o admin principal
         DB::table('tenants')->where('id', $tenantId)->whereNull('admin_principal_id')->update(['admin_principal_id' => $adminId]);
 
@@ -791,6 +797,7 @@ class SuperAdminAcademiaService
             }
 
             $this->tenants->substituirPapeis($tenantId, $adminId, $papeis);
+            $this->garantirPerfilProfessor($adminId, $papeis);
         }
 
         // Permissões pontuais (ex.: ações financeiras avançadas): só o super admin concede
@@ -998,5 +1005,18 @@ class SuperAdminAcademiaService
         }
 
         return null;
+    }
+
+    /**
+     * Admin que também é professor precisa do perfil em professores: é por ele que a
+     * lista de professores e as turmas enxergam a pessoa (só o papel não basta).
+     *
+     * @param  array<int|string>  $papeis
+     */
+    private function garantirPerfilProfessor(int $usuarioId, array $papeis): void
+    {
+        if (in_array(2, array_map('intval', $papeis), true)) {
+            $this->professores->garantirPerfil($usuarioId);
+        }
     }
 }
