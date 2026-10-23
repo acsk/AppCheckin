@@ -167,4 +167,86 @@ class CheckoutServiceTest extends TestCase
         $this->assertNull($res['body']['cobranca']);
         $this->assertNotNull($res['body']['aviso']);
     }
+
+    /** Formulário completo do site (empresa ou pessoa física, endereço, responsável, senha com confirmação). */
+    private function completo(array $extra = []): array
+    {
+        return array_merge([
+            'tipo_pessoa' => 'pf',
+            'academia_nome' => 'Studio Ana',
+            'cep' => '57035-000', 'logradouro' => 'Rua A', 'numero' => '10', 'complemento' => '', 'bairro' => 'Ponta Verde', 'cidade' => 'Maceió', 'estado' => 'al',
+            'responsavel_nome' => 'Ana Souza',
+            'responsavel_cpf' => '529.982.247-25',
+            'responsavel_nascimento' => '1990-05-20',
+            'endereco_responsavel_igual' => true,
+            'email' => 'ana@studio.com',
+            'telefone' => '(82) 98888-7777',
+            'senha' => 'segredo12',
+            'senha_confirmacao' => 'segredo12',
+            'plano_id' => 4,
+            'aceite_termos' => true,
+        ], $extra);
+    }
+
+    public function test_formulario_completo_valida_todos_os_campos(): void
+    {
+        $res = $this->service()->assinar($this->completo([
+            'tipo_pessoa' => 'pj', 'cnpj' => '11.444.777/0001-00', 'razao_social' => 'AB',
+            'cep' => '570', 'logradouro' => '', 'numero' => '', 'bairro' => '', 'cidade' => '', 'estado' => 'ZZ',
+            'responsavel_nome' => 'Ana', 'responsavel_cpf' => '111.111.111-11', 'responsavel_nascimento' => '2015-01-01',
+            'email' => 'ana@', 'telefone' => '(82) 3333-4444', 'senha' => 'abcdefgh',
+        ]), '1.1.1.1');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame([
+            'cnpj', 'razao_social', 'cep', 'logradouro', 'numero', 'bairro', 'cidade', 'estado',
+            'responsavel_cpf', 'responsavel_nascimento', 'responsavel_nome', 'email', 'telefone', 'senha',
+        ], array_keys($res['body']['errors']));
+        $this->assertSame('O responsável precisa ter 18 anos ou mais.', $res['body']['errors']['responsavel_nascimento']);
+    }
+
+    public function test_senha_precisa_ser_confirmada(): void
+    {
+        $res = $this->service()->assinar($this->completo(['senha_confirmacao' => 'segredo13']), '1.1.1.1');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame(['senha_confirmacao' => 'As senhas não são iguais.'], $res['body']['errors']);
+    }
+
+    public function test_endereco_do_responsavel_e_validado_quando_e_outro(): void
+    {
+        $res = $this->service()->assinar($this->completo(['endereco_responsavel_igual' => false, 'responsavel_cep' => '1']), '1.1.1.1');
+
+        $this->assertSame(['responsavel_cep', 'responsavel_logradouro', 'responsavel_numero', 'responsavel_bairro', 'responsavel_cidade', 'responsavel_estado'],
+            array_keys($res['body']['errors']));
+    }
+
+    public function test_cpf_ja_cadastrado_e_recusado(): void
+    {
+        $this->usuarios->shouldReceive('cpfExists')->with('52998224725')->andReturn(true);
+        $this->academias->shouldNotReceive('criarAcademia');
+
+        $res = $this->service()->assinar($this->completo(), '1.1.1.1');
+
+        $this->assertSame(409, $res['status']);
+        $this->assertArrayHasKey('responsavel_cpf', $res['body']['errors']);
+    }
+
+    public function test_pessoa_fisica_cria_academia_com_endereco_e_completa_o_responsavel(): void
+    {
+        DB::shouldReceive('transaction')->andReturnUsing(fn (\Closure $cb) => $cb());
+        $this->usuarios->shouldReceive('cpfExists')->andReturn(false);
+        $this->academias->shouldReceive('criarAcademia')->once()
+            ->with(Mockery::on(fn (array $d) => $d['cnpj'] === null && $d['responsavel_cpf'] === '52998224725'
+                && $d['cep'] === '57035000' && $d['estado'] === 'AL' && $d['bairro'] === 'Ponta Verde' && $d['complemento'] === null
+                && $d['senha_admin'] === 'segredo12'))
+            ->andReturn(['status' => 201, 'body' => ['academia' => ['id' => 9, 'nome' => 'Studio Ana'], 'admin' => ['id' => 40], 'contrato' => ['id' => 30, 'data_fim' => null]]]);
+        $this->usuarios->shouldReceive('gravarDadosPessoais')->once()
+            ->with(40, ['whatsapp' => '82988887777', 'data_nascimento' => '1990-05-20', 'cep' => '57035000', 'logradouro' => 'Rua A',
+                'numero' => '10', 'complemento' => '', 'bairro' => 'Ponta Verde', 'cidade' => 'Maceió', 'estado' => 'AL']);
+
+        $res = $this->service()->assinar($this->completo(), '1.1.1.1');
+
+        $this->assertSame(201, $res['status']);
+    }
 }

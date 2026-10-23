@@ -129,3 +129,15 @@
 .pay-qr img{width:200px;height:200px;border-radius:12px;background:#ffffff;padding:8px}
 .pay-qr code{display:block;width:100%;max-height:72px;overflow:auto;word-break:break-all;font-size:12px;line-height:18px;background:#ffffff;border:1px solid #e4e6ea;border-radius:10px;padding:10px 12px;text-align:left}
 .done-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+/* Cadastro completo: tipo de pessoa, subtítulos de endereço e caixa "mesmo endereço" */
+.f-label{font-size:12px;line-height:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5b6270}
+.tipo{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.tipo button{display:grid;gap:2px;text-align:left;padding:14px 16px;border-radius:12px;border:1px solid #8b929e;background:#fff;font:500 15px/20px "Archivo",sans-serif;color:#171a21;cursor:pointer}
+.tipo button small{font-size:13px;color:#5b6270}
+.tipo button.on{border-color:#ff7a00;box-shadow:0 0 0 2px #ff7a00;background:#fff7f0}
+.tipo button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(255,122,0,.28)}
+.f-sub{margin:8px 0 -4px;font-size:15px;font-weight:700;color:#171a21}
+.f-check{display:flex;gap:10px;align-items:center;font-size:15px;font-weight:500;color:#171a21;cursor:pointer}
+.f-check input{width:20px;height:20px;margin:0;accent-color:#ff7a00}
+.f.err select{border-color:#c2410c;box-shadow:0 0 0 3px rgba(194,65,12,.15)}
+@media (max-width:640px){.tipo{grid-template-columns:1fr}}

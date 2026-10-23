@@ -6,11 +6,13 @@ use App\Repositories\PagamentoContratoRepository;
 use App\Repositories\PlanoSistemaRepository;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\EntidadeJuridica\EntidadeJuridicaService;
 use App\Services\RateLimiter;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Services\SuperAdmin\SuperAdminAcademiaService;
 use App\Support\Documento;
 use App\Support\TipoCobrancaPlanoSistema;
+use App\Support\VinculoCnpj;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -30,7 +32,12 @@ class CheckoutService
         private readonly PagamentoContratoRepository $pagamentos,
         private readonly CobrancaContratoService $cobrancas,
         private readonly ?RateLimiter $rateLimiter = null,
-    ) {}
+        ?EntidadeJuridicaService $entidades = null,
+    ) {
+        $this->entidades = $entidades ?? app(EntidadeJuridicaService::class);
+    }
+
+    private EntidadeJuridicaService $entidades;
 
     /**
      * @param  array<string, mixed>  $data
@@ -64,14 +71,24 @@ class CheckoutService
             ]];
         }
 
+        if ($f['cpf'] !== '' && $this->usuarios->cpfExists($f['cpf'])) {
+            return ['status' => 409, 'body' => [
+                'message' => 'Já existe uma conta com este CPF.',
+                'errors' => [$f['legado'] ? 'documento' : 'responsavel_cpf' => 'Já existe uma conta com este CPF. Entre no painel ou fale com o suporte.'],
+            ]];
+        }
+
         try {
-            [$academia, $contrato, $pagamentoId] = DB::transaction(function () use ($f, $plano, $pago) {
+            [$academia, $contrato, $pagamentoId] = DB::transaction(function () use ($f, $plano, $pago, $ip) {
                 $res = $this->academias->criarAcademia($this->dadosAcademia($f, $plano));
                 if ($res['status'] !== 201) {
                     throw new CheckoutRecusado($res['body']['errors'] ?? [$res['body']['error'] ?? 'Não foi possível criar a conta']);
                 }
                 $academia = $res['body']['academia'];
                 $contrato = $res['body']['contrato'] ?? null;
+                if ($adminId = (int) ($res['body']['admin']['id'] ?? 0)) {
+                    $this->completarCadastro($f, (int) $academia['id'], $adminId, $ip);
+                }
                 if (! $contrato) {
                     throw new \RuntimeException('Contrato inicial não foi criado');
                 }
@@ -125,27 +142,64 @@ class CheckoutService
         ]];
     }
 
+    /** Endereço: campo => tamanho máximo. */
+    private const ENDERECO = ['cep' => 8, 'logradouro' => 255, 'numero' => 20, 'complemento' => 100, 'bairro' => 100, 'cidade' => 100, 'estado' => 2];
+
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function normalizar(array $data): array
     {
-        $txt = static fn (string $k) => trim((string) ($data[$k] ?? ''));
+        $txt = static fn (string $k) => trim(preg_replace('/\s+/u', ' ', (string) ($data[$k] ?? '')) ?? '');
+        $endereco = function (string $prefixo) use ($txt): array {
+            $e = [];
+            foreach (array_keys(self::ENDERECO) as $c) {
+                $e[$c] = $txt($prefixo.$c);
+            }
+            $e['cep'] = Documento::digitos($e['cep']);
+            $e['estado'] = mb_strtoupper($e['estado'], 'UTF-8');
 
-        return [
+            return $e;
+        };
+
+        $f = [
+            // Formulário antigo (antes do cadastro completo): documento único e cidade em texto livre
+            'legado' => ! array_key_exists('tipo_pessoa', $data),
+            'tipo' => $txt('tipo_pessoa') === 'pf' ? 'pf' : 'pj',
             'nome' => $txt('academia_nome'),
-            'documento' => Documento::digitos($txt('documento')),
-            'cidade' => $txt('cidade'),
+            'cnpj' => Documento::digitos($txt('cnpj')),
+            'razao_social' => $txt('razao_social'),
+            'nome_fantasia' => $txt('nome_fantasia'),
+            'endereco' => $endereco(''),
             'responsavel' => $txt('responsavel_nome'),
+            'cpf' => Documento::digitos($txt('responsavel_cpf')),
+            'nascimento' => $txt('responsavel_nascimento'),
+            'endereco_igual' => ! array_key_exists('endereco_responsavel_igual', $data) || filter_var($data['endereco_responsavel_igual'], FILTER_VALIDATE_BOOLEAN),
+            'endereco_responsavel' => $endereco('responsavel_'),
             'email' => mb_strtolower($txt('email'), 'UTF-8'),
             'telefone' => Documento::digitos($txt('telefone')),
             'senha' => (string) ($data['senha'] ?? ''),
+            'senha_confirmacao' => (string) ($data['senha_confirmacao'] ?? ''),
             'plano_id' => (int) ($data['plano_id'] ?? 0),
             'forma' => strtoupper($txt('forma_pagamento')),
             'alunos' => max(0, (int) ($data['alunos'] ?? 0)),
             'aceite' => filter_var($data['aceite_termos'] ?? false, FILTER_VALIDATE_BOOLEAN),
         ];
+
+        if ($f['legado']) {
+            $doc = Documento::digitos($txt('documento'));
+            $f['tipo'] = strlen($doc) === 11 ? 'pf' : 'pj';
+            $f[$f['tipo'] === 'pf' ? 'cpf' : 'cnpj'] = $doc;
+            [$f['endereco']['cidade'], $f['endereco']['estado']] = array_map(fn ($v) => (string) $v, $this->cidadeUf($txt('cidade')));
+        }
+        if ($f['tipo'] === 'pf') {
+            $f['cnpj'] = '';
+            $f['razao_social'] = '';
+            $f['nome_fantasia'] = '';
+        }
+
+        return $f;
     }
 
     /**
@@ -157,25 +211,63 @@ class CheckoutService
     private function validar(array $f, ?array $plano, array $formas): array
     {
         $e = [];
-        if (mb_strlen($f['nome']) < 2) {
+        if (mb_strlen($f['nome']) < 2 || mb_strlen($f['nome']) > 255) {
             $e['academia_nome'] = 'Informe o nome da academia.';
         }
-        $doc = $f['documento'];
-        if (strlen($doc) === 11 ? ! Documento::cpfValido($doc) : (strlen($doc) !== 14 || ! Documento::cnpjValido($doc))) {
-            $e['documento'] = 'Confira o CNPJ ou CPF.';
+
+        if ($f['legado']) {
+            // Formulário antigo: só o documento (CNPJ ou CPF), como antes
+            $doc = $f['tipo'] === 'pf' ? $f['cpf'] : $f['cnpj'];
+            if (strlen($doc) === 11 ? ! Documento::cpfValido($doc) : (strlen($doc) !== 14 || ! Documento::cnpjValido($doc))) {
+                $e['documento'] = 'Confira o CNPJ ou CPF.';
+            }
+        } else {
+            if ($f['tipo'] === 'pj') {
+                if (! Documento::cnpjValido($f['cnpj'])) {
+                    $e['cnpj'] = strlen($f['cnpj']) !== 14 ? 'O CNPJ tem 14 números.' : 'CNPJ inválido. Confira os números.';
+                }
+                if (mb_strlen($f['razao_social']) < 3 || mb_strlen($f['razao_social']) > 255) {
+                    $e['razao_social'] = 'Informe a razão social, como está no cartão do CNPJ.';
+                }
+                if (mb_strlen($f['nome_fantasia']) > 255) {
+                    $e['nome_fantasia'] = 'Use até 255 caracteres.';
+                }
+            }
+            $e += $this->validarEndereco($f['endereco'], '');
+            if (! $f['endereco_igual']) {
+                $e += $this->validarEndereco($f['endereco_responsavel'], 'responsavel_');
+            }
+            if (! Documento::cpfValido($f['cpf'])) {
+                $e['responsavel_cpf'] = strlen($f['cpf']) !== 11 ? 'O CPF tem 11 números.' : 'CPF inválido. Confira os números.';
+            }
+            $nascimento = \DateTimeImmutable::createFromFormat('!Y-m-d', $f['nascimento']);
+            $idade = $nascimento ? $nascimento->diff(new \DateTimeImmutable('today'))->y : null;
+            if (! $nascimento || $nascimento->format('Y-m-d') !== $f['nascimento'] || $nascimento > new \DateTimeImmutable('today') || $idade > 110) {
+                $e['responsavel_nascimento'] = 'Informe a data de nascimento (DD/MM/AAAA).';
+            } elseif ($idade < 18) {
+                $e['responsavel_nascimento'] = 'O responsável precisa ter 18 anos ou mais.';
+            }
         }
-        if (mb_strlen($f['responsavel']) < 3) {
-            $e['responsavel_nome'] = 'Informe o nome de quem vai administrar o painel.';
+
+        if (mb_strlen($f['responsavel']) < 3 || ! preg_match('/^\p{L}[\p{L}\'. -]*\s+\p{L}/u', $f['responsavel']) || mb_strlen($f['responsavel']) > 255) {
+            $e['responsavel_nome'] = 'Informe nome e sobrenome de quem vai administrar o painel.';
         }
-        if (! filter_var($f['email'], FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($f['email'], FILTER_VALIDATE_EMAIL) || mb_strlen($f['email']) > 255) {
             $e['email'] = 'Confira o e-mail.';
         }
-        if (strlen($f['telefone']) < 10 || strlen($f['telefone']) > 11) {
-            $e['telefone'] = 'Informe o WhatsApp com DDD.';
+        if ($f['legado'] ? (strlen($f['telefone']) < 10 || strlen($f['telefone']) > 11) : ! preg_match('/^\d{2}9\d{8}$/', $f['telefone'])) {
+            $e['telefone'] = 'Informe o WhatsApp com DDD: (00) 90000-0000.';
         }
-        if (strlen($f['senha']) < 6) {
-            $e['senha'] = 'A senha precisa de pelo menos 6 caracteres.';
+        if ($f['legado']) {
+            if (strlen($f['senha']) < 6) {
+                $e['senha'] = 'A senha precisa de pelo menos 6 caracteres.';
+            }
+        } elseif (mb_strlen($f['senha']) < 8 || ! preg_match('/\pL/u', $f['senha']) || ! preg_match('/\d/', $f['senha'])) {
+            $e['senha'] = 'Use pelo menos 8 caracteres, com letras e números.';
+        } elseif ($f['senha'] !== $f['senha_confirmacao']) {
+            $e['senha_confirmacao'] = 'As senhas não são iguais.';
         }
+
         if (! $plano) {
             $e['plano_id'] = 'Escolha um plano.';
         } elseif (! TipoCobrancaPlanoSistema::isGratuito($plano) && ! in_array($f['forma'], $formas, true)) {
@@ -183,6 +275,33 @@ class CheckoutService
         }
         if (! $f['aceite']) {
             $e['aceite_termos'] = 'Aceite os termos para continuar.';
+        }
+
+        return $e;
+    }
+
+    /**
+     * @param  array<string, string>  $end
+     * @return array<string, string>
+     */
+    private function validarEndereco(array $end, string $prefixo): array
+    {
+        $e = [];
+        if (! Documento::cepValido($end['cep'])) {
+            $e[$prefixo.'cep'] = 'O CEP tem 8 números.';
+        }
+        foreach (['logradouro' => [3, 'Informe a rua.'], 'numero' => [1, 'Informe o número (ou s/n).'], 'bairro' => [2, 'Informe o bairro.'], 'cidade' => [2, 'Informe a cidade.']] as $c => [$min, $msg]) {
+            if (mb_strlen($end[$c]) < $min) {
+                $e[$prefixo.$c] = $msg;
+            }
+        }
+        if (! Documento::ufValida($end['estado'])) {
+            $e[$prefixo.'estado'] = 'Escolha o estado.';
+        }
+        foreach (self::ENDERECO as $c => $max) {
+            if (! isset($e[$prefixo.$c]) && mb_strlen($end[$c]) > $max) {
+                $e[$prefixo.$c] = "Use até {$max} caracteres.";
+            }
         }
 
         return $e;
@@ -209,24 +328,48 @@ class CheckoutService
      */
     private function dadosAcademia(array $f, array $plano): array
     {
-        [$cidade, $uf] = $this->cidadeUf($f['cidade']);
-        $cnpj = strlen($f['documento']) === 14 ? $f['documento'] : null;
+        $end = array_map(fn ($v) => $v === '' ? null : $v, $f['endereco']);
 
         return [
             'nome' => $f['nome'],
             'email' => $f['email'],
-            'cnpj' => $cnpj,
+            'cnpj' => $f['tipo'] === 'pj' ? $f['cnpj'] : null,
             'telefone' => $f['telefone'],
-            'cidade' => $cidade,
-            'estado' => $uf,
             'responsavel_nome' => $f['responsavel'],
             'responsavel_email' => $f['email'],
             'responsavel_telefone' => $f['telefone'],
-            'responsavel_cpf' => $cnpj ? null : $f['documento'],
+            'responsavel_cpf' => $f['cpf'] ?: null,
             'senha_admin' => $f['senha'],
             'plano_sistema_id' => (int) $plano['id'],
             'data_fim' => ! empty($plano['prazo_dias']) ? date('Y-m-d', strtotime('+'.(int) $plano['prazo_dias'].' days')) : null,
-        ];
+        ] + $end;
+    }
+
+    /**
+     * Depois de criar academia e administrador: dados pessoais do responsável (usuarios) e, se o CNPJ é
+     * novo no Check-in, razão social e nome fantasia. CNPJ já de outra conta mantém os dados de lá.
+     *
+     * @param  array<string, mixed>  $f
+     */
+    private function completarCadastro(array $f, int $tenantId, int $adminId, string $ip): void
+    {
+        if ($f['legado']) {
+            return;
+        }
+        // Endereço do responsável: o dele ou o da academia (criarUsuarioCompleto não grava endereço)
+        $pessoais = ['whatsapp' => $f['telefone'], 'data_nascimento' => $f['nascimento']]
+            + ($f['endereco_igual'] ? $f['endereco'] : $f['endereco_responsavel']);
+        $this->usuarios->gravarDadosPessoais($adminId, $pessoais);
+
+        if ($f['tipo'] === 'pj') {
+            $vinculo = DB::table('tenant_entidade_juridica')->where('tenant_id', $tenantId)->whereNull('encerrado_em')->first(['papel']);
+            if ($vinculo && $vinculo->papel === VinculoCnpj::GESTOR) {
+                $this->entidades->atualizarPeloTenant($tenantId, array_filter(
+                    ['razao_social' => $f['razao_social'], 'nome_fantasia' => $f['nome_fantasia'] ?: $f['nome']] + $f['endereco'],
+                    fn ($v) => $v !== '',
+                ), $adminId, $ip);
+            }
+        }
     }
 
     /**
