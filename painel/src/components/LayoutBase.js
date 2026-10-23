@@ -217,7 +217,8 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const encerrarAcesso = async () => {
     setEncerrando(true);
     const voltou = await authService.encerrarAcessoSuporte();
-    router.replace(voltou ? (acessoSuporte?.tenant_id ? `/academias/${acessoSuporte.tenant_id}` : '/academias') : '/login');
+    const destino = voltou ? (acessoSuporte?.tenant_id ? `/academias/${acessoSuporte.tenant_id}` : '/academias') : '/login';
+    if (!authService.irParaNovaSessao(destino)) router.replace(destino);
   };
 
   const handleLogout = async () => {

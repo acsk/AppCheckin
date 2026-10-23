@@ -105,7 +105,7 @@ export default function AcademiaFormScreen() {
     setAcessando(true);
     try {
       await authService.iniciarAcessoSuporte(academiaId, { motivoId: Number(motivoId), detalhe: detalhe.trim() || null });
-      router.replace('/');
+      if (!authService.irParaNovaSessao('/')) router.replace('/');
     } catch (error) {
       showError(apiError(error, 'Não foi possível acessar a academia'));
       setAcessando(false);

@@ -185,6 +185,17 @@ export const authService = {
     return true;
   },
 
+  // Troca de sessão (entrar/sair do "acessar como academia"): recarrega a página inteira.
+  // Com router.replace o menu (LayoutBase) e as telas abertas ficavam com o usuário e as permissões da
+  // sessão anterior e mandavam o super admin para o dashboard da academia.
+  irParaNovaSessao(caminho) {
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.assign(caminho);
+      return true;
+    }
+    return false;
+  },
+
   async logout() {
     await AsyncStorage.removeItem(SUPORTE_BACKUP);
     await AsyncStorage.removeItem('@appcheckin:token');
