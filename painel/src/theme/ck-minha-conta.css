@@ -17,6 +17,7 @@
 /* Conteúdo da aba: formulário + coluna lateral */
 .ck-mc-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: var(--space-5); align-items: start; }
 @media (max-width: 1100px) { .ck-mc-cols { grid-template-columns: 1fr; } }
+.ck-mc-stack { display: grid; gap: var(--space-4); min-width: 0; }
 
 .ck-mc-form { display: grid; gap: var(--space-4); min-width: 0; }
 .ck-mc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }

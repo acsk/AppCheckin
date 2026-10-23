@@ -400,7 +400,7 @@ class CnpjCompartilhadoTest extends TestCase
         $h = $this->auth($this->adminA, $this->escolaA);
 
         $this->putJson('/v2/admin/minha-conta/perfil', ['nome' => 'Ana', 'telefone' => '82988887777', 'email' => DB::table('usuarios')->where('id', $this->adminA)->value('email')], $h)
-            ->assertOk()->assertJsonPath('perfil.nome', 'Ana');
+            ->assertOk()->assertJsonPath('perfil.nome', 'ANA'); // nomes ficam em maiúsculas (Pessoa), a tela formata
 
         $this->putJson('/v2/admin/minha-conta/perfil', ['nome' => 'Ana', 'email' => 'nova@teste.com'], $h)
             ->assertStatus(422)->assertJsonPath('code', 'SENHA_ATUAL_INVALIDA');

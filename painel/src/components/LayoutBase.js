@@ -31,7 +31,8 @@ const SECTIONS = [
           { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3], perm: 'alunos.ver' },
           { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3], perm: 'matriculas.ver' },
           { id: 'professores', label: 'Professores', path: '/professores', roles: [3], perm: 'aulas.gerenciar' },
-          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3], perm: 'alunos.editar' },
+          // Só o suporte Check-in (super admin, inclusive no "acessar como academia"); a academia usa Equipe/Alunos/Professores
+          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [4], soSuporte: true },
           { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3], perm: 'configuracoes.editar' },
           { id: 'planos', label: 'Planos', path: '/planos', roles: [3], perm: 'configuracoes.editar' },
           { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3], perm: 'configuracoes.editar' },
@@ -115,10 +116,10 @@ const papelLabel = (papelId, user) => (papelId === 4 ? 'Super admin' : papelId =
 // Super admin (fora do "acessar como academia"): itens com papel 4. Equipe da academia: itens cuja
 // permissão `perm` ela tem (lista de authService.getPermissoes(); '*' = qualquer pessoa da equipe).
 // A API confere a mesma permissão em cada rota (App\Support\PermissaoRotas).
-function buildSections(role, perms) {
+function buildSections(role, perms, suporte = false) {
   const itemVisivel = (it) => (role === 4
     ? it.roles.includes(4)
-    : !!it.perm && (it.perm === '*' ? perms.length > 0 : perms.includes(it.perm)));
+    : it.soSuporte ? suporte : !!it.perm && (it.perm === '*' ? perms.length > 0 : perms.includes(it.perm)));
   return SECTIONS.map((s) => ({
     label: s.label,
     items: s.items
@@ -179,7 +180,8 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   }, [pathname]);
 
   const role = authService.getEffectivePapelId(usuarioInfo);
-  const sections = useMemo(() => buildSections(role, perms || []), [role, perms]);
+  const emSuporte = !!usuarioInfo?.acesso_suporte;
+  const sections = useMemo(() => buildSections(role, perms || [], emSuporte), [role, perms, emSuporte]);
 
   // Tela fora das permissões da pessoa (ex.: comercial no dashboard): vai para a primeira tela permitida.
   // Telas fora do menu (perfil, parâmetros, detalhes) seguem a regra do item pai ou da própria API.

@@ -44,6 +44,9 @@ class UsuarioController extends Controller
         if ($tenantId instanceof JsonResponse) {
             return $tenantId;
         }
+        if (($negado = $this->somenteSuporteCheckin($request)) !== null) {
+            return $negado;
+        }
 
         $result = $this->service->create($tenantId, $request->all(), $request->attributes->get('usuario'));
 
@@ -56,6 +59,9 @@ class UsuarioController extends Controller
         if ($tenantId instanceof JsonResponse) {
             return $tenantId;
         }
+        if (($negado = $this->somenteSuporteCheckin($request)) !== null) {
+            return $negado;
+        }
 
         $result = $this->service->update($id, $tenantId, $request->all(), $this->usuarioLogado($request));
 
@@ -67,6 +73,9 @@ class UsuarioController extends Controller
         $tenantId = $this->requireTenant($request);
         if ($tenantId instanceof JsonResponse) {
             return $tenantId;
+        }
+        if (($negado = $this->somenteSuporteCheckin($request)) !== null) {
+            return $negado;
         }
 
         $result = $this->service->delete($id, $tenantId, (int) $request->attributes->get('userId'));
@@ -91,6 +100,9 @@ class UsuarioController extends Controller
         $tenantId = $this->requireTenant($request);
         if ($tenantId instanceof JsonResponse) {
             return $tenantId;
+        }
+        if (($negado = $this->somenteSuporteCheckin($request)) !== null) {
+            return $negado;
         }
 
         $result = $this->service->associar($tenantId, $request->all());
@@ -125,6 +137,22 @@ class UsuarioController extends Controller
     /**
      * @return array<string, mixed>|null
      */
+    /**
+     * Criar, associar, editar e desativar pela tela de Usuários é só do super admin (inclusive no
+     * "acessar como academia"). A academia cuida da equipe em Equipe e de alunos/professores nas telas deles;
+     * a listagem continua liberada (a matrícula usa).
+     */
+    private function somenteSuporteCheckin(Request $request): ?JsonResponse
+    {
+        $usuario = $request->attributes->get('usuario');
+        $superAdmin = $request->attributes->get('is_super_admin') || (is_array($usuario) && (int) ($usuario['papel_id'] ?? 0) === 4);
+        if ($superAdmin || $request->attributes->get('acesso_suporte')) {
+            return null;
+        }
+
+        return ApiError::json('Usuários são gerenciados pelo suporte do Check-in. Use Equipe, Alunos ou Professores.', 'APENAS_SUPORTE', 403);
+    }
+
     private function usuarioLogado(Request $request): ?array
     {
         $usuario = $request->attributes->get('usuario');

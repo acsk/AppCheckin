@@ -17,9 +17,10 @@ const minhaContaService = {
     }
   },
 
-  async salvarPerfil({ nome, telefone, email, senhaAtual }) {
+  // Além de nome/telefone/e-mail: CPF (só se ainda não tem), WhatsApp, nascimento e endereço
+  async salvarPerfil({ senhaAtual, ...dados }) {
     try {
-      return (await api.put('/admin/minha-conta/perfil', { nome, telefone, email, senha_atual: senhaAtual || undefined })).data;
+      return (await api.put('/admin/minha-conta/perfil', { ...dados, senha_atual: senhaAtual || undefined })).data;
     } catch (error) {
       throw erro(error, 'Não foi possível salvar o perfil');
     }

@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { Badge, Button, Callout, Modal, PageHeader, Tabs, TextField } from '../../components/ck';
-import { Panel, digits, maskCep, maskCpf, maskPhone } from '../../components/ck/pessoas';
+import { Panel, brToIso, digits, maskCep, maskCnpj, maskCpf, maskDate, maskPhone, titleCase } from '../../components/ck/pessoas';
+import { pfCpfOk } from '../../components/ck/professores';
 import { authService } from '../../services/authService';
 import cepService from '../../services/cepService';
 import minhaContaService from '../../services/minhaContaService';
@@ -72,6 +73,15 @@ const pickEndereco = (o) => Object.fromEntries(Object.keys(ENDERECO_VAZIO).map((
 
 // ------------------------------------------------------------------ Meu perfil
 
+// Nascimento no formulário é DD/MM/AAAA; a API usa AAAA-MM-DD
+const isoParaBr = (v) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '');
+const listaE = (itens) => (itens.length > 1 ? `${itens.slice(0, -1).join(', ')} e ${itens[itens.length - 1]}` : itens[0] || '');
+
+function Pendencias({ itens, children }) {
+  if (!itens?.length) return null;
+  return <Callout tone="warning" title={`Complete o cadastro: falta${itens.length > 1 ? 'm' : ''} ${listaE(itens)}`}>{children}</Callout>;
+}
+
 function PerfilAba() {
   const { dados, setDados, erro, carregar } = useCarregar(minhaContaService.perfil);
   const [form, setForm] = useState(null);
@@ -80,15 +90,23 @@ function PerfilAba() {
   const [senha, setSenha] = useState('');
   const [erroSenha, setErroSenha] = useState('');
 
-  const inicial = (d) => ({ nome: d.nome || '', telefone: digits(d.telefone), email: d.email || '' });
+  const inicial = (d) => ({
+    nome: titleCase(d.nome || ''), telefone: digits(d.telefone), email: d.email || '', whatsapp: digits(d.whatsapp),
+    cpf: digits(d.cpf), nascimento: isoParaBr(d.data_nascimento), ...pickEndereco(d), cep: digits(d.cep),
+  });
   useEffect(() => { if (dados) setForm(inicial(dados)); }, [dados]);
 
+  const cpfTravado = !!dados?.cpf; // CPF já cadastrado: troca só pelo suporte
+  const nascimentoIso = form ? brToIso(form.nascimento) : null;
   const trocaEmail = form && dados && form.email.trim().toLowerCase() !== String(dados.email || '').toLowerCase();
-  const alterado = form && dados && (form.nome !== (dados.nome || '') || digits(form.telefone) !== digits(dados.telefone) || trocaEmail);
+  const alterado = form && dados && JSON.stringify({ ...form, email: form.email.trim().toLowerCase() }) !== JSON.stringify({ ...inicial(dados), email: String(dados.email || '').toLowerCase() });
   const erros = form ? {
     nome: !form.nome.trim() ? 'Informe o nome' : null,
     email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) ? 'E-mail inválido' : null,
     telefone: digits(form.telefone) && ![10, 11].includes(digits(form.telefone).length) ? 'DDD + número' : null,
+    whatsapp: digits(form.whatsapp) && !/^\d{2}9\d{8}$/.test(digits(form.whatsapp)) ? 'Celular com DDD (11 dígitos)' : null,
+    cpf: !cpfTravado && form.cpf && !pfCpfOk(form.cpf) ? 'CPF inválido' : null,
+    nascimento: form.nascimento && !nascimentoIso ? 'Use DD/MM/AAAA' : null,
   } : {};
   const valido = form && !Object.values(erros).some(Boolean);
 
@@ -96,7 +114,11 @@ function PerfilAba() {
     setSalvando(true);
     setErroSenha('');
     try {
-      const r = await minhaContaService.salvarPerfil({ nome: form.nome.trim(), telefone: digits(form.telefone), email: form.email.trim(), senhaAtual });
+      const r = await minhaContaService.salvarPerfil({
+        nome: form.nome.trim(), telefone: digits(form.telefone), email: form.email.trim(), whatsapp: digits(form.whatsapp),
+        ...(cpfTravado ? {} : { cpf: digits(form.cpf) }), data_nascimento: nascimentoIso,
+        ...pickEndereco(form), cep: digits(form.cep), senhaAtual,
+      });
       setDados(r.perfil);
       setPedirSenha(false);
       setSenha('');
@@ -113,25 +135,34 @@ function PerfilAba() {
     <Estado erro={erro} onRetry={carregar} carregando={!form}>
       {form ? (
         <div className="ck-mc-cols">
-          <Panel title="Meu perfil" description="Seus dados de acesso ao painel.">
-            <div className="ck-mc-form">
-              <TextField label="Nome" value={form.nome} error={erros.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-              <div className="ck-mc-grid ck-mc-grid--2">
-                <TextField label="Telefone" inputMode="tel" icon="phone" value={maskPhone(form.telefone)} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: digits(e.target.value) })} />
+          <div className="ck-mc-stack">
+            <Pendencias itens={dados.pendencias}>Esses dados aparecem no contrato e nas cobranças do Check-in.</Pendencias>
+            <Panel title="Meu perfil" description="Seus dados pessoais e de acesso ao painel.">
+              <div className="ck-mc-form">
+                <TextField label="Nome completo" value={form.nome} error={erros.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                <div className="ck-mc-grid ck-mc-grid--2">
+                  <TextField label="CPF" inputMode="numeric" value={maskCpf(form.cpf)} error={erros.cpf} readOnly={cpfTravado} icon={cpfTravado ? 'lock' : undefined}
+                    hint={cpfTravado ? 'Para trocar o CPF, fale com o suporte.' : null} onChange={(e) => setForm({ ...form, cpf: digits(e.target.value) })} />
+                  <TextField label="Data de nascimento" inputMode="numeric" icon="calendar" placeholder="DD/MM/AAAA" value={form.nascimento} error={erros.nascimento}
+                    onChange={(e) => setForm({ ...form, nascimento: maskDate(e.target.value) })} />
+                  <TextField label="Telefone" inputMode="tel" icon="phone" value={maskPhone(form.telefone)} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: digits(e.target.value) })} />
+                  <TextField label="WhatsApp" inputMode="tel" icon="message-circle" value={maskPhone(form.whatsapp)} error={erros.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: digits(e.target.value) })} />
+                </div>
                 <TextField label="E-mail" type="email" icon="mail" value={form.email} error={erros.email}
-                  hint={trocaEmail ? 'É o seu login. Vamos pedir sua senha para confirmar.' : null}
+                  hint={trocaEmail ? 'É o seu login. Vamos pedir sua senha para confirmar.' : 'É o seu login no painel e no app.'}
                   onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                <h3 className="ck-mc-sub">Endereço</h3>
+                <EnderecoCampos prefixo="perfil" value={form} onChange={(p) => setForm({ ...form, ...p })} />
+                <div className="ck-mc-actions">
+                  <Button variant="ghost" disabled={!alterado || salvando} onClick={() => setForm(inicial(dados))}>Descartar</Button>
+                  <Button variant="primary" icon="save" loading={salvando && !pedirSenha} disabled={!alterado || !valido}
+                    onClick={() => (trocaEmail ? setPedirSenha(true) : salvar())}>Salvar perfil</Button>
+                </div>
               </div>
-              <div className="ck-mc-actions">
-                <Button variant="ghost" disabled={!alterado || salvando} onClick={() => setForm(inicial(dados))}>Descartar</Button>
-                <Button variant="primary" icon="save" loading={salvando && !pedirSenha} disabled={!alterado || !valido}
-                  onClick={() => (trocaEmail ? setPedirSenha(true) : salvar())}>Salvar perfil</Button>
-              </div>
-            </div>
-          </Panel>
+            </Panel>
+          </div>
           <Panel title="Informações da conta">
             <dl className="ck-mc-dl">
-              <div><dt>CPF</dt><dd>{dados.cpf ? maskCpf(dados.cpf) : '—'}</dd></div>
               <div><dt>Conta criada em</dt><dd>{fdate(dados.criado_em)}</dd></div>
               <div><dt>Código do usuário</dt><dd className="ck-mc-mono">{dados.id}</dd></div>
             </dl>
@@ -286,6 +317,9 @@ function EscolaAba() {
   return (
     <Estado erro={erro} onRetry={carregar} carregando={!form}>
       {form ? (
+        <div className="ck-mc-cols">
+        <div className="ck-mc-stack">
+        <Pendencias itens={dados.pendencias}>Aparecem para os alunos no app e no contrato.</Pendencias>
         <Panel title="Dados da escola" description="Informações desta unidade. Mesmo com CNPJ compartilhado, outras escolas não são afetadas.">
           <div className="ck-mc-form">
             <TextField label="Nome de exibição" value={form.nome} error={erros.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
@@ -302,6 +336,21 @@ function EscolaAba() {
             </div>
           </div>
         </Panel>
+        </div>
+        <Panel title="Cadastro da academia" description="Dados informados na contratação do Check-in.">
+          <dl className="ck-mc-dl">
+            <div><dt>{dados.documento?.tipo === 'cpf' ? 'CPF (pessoa física)' : 'CNPJ'}</dt>
+              <dd className="ck-mc-mono">{dados.documento ? (dados.documento.tipo === 'cpf' ? maskCpf(dados.documento.numero) : maskCnpj(dados.documento.numero)) : '—'}</dd></div>
+            <div><dt>Responsável</dt><dd>{dados.responsavel?.nome || '—'}</dd></div>
+            <div><dt>CPF do responsável</dt><dd className="ck-mc-mono">{dados.responsavel?.cpf ? maskCpf(dados.responsavel.cpf) : '—'}</dd></div>
+            <div><dt>Telefone do responsável</dt><dd>{dados.responsavel?.telefone ? maskPhone(dados.responsavel.telefone) : '—'}</dd></div>
+            <div><dt>E-mail do responsável</dt><dd>{dados.responsavel?.email || '—'}</dd></div>
+          </dl>
+          <p className="ck-mc-hint">{dados.documento?.tipo === 'cpf'
+            ? 'A academia foi contratada no CPF do responsável. Para passar para um CNPJ, fale com o suporte.'
+            : 'Para alterar o responsável pelo contrato, fale com o suporte.'}</p>
+        </Panel>
+        </div>
       ) : null}
     </Estado>
   );
