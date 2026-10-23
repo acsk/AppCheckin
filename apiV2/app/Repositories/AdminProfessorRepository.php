@@ -16,6 +16,12 @@ class AdminProfessorRepository
 {
     private const PAPEL_PROFESSOR = 2;
 
+    /** Foto do professor: a da pessoa (usuarios.foto_caminho); professores.foto_url é legado e sai na fase 3. */
+    private function foto(): string
+    {
+        return Pessoa::existe('professores', 'foto_url') ? 'COALESCE(p.foto_url, u.foto_caminho) as foto_url' : 'u.foto_caminho as foto_url';
+    }
+
     /** Campo pessoal para SQL cru: usuarios primeiro, cópia antiga em professores se vazio. */
     private function pessoal(string $campo, bool $comAlias = true): string
     {
@@ -29,7 +35,7 @@ class AdminProfessorRepository
                     UPPER(p.nome) as nome,
                     '.$this->pessoal('cpf').',
                     p.email,
-                    p.foto_url,
+                    '.$this->foto().',
                     p.ativo,
                     '.$this->pessoal('whatsapp').',
                     p.cref,
@@ -133,7 +139,7 @@ class AdminProfessorRepository
     public function findById(int $id, ?int $tenantId = null): ?array
     {
         if ($tenantId !== null) {
-            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, '.$this->foto().', p.ativo, p.usuario_id, p.created_at, p.updated_at,
                            '.$this->pessoal('data_nascimento').', '.$this->pessoal('whatsapp').', p.cref, p.cref_validade,
                            p.emergencia_nome, p.emergencia_telefone, p.emergencia_parentesco,
                            u.telefone, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
@@ -149,7 +155,7 @@ class AdminProfessorRepository
                     WHERE p.id = ?';
             $bindings = [$tenantId, $id];
         } else {
-            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            $sql = 'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, '.$this->foto().', p.ativo, p.usuario_id, p.created_at, p.updated_at,
                            u.telefone
                     FROM professores p
                     LEFT JOIN usuarios u ON u.id = p.usuario_id
@@ -182,7 +188,7 @@ class AdminProfessorRepository
     public function findByCpf(string $cpf, int $tenantId): ?array
     {
         $row = DB::selectOne(
-            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, '.$this->foto().', p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone,
                     tup.ativo as vinculo_ativo,
                     (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1) as turmas_count
@@ -222,7 +228,7 @@ class AdminProfessorRepository
     public function findByCpfGlobal(string $cpf): ?array
     {
         $row = DB::selectOne(
-            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
+            'SELECT p.id, p.nome, '.$this->pessoal('cpf').', p.email, '.$this->foto().', p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone
              FROM professores p
              LEFT JOIN usuarios u ON u.id = p.usuario_id
@@ -261,7 +267,7 @@ class AdminProfessorRepository
         }
 
         $cpf = preg_replace('/[^0-9]/', '', (string) $usuario->cpf) ?: null;
-        if ($cpf !== null && ($porCpf = DB::table('professores')->where('cpf', $cpf)->first())) {
+        if ($cpf !== null && Pessoa::existe('professores', 'cpf') && ($porCpf = DB::table('professores')->where('cpf', $cpf)->first())) {
             // Cadastro legado sem login com o mesmo CPF: é a mesma pessoa
             if ($porCpf->usuario_id === null) {
                 DB::table('professores')->where('id', $porCpf->id)
@@ -295,12 +301,11 @@ class AdminProfessorRepository
 
     public function criar(array $data): int
     {
+        // CPF e foto são da pessoa (usuarios); professores guarda o perfil profissional
         return (int) DB::table('professores')->insertGetId([
             'usuario_id' => $data['usuario_id'],
             'nome' => $data['nome'],
-            'cpf' => $data['cpf'] ?? null,
             'email' => $data['email'] ?? null,
-            'foto_url' => $data['foto_url'] ?? null,
             'ativo' => $data['ativo'] ?? 1,
         ]);
     }
@@ -319,7 +324,7 @@ class AdminProfessorRepository
             return false;
         }
 
-        $professorPayload = $this->apenasCampos($data, ['nome', 'email', 'foto_url', 'ativo'])
+        $professorPayload = $this->apenasCampos($data, ['nome', 'email', ...(Pessoa::existe('professores', 'foto_url') ? ['foto_url'] : []), 'ativo'])
             + array_intersect_key($data, array_flip(self::PROFESSOR_OPCIONAIS));
         if ($professorPayload !== []) {
             $professorPayload['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
@@ -511,6 +516,9 @@ class AdminProfessorRepository
             return (array) $row;
         }
 
+        if (! Pessoa::existe('alunos', 'cpf')) {
+            return null;
+        }
         $row = DB::table('alunos as a')
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.cpf', $cpfLimpo)

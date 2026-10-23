@@ -208,7 +208,9 @@ class EquipeTest extends TestCase
 
         $perfil = DB::table('professores')->where('usuario_id', $id)->first();
         $this->assertSame('PROF NOVO', $perfil->nome);
-        $this->assertSame($this->cpf(0), $perfil->cpf);
+        // CPF é da pessoa (usuarios); o perfil de professor não guarda cópia
+        $this->assertNull($perfil->cpf);
+        $this->assertSame($this->cpf(0), DB::table('usuarios')->where('id', $id)->value('cpf'));
         $this->assertSame([], app(PermissaoService::class)->efetivas($this->escola, $id), 'professor sozinho não entra no painel');
 
         // Admin que passa a dar aula: mesmo cadastro, um perfil só

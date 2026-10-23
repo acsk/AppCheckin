@@ -161,7 +161,7 @@ class UsuarioRepository
                 'u.email',
                 'u.email_global',
                 'tup.papel_id',
-                'u.foto_base64',
+                Pessoa::existe('usuarios', 'foto_base64') ? 'u.foto_base64' : DB::raw('NULL as foto_base64'),
                 ...Pessoa::selects(null, 'u', $comCopia ? 'a' : null),
                 'u.created_at',
                 'u.updated_at',
@@ -222,7 +222,7 @@ class UsuarioRepository
                 'u.nome',
                 'u.email',
                 'u.email_global',
-                'u.foto_base64',
+                Pessoa::existe('usuarios', 'foto_base64') ? 'u.foto_base64' : DB::raw('NULL as foto_base64'),
                 'tup.tenant_id',
                 'tup.ativo as tenant_status',
                 'tup.papel_id',
@@ -385,6 +385,10 @@ class UsuarioRepository
             return true;
         }
 
+        // Fallback legado: CPF só na cópia de alunos (some com a fase 3 da consolidação)
+        if (! Pessoa::existe('alunos', 'cpf')) {
+            return false;
+        }
         $qAluno = DB::table('alunos')->where('cpf', $cpfLimpo);
         if ($excludeUsuarioId) {
             $qAluno->where(function ($q) use ($excludeUsuarioId) {
@@ -668,7 +672,7 @@ class UsuarioRepository
             }
         }
 
-        if (isset($data['foto_base64'])) {
+        if (isset($data['foto_base64']) && Pessoa::existe('usuarios', 'foto_base64')) {
             $update['foto_base64'] = $data['foto_base64'];
         }
 
@@ -737,6 +741,9 @@ class UsuarioRepository
             return (array) $row;
         }
 
+        if (! Pessoa::existe('alunos', 'cpf')) {
+            return null;
+        }
         $viaAluno = DB::table('alunos as a')
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.cpf', $cpfLimpo)

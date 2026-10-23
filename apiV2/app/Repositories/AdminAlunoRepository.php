@@ -3,7 +3,6 @@
 namespace App\Repositories;
 
 use App\Support\Pessoa;
-use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -524,42 +523,20 @@ class AdminAlunoRepository
     }
 
     /**
+     * Colunas que ficam em alunos: o vínculo com o usuário, o nome (espelho) e o ativo.
+     * Os dados pessoais são gravados em usuarios por create()/update().
+     *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function normalizeAlunoPayload(array $data, bool $creating): array
     {
-        $allowed = [
-            'usuario_id', 'nome', 'telefone', 'whatsapp', 'cpf', 'data_nascimento', 'cep', 'logradouro',
-            'numero', 'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64', 'ativo',
-        ];
-        if (SexoAluno::colunaExiste()) {
-            $allowed[] = 'sexo';
+        $out = array_intersect_key($data, array_flip(['usuario_id', 'nome', 'ativo']));
+        if (isset($out['nome'])) {
+            $out['nome'] = mb_strtoupper(trim((string) $out['nome']), 'UTF-8');
         }
-
-        $out = [];
-        foreach ($allowed as $field) {
-            if (! array_key_exists($field, $data)) {
-                continue;
-            }
-
-            $value = $data[$field];
-            if (in_array($field, ['cpf', 'cep', 'telefone', 'whatsapp'], true)) {
-                $value = $value ? preg_replace('/[^0-9]/', '', (string) $value) : null;
-                $value = ($value !== null && $value !== '') ? $value : null;
-            } elseif ($field === 'sexo') {
-                $value = SexoAluno::normalizar($value);
-            } elseif (in_array($field, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'], true)) {
-                $value = $value ? mb_strtoupper(trim((string) $value), 'UTF-8') : null;
-                if ($field === 'estado' && $value) {
-                    $value = mb_substr($value, 0, 2, 'UTF-8');
-                }
-            }
-            $out[$field] = $value;
-        }
-
         if ($creating && ! isset($out['ativo'])) {
-            $out['ativo'] = $data['ativo'] ?? 1;
+            $out['ativo'] = 1;
         }
 
         return $out;

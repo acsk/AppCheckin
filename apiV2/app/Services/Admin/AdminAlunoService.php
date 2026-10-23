@@ -2,9 +2,9 @@
 
 namespace App\Services\Admin;
 
-use App\Support\SexoAluno;
 use App\Repositories\AdminAlunoRepository;
 use App\Repositories\UsuarioRepository;
+use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
 class AdminAlunoService
@@ -127,7 +127,7 @@ class AdminAlunoService
                 if ($alunoCriado) {
                     $extra = array_intersect_key($data, array_flip([
                         'data_nascimento', 'sexo', 'whatsapp', 'logradouro', 'numero',
-                        'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64',
+                        'complemento', 'bairro', 'cidade', 'estado',
                     ]));
                     if ($extra !== []) {
                         $this->alunos->update((int) $alunoCriado['id'], $extra);
