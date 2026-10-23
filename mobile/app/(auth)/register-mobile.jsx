@@ -17,6 +17,7 @@ import {
 } from "react-native-safe-area-context";
 import AppHeader from "../../src/components/ds/AppHeader";
 import Button from "../../src/components/ds/Button";
+import Modal from "../../src/components/ds/Modal";
 import Section, { cardStyle } from "../../src/components/ds/Section";
 import SelectRow from "../../src/components/ds/SelectRow";
 import Stepper from "../../src/components/ds/Stepper";
@@ -401,7 +402,6 @@ export default function RegisterMobileScreen() {
       // Já tem conta (ex.: em outra academia): entra com a senha e o login vincula esta academia.
       if (error?.conta_existente) {
         setContaExistente(true);
-        scrollRef.current?.scrollTo?.({ y: 0, animated: true });
         return;
       }
 
@@ -796,29 +796,6 @@ export default function RegisterMobileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {contaExistente ? (
-            <View style={styles.conta} accessibilityRole="alert">
-              <View style={styles.contaHead}>
-                <Feather name="user-check" size={20} color={ds.info} />
-                <Text style={styles.contaTitle}>Você já tem conta no AppCheckin</Text>
-              </View>
-              <Text style={styles.contaText}>
-                Este e-mail ou CPF já está cadastrado, talvez em outra academia. Entre com sua senha para adicionar{" "}
-                {tenantEscolhido?.nome || "esta academia"} à sua conta.
-              </Text>
-              <Button
-                variant="primary"
-                block
-                icon="log-in"
-                onPress={() => router.replace({
-                  pathname: "/(auth)/login",
-                  params: { vincular: String(tenantId), academia: tenantEscolhido?.nome || "", email: form.email.trim().toLowerCase() },
-                })}
-              >
-                Entrar e adicionar academia
-              </Button>
-            </View>
-          ) : null}
           {formError ? (
             <View style={styles.alert} accessibilityRole="alert">
               <Feather name="alert-circle" size={20} color={ds.danger} />
@@ -841,6 +818,25 @@ export default function RegisterMobileScreen() {
           </Button>
         </View>
       </KeyboardAvoidingView>
+      <Modal
+        visible={contaExistente}
+        variant="dialog"
+        icon="user-check"
+        title="Você já tem cadastro"
+        description={`Você já possui cadastro no AppCheckin. Faça o login e selecione a ${tenantEscolhido?.nome || "academia"} para entrar.`}
+        primary={{
+          label: "Fazer login",
+          icon: "log-in",
+          onPress: () => {
+            setContaExistente(false);
+            router.replace({
+              pathname: "/(auth)/login",
+              params: { vincular: String(tenantId), academia: tenantEscolhido?.nome || "", email: form.email.trim().toLowerCase() },
+            });
+          },
+        }}
+        onClose={() => setContaExistente(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -939,10 +935,6 @@ const styles = StyleSheet.create({
     backgroundColor: ds.dangerSoft,
   },
   alertText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: "700", color: ds.danger },
-  conta: { gap: space[3], padding: space[4], borderRadius: radius.lg, backgroundColor: ds.infoSoft },
-  contaHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
-  contaTitle: { flex: 1, fontSize: 15, fontWeight: "700", color: ds.ink },
-  contaText: { fontSize: 14, lineHeight: 20, color: ds.inkMuted },
   foot: {
     paddingHorizontal: space[4],
     paddingTop: space[3],

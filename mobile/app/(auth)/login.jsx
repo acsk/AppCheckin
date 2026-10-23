@@ -480,7 +480,7 @@ export default function LoginScreen() {
               <View style={styles.vincular}>
                 <Feather name="user-check" size={16} color={DS.info} />
                 <Text style={styles.vincularText}>
-                  Você já tem conta. Entre com sua senha para adicionar {vincularAcademia || "a academia"} à sua conta.
+                  Você já possui cadastro no AppCheckin. Faça o login e selecione a {vincularAcademia || "academia"} para entrar.
                 </Text>
               </View>
             ) : null}
