@@ -55,6 +55,22 @@ final class Pessoa
         });
     }
 
+    /**
+     * Para groupBy: as colunas cruas que entram na expressão de col(). Agrupar pela expressão COALESCE
+     * falha no MySQL de produção (1055, only_full_group_by não reconhece a expressão do select).
+     *
+     * @return list<string>
+     */
+    public static function agrupar(string $campo, string $u = 'u', ?string $copia = 'a'): array
+    {
+        $tabela = $copia === 'p' ? 'professores' : 'alunos';
+
+        return array_values(array_filter([
+            self::existe('usuarios', $campo) ? "{$u}.{$campo}" : null,
+            $copia !== null && self::copiasEm($tabela, [$campo]) !== [] ? "{$copia}.{$campo}" : null,
+        ]));
+    }
+
     /** Para select: a mesma expressão com o nome do campo como alias. */
     public static function select(string $campo, string $u = 'u', ?string $copia = 'a', ?string $alias = null): Expression
     {

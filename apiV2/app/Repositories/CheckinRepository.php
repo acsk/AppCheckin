@@ -458,7 +458,7 @@ class CheckinRepository
         }
 
         return $query
-            ->groupBy('a.id', 'a.nome', 'u.email', Pessoa::col('foto_caminho'))
+            ->groupBy('a.id', 'a.nome', 'u.email', ...Pessoa::agrupar('foto_caminho'))
             ->orderByDesc(DB::raw('COUNT(c.id)'))
             ->limit($limite)
             ->get([
@@ -514,7 +514,7 @@ class CheckinRepository
         }
 
         return $query
-            ->groupBy('a.id', 'a.nome', 'u.email', Pessoa::col('foto_caminho'))
+            ->groupBy('a.id', 'a.nome', 'u.email', ...Pessoa::agrupar('foto_caminho'))
             ->orderByDesc(DB::raw('COUNT(c.id)'))
             ->limit($limite)
             ->get([

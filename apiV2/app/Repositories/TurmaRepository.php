@@ -145,7 +145,7 @@ class TurmaRepository
             ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->join('checkins as c', 'a.id', '=', 'c.aluno_id')
             ->where('c.turma_id', $turmaId)
-            ->groupBy('a.id', 'a.nome', 'u.email', 'u.nome', Pessoa::col('data_nascimento'), Pessoa::col('foto_caminho'))
+            ->groupBy('a.id', 'a.nome', 'u.email', 'u.nome', ...Pessoa::agrupar('data_nascimento'), ...Pessoa::agrupar('foto_caminho'))
             ->orderBy('u.nome')
             ->get([
                 'a.id',
