@@ -232,6 +232,31 @@ class UsuarioRepository
         return $usuario ? (array) $usuario : null;
     }
 
+    /**
+     * Conta existente vira aluno de mais uma academia. Não reativa vínculo que a academia desativou.
+     */
+    public function vincularComoAluno(int $usuarioId, int $tenantId): void
+    {
+        DB::transaction(function () use ($usuarioId, $tenantId) {
+            if (! DB::table('alunos')->where('usuario_id', $usuarioId)->exists()) {
+                DB::table('alunos')->insert([
+                    'usuario_id' => $usuarioId,
+                    'nome' => DB::table('usuarios')->where('id', $usuarioId)->value('nome'),
+                    'ativo' => 1,
+                ]);
+            }
+
+            DB::table('tenant_usuario_papel')->insertOrIgnore([
+                'tenant_id' => $tenantId,
+                'usuario_id' => $usuarioId,
+                'papel_id' => 1,
+                'ativo' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+    }
+
     public function isTenantActive(int $tenantId): bool
     {
         return DB::table('tenants')

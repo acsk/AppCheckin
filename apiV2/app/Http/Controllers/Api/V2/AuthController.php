@@ -20,6 +20,7 @@ class AuthController extends Controller
         return $this->auth->login(
             (string) $request->input('email', ''),
             (string) $request->input('senha', ''),
+            $request->filled('vincular_tenant_id') ? (int) $request->input('vincular_tenant_id') : null,
         );
     }
 

@@ -21,7 +21,11 @@ class AuthService
         private readonly WelcomeAlunoMailer $welcomeAlunoMailer,
     ) {}
 
-    public function login(string $email, string $senha): JsonResponse
+    /**
+     * @param  int|null  $vincularTenantId  Academia em que a pessoa tentou se cadastrar já tendo conta:
+     *                                      vira aluno dela só depois de provar a senha.
+     */
+    public function login(string $email, string $senha, ?int $vincularTenantId = null): JsonResponse
     {
         $email = mb_strtolower(trim($email), 'UTF-8');
 
@@ -41,6 +45,12 @@ class AuthService
                 'INVALID_CREDENTIALS',
                 401,
             );
+        }
+
+        $tenantVinculado = null;
+        if ($vincularTenantId !== null && $vincularTenantId > 0 && $this->usuarios->isTenantActive($vincularTenantId)) {
+            $this->usuarios->vincularComoAluno((int) $usuario->id, $vincularTenantId);
+            $tenantVinculado = $vincularTenantId;
         }
 
         $papeis = $this->usuarios->getPapeis((int) $usuario->id);
@@ -123,6 +133,7 @@ class AuthService
             ],
             'tenants' => $tenants,
             'requires_tenant_selection' => count($tenants) > 1,
+            'tenant_vinculado' => $tenantVinculado,
             'api_version' => config('appcheckin.api_version'),
         ], 200, [], JSON_UNESCAPED_UNICODE);
     }
@@ -614,12 +625,15 @@ class AuthService
             ], 422, [], JSON_UNESCAPED_UNICODE);
         }
 
+        // Quem já tem conta (ex.: aluno de outra academia) entra com a senha e o login o vincula
+        // a esta academia (vincular_tenant_id): sem a senha, ninguém matricula a conta de outra pessoa.
+        $contaExistente = ['conta_existente' => true, 'tenant_id' => $tenantId];
         if ($this->usuarios->emailExists($emailNorm)) {
-            return ApiError::json('Email já cadastrado', 'EMAIL_ALREADY_EXISTS', 409);
+            return ApiError::json('Email já cadastrado', 'EMAIL_ALREADY_EXISTS', 409, extra: $contaExistente);
         }
 
         if ($this->usuarios->cpfExists($cpfLimpo)) {
-            return ApiError::json('CPF já cadastrado', 'CPF_ALREADY_EXISTS', 409);
+            return ApiError::json('CPF já cadastrado', 'CPF_ALREADY_EXISTS', 409, extra: $contaExistente);
         }
 
         $payload = array_merge([

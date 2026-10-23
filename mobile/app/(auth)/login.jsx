@@ -1,5 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import {
@@ -35,13 +35,18 @@ const lastTenantKey = (userId) => `@appcheckin:last_tenant:${userId}`;
 
 export default function LoginScreen() {
   const router = useRouter();
+  // Vindo do cadastro com conta já existente: o login vincula esta academia à conta.
+  const params = useLocalSearchParams();
+  const vincularTenantId = Number(params?.vincular) > 0 ? Number(params.vincular) : null;
+  const vincularAcademia = typeof params?.academia === "string" ? params.academia : "";
+  const emailParam = typeof params?.email === "string" ? params.email : "";
   // Login é claro: a barra do navegador acompanha o fundo.
   useBrowserThemeColor(DS.surfaceSunken);
   const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
   const LOGIN_PASSWORD_KEY = "@appcheckin:login_password";
   const LOGIN_PASSWORD_SECURE_KEY = "appcheckin.login_password";
   const LOGIN_REMEMBER_KEY = "@appcheckin:login_remember";
-  const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
+  const [email, setEmail] = useState(emailParam || (__DEV__ ? "andrecabrall@gmail.com" : ""));
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
@@ -196,6 +201,8 @@ export default function LoginScreen() {
 
         if (!isMounted) return;
 
+        // Conta de outra pessoa salva no aparelho não pode receber a academia do cadastro.
+        if (emailParam && savedEmail && savedEmail.trim().toLowerCase() !== emailParam) return;
         if (savedEmail) setEmail(savedEmail);
         if (savedPassword) setSenha(savedPassword);
       } catch (error) {
@@ -283,7 +290,7 @@ export default function LoginScreen() {
     try {
       console.log("🔐 Iniciando login para:", email);
       const recaptchaToken = await getRecaptchaToken();
-      const response = await authService.login(email, senha, recaptchaToken);
+      const response = await authService.login(email, senha, recaptchaToken, vincularTenantId);
 
       // authService já retorna response.data e salva o token automaticamente
       if (response && response.token) {
@@ -318,7 +325,10 @@ export default function LoginScreen() {
         const preferredTenant = response.tenants.find(
           (item) => String((item.tenant || item).id) === preferredId,
         );
-        const initialTenant = preferredTenant || response.tenants[0];
+        const vinculado = response.tenant_vinculado
+          ? response.tenants.find((item) => String((item.tenant || item).id) === String(response.tenant_vinculado))
+          : null;
+        const initialTenant = vinculado || preferredTenant || response.tenants[0];
         setSelectedTenantId((initialTenant.tenant || initialTenant).id);
         setLastAccessTenantId(lastId);
         setRememberTenant(preferredId != null || lastId == null);
@@ -466,6 +476,14 @@ export default function LoginScreen() {
 
           {/* Formulário */}
           <View style={styles.form}>
+            {vincularTenantId ? (
+              <View style={styles.vincular}>
+                <Feather name="user-check" size={16} color={DS.info} />
+                <Text style={styles.vincularText}>
+                  Você já tem conta. Entre com sua senha para adicionar {vincularAcademia || "a academia"} à sua conta.
+                </Text>
+              </View>
+            ) : null}
             {formError ? (
               <View style={styles.formError} accessibilityLiveRegion="polite">
                 <Feather name="alert-circle" size={16} color={DS.danger} />
@@ -673,6 +691,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: DS.danger,
+  },
+  vincular: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: DS.infoSoft,
+  },
+  vincularText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: DS.info,
   },
   signup: {
     flexDirection: "row",

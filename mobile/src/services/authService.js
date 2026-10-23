@@ -77,11 +77,14 @@ export const authService = {
   /**
    * Realiza login com email e senha
    */
-  async login(email, senha, recaptchaToken = null) {
+  async login(email, senha, recaptchaToken = null, vincularTenantId = null) {
     try {
       const payload = { email, senha };
       if (recaptchaToken) {
         payload.recaptcha_token = recaptchaToken;
+      }
+      if (vincularTenantId) {
+        payload.vincular_tenant_id = vincularTenantId;
       }
 
       const response = await api.post("/auth/login", payload);

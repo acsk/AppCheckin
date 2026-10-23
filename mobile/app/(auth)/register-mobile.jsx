@@ -152,6 +152,7 @@ export default function RegisterMobileScreen() {
   const [tentou, setTentou] = useState({});
   const [errosServidor, setErrosServidor] = useState({});
   const [formError, setFormError] = useState("");
+  const [contaExistente, setContaExistente] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cepStatus, setCepStatus] = useState("idle");
 
@@ -164,6 +165,7 @@ export default function RegisterMobileScreen() {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errosServidor[field]) setErrosServidor((prev) => ({ ...prev, [field]: undefined }));
     if (formError) setFormError("");
+    if (contaExistente && (field === "email" || field === "cpf")) setContaExistente(false);
   };
 
   const erros = useMemo(() => {
@@ -395,6 +397,13 @@ export default function RegisterMobileScreen() {
       const message = error?.message || "";
       const code = error?.code || "";
       const lower = message.toLowerCase();
+
+      // Já tem conta (ex.: em outra academia): entra com a senha e o login vincula esta academia.
+      if (error?.conta_existente) {
+        setContaExistente(true);
+        scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+        return;
+      }
 
       if (code === "EMAIL_ALREADY_EXISTS" || lower.includes("email já cadastrado") || lower.includes("email already exists")) {
         setErrosServidor((prev) => ({ ...prev, email: "Este e-mail já tem cadastro. Entre com ele ou use outro." }));
@@ -787,6 +796,29 @@ export default function RegisterMobileScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {contaExistente ? (
+            <View style={styles.conta} accessibilityRole="alert">
+              <View style={styles.contaHead}>
+                <Feather name="user-check" size={20} color={ds.info} />
+                <Text style={styles.contaTitle}>Você já tem conta no AppCheckin</Text>
+              </View>
+              <Text style={styles.contaText}>
+                Este e-mail ou CPF já está cadastrado, talvez em outra academia. Entre com sua senha para adicionar{" "}
+                {tenantEscolhido?.nome || "esta academia"} à sua conta.
+              </Text>
+              <Button
+                variant="primary"
+                block
+                icon="log-in"
+                onPress={() => router.replace({
+                  pathname: "/(auth)/login",
+                  params: { vincular: String(tenantId), academia: tenantEscolhido?.nome || "", email: form.email.trim().toLowerCase() },
+                })}
+              >
+                Entrar e adicionar academia
+              </Button>
+            </View>
+          ) : null}
           {formError ? (
             <View style={styles.alert} accessibilityRole="alert">
               <Feather name="alert-circle" size={20} color={ds.danger} />
@@ -907,6 +939,10 @@ const styles = StyleSheet.create({
     backgroundColor: ds.dangerSoft,
   },
   alertText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: "700", color: ds.danger },
+  conta: { gap: space[3], padding: space[4], borderRadius: radius.lg, backgroundColor: ds.infoSoft },
+  contaHead: { flexDirection: "row", alignItems: "center", gap: space[2] },
+  contaTitle: { flex: 1, fontSize: 15, fontWeight: "700", color: ds.ink },
+  contaText: { fontSize: 14, lineHeight: 20, color: ds.inkMuted },
   foot: {
     paddingHorizontal: space[4],
     paddingTop: space[3],

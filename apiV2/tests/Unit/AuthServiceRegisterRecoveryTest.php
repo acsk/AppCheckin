@@ -206,6 +206,51 @@ class AuthServiceRegisterRecoveryTest extends TestCase
         $this->assertSame('prefiro_nao_informar', $response->getData(true)['user']['sexo']);
     }
 
+    public function test_register_mobile_com_conta_existente_pede_login(): void
+    {
+        $this->criarTabelaRateLimits();
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('emailExists')->andReturn(true);
+        $usuarios->shouldNotReceive('createMobileAluno');
+
+        $response = $this->authService(Mockery::mock(JwtService::class), $usuarios)
+            ->registerMobile(Request::create('/v2/auth/register-mobile', 'POST', $this->dadosMobile(['sexo' => 'masculino', 'tenant_id' => 5])));
+
+        $this->assertSame(409, $response->getStatusCode());
+        $this->assertSame('EMAIL_ALREADY_EXISTS', $response->getData(true)['code']);
+        $this->assertTrue($response->getData(true)['conta_existente']);
+        $this->assertSame(5, $response->getData(true)['tenant_id']);
+    }
+
+    public function test_login_com_vincular_tenant_vincula_como_aluno_apos_senha(): void
+    {
+        $usuario = (object) ['id' => 7, 'email' => 'a@x.com', 'nome' => 'A', 'senha_hash' => password_hash('segredo', PASSWORD_BCRYPT)];
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('findByEmailGlobal')->andReturn($usuario);
+        $usuarios->shouldReceive('isTenantActive')->with(5)->andReturn(true);
+        $usuarios->shouldReceive('vincularComoAluno')->once()->with(7, 5);
+        $usuarios->shouldReceive('getPapeis')->andReturn([['id' => 1]]);
+        $usuarios->shouldReceive('getTenantsByUsuario')->andReturn([['tenant' => ['id' => 2]], ['tenant' => ['id' => 5]]]);
+
+        $response = $this->authService(Mockery::mock(JwtService::class), $usuarios)->login('a@x.com', 'segredo', 5);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(5, $response->getData(true)['tenant_vinculado']);
+        $this->assertTrue($response->getData(true)['requires_tenant_selection']);
+    }
+
+    public function test_login_com_senha_errada_nao_vincula(): void
+    {
+        $usuario = (object) ['id' => 7, 'email' => 'a@x.com', 'senha_hash' => password_hash('segredo', PASSWORD_BCRYPT)];
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('findByEmailGlobal')->andReturn($usuario);
+        $usuarios->shouldNotReceive('vincularComoAluno');
+
+        $response = $this->authService(Mockery::mock(JwtService::class), $usuarios)->login('a@x.com', 'errada', 5);
+
+        $this->assertSame(401, $response->getStatusCode());
+    }
+
     private function criarTabelaRateLimits(): void
     {
         $this->requireSqlite();
