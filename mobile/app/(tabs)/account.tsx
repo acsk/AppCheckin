@@ -51,6 +51,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0] || "Aluno";
+
 const ROLE_NAME_FALLBACK: Record<number, string> = {
   1: "Aluno",
   2: "Professor",
@@ -71,6 +73,7 @@ export default function AccountScreen() {
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [switchingTenantId, setSwitchingTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rankingLimite, setRankingLimite] = useState(15);
   const [rankingExpanded, setRankingExpanded] = useState(false);
   const [campeoesAnteriores, setCampeoesAnteriores] = useState<{ periodo: string; ranking: RankingItem[] } | null>(null);
   const [meusCheckins, setMeusCheckins] = useState<number | null>(null);
@@ -324,7 +327,7 @@ export default function AccountScreen() {
     }, [loadUnreadNotificationsCount]),
   );
 
-  // Atualiza sozinho: ao voltar para a Início, ao reabrir o app/aba e a cada 60 s.
+  // Atualiza ao voltar para a Início ou reabrir o app, sem consultas periódicas.
   useRefreshOnFocus(
     () =>
       Promise.all([
@@ -333,7 +336,7 @@ export default function AccountScreen() {
         loadRankingMemo(selectedModalidadeId, { silent: true }),
         loadUnreadNotificationsCount(),
       ]),
-    { intervalMs: 60_000, onScreenFocus: true },
+    { onScreenFocus: true },
   );
 
   const getTenantImageUrl = () => {
@@ -515,6 +518,7 @@ export default function AccountScreen() {
         console.log("🏆 [loadRankingMemo] Iniciando carregamento...");
         const response = await fetch(url, {
           method: "GET",
+          cache: "no-store",
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -543,6 +547,8 @@ export default function AccountScreen() {
             : 0,
         });
         setRanking(rankingData?.ranking || []);
+        const limite = Number(rankingData?.limite_home);
+        setRankingLimite(Number.isInteger(limite) && limite >= 1 && limite <= 100 ? limite : 15);
         setCampeoesAnteriores(rankingData?.campeoes_mes_anterior ?? null);
         setMeusCheckins(typeof rankingData?.meus_checkins === "number" ? rankingData.meus_checkins : null);
         setRankingPeriodo(rankingData?.periodo || "");
@@ -710,11 +716,9 @@ export default function AccountScreen() {
   useEffect(() => {
     if (!userProfile) return;
 
-    // Carrega ranking apenas uma vez quando ainda não temos modalidades
+    // Semeia modalidades a partir do perfil apenas na primeira carga.
+    // A consulta fica no efeito de modalidade/período para não buscar duas vezes.
     if (rankingModalidades.length === 0) {
-      loadRankingMemo();
-
-      // Semeia modalidades a partir do perfil apenas na primeira carga
       if (userProfile.ranking_modalidades?.length) {
         const modalidades = normalizeProfileModalidades(
           userProfile.ranking_modalidades,
@@ -727,10 +731,8 @@ export default function AccountScreen() {
     }
   }, [
     userProfile,
-    loadRankingMemo,
     selectedModalidadeId,
     rankingModalidades.length,
-    rankingPeriodoTipo,
   ]);
 
   // Debug: quando apiUrl ou userProfile mudam
@@ -752,8 +754,10 @@ export default function AccountScreen() {
   useEffect(() => {
     const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
     if (!tenantId) return; // Aguarda tenant carregado
-    if (selectedModalidadeId && userProfile) {
-      const rankingKey = `${rankingPeriodoTipo}:${selectedModalidadeId}`;
+    if (userProfile) {
+      // Aguarda a seleção inicial do perfil; sem modalidades, consulta o ranking geral.
+      if (!selectedModalidadeId && userProfile.ranking_modalidades?.length) return;
+      const rankingKey = `${tenantId}:${rankingPeriodoTipo}:${selectedModalidadeId ?? "geral"}`;
       console.log("🔸 [Ranking] Trigger por mudança de modalidade/período", {
         tenantId,
         selectedModalidadeId,
@@ -796,6 +800,7 @@ export default function AccountScreen() {
     setPhotoError(null);
     setHasPhotoLoadError(false);
     setRanking([]);
+    setRankingLimite(15);
     setCampeoesAnteriores(null);
     setMeusCheckins(null);
     setRankingMinhaPosicao(null);
@@ -1579,16 +1584,31 @@ export default function AccountScreen() {
                   ) : <Text style={styles.rankingEmptyText}>Nenhum check-in {rankingPeriodoTipo === "mensal" ? "no mês anterior" : "neste ano"}.</Text>}
                 </View>
                 <View style={styles.rankingCurrentHeading}>
-                  <Text style={styles.rankingCaption}>Você em {rankingPeriodo || (rankingPeriodoTipo === "mensal" ? "este mês" : "este ano")}</Text>
+                  <Text style={styles.rankingCaption}>{rankingPeriodo || (rankingPeriodoTipo === "mensal" ? "Este mês" : "Este ano")}</Text>
                 </View>
-                <RankingRow
+                {ranking.length ? ranking.slice(0, rankingLimite).map((item, index) => {
+                  const aluno = item.aluno ?? item.usuario;
+                  return (
+                    <View key={aluno?.id ?? item.posicao} style={index > 0 ? styles.rankingRowDivider : undefined}>
+                      <RankingRow
+                        position={item.posicao}
+                        name={primeiroNome(aluno?.nome ?? "Aluno")}
+                        value={String(item.total_checkins)}
+                        unit="CHECK-INS"
+                        self={aluno?.id === userProfile.aluno_id}
+                        avatarUri={fotoRecordeUrl(aluno?.foto_caminho, apiUrl)}
+                      />
+                    </View>
+                  );
+                }) : <Text style={styles.rankingEmptyText}>Nenhum check-in neste período.</Text>}
+                {ranking.length < rankingLimite && !ranking.some(item => (item.aluno ?? item.usuario)?.id === userProfile.aluno_id) ? <RankingRow
                   position={meusCheckins !== null ? rankingMinhaPosicao : rankingMinhaPosicao ?? (rankingPeriodoTipo === "mensal" ? userProfile.ranking_modalidades?.find(item => item.modalidade_id === selectedModalidadeId)?.posicao : null) ?? null}
-                  name={userProfile.nome}
+                  name={primeiroNome(userProfile.nome)}
                   value={String(meusCheckins ?? (rankingPeriodoTipo === "mensal" ? userProfile.ranking_modalidades?.find(item => item.modalidade_id === selectedModalidadeId)?.total_checkins : ranking.find(item => (item.aluno ?? item.usuario)?.id === userProfile.aluno_id)?.total_checkins) ?? (rankingPeriodoTipo === "mensal" ? 0 : "–"))}
                   unit="CHECK-INS"
                   avatarUri={fotoRecordeUrl(userProfile.foto_caminho, apiUrl)}
                   self
-                />
+                /> : null}
               </>
             )}
           </View>
@@ -1614,7 +1634,7 @@ export default function AccountScreen() {
             {ranking.slice(3).map(item => <RankingRow
               key={(item.aluno ?? item.usuario)?.id ?? item.posicao}
               position={item.posicao}
-              name={(item.aluno ?? item.usuario)?.nome ?? "Aluno"}
+              name={primeiroNome((item.aluno ?? item.usuario)?.nome ?? "Aluno")}
               value={String(item.total_checkins)}
               unit="CHECK-INS"
               self={(item.aluno ?? item.usuario)?.id === userProfile.aluno_id}
@@ -2432,7 +2452,8 @@ const styles = StyleSheet.create({
   rankingPodiumCard: { paddingHorizontal: 16, paddingTop: 16 },
   rankingCaptionRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
   rankingCaption: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: ds.inkMuted },
-  rankingCurrentHeading: { borderTopWidth: 1, borderTopColor: ds.line, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  rankingCurrentHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderTopWidth: 1, borderTopColor: ds.line, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  rankingRowDivider: { borderTopWidth: 1, borderTopColor: ds.line },
   rankingLoading: { flexDirection: "row", alignItems: "center", gap: 8, padding: 16 },
   rankingLoadingText: { fontSize: 13, fontWeight: "600", color: ds.inkMuted },
   rankingErrorText: { fontSize: 13, fontWeight: "600", color: ds.danger, padding: 16 },

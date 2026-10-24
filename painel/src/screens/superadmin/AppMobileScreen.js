@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import { Button, Callout, PageHeader, Switch } from '../../components/ck';
+import { Button, Callout, PageHeader, Switch, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
 import { authService } from '../../services/authService';
 import appVersaoService from '../../services/appVersaoService';
@@ -15,6 +15,9 @@ export default function AppMobileScreen() {
   const [ok, setOk] = useState(false);
   const [versao, setVersao] = useState(null);
   const [erro, setErro] = useState('');
+  const [limiteRanking, setLimiteRanking] = useState('15');
+  const [limiteSalvo, setLimiteSalvo] = useState(null);
+  const [salvandoRanking, setSalvandoRanking] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -26,7 +29,12 @@ export default function AppMobileScreen() {
 
   const carregar = useCallback(async () => {
     setErro('');
-    try { setVersao(await appVersaoService.buscar()); } catch (e) { setErro(e.message); }
+    try {
+      const [mobile, ranking] = await Promise.all([appVersaoService.buscar(), appVersaoService.buscarRankingCheckins()]);
+      setVersao(mobile);
+      setLimiteRanking(String(ranking.limite));
+      setLimiteSalvo(ranking.limite);
+    } catch (e) { setErro(e.message); }
   }, []);
   useEffect(() => { if (ok) carregar(); }, [ok, carregar]);
 
@@ -42,6 +50,23 @@ export default function AppMobileScreen() {
     }
   };
 
+  const limiteValido = Number.isInteger(Number(limiteRanking)) && Number(limiteRanking) >= 1 && Number(limiteRanking) <= 100;
+  const salvarRanking = async (event) => {
+    event.preventDefault();
+    if (!limiteValido || salvandoRanking) return;
+    setSalvandoRanking(true);
+    try {
+      const ranking = await appVersaoService.definirLimiteRankingCheckins(Number(limiteRanking));
+      setLimiteRanking(String(ranking.limite));
+      setLimiteSalvo(ranking.limite);
+      showSuccess('Limite do ranking atualizado');
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setSalvandoRanking(false);
+    }
+  };
+
   if (!ok) return <LayoutBase title="App mobile" pageHeader={false}><p className="ck-mc-hint" role="status">Carregando…</p></LayoutBase>;
 
   const android = versao?.android;
@@ -49,7 +74,7 @@ export default function AppMobileScreen() {
   return (
     <LayoutBase title="App mobile" pageHeader={false}>
       <div className="ck-mc">
-        <PageHeader title="App mobile" description="Versão publicada do app do aluno e o que acontece com quem está numa versão anterior." />
+        <PageHeader title="App mobile" description="Configurações do app do aluno e versões publicadas." />
 
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
 
@@ -69,6 +94,26 @@ export default function AppMobileScreen() {
                 ? <Callout tone="warning" title="Use para correções urgentes">Bloquear força todo mundo a atualizar na hora, inclusive quem está no meio de um check-in.</Callout>
                 : null}
             </div>
+          )}
+        </Panel>
+
+        <Panel title="Ranking de check-ins" description="Limite de pessoas exibidas na lista do ranking na Home, em todas as academias.">
+          {limiteSalvo === null ? <p className="ck-mc-hint" role="status">Carregando…</p> : (
+            <form className="ck-mc-form" onSubmit={salvarRanking}>
+              <TextField
+                label="Pessoas no ranking da Home"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                required
+                value={limiteRanking}
+                disabled={salvandoRanking}
+                onChange={(event) => setLimiteRanking(event.target.value)}
+                hint="De 1 a 100 pessoas. O pódio continua mostrando os três campeões."
+              />
+              <div><Button type="submit" icon="save" loading={salvandoRanking} disabled={!limiteValido || Number(limiteRanking) === limiteSalvo}>Salvar limite</Button></div>
+            </form>
           )}
         </Panel>
 

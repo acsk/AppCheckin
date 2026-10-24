@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Repositories\CheckinRepository;
 use App\Services\Mobile\MobileHistoricoService;
+use App\Services\AppVersionService;
 use App\Support\AcademyDateTime;
 use Mockery;
 use Tests\TestCase;
@@ -70,7 +71,11 @@ class MobileHistoricoServiceTest extends TestCase
             ->with(7, 3, 3, $p['mes'] === 1 ? 12 : $p['mes'] - 1, $p['mes'] === 1 ? $p['ano'] - 1 : $p['ano'])
             ->once()->andReturn([$row(3, 20)]);
 
+        $versions = Mockery::mock(AppVersionService::class);
+        $versions->shouldReceive('limiteRankingCheckins')->once()->andReturn(25);
+        $this->app->instance(AppVersionService::class, $versions);
         $data = (new MobileHistoricoService($checkins))->rankingMensal(7, 3, 22)['body']['data'];
+        $this->assertSame(25, $data['limite_home']);
         $this->assertCount(4, $data['ranking']);
         $this->assertSame(4, $data['minha_posicao']);
         $this->assertSame(9, $data['meus_checkins']);

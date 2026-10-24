@@ -20,6 +20,7 @@ class AppVersionServiceTest extends TestCase
             $table->unsignedInteger('release');
             $table->date('release_date');
             $table->boolean('obrigatoria')->default(true);
+            $table->unsignedSmallInteger('ranking_checkins_limite')->default(15);
             $table->timestamps();
         });
     }
@@ -44,4 +45,15 @@ class AppVersionServiceTest extends TestCase
         // Publicar versão nova não muda a escolha do super admin
         $this->assertFalse($service->store('mobile', 1, 6, '2026-10-24')['obrigatoria']);
     }
+    public function test_limite_do_ranking_tem_padrao_15_e_persiste_apos_publicar_versao(): void
+    {
+        $service = new AppVersionService();
+        $this->assertSame(15, $service->limiteRankingCheckins());
+        $this->assertSame(25, $service->definirLimiteRankingCheckins(25));
+        $service->definirObrigatoria('mobile', false);
+        $service->store('mobile', 2, 0, '2026-10-24');
+        $this->assertSame(25, $service->limiteRankingCheckins());
+        $this->assertFalse($service->show('mobile')['obrigatoria']);
+    }
+
 }

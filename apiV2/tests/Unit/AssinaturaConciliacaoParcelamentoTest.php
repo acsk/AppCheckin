@@ -141,4 +141,22 @@ class AssinaturaConciliacaoParcelamentoTest extends TestCase
         $this->assertFalse($c['ok']);
         $this->assertFalse(array_column($c['linhas'], null, 'campo')['liquido']['ok']);
     }
+
+    public function test_parcela_paga_com_id_da_cobranca_ganha_da_cancelada_com_mesmo_vencimento(): void
+    {
+        // Matrícula 451: Pix gerado de novo, a parcela antiga foi substituída e a nova (vencimento do plano) foi paga
+        $provedor = [['id' => 'pay_tiepo34bi3ll1gi5', 'status' => 'RECEIVED', 'transaction_amount' => 20, 'net_amount' => 18.01,
+            'payment_method_id' => 'PIX', 'due_date' => '2026-10-22', 'date_approved' => '2026-10-22', 'installment_id' => null]];
+        $local = [
+            ['id' => 1493, 'valor' => '20.00', 'status_pagamento_id' => 2, 'status' => 'Pago', 'data_pagamento' => '2026-10-22', 'data_vencimento' => '2026-10-23',
+                'forma_pagamento_nome' => 'Pix', 'valor_liquido' => '18.01', 'observacoes' => 'Pago via Asaas (Pix) [Asaas pay_tiepo34bi3ll1gi5]'],
+            ['id' => 1492, 'valor' => '20.00', 'status_pagamento_id' => 4, 'status' => 'Cancelado', 'data_pagamento' => null, 'data_vencimento' => '2026-10-22',
+                'forma_pagamento_nome' => null, 'valor_liquido' => null, 'observacoes' => 'Aguardando pagamento via Asaas [Substituída por nova cobrança]'],
+        ];
+
+        $c = $this->chamar('montarConciliacao', [true, 'Asaas', $provedor, $local]);
+
+        $this->assertSame(1493, $c['parcela']['id']);
+        $this->assertTrue($c['ok'], json_encode($c['linhas']));
+    }
 }

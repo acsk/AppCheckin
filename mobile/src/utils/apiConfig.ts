@@ -4,8 +4,11 @@
  */
 
 import { CONFIG } from "@/src/config/urls";
+import { APP_ENV, IS_SIMULATOR } from "@/src/config/runtimeEnvironment";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
+
+export { APP_ENV } from "@/src/config/runtimeEnvironment";
 
 const isWeb = Platform.OS === "web";
 const isAndroid = Platform.OS === "android";
@@ -76,6 +79,8 @@ const normalizeLocalhostForDevice = (url: string): string => {
 
 // Detectar URL base da API baseado no ambiente
 const getApiUrl = (): string => {
+  if (IS_SIMULATOR) return CONFIG.api.production;
+
   // 1️⃣ Primeiro, tentar usar variável de ambiente (para override)
   const envUrl = getEnvUrl();
 
@@ -85,7 +90,7 @@ const getApiUrl = (): string => {
   }
 
   // 2️⃣ Se não houver env, usar URLs centralizadas de config
-  const appEnv = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const appEnv = APP_ENV;
   const configUrl = CONFIG.api[appEnv as keyof typeof CONFIG.api];
 
   if (configUrl) {
@@ -108,6 +113,8 @@ let cachedApiUrl: string | null = null;
 
 // Export como função também para poder recalcular em runtime
 export const getApiUrlRuntime = (): string => {
+  if (IS_SIMULATOR) return CONFIG.api.production;
+
   // Retornar valor em cache se disponível
   if (cachedApiUrl) {
     // Se cache ainda está em localhost, tentar corrigir usando host do Expo
@@ -151,7 +158,7 @@ export const getApiUrlRuntime = (): string => {
       "| envUrl:",
       getEnvUrl() || "null",
       "| appEnv:",
-      process.env.EXPO_PUBLIC_APP_ENV || "development",
+      APP_ENV,
     );
   }
   return url;
@@ -159,7 +166,7 @@ export const getApiUrlRuntime = (): string => {
 
 // Para carregar imagens/assets
 export const getAssetsUrl = (): string => {
-  const appEnv = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const appEnv = APP_ENV;
   const assetsConfig = (CONFIG as any).assets || {};
   return (
     assetsConfig[appEnv] ||
@@ -169,7 +176,7 @@ export const getAssetsUrl = (): string => {
 };
 
 export const getAssetsUrlRuntime = (): string => {
-  const appEnv = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const appEnv = APP_ENV;
   const assetsConfig = (CONFIG as any).assets || {};
   return (
     assetsConfig[appEnv] ||
@@ -180,7 +187,6 @@ export const getAssetsUrlRuntime = (): string => {
 
 export const API_URL = getApiUrl();
 export const ASSETS_URL = getAssetsUrl();
-export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV || "development";
 export const DEBUG_LOGS = process.env.EXPO_PUBLIC_DEBUG_LOGS === "true";
 
 export default {

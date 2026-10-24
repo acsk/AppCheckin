@@ -25,6 +25,16 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## API no simulador
+
+O simulador iOS e o emulador Android usam automaticamente a API de produção
+`https://apiv2.appcheckin.com.br/v2` e os assets de produção, mesmo com o Metro
+em desenvolvimento. A detecção usa `expo-device` e não depende do endereço do
+computador. Web e aparelhos físicos continuam seguindo as variáveis de ambiente.
+
+No Expo Go, recarregue o app após atualizar o código. Builds de desenvolvimento
+próprios precisam ser recompilados ao adicionar o módulo nativo `expo-device`.
+
 ## Selecao de academia no login
 
 Quando a conta possui mais de uma academia, o login abre o

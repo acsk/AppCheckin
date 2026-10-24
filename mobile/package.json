@@ -17,7 +17,9 @@
     "version:bump": "node scripts/increment-version.js",
     "web:build": "node scripts/increment-version.js && [ -f .env.development ] && mv .env.development .env.development.bak || true && cp .env.production .env && EXPO_STATIC_EXPORT=1 expo export --platform web --clear && rm .env && [ -f .env.development.bak ] && mv .env.development.bak .env.development || true && cp -r assets dist/ && mkdir -p dist/fonts && cp -r node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/* dist/fonts/ && bash scripts/inject-fonts.sh && cp public/fonts.css dist/fonts.css && cp public/sw.js dist/sw.js && cp public/site.webmanifest dist/site.webmanifest",
     "lint": "expo lint",
-    "test:recordes": "node --test scripts/recordes.test.mjs"
+    "test:recordes": "node --test scripts/recordes.test.mjs",
+    "test:clipboard": "node --test scripts/clipboard.test.mjs",
+    "test:api-env": "node --test scripts/apiEnvironment.test.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -29,7 +31,9 @@
     "@react-navigation/native": "^7.1.26",
     "axios": "^1.13.2",
     "expo": "~54.0.33",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
+    "expo-device": "~8.0.10",
     "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",

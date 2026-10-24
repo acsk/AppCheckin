@@ -15,6 +15,22 @@ const appVersaoService = {
     }
   },
 
+  async buscarRankingCheckins() {
+    try {
+      return (await api.get('/superadmin/app-versao/ranking-checkins')).data;
+    } catch (error) {
+      throw erro(error, 'Não foi possível carregar o limite do ranking');
+    }
+  },
+
+  async definirLimiteRankingCheckins(limite) {
+    try {
+      return (await api.put('/superadmin/app-versao/ranking-checkins', { limite })).data;
+    } catch (error) {
+      throw erro(error, 'Não foi possível salvar o limite do ranking');
+    }
+  },
+
   async definirObrigatoria(obrigatoria) {
     try {
       return (await api.put('/superadmin/app-versao', { obrigatoria })).data.mobile;

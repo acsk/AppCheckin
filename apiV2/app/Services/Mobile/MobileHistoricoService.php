@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Repositories\CheckinRepository;
 use App\Support\AcademyDateTime;
+use App\Services\AppVersionService;
 
 class MobileHistoricoService
 {
@@ -211,6 +212,7 @@ class MobileHistoricoService
                     'ano' => $ano,
                     'modalidade_id' => $modalidadeId,
                     'ranking' => $rankingFormatado,
+                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins(),
                     'minha_posicao' => $minhaLinha['posicao'] ?? null,
                     'meus_checkins' => $minhaLinha['total_checkins'] ?? 0,
                     'campeoes_mes_anterior' => [
@@ -286,6 +288,7 @@ class MobileHistoricoService
                     'ano' => $ano,
                     'modalidade_id' => $modalidadeId,
                     'ranking' => $rankingFormatado,
+                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins(),
                     'minha_posicao' => $minhaPosicao,
                     'tenant_id_resolvido' => $tenantId,
                     'total_checkins_tenant_ano' => $totalTenantAno,

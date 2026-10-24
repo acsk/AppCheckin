@@ -832,6 +832,12 @@ class AdminAssinaturaService
         if (! $vencOk && $provedorPago && $localPago && $provedorForma === 'Cartão' && $localForma === 'Cartão') {
             $vencOk = true;
         }
+        // Pix do app vence no dia em que é gerado e a parcela guarda o vencimento do plano:
+        // paga dos dois lados e com o id da cobrança na baixa, é o mesmo pagamento
+        $idProvedor = (string) ($provedor['id'] ?? '');
+        if (! $vencOk && $provedorPago && $localPago && $idProvedor !== '' && str_contains((string) ($local['observacoes'] ?? ''), $idProvedor)) {
+            $vencOk = true;
+        }
         // Líquido: o que o provedor repassa (valor menos taxas) contra o gravado na baixa
         $provedorLiq = $provedor === null ? null : $this->liquidoProvedor($provedor);
         $localLiq = $local === null || ($local['valor_liquido'] ?? null) === null || $local['valor_liquido'] === '' ? null : (float) $local['valor_liquido'];
@@ -1044,6 +1050,20 @@ class AdminAssinaturaService
     {
         if ($parcelas === []) {
             return null;
+        }
+        // A baixa grava o id do provedor na observação: é o par exato, mesmo com vencimento diferente
+        $idProvedor = (string) ($provedor['id'] ?? '');
+        if ($idProvedor !== '') {
+            foreach ($parcelas as $parcela) {
+                if ((int) ($parcela['status_pagamento_id'] ?? 0) !== 4 && str_contains((string) ($parcela['observacoes'] ?? ''), $idProvedor)) {
+                    return $parcela;
+                }
+            }
+        }
+        // Parcela cancelada (ex.: "Substituída por nova cobrança") só serve de par se não houver outra
+        $vivas = array_values(array_filter($parcelas, fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) !== 4));
+        if ($vivas !== []) {
+            $parcelas = $vivas;
         }
         $due = $this->soData((string) ($provedor['due_date'] ?? ''));
         if ($due !== '') {

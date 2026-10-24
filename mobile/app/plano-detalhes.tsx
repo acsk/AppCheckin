@@ -1,3 +1,4 @@
+import { copyToClipboard } from "@/src/utils/clipboard";
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { postComRetryGateway, solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
@@ -201,33 +202,6 @@ export default function PlanoDetalhesScreen() {
 
 
 
-  const copyToClipboard = async (value: string) => {
-    try {
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.clipboard &&
-        navigator.clipboard.writeText
-      ) {
-        await navigator.clipboard.writeText(value);
-        return true;
-      }
-      if (typeof document !== "undefined") {
-        const input = document.createElement("textarea");
-        input.value = value;
-        input.setAttribute("readonly", "true");
-        input.style.position = "absolute";
-        input.style.left = "-9999px";
-        document.body.appendChild(input);
-        input.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(input);
-        return ok;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  };
 
   const fetchPlanoDetalhes = async (baseUrl: string, planoId: string) => {
     try {

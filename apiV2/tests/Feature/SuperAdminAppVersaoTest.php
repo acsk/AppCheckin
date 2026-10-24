@@ -33,6 +33,33 @@ class SuperAdminAppVersaoTest extends TestCase
             ->assertJsonPath('mobile.obrigatoria', false);
     }
 
+    public function test_limite_ranking_exclusivo_do_super_admin(): void
+    {
+        $this->getJson('/v2/superadmin/app-versao/ranking-checkins', $this->auth(3))->assertForbidden();
+        $this->putJson('/v2/superadmin/app-versao/ranking-checkins', ['limite' => 20], $this->auth(3))->assertForbidden();
+    }
+
+    public function test_super_admin_consulta_e_altera_limite_ranking(): void
+    {
+        $service = Mockery::mock(AppVersionService::class);
+        $service->shouldReceive('limiteRankingCheckins')->once()->andReturn(15);
+        $service->shouldReceive('definirLimiteRankingCheckins')->once()->with(25)->andReturn(25);
+        $this->app->instance(AppVersionService::class, $service);
+        $this->getJson('/v2/superadmin/app-versao/ranking-checkins', $this->auth(4))->assertOk()->assertJsonPath('limite', 15);
+        $this->putJson('/v2/superadmin/app-versao/ranking-checkins', ['limite' => 25], $this->auth(4))->assertOk()->assertJsonPath('limite', 25);
+    }
+
+    public function test_limite_ranking_rejeita_valores_invalidos(): void
+    {
+        $service = Mockery::mock(AppVersionService::class);
+        $service->shouldNotReceive('definirLimiteRankingCheckins');
+        $this->app->instance(AppVersionService::class, $service);
+        foreach ([0, 101, -1, 1.5, null, 'abc', []] as $valor) {
+            $this->putJson('/v2/superadmin/app-versao/ranking-checkins', ['limite' => $valor], $this->auth(4))
+                ->assertUnprocessable()->assertJsonValidationErrors('limite');
+        }
+    }
+
     /** @return array<string, string> */
     private function auth(int $papelId): array
     {

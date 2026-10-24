@@ -79,6 +79,31 @@ class AppVersionService
         return $this->show($app);
     }
 
+    /** Limite global do ranking na Home, definido pelo Super Admin. */
+    public function limiteRankingCheckins(): int
+    {
+        $row = $this->find('mobile');
+
+        return min(100, max(1, (int) ($row->ranking_checkins_limite ?? 15)));
+    }
+
+    public function definirLimiteRankingCheckins(int $limite): int
+    {
+        if ($limite < 1 || $limite > 100) {
+            throw new \InvalidArgumentException('O limite deve estar entre 1 e 100.');
+        }
+        if (! $this->find('mobile')) {
+            $current = $this->show('mobile');
+            $this->store('mobile', $current['version_number'], $current['release'], $current['release_date']);
+        }
+        DB::table('app_versions')->where('app', 'mobile')->update([
+            'ranking_checkins_limite' => $limite,
+            'updated_at' => now(),
+        ]);
+
+        return $this->limiteRankingCheckins();
+    }
+
     /** Sem a coluna (migration pendente) vale o comportamento antigo: obrigatória. */
     private function obrigatoria(object $row): bool
     {

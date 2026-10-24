@@ -6,3 +6,6 @@ use Illuminate\Support\Facades\Route;
 // App mobile: versão publicada e se a atualização bloqueia o app ou só avisa
 Route::get('/app-versao', [AppVersaoController::class, 'show']);
 Route::put('/app-versao', [AppVersaoController::class, 'update']);
+
+Route::get('/app-versao/ranking-checkins', [AppVersaoController::class, 'rankingCheckins']);
+Route::put('/app-versao/ranking-checkins', [AppVersaoController::class, 'updateRankingCheckins']);

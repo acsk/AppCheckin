@@ -29,4 +29,19 @@ class AppVersaoController extends Controller
             'mobile' => AppVersionController::comAndroid($this->versions->definirObrigatoria('mobile', (bool) $dados['obrigatoria'])),
         ]);
     }
+    public function rankingCheckins(): JsonResponse
+    {
+        return response()->json(['limite' => $this->versions->limiteRankingCheckins()]);
+    }
+
+    public function updateRankingCheckins(Request $request): JsonResponse
+    {
+        $dados = $request->validate(['limite' => ['required', 'integer', 'between:1,100']]);
+
+        return response()->json([
+            'message' => 'Limite do ranking atualizado',
+            'limite' => $this->versions->definirLimiteRankingCheckins((int) $dados['limite']),
+        ]);
+    }
+
 }

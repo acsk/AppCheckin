@@ -1,3 +1,5 @@
+import { IS_SIMULATOR } from "./runtimeEnvironment";
+
 /**
  * Configuração Centralizada de URLs
  * Mude aqui uma única vez para todos os ambientes
@@ -66,6 +68,8 @@ export const CONFIG = {
 
 // Função para obter a URL da API em tempo de execução
 export function getApiUrlRuntime(): string {
+  if (IS_SIMULATOR) return CONFIG.api.production;
+
   const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || "").toLowerCase();
 
   if (appEnv === "production") {
