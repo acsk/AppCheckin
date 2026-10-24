@@ -49,7 +49,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0] || "Aluno";
 
@@ -70,7 +70,10 @@ export default function AccountScreen() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [currentTenant, setCurrentTenant] = useState<any | null>(null);
   const [tenants, setTenants] = useState<any[]>([]);
-  const [showTenantModal, setShowTenantModal] = useState(false);
+  // Menu e seletor compartilham a mesma janela nativa: não apresentar dois modais ao mesmo tempo.
+  const [homeOverlay, setHomeOverlay] = useState<"sidebar" | "academias" | null>(null);
+  const showTenantModal = homeOverlay === "academias";
+  const tenantSwitchInFlightRef = useRef(false);
   const [switchingTenantId, setSwitchingTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [rankingLimite, setRankingLimite] = useState(15);
@@ -101,7 +104,8 @@ export default function AccountScreen() {
   const [apiUrl, setApiUrl] = useState<string>("");
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(false);
+  const showSidebar = homeOverlay === "sidebar";
+  const sidebarClosingRef = useRef(false);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [userRoles, setUserRoles] = useState<any[]>([]);
   const sidebarTranslateX = useRef(
@@ -688,9 +692,10 @@ export default function AccountScreen() {
   }, [currentTenant]);
 
   const openSidebar = () => {
+    if (sidebarClosingRef.current) return;
     const screenWidth = Dimensions.get("window").width;
     sidebarTranslateX.setValue(-screenWidth);
-    setShowSidebar(true);
+    setHomeOverlay("sidebar");
     requestAnimationFrame(() => {
       Animated.timing(sidebarTranslateX, {
         toValue: 0,
@@ -700,17 +705,24 @@ export default function AccountScreen() {
     });
   };
 
-  const closeSidebar = () => {
+  const finishSidebar = (next: "academias" | null) => {
+    if (sidebarClosingRef.current) return;
+    sidebarClosingRef.current = true;
     const screenWidth = Dimensions.get("window").width;
     Animated.timing(sidebarTranslateX, {
       toValue: -screenWidth,
       duration: 220,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) {
-        setShowSidebar(false);
-      }
+      sidebarClosingRef.current = false;
+      if (finished) setHomeOverlay(next);
     });
+  };
+
+  const closeSidebar = () => finishSidebar(null);
+  const openTenantPicker = () => finishSidebar("academias");
+  const closeTenantPicker = () => {
+    if (!tenantSwitchInFlightRef.current) setHomeOverlay(null);
   };
 
   useEffect(() => {
@@ -918,10 +930,7 @@ export default function AccountScreen() {
             ? {
                 name: getTenantDisplayName(),
                 count: tenants.length,
-                onSwitch: () => {
-                  closeSidebar();
-                  setShowTenantModal(true);
-                },
+                onSwitch: openTenantPicker,
               }
             : null
         }
@@ -960,22 +969,24 @@ export default function AccountScreen() {
 
   const handleSelectTenant = async (tenantId: number) => {
     const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-    if (switchingTenantId != null) return;
+    if (tenantSwitchInFlightRef.current) return;
     if (currentId != null && Number(currentId) === Number(tenantId)) {
-      setShowTenantModal(false);
+      setHomeOverlay(null);
       return;
     }
+    tenantSwitchInFlightRef.current = true;
     setSwitchingTenantId(Number(tenantId));
     try {
       await AuthService.selectTenant(tenantId);
-      setShowTenantModal(false);
       const ct = await AuthService.getCurrentTenant();
       setCurrentTenant(ct);
+      setHomeOverlay(null);
       // Perfil, semana e ranking são recarregados pelos efeitos que dependem de currentTenant
     } catch (e: any) {
       console.warn("⚠️ Falha ao selecionar tenant", e);
       Alert.alert("Erro", "Não foi possível trocar de academia.");
     } finally {
+      tenantSwitchInFlightRef.current = false;
       setSwitchingTenantId(null);
     }
   };
@@ -1656,86 +1667,91 @@ export default function AccountScreen() {
 
       </ScrollView>
 
-      <Modal transparent visible={showSidebar} animationType="none" onRequestClose={closeSidebar}>
-        <Pressable
-          style={styles.sidebarOverlay}
-          onPress={closeSidebar}
-          accessibilityLabel="Fechar menu"
-        />
-        <Animated.View
-          style={[
-            styles.sidebarContainer,
-            { transform: [{ translateX: sidebarTranslateX }] },
-          ]}
-        >
-          {renderSideMenu(userProfile)}
-        </Animated.View>
-      </Modal>
-
-      {/* Troca de academia (aberta pela pílula "Academia · Trocar" do menu lateral) */}
+      {/* Sidebar e troca de academia usam o mesmo Modal para evitar disputa de apresentação no iOS. */}
       <Modal
         transparent
-        visible={showTenantModal}
-        animationType="fade"
-        onRequestClose={() => setShowTenantModal(false)}
+        visible={homeOverlay !== null}
+        animationType="none"
+        hardwareAccelerated
+        onRequestClose={showSidebar ? closeSidebar : closeTenantPicker}
       >
-        <Pressable
-          style={styles.tenantModalOverlay}
-          onPress={() => setShowTenantModal(false)}
-          accessibilityLabel="Fechar"
-        />
-        <View style={styles.tenantModalContainer} pointerEvents="box-none">
-          <View style={styles.tenantModalCard} accessibilityViewIsModal>
-            <Text style={styles.tenantModalTitle}>Trocar de academia</Text>
-            <Text style={styles.tenantModalSubtitle}>
-              Escolha a academia que você quer ver no app.
-            </Text>
-            <View style={styles.tenantList}>
-              {tenants.map((t, i) => {
-                const id = Number(t?.tenant?.id ?? t?.id);
-                const nome = t?.tenant?.nome ?? t?.nome ?? "Academia";
-                const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-                const isCurrent = currentId != null && Number(currentId) === id;
-                const isSwitching = switchingTenantId === id;
-                return (
-                  <TouchableOpacity
-                    key={String(id)}
-                    style={[styles.tenantOption, i > 0 && styles.tenantOptionDivided]}
-                    onPress={() => handleSelectTenant(id)}
-                    disabled={switchingTenantId != null}
-                    activeOpacity={0.7}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isCurrent, busy: isSwitching }}
-                  >
-                    <View style={[styles.tenantOptionIcon, isCurrent && styles.tenantOptionIconCurrent]}>
-                      <Feather name="briefcase" size={18} color={isCurrent ? ds.brandInk : ds.ink} />
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.tenantOptionText} numberOfLines={1}>
-                        {nome}
-                      </Text>
-                      {isCurrent ? <Text style={styles.tenantOptionHint}>Academia atual</Text> : null}
-                    </View>
-                    {isSwitching ? (
-                      <ActivityIndicator size="small" color={ds.ink} />
-                    ) : isCurrent ? (
-                      <Feather name="check" size={20} color={ds.success} />
-                    ) : (
-                      <Feather name="chevron-right" size={18} color={ds.inkMuted} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TouchableOpacity
-              style={styles.tenantCancel}
-              onPress={() => setShowTenantModal(false)}
-              accessibilityRole="button"
+        <SafeAreaProvider style={styles.sidebarModal}>
+          {showSidebar ? <>
+            <Pressable
+              style={styles.sidebarOverlay}
+              onPress={closeSidebar}
+              accessibilityLabel="Fechar menu"
+            />
+            <Animated.View
+              style={[
+                styles.sidebarContainer,
+                { transform: [{ translateX: sidebarTranslateX }] },
+              ]}
             >
-              <Text style={styles.tenantCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+              {renderSideMenu(userProfile)}
+            </Animated.View>
+          </> : showTenantModal ? <>
+            <Pressable
+              style={styles.tenantModalOverlay}
+              onPress={closeTenantPicker}
+              accessibilityLabel="Fechar seleção de academia"
+              disabled={switchingTenantId != null}
+            />
+            <SafeAreaView style={styles.tenantModalContainer} pointerEvents="box-none">
+              <View style={styles.tenantModalCard} accessibilityViewIsModal>
+                <Text style={styles.tenantModalTitle}>Trocar de academia</Text>
+                <Text style={styles.tenantModalSubtitle}>
+                  Escolha a academia que você quer ver no app.
+                </Text>
+                <ScrollView style={styles.tenantList} bounces={false} overScrollMode="never">
+                  {tenants.map((t, i) => {
+                    const id = Number(t?.tenant?.id ?? t?.id);
+                    const nome = t?.tenant?.nome ?? t?.nome ?? "Academia";
+                    const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+                    const isCurrent = currentId != null && Number(currentId) === id;
+                    const isSwitching = switchingTenantId === id;
+                    return (
+                      <TouchableOpacity
+                        key={String(id)}
+                        style={[styles.tenantOption, i > 0 && styles.tenantOptionDivided]}
+                        onPress={() => handleSelectTenant(id)}
+                        disabled={switchingTenantId != null}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isCurrent, busy: isSwitching }}
+                      >
+                        <View style={[styles.tenantOptionIcon, isCurrent && styles.tenantOptionIconCurrent]}>
+                          <Feather name="briefcase" size={18} color={isCurrent ? ds.brandInk : ds.ink} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.tenantOptionText} numberOfLines={1}>
+                            {nome}
+                          </Text>
+                          {isCurrent ? <Text style={styles.tenantOptionHint}>Academia atual</Text> : null}
+                        </View>
+                        {isSwitching ? (
+                          <ActivityIndicator size="small" color={ds.ink} />
+                        ) : isCurrent ? (
+                          <Feather name="check" size={20} color={ds.success} />
+                        ) : (
+                          <Feather name="chevron-right" size={18} color={ds.inkMuted} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity
+                  style={[styles.tenantCancel, switchingTenantId != null && { opacity: 0.5 }]}
+                  onPress={closeTenantPicker}
+                  disabled={switchingTenantId != null}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.tenantCancelText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </SafeAreaView>
+          </> : null}
+        </SafeAreaProvider>
       </Modal>
 
       {/* Password Recovery Modal */}
@@ -1875,8 +1891,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     textAlign: "center",
   },
+  sidebarModal: { flex: 1 },
   sidebarOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: ds.scrim,
   },
   sidebarContainer: {
@@ -2678,7 +2695,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   tenantModalOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: ds.scrim,
   },
   tenantModalContainer: {
@@ -2690,10 +2707,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
+    paddingVertical: 24,
   },
   tenantModalCard: {
     width: "100%",
     maxWidth: 420,
+    maxHeight: "100%",
     backgroundColor: ds.ground,
     borderRadius: 16,
     padding: 16,
@@ -2713,6 +2732,8 @@ const styles = StyleSheet.create({
     color: ds.inkMuted,
   },
   tenantList: {
+    flexGrow: 0,
+    flexShrink: 1,
     backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: ds.line,

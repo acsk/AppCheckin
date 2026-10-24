@@ -19,6 +19,7 @@ const SECTIONS = [
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
       { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
       { id: 'app-mobile', label: 'App mobile', path: '/app-mobile', icon: 'smartphone', roles: [4] },
+      { id: 'atualizacao-cadastral', label: 'Atualização cadastral', path: '/atualizacao-cadastral', icon: 'user-check', roles: [4] },
     ],
   },
   {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
+use App\Http\Controllers\Api\V2\MobileAtualizacaoCadastralController;
 use App\Http\Controllers\Api\V2\MobileRecordeController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
@@ -116,6 +117,10 @@ Route::prefix('v2')->group(function () {
             Route::get('/pacotes/contratos', [MobileController::class, 'listarPacotesContratos']);
             Route::get('/pacotes/pendentes', [MobileController::class, 'listarPacotesPendentes']);
             Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato']);
+            Route::get('/atualizacao-cadastral', [MobileAtualizacaoCadastralController::class, 'pendente']);
+            Route::post('/atualizacao-cadastral/email/codigo', [MobileAtualizacaoCadastralController::class, 'enviarCodigo']);
+            Route::post('/atualizacao-cadastral/email/validar', [MobileAtualizacaoCadastralController::class, 'validarCodigo']);
+            Route::post('/atualizacao-cadastral/{id}', [MobileAtualizacaoCadastralController::class, 'responder'])->whereNumber('id');
             Route::get('/recordes', [MobileRecordeController::class, 'resumo']);
             Route::get('/recordes/ranking/{definicaoId}', [MobileRecordeController::class, 'ranking'])->whereNumber('definicaoId');
             Route::get('/recordes/prova/{definicaoId}', [MobileRecordeController::class, 'prova'])->whereNumber('definicaoId');

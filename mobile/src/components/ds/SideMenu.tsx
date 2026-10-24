@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Polygon } from "react-native-svg";
 import Avatar from "./Avatar";
 import Badge from "./Badge";
@@ -101,6 +101,7 @@ export default function SideMenu({
   onLogout,
   onForceUpdate,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const { preference, setPreference, error: themeError } = useThemePreference();
   const canSwitch = !!gym && gym.count > 1 && !!gym.onSwitch;
   const versionLabel = version
@@ -113,8 +114,16 @@ export default function SideMenu({
     .join(" · ");
 
   return (
-    <SafeAreaView style={styles.menu} edges={["bottom"]} accessibilityViewIsModal accessibilityLabel="Menu">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1 }}>
+    <View style={[styles.menu, { paddingBottom: insets.bottom }]} accessibilityViewIsModal accessibilityLabel="Menu">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+        contentInsetAdjustmentBehavior="never"
+        removeClippedSubviews={false}
+      >
         <LinearGradient
           colors={[ds.brandYellow, ds.brand, ds.brandRed]}
           locations={[0, 0.42, 1]}
@@ -123,7 +132,8 @@ export default function SideMenu({
           style={styles.hero}
         >
           <Facets />
-          <SafeAreaView edges={["top"]} style={styles.heroIn}>
+          {/* Espaçamento da janela fixa: não recalcular a área segura conforme o cabeçalho rola. */}
+          <View style={[styles.heroIn, { paddingTop: space[4] + insets.top }]}>
             <View style={styles.top}>
               <Image source={LOGO_WHITE} style={styles.logo} resizeMode="contain" accessibilityLabel="AppCheckin" />
               <TouchableOpacity style={styles.close} onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar menu">
@@ -192,7 +202,7 @@ export default function SideMenu({
                 ) : null}
               </TouchableOpacity>
             ) : null}
-          </SafeAreaView>
+          </View>
         </LinearGradient>
 
         {stats.length ? (
@@ -358,14 +368,16 @@ export default function SideMenu({
           {foot ? <Text style={styles.foot}>{foot}</Text> : null}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  menu: { flex: 1, backgroundColor: ds.ground },
+  menu: { flex: 1, minHeight: 0, backgroundColor: ds.ground },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
   hero: { overflow: "hidden", paddingBottom: 44 },
-  heroIn: { paddingTop: space[4], paddingHorizontal: space[4], gap: space[4] },
+  heroIn: { paddingHorizontal: space[4], gap: space[4] },
   top: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   logo: { height: 26, width: 92 },
   close: {

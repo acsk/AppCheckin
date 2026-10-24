@@ -101,6 +101,50 @@ Suporte: {$this->supportEmail}
 TEXT;
     }
 
+    public function codigoVerificacaoEmail(string $nome, string $codigo, int $expiraMinutos): string
+    {
+        $nomeEsc = htmlspecialchars($nome, ENT_QUOTES, 'UTF-8');
+        $codigoEsc = htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8');
+
+        $content = <<<HTML
+            <tr>
+                <td style="padding: 40px 30px;">
+                    <h2 style="color: #333333; font-size: 24px; font-weight: 600; margin: 0 0 20px 0; text-align: center;">
+                        Confirme seu e-mail
+                    </h2>
+                    <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0;">
+                        Olá <strong>{$nomeEsc}</strong>, digite o código abaixo no aplicativo para confirmar este e-mail:
+                    </p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <div style="background: #f8f9fa; border: 2px dashed {$this->primaryColor}; border-radius: 12px; padding: 20px 30px; display: inline-block;">
+                            <span style="font-family: 'Courier New', monospace; font-size: 32px; font-weight: 700; color: #333333; letter-spacing: 8px;">{$codigoEsc}</span>
+                        </div>
+                    </div>
+                    <p style="color: #8a6d3b; font-size: 14px; text-align: center; margin: 0;">
+                        O código vale por <strong>{$expiraMinutos} minutos</strong>. Se você não pediu, ignore este e-mail.
+                    </p>
+                </td>
+            </tr>
+HTML;
+
+        return $this->wrapInBaseTemplate($content, 'Seu código de confirmação');
+    }
+
+    public function codigoVerificacaoEmailPlainText(string $nome, string $codigo, int $expiraMinutos): string
+    {
+        return <<<TEXT
+Confirme seu e-mail — {$this->appName}
+
+Olá {$nome}, digite este código no aplicativo para confirmar o seu e-mail:
+
+{$codigo}
+
+O código vale por {$expiraMinutos} minutos. Se você não pediu, ignore este e-mail.
+
+© {$this->currentYear} {$this->appName}
+TEXT;
+    }
+
     public function welcomeAluno(string $nome, string $email, string $cpf): string
     {
         $nomeEsc = htmlspecialchars($nome, ENT_QUOTES, 'UTF-8');

@@ -25,6 +25,7 @@ import {
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import AppSplash from "@/src/components/AppSplash";
+import AtualizacaoCadastralGate from "@/src/components/AtualizacaoCadastralGate";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "@/src/theme/colors";
@@ -281,6 +282,7 @@ function RootContent() {
                 options={{ headerShown: false }}
               />
             </Stack>
+            <AtualizacaoCadastralGate enabled={hasToken && segments[0] !== "(auth)" && !sessionExpiredVisible} />
             <SessionExpiredModal
               visible={sessionExpiredVisible}
               message={sessionExpiredMessage}
