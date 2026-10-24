@@ -6,7 +6,7 @@ import { authService } from '../../services/authService';
 import { showError } from '../../utils/toast';
 
 // As três páginas do App Mobile compartilham a mesma restrição de acesso.
-export default function AppMobileLayout({ title, description, children }) {
+export default function AppMobileLayout({ title, description, children, pageHeader = true }) {
   const router = useRouter();
   const [autorizado, setAutorizado] = useState(false);
 
@@ -30,7 +30,7 @@ export default function AppMobileLayout({ title, description, children }) {
     <LayoutBase title={title} pageHeader={false}>
       {autorizado ? (
         <>
-          <PageHeader title={title} description={description} />
+          {pageHeader ? <PageHeader title={title} description={description} /> : null}
           {children}
         </>
       ) : <p className="ck-mc-hint" role="status">Carregando…</p>}

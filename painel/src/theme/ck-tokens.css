@@ -1,5 +1,6 @@
 /* AppCheckin painel — gerado de tokens.json (tema claro) */
-:root {
+:root, [data-theme="light"] {
+  color-scheme: light;
   --bg: #f4f5f7;
   --surface: #ffffff;
   --surface-muted: #eef0f3;
@@ -72,4 +73,57 @@
   --heat-3: #cc6127;
   --heat-4: #a8460f;
   --heat-5: #7c330b;
+}
+
+/* Mesma paleta escura do design system; componentes herdam o tema ativo. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101317;
+  --surface: #171b21;
+  --surface-muted: #1e232a;
+  --surface-hover: #252b33;
+  --surface-raised: #2a3039;
+  --line: #262c34;
+  --line-strong: #353c46;
+  --control-border: #6b7380;
+  --ink: #f2f4f7;
+  --ink-muted: #aab2bd;
+  --ink-subtle: #8b94a1;
+  --sidebar-bg: #0b0d10;
+  --sidebar-hover: #171a1f;
+  --sidebar-active: #1f242b;
+  --sidebar-line: #1c2026;
+  --sidebar-ink: #f2f4f7;
+  --sidebar-muted: #a3abb7;
+  --sidebar-subtle: #7f8894;
+  --brand: #f26522;
+  --on-brand: #ffffff;
+  --primary: #ff8a4c;
+  --primary-hover: #ffa06d;
+  --primary-soft: #3a1e10;
+  --primary-ink: #ffa874;
+  --on-primary: #1a0e07;
+  --success: #4ade80;
+  --success-soft: #12301e;
+  --warning: #f5b54a;
+  --warning-soft: #33240b;
+  --danger: #ff7a6e;
+  --danger-soft: #3a1714;
+  --on-danger: #1f0806;
+  --info: #86aeff;
+  --info-soft: #172440;
+  --chart-accent: #dc6a30;
+  --chart-muted: #6b7584;
+  --chart-grid: var(--line);
+  --heat-1: #8a4220;
+  --heat-2: #b2541f;
+  --heat-3: #d86a2e;
+  --heat-4: #f28c50;
+  --heat-5: #ffb486;
+  --logo-plate: #ffffff;
+  --switch-thumb: #ffffff;
+  --focus-ring: var(--primary);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
+  --shadow-md: 0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  --shadow-lg: 0 16px 40px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4);
 }

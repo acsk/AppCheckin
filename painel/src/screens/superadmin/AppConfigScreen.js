@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AppMobileLayout from './AppMobileLayout';
-import { Badge, Button, Callout, Modal, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from '../../components/ck';
+import AppConfigExcecoesModal from './AppConfigExcecoesModal';
+import { ActionMenu, Badge, Button, Callout, Icon, Modal, PageHeader, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
+import { ConfigSection, ConfigValueInput, ExcecoesButton, ExcecoesNote } from './AppConfigPresentation';
 import appConfigService from '../../services/appConfigService';
 import appVersaoService from '../../services/appVersaoService';
 import { superAdminService } from '../../services/superAdminService';
@@ -9,7 +11,7 @@ import { showError, showSuccess } from '../../utils/toast';
 
 // Super Admin → App Mobile: editor compartilhado de configurações e versões do app,
 // com rascunho e publicação conjunta (com histórico e rollback). O catálogo vem da API
-// (App\Support\AppConfigCatalogo); aqui só se escolhem valores. Estilos: ck-mc-*/ck-cj-* (ck-minha-conta.css).
+// (App\Support\AppConfigCatalogo); aqui só se escolhem valores. Estilos: ck-app-config.css.
 
 const fdata = (v) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 const fdataHora = (v) => (v ? `${fdata(v)} ${String(v).slice(11, 16)}` : '—');
@@ -46,100 +48,116 @@ function ValorField({ def, valor, onSalvar, disabled, label }) {
   );
 }
 
-/** Exceções por academia de um item de escopo tenant. */
-function ExcecoesModal({ def, estado, academias, onDefinir, onClose }) {
-  const [nova, setNova] = useState('');
-  if (!def) return null;
-  const tenants = estado.rascunho.tenants || {};
-  const comExcecao = Object.keys(tenants).filter((t) => tenants[t][def.chave] !== undefined).map(Number);
-  const nome = (id) => (academias.find((a) => a.id === id) || {}).nome || estado.academias?.[id] || `Academia ${id}`;
-  const livres = academias.filter((a) => !comExcecao.includes(a.id));
-  const geral = estado.rascunho.global[def.chave] ?? def.padrao;
-
-  return (
-    <Modal open size="md" title={`${def.nome}: exceções por academia`} onClose={onClose}
-      description={`Valor geral: ${exibir(def, geral)}. A exceção vale só para a academia; bloqueio emergencial e versão mínima continuam valendo.`}>
-      <div className="ck-mc-form">
-        {comExcecao.length ? (
-          <ul className="ck-cj-rows">
-            {comExcecao.map((id) => (
-              <li key={id}>
-                <span className="ck-cj-rows__main"><strong>{nome(id)}</strong></span>
-                <span style={{ flex: '1 1 220px' }}><ValorField def={def} label={def.tipo === 'booleano' ? 'Ligada nesta academia' : 'Valor'} valor={tenants[id][def.chave]} onSalvar={(v) => onDefinir(def.chave, v, id)} /></span>
-                <Button size="sm" variant="ghost" icon="x" onClick={() => onDefinir(def.chave, null, id).catch((e) => showError(e.message))}>Remover</Button>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="ck-mc-hint">Nenhuma academia com exceção. Todas usam o valor geral.</p>}
-        {livres.length ? (
-          <div className="ck-pf__chips">
-            <SelectField label="Adicionar exceção" value={nova} placeholder="Escolha a academia" onChange={(e) => setNova(e.target.value)}
-              options={livres.map((a) => ({ value: String(a.id), label: a.nome }))} />
-            <Button size="sm" icon="plus" disabled={!nova}
-              onClick={() => onDefinir(def.chave, def.tipo === 'booleano' ? !geral : geral, Number(nova)).then(() => setNova('')).catch((e) => showError(e.message))}>Adicionar</Button>
-          </div>
-        ) : null}
-      </div>
-    </Modal>
-  );
-}
-
 function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefinir, onExcecoes, onBloqueio }) {
   const funcs = defs.filter((d) => d.grupo === 'funcionalidade' && d.chave.startsWith('funcionalidade.'));
-  const termo = busca.trim().toLowerCase();
-  const visiveis = funcs.filter((d) => !termo || `${d.nome} ${d.descricao} ${d.modulo}`.toLowerCase().includes(termo));
+  const normalizar = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const termo = normalizar(busca.trim());
+  const visiveis = funcs.filter((d) => !termo || normalizar(`${d.nome} ${d.descricao} ${d.modulo} ${d.chave}`).includes(termo));
   const modulos = [...new Set(visiveis.map((d) => d.modulo))];
-  const pendente = (chave) => estado.pendencias.some((p) => p.chave === chave);
-  const excecoes = (chave) => Object.values(estado.rascunho.tenants || {}).filter((v) => v[chave] !== undefined).length;
+  const pendente = (d) => estado.pendencias.some((p) => p.chave === d.chave || p.chave === `rollout.${d.item}`);
+  const salvar = (chave, valor) => onDefinir(chave, valor).catch((e) => showError(e.message));
+  const copiar = async (chave) => {
+    try { await navigator.clipboard.writeText(chave); showSuccess('Chave copiada'); }
+    catch { showError('Não foi possível copiar a chave'); }
+  };
 
   return (
     <>
-      <TextField label="Buscar funcionalidade" icon="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, módulo ou descrição" />
+      <div className="ck-control ck-cf-search">
+        <Icon name="search" size={16} className="ck-control__icon" />
+        <input type="search" className="ck-control__input" aria-label="Buscar funcionalidade" value={busca}
+          onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome, módulo, descrição ou chave" />
+      </div>
       {modulos.map((m) => (
-        <Panel key={m} title={m}>
-          <ul className="ck-cj-rows">
+        <ConfigSection key={m} title={m}>
+          <ul className="ck-pm-list">
             {visiveis.filter((d) => d.modulo === m).map((d) => {
-              const k = d.item;
-              const bloqueada = estado.bloqueios.includes(`bloqueio.${k}`);
-              const rollout = estado.rascunho.global[`rollout.${k}`] ?? 100;
-              const n = excecoes(d.chave);
+              const bloqueada = estado.bloqueios.includes(`bloqueio.${d.item}`);
+              const rolloutDef = defs.find((x) => x.chave === `rollout.${d.item}`);
+              const rollout = estado.rascunho.global[`rollout.${d.item}`] ?? rolloutDef?.padrao ?? 100;
+              const ligada = !!(estado.rascunho.global[d.chave] ?? d.padrao);
+              const parcial = ligada && rollout < 100;
               return (
-                <li key={d.chave}>
-                  <span className="ck-cj-rows__main">
-                    <strong>{d.nome}</strong>
-                    <small>{d.descricao}</small>
-                    <small>
-                      <code>{k}</code>
-                      {d.versao_minima?.android ? ` · Android ${d.versao_minima.android}+` : ''}
-                      {d.versao_minima?.ios ? ` · iOS ${d.versao_minima.ios}+` : ''}
-                    </small>
-                  </span>
-                  {bloqueada ? <Badge tone="danger" icon="alert-triangle">Bloqueada</Badge> : null}
-                  {pendente(d.chave) || pendente(`rollout.${k}`) ? <Badge tone="warning">Não publicado</Badge> : null}
-                  {rollout < 100 ? <Badge tone="info">{`Rollout ${rollout}%`}</Badge> : null}
-                  <Switch ariaLabel={`${d.nome}: ligada para todas`} checked={!!(estado.rascunho.global[d.chave] ?? d.padrao)}
-                    onChange={(v) => onDefinir(d.chave, v).catch((e) => showError(e.message))} />
-                  <Button size="sm" variant="ghost" icon="building-2" onClick={() => onExcecoes(d)}>{n ? `${n} academia${n > 1 ? 's' : ''}` : 'Por academia'}</Button>
-                  {bloqueada
-                    ? <Button size="sm" variant="ghost" icon="refresh-cw" onClick={() => onBloqueio(d, false)}>Religar</Button>
-                    : <Button size="sm" variant="danger" icon="power" onClick={() => onBloqueio(d, true)}>Desligar agora</Button>}
-                </li>
+                <React.Fragment key={d.chave}>
+                  <li className={`ck-pm-row${pendente(d) ? ' ck-cf-changed' : ''}`}>
+                    <div className="ck-pm-row__txt">
+                      <span className="ck-pm-row__label">{d.nome}{pendente(d) ? <em className="ck-cf-dot">alterado</em> : null}</span>
+                      <span className="ck-pm-row__desc">{d.descricao}</span>
+                      <ExcecoesNote def={d} estado={estado} academias={academias} />
+                      <code className="ck-pm-key">{d.item}</code>
+                      {d.versao_minima?.android || d.versao_minima?.ios ? <span className="ck-pm-row__desc">
+                        {[d.versao_minima.android && `Android ${d.versao_minima.android}+`, d.versao_minima.ios && `iOS ${d.versao_minima.ios}+`].filter(Boolean).join(' · ')}
+                      </span> : null}
+                      {bloqueada ? <span className="ck-pm-warn"><Icon name="alert-triangle" size={14} />Bloqueio emergencial ativo. O rascunho só passa a valer ao religar.</span> : null}
+                    </div>
+                    <div className="ck-pm-row__ctl">
+                      {bloqueada ? <Badge tone="danger">Bloqueada</Badge> : parcial ? <Badge tone="warning">{`${rollout}%`}</Badge> : null}
+                      <ExcecoesButton def={d} estado={estado} onClick={() => onExcecoes(d)} />
+                      <Switch ariaLabel={`${d.nome}: ligada para todas`} checked={ligada} onChange={(v) => salvar(d.chave, v)} />
+                      <ActionMenu label={`Mais ações para ${d.nome}`} items={[
+                        ligada && !parcial && rolloutDef ? { label: 'Liberar aos poucos', icon: 'users', onClick: () => salvar(rolloutDef.chave, 50) } : null,
+                        parcial && rolloutDef ? { label: 'Liberar para todos', icon: 'check', onClick: () => salvar(rolloutDef.chave, 100) } : null,
+                        { label: 'Copiar chave', icon: 'copy', onClick: () => copiar(d.item) },
+                        '-',
+                        bloqueada
+                          ? { label: 'Religar em todas', icon: 'refresh-cw', onClick: () => onBloqueio(d, false) }
+                          : { label: 'Desligar agora em todas', icon: 'power', danger: true, onClick: () => onBloqueio(d, true) },
+                      ].filter(Boolean)} />
+                    </div>
+                  </li>
+                  {parcial && rolloutDef ? <li className="ck-pm-row is-child">
+                    <div className="ck-pm-row__txt">
+                      <span className="ck-pm-row__label">Liberada para parte dos usuários</span>
+                      <span className="ck-pm-row__desc">Cada usuário cai sempre no mesmo grupo. Suba aos poucos e acompanhe antes de liberar para todos.</span>
+                    </div>
+                    <div className="ck-pm-row__ctl">
+                      <ConfigValueInput def={rolloutDef} valor={rollout} unit="%" onSalvar={(v) => onDefinir(rolloutDef.chave, v)} />
+                    </div>
+                  </li> : null}
+                </React.Fragment>
               );
             })}
           </ul>
-        </Panel>
+        </ConfigSection>
       ))}
-      {!visiveis.length ? <p className="ck-mc-hint">Nenhuma funcionalidade encontrada.</p> : null}
-      <Panel title="Rollout gradual" description="Percentual de usuários que recebem cada funcionalidade. A escolha é estável: o mesmo usuário sempre cai no mesmo grupo.">
-        <div className="ck-mc-form">
-          {funcs.map((d) => {
-            const def = defs.find((x) => x.chave === `rollout.${d.item}`);
-            return def ? <ValorField key={def.chave} def={def} label={`${d.nome} (%)`} valor={estado.rascunho.global[def.chave] ?? def.padrao} onSalvar={(v) => onDefinir(def.chave, v)} /> : null;
-          })}
-        </div>
-      </Panel>
+      {!visiveis.length ? <div className="ck-card ck-pm-empty">
+        <Icon name="search" size={24} /><strong>Nenhuma funcionalidade encontrada{busca ? ` para “${busca}”` : ''}.</strong>
+        <p>Busque pelo nome, módulo, descrição ou chave.</p>
+      </div> : null}
     </>
   );
+}
+
+function ParametrosTab({ estado, defs, academias, onDefinir, onExcecoes }) {
+  const itens = defs.filter((d) => d.grupo === 'parametro');
+  return [...new Set(itens.map((d) => d.modulo))].map((modulo) => (
+    <ConfigSection key={modulo} title={modulo}>
+      <ul className="ck-pm-list">
+        {itens.filter((d) => d.modulo === modulo).map((d) => {
+          const valor = estado.rascunho.global[d.chave] ?? d.padrao;
+          const pendente = estado.pendencias.some((p) => p.chave === d.chave);
+          const texto = d.tipo === 'texto';
+          const unidade = d.item === 'cache_ttl_segundos' ? 'segundos' : d.item === 'ranking_limite_home' ? 'pessoas' : null;
+          return (
+            <li key={d.chave} className={`ck-pm-row${pendente ? ' ck-cf-changed' : ''}${texto ? ' ck-cf-textrow' : ''}`}>
+              <div className="ck-pm-row__txt">
+                <span className="ck-pm-row__label">{d.nome}{pendente ? <em className="ck-cf-dot">alterado</em> : null}</span>
+                <span className="ck-pm-row__desc">{d.descricao}</span>
+                {d.tipo === 'inteiro' ? <span className="ck-pm-row__desc">{`De ${d.min} a ${d.max}.`}</span> : null}
+                <ExcecoesNote def={d} estado={estado} academias={academias} />
+                {texto ? <ConfigValueInput def={d} valor={valor} multiline onSalvar={(v) => onDefinir(d.chave, v)} /> : null}
+                <code className="ck-pm-key">{d.item}</code>
+              </div>
+              <div className="ck-pm-row__ctl">
+                {d.escopo === 'tenant' ? <ExcecoesButton def={d} estado={estado} onClick={() => onExcecoes(d)} /> : <Badge tone="outline">Vale para todas</Badge>}
+                {!texto ? <ConfigValueInput def={d} valor={valor} unit={unidade} onSalvar={(v) => onDefinir(d.chave, v)} /> : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </ConfigSection>
+  ));
 }
 
 function ItensTab({ estado, defs, grupo, onDefinir, onExcecoes }) {
@@ -192,53 +210,58 @@ function EfetivaTab({ defs, academias }) {
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
   useEffect(() => {
+    let ativa = true;
     setErro('');
-    appConfigService.efetiva({ tenantId, plataforma, versao: versao.trim() }).then(setDados).catch((e) => { setDados(null); setErro(e.message); });
+    setDados(null);
+    appConfigService.efetiva({ tenantId, plataforma, versao: versao.trim() })
+      .then((r) => { if (ativa) setDados(r); })
+      .catch((e) => { if (ativa) setErro(e.message); });
+    return () => { ativa = false; };
   }, [tenantId, plataforma, versao]);
   const nomeDe = (grupo, item) => (defs.find((d) => d.chave === `${grupo}.${item}`) || {}).nome || item;
-  const tone = (o) => (o === 'academia' ? 'info' : o === 'global' ? 'neutral' : ['bloqueio', 'versao', 'papel', 'rollout'].includes(o) ? 'warning' : 'outline');
   const at = dados?.contrato?.atualizacao;
+  const origem = (o) => <span className={`ck-cf-origin${o === 'academia' ? ' is-acad' : ''}`}>{ORIGEM[o] || o}</span>;
+  const nomeAcademia = academias.find((a) => String(a.id) === tenantId)?.nome;
 
   return (
-    <Panel title="O que o app recebe" description="Configuração publicada, resolvida para uma academia, plataforma e versão. Mostra de onde vem cada valor.">
-      <div className="ck-mc-form">
-        <div className="ck-pf__chips">
+    <>
+      <ConfigSection title="O que o app recebe" icon="layout-dashboard" description="A configuração publicada para uma academia, plataforma e versão, e de onde vem cada valor.">
+        <div className="ck-cf-simf">
           <SelectField label="Academia" value={tenantId} onChange={(e) => setTenantId(e.target.value)}
             options={[{ value: '', label: 'Antes do login (só o geral)' }, ...academias.map((a) => ({ value: String(a.id), label: a.nome }))]} />
-          <SegmentedControl label="Plataforma" value={plataforma} onChange={setPlataforma}
-            options={[{ value: 'android', label: 'Android' }, { value: 'ios', label: 'iOS' }, { value: 'web', label: 'Web' }]} />
+          <div className="ck-field">
+            <span className="ck-field__label">Plataforma</span>
+            <SegmentedControl label="Plataforma" value={plataforma} onChange={setPlataforma}
+              options={[{ value: 'android', label: 'Android' }, { value: 'ios', label: 'iOS' }, { value: 'web', label: 'Web' }]} />
+          </div>
           {plataforma !== 'web' ? <TextField label="Versão do app" value={versao} placeholder="ex.: 1.0.2" onChange={(e) => setVersao(e.target.value)} /> : null}
         </div>
-        {erro ? <Callout tone="danger">{erro}</Callout> : null}
-        {dados ? (
-          <>
-            <p className="ck-mc-hint">{`Versão publicada da configuração: ${dados.efetiva.versao}. O rollout parcial aparece como desligado porque depende do usuário.`}</p>
-            <ul className="ck-cj-rows">
-              {Object.entries(dados.efetiva.funcionalidades).map(([k, f]) => (
-                <li key={k}>
-                  <span className="ck-cj-rows__main"><strong>{nomeDe('funcionalidade', k)}</strong></span>
-                  <Badge tone={f.ativo ? 'success' : 'danger'}>{f.ativo ? 'Ligada' : 'Desligada'}</Badge>
-                  <Badge tone={tone(f.origem)}>{ORIGEM[f.origem] || f.origem}</Badge>
-                </li>
-              ))}
-              {Object.entries(dados.efetiva.parametros).map(([k, p]) => (
-                <li key={k}>
-                  <span className="ck-cj-rows__main"><strong>{nomeDe('parametro', k)}</strong><small>{p.valor === '' ? '(vazio)' : String(p.valor)}</small></span>
-                  <Badge tone={tone(p.origem)}>{ORIGEM[p.origem] || p.origem}</Badge>
-                </li>
-              ))}
-            </ul>
-            {at ? (
-              <Callout tone={at.obrigatoria ? 'warning' : 'info'} title="Atualização">
-                {plataforma === 'web'
-                  ? (at.obrigatoria ? 'Versão nova bloqueia o app web até recarregar.' : 'Versão nova só mostra um aviso.')
-                  : `${at.obrigatoria ? 'Bloqueado até atualizar.' : at.disponivel ? 'Vê o aviso de nova versão.' : 'Em dia.'} Mínima: ${at.versao_minima || '—'} · Publicada: ${at.versao_recomendada || '—'}`}
-              </Callout>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </Panel>
+      </ConfigSection>
+      {erro ? <Callout tone="danger">{erro}</Callout> : null}
+      {!dados && !erro ? <p className="ck-mc-hint" role="status">Consultando configuração publicada…</p> : null}
+      {at ? <Callout tone={at.obrigatoria ? 'warning' : 'info'} title="Atualização">
+        {plataforma === 'web'
+          ? (at.obrigatoria ? 'Versão nova bloqueia o app web até recarregar.' : 'Versão nova só mostra um aviso.')
+          : `${at.obrigatoria ? 'Bloqueado até atualizar.' : at.disponivel ? 'Vê o aviso de nova versão.' : 'Em dia.'} Mínima: ${at.versao_minima || '—'} · Publicada: ${at.versao_recomendada || '—'}`}
+      </Callout> : null}
+      {dados ? <ConfigSection title={tenantId ? `Resultado para ${nomeAcademia || 'a academia'}` : 'Resultado antes do login'} icon="check"
+        description={`Versão publicada da configuração: ${dados.efetiva.versao}. O rollout parcial aparece como desligado porque depende do usuário.`}>
+        <ul className="ck-pm-list">
+          {Object.entries(dados.efetiva.funcionalidades).map(([k, f]) => (
+            <li key={k} className="ck-pm-row">
+              <div className="ck-pm-row__txt"><span className="ck-pm-row__label">{nomeDe('funcionalidade', k)}</span></div>
+              <div className="ck-pm-row__ctl">{origem(f.origem)}<Badge tone={f.ativo ? 'success' : 'outline'} dot={f.ativo}>{f.ativo ? 'Ligada' : 'Desligada'}</Badge></div>
+            </li>
+          ))}
+          {Object.entries(dados.efetiva.parametros).map(([k, p]) => (
+            <li key={k} className="ck-pm-row">
+              <div className="ck-pm-row__txt"><span className="ck-pm-row__label">{nomeDe('parametro', k)}</span></div>
+              <div className="ck-pm-row__ctl">{origem(p.origem)}<strong className="ck-cf-val">{p.valor === '' ? '(vazio)' : String(p.valor)}</strong></div>
+            </li>
+          ))}
+        </ul>
+      </ConfigSection> : null}
+    </>
   );
 }
 
@@ -250,36 +273,40 @@ function HistoricoTab({ versaoAtual, onRestaurar }) {
   if (!dados) return <p className="ck-mc-hint" role="status">Carregando…</p>;
   return (
     <>
-      <Panel title="Publicações" description="Restaurar publica de novo o conteúdo daquela versão (o rascunho atual é substituído).">
-        <ul className="ck-cj-rows">
+      <ConfigSection title="Publicações" icon="clock" description="Restaurar publica de novo o conteúdo daquela versão. O rascunho atual é substituído.">
+        <ul className="ck-pm-list">
           {dados.publicacoes.map((p) => (
-            <li key={p.versao}>
-              <span className="ck-cj-rows__main">
-                <strong>{`Versão ${p.versao}`}{p.nota ? ` · ${p.nota}` : ''}</strong>
-                <small>{fdataHora(p.created_at)}{p.publicado_por ? ` · ${p.publicado_por}` : ''}</small>
-              </span>
-              {p.versao === versaoAtual ? <Badge tone="success">Em uso</Badge> : null}
-              {p.origem !== 'publicacao' ? <Badge tone="outline">{p.origem === 'rollback' ? `Rollback da ${p.rollback_de}` : p.origem === 'imediata' ? 'Imediata' : 'Migração'}</Badge> : null}
-              {p.versao !== versaoAtual ? <Button size="sm" variant="ghost" icon="refresh-cw" onClick={() => onRestaurar(p.versao)}>Restaurar</Button> : null}
+            <li key={p.versao} className="ck-pm-row ck-cf-hrow">
+              <div className="ck-pm-row__txt">
+                <span className="ck-pm-row__label">{`Versão ${p.versao}`}{p.nota ? `: ${p.nota}` : ''}</span>
+                <span className="ck-pm-row__desc">{fdataHora(p.created_at)}{p.publicado_por ? `, por ${p.publicado_por}` : ''}</span>
+              </div>
+              <div className="ck-pm-row__ctl">
+                {p.origem !== 'publicacao' ? <Badge tone="outline">{p.origem === 'rollback' ? `Rollback da ${p.rollback_de}` : p.origem === 'imediata' ? 'Imediata' : 'Migração'}</Badge> : null}
+                {p.versao === versaoAtual ? <Badge tone="success" dot>Em uso</Badge>
+                  : <Button size="sm" icon="refresh-cw" onClick={() => onRestaurar(p.versao)}>Restaurar</Button>}
+              </div>
             </li>
           ))}
+          {!dados.publicacoes.length ? <li className="ck-pm-none">Nenhuma publicação registrada.</li> : null}
         </ul>
-      </Panel>
-      <Panel title="Alterações recentes">
-        <ul className="ck-cj-rows">
+      </ConfigSection>
+      <ConfigSection title="Alterações recentes" icon="file-text">
+        <ul className="ck-pm-list">
           {dados.auditoria.map((a) => (
-            <li key={a.id}>
-              <span className="ck-cj-rows__main">
-                <strong>{ACAO[a.acao] || a.acao}{a.chave ? ` · ${a.chave}` : ''}{a.academia ? ` · ${a.academia}` : ''}</strong>
-                <small>
+            <li key={a.id} className="ck-pm-row ck-cf-hrow">
+              <div className="ck-pm-row__txt">
+                <span className="ck-pm-row__label">{ACAO[a.acao] || a.acao}{a.chave ? ` · ${a.chave}` : ''}{a.academia ? ` · ${a.academia}` : ''}</span>
+                <span className="ck-pm-row__desc">
                   {a.acao === 'alterar' || a.chave ? `${exibir(null, a.valor_anterior)} → ${exibir(null, a.valor_novo)} · ` : ''}
                   {a.versao ? `versão ${a.versao} · ` : ''}{fdataHora(a.created_at)}{a.usuario ? ` · ${a.usuario}` : ''}{a.nota ? ` · ${a.nota}` : ''}
-                </small>
-              </span>
+                </span>
+              </div>
             </li>
           ))}
+          {!dados.auditoria.length ? <li className="ck-pm-none">Nenhuma alteração registrada.</li> : null}
         </ul>
-      </Panel>
+      </ConfigSection>
     </>
   );
 }
@@ -334,11 +361,14 @@ function AppConfigEditor({ secao }) {
 
   return (
     <>
-      <div className="ck-mc">
-        {estado ? <p className="ck-mc-hint">{`Em uso: versão ${estado.versao_publicada} da configuração.`}</p> : null}
+      <div className={versoes ? 'ck-mc' : 'ck-cf ck-pm'}>
+        {!versoes ? <PageHeader title="Configurações"
+          description="Liga, desliga e ajusta o app do aluno sem publicar versão nova. As mudanças ficam num rascunho até você publicar."
+          actions={estado ? <span className="ck-cf-ver"><span className="ck-cf-ver__dot" aria-hidden="true" />{`Em uso: versão ${estado.versao_publicada}`}</span> : null} />
+          : estado ? <p className="ck-mc-hint">{`Em uso: versão ${estado.versao_publicada} da configuração.`}</p> : null}
 
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
-        {pend.length ? (
+        {versoes && pend.length ? (
           <Callout tone="warning" title={`${pend.length} alteraç${pend.length > 1 ? 'ões' : 'ão'} não publicada${pend.length > 1 ? 's' : ''}`}
             action={(
               <span className="ck-pf__chips">
@@ -352,17 +382,25 @@ function AppConfigEditor({ secao }) {
 
         {!versoes ? <Tabs label="Seções das configurações do app" value={aba} onChange={setAba} tabs={ABAS} className="ck-mc-tabs" /> : null}
 
+        <div className={versoes ? 'ck-mc' : 'ck-pm-main'}>
         {!estado ? (erro ? null : <p className="ck-mc-hint" role="status">Carregando…</p>)
           : versoes ? <VersoesTab {...props} />
             : aba === 'funcionalidades' ? <FuncionalidadesTab {...props} busca={busca} setBusca={setBusca} onBloqueio={(def, bloquear) => setBloqueio({ def, bloquear })} />
-              : aba === 'parametros' ? <ItensTab {...props} grupo="parametro" />
+              : aba === 'parametros' ? <ParametrosTab {...props} />
                 : aba === 'efetiva' ? <EfetivaTab defs={defs} academias={academias} />
                   : <HistoricoTab versaoAtual={estado.versao_publicada} onRestaurar={setRestaurar} />}
+        </div>
+        {!versoes && pend.length ? <div className="ck-savebar" role="status">
+          <span className="ck-savebar__dot" aria-hidden="true" />
+          <span className="ck-savebar__text">{`${pend.length} alteraç${pend.length === 1 ? 'ão' : 'ões'} no rascunho. O app só recebe depois de publicar.`}</span>
+          <Button variant="ghost" disabled={salvando} onClick={acao(() => appConfigService.descartar(), 'Rascunho descartado')}>Descartar</Button>
+          <Button variant="primary" icon="check" disabled={salvando} onClick={() => setPublicar(true)}>Revisar e publicar</Button>
+        </div> : null}
       </div>
 
-      {excecoes && estado ? <ExcecoesModal def={excecoes} estado={estado} academias={academias} onDefinir={definir} onClose={() => setExcecoes(null)} /> : null}
+      {excecoes && estado ? <AppConfigExcecoesModal key={excecoes.chave} def={excecoes} estado={estado} academias={academias} onDefinir={definir} onClose={() => setExcecoes(null)} /> : null}
 
-      <Modal open={publicar} size="lg" title="Publicar configuração" dismissable={!salvando} onClose={() => setPublicar(false)}
+      <Modal open={publicar} size="lg" title={versoes ? 'Publicar configuração' : `Publicar versão ${(estado?.versao_publicada || 0) + 1}`} dismissable={!salvando} onClose={() => setPublicar(false)}
         description="Os apps recebem a nova configuração na próxima consulta (ao abrir, ao voltar para o app ou depois do intervalo de atualização)."
         footer={(
           <>
@@ -372,7 +410,8 @@ function AppConfigEditor({ secao }) {
           </>
         )}>
         <div className="ck-mc-form">
-          <ul className="ck-cj-rows">
+          <p className="ck-mc-hint">Esta revisão inclui as alterações pendentes de Configurações e Versões.</p>
+          <ul className="ck-cf-changes is-big">
             {pend.map((p) => {
               const d = defPorChave[p.chave];
               return (
@@ -427,6 +466,7 @@ export default function AppConfigScreen({ secao = 'configuracoes' }) {
   return (
     <AppMobileLayout
       title={versoes ? 'Versões' : 'Configurações'}
+      pageHeader={versoes}
       description={versoes
         ? 'Gerencie as versões publicadas, as versões mínimas e os avisos de atualização do app.'
         : 'Liga, desliga e ajusta o app do aluno sem publicar versão nova.'}

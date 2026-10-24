@@ -24,6 +24,7 @@ import './src/theme/ck-whatsapp.css';
 import './src/theme/ck-prospeccao.css';
 import './src/theme/ck-minha-conta.css';
 import './src/theme/ck-parametros.css';
+import './src/theme/ck-app-config.css';
 import './src/theme/ck-equipe.css';
 import './src/theme/ck-professores.css';
 import './src/theme/ck-usuarios.css';
