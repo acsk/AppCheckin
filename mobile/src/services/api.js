@@ -238,6 +238,11 @@ const api = {
         await AsyncStorage.setItem("@appcheckin:token", tokenRenovado);
       }
 
+      // 304 (If-None-Match): conteúdo igual ao que o chamador já tem
+      if (response.status === 304) {
+        return { data: null, status: 304, ok: true, headers: response.headers };
+      }
+
       // Parsear resposta
       let responseData;
       const contentType = response.headers.get("content-type");
@@ -353,6 +358,7 @@ const api = {
         data: responseData,
         status: response.status,
         ok: response.ok,
+        headers: response.headers,
       };
     } catch (error) {
       // Se já é um erro formatado, re-lançar

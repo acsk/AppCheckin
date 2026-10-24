@@ -1,4 +1,5 @@
 import AsyncStorage from "@/src/utils/storage";
+import { trocarContextoConfigRemota } from "@/src/services/remoteConfig";
 import api from "./api";
 import { decodeJwtPayload } from "@/src/utils/authHelpers";
 
@@ -285,6 +286,8 @@ export const authService = {
         );
       }
 
+      // Outra academia: configuração remota dela (funcionalidades/parâmetros)
+      void trocarContextoConfigRemota();
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -357,6 +360,8 @@ export const authService = {
         );
       }
 
+      // Outra academia: configuração remota dela (funcionalidades/parâmetros)
+      void trocarContextoConfigRemota();
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;

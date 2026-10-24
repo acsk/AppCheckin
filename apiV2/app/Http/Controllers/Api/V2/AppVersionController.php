@@ -22,30 +22,15 @@ class AppVersionController extends Controller
     }
 
     /**
-     * Junta o APK publicado (env) à versão do mobile. A obrigatoriedade é a mesma do app web,
-     * decidida pelo super admin no painel.
+     * Junta o APK publicado à versão do mobile. Versão, link e versão mínima do APK ficam em
+     * Super Admin → Configurações do app → Versões.
      *
      * @param  array<string, mixed>  $mobile
      * @return array<string, mixed>
      */
     public static function comAndroid(array $mobile): array
     {
-        return $mobile + ['android' => self::androidRelease((bool) ($mobile['obrigatoria'] ?? true))];
-    }
-
-    /** @return array{version: string, apk_url: string, obrigatoria: bool}|null */
-    private static function androidRelease(bool $obrigatoria): ?array
-    {
-        $cfg = config('appcheckin.android_release', []);
-        if (empty($cfg['version']) || empty($cfg['apk_url'])) {
-            return null;
-        }
-
-        return [
-            'version' => (string) $cfg['version'],
-            'apk_url' => (string) $cfg['apk_url'],
-            'obrigatoria' => $obrigatoria,
-        ];
+        return $mobile + ['android' => app(AppVersionService::class)->androidRelease()];
     }
 
     public function updateMobile(Request $request): JsonResponse

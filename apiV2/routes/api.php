@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaContr
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
 use App\Http\Controllers\Api\V2\Admin\PlanoCicloController as AdminPlanoCicloController;
 use App\Http\Controllers\Api\V2\Admin\PlanoController as AdminPlanoController;
+use App\Http\Controllers\Api\V2\AppConfigController;
 use App\Http\Controllers\Api\V2\AppVersionController;
 use App\Http\Controllers\Api\V2\AsaasWebhookController;
 use App\Http\Controllers\Api\V2\AuthController;
@@ -39,6 +40,8 @@ Route::prefix('v2')->group(function () {
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);
     Route::get('/version/mobile', [AppVersionController::class, 'mobile']);
     Route::post('/version/mobile', [AppVersionController::class, 'updateMobile']);
+    // Configuração remota do app antes do login (só o global)
+    Route::get('/app-config', [AppConfigController::class, 'publico']);
     Route::post('/webhooks/asaas', [AsaasWebhookController::class, 'handle']);
 
     // Planos do sistema exibidos no site (público)
@@ -74,6 +77,7 @@ Route::prefix('v2')->group(function () {
         Route::get('/planos/{id}', [AdminPlanoController::class, 'show']);
 
         Route::prefix('mobile')->group(function () {
+            Route::get('/app-config', [AppConfigController::class, 'mobile']);
             Route::get('/perfil', [MobileController::class, 'perfil']);
             Route::post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
             Route::get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);
@@ -94,29 +98,29 @@ Route::prefix('v2')->group(function () {
             Route::post('/turma/{turmaId}/desbloquear-checkin', [MobileController::class, 'desbloquearCheckinTurma']);
             Route::get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin']);
             Route::get('/alunos/{alunoId}/resumo-financeiro', [MobileController::class, 'resumoFinanceiroAluno']);
-            Route::post('/checkin/manual', [MobileController::class, 'registrarCheckinManual']);
+            Route::post('/checkin/manual', [MobileController::class, 'registrarCheckinManual'])->middleware('funcionalidade:checkin');
             Route::delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual']);
-            Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
+            Route::post('/checkin', [MobileController::class, 'registrarCheckin'])->middleware('funcionalidade:checkin');
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
 
             Route::get('/planos-disponiveis', [MobileController::class, 'planosDisponiveis']);
             Route::get('/planos', [MobileController::class, 'planosDoUsuario']);
             Route::get('/planos/{planoId}', [MobileController::class, 'detalhePlano']);
             Route::get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
-            Route::post('/comprar-plano', [MobileController::class, 'comprarPlano']);
+            Route::post('/comprar-plano', [MobileController::class, 'comprarPlano'])->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
             Route::post('/simular-taxa-cartao', [MobileController::class, 'simularTaxaCartao']);
             Route::post('/simular-migracao', [MobileController::class, 'simularMigracaoPlano']);
-            Route::post('/migrar-plano', [MobileController::class, 'migrarPlano']);
-            Route::post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix']);
+            Route::post('/migrar-plano', [MobileController::class, 'migrarPlano'])->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
+            Route::post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix'])->middleware('funcionalidade:pagamentos');
             Route::post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
-            Route::get('/pagamento/reabrir/{matriculaId}', [MobileController::class, 'reabrirPagamentoPendente']);
+            Route::get('/pagamento/reabrir/{matriculaId}', [MobileController::class, 'reabrirPagamentoPendente'])->middleware('funcionalidade:pagamentos');
             Route::get('/assinaturas', [MobileController::class, 'minhasAssinaturas']);
             Route::get('/assinaturas/aprovadas-hoje', [MobileController::class, 'assinaturasAprovadasHoje']);
-            Route::post('/assinatura/{id}/cancelar', [MobileController::class, 'cancelarAssinatura']);
-            Route::post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
+            Route::post('/assinatura/{id}/cancelar', [MobileController::class, 'cancelarAssinatura'])->middleware('funcionalidade:cancelamento');
+            Route::post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria'])->middleware('funcionalidade:cancelamento');
             Route::get('/pacotes/contratos', [MobileController::class, 'listarPacotesContratos']);
             Route::get('/pacotes/pendentes', [MobileController::class, 'listarPacotesPendentes']);
-            Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato']);
+            Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato'])->middleware('funcionalidade:pagamentos');
             Route::get('/atualizacao-cadastral', [MobileAtualizacaoCadastralController::class, 'pendente']);
             Route::post('/atualizacao-cadastral/email/codigo', [MobileAtualizacaoCadastralController::class, 'enviarCodigo']);
             Route::post('/atualizacao-cadastral/email/validar', [MobileAtualizacaoCadastralController::class, 'validarCodigo']);
@@ -124,8 +128,8 @@ Route::prefix('v2')->group(function () {
             Route::get('/recordes', [MobileRecordeController::class, 'resumo']);
             Route::get('/recordes/ranking/{definicaoId}', [MobileRecordeController::class, 'ranking'])->whereNumber('definicaoId');
             Route::get('/recordes/prova/{definicaoId}', [MobileRecordeController::class, 'prova'])->whereNumber('definicaoId');
-            Route::post('/recordes', [MobileRecordeController::class, 'criar']);
-            Route::put('/recordes/{id}', [MobileRecordeController::class, 'atualizar'])->whereNumber('id');
+            Route::post('/recordes', [MobileRecordeController::class, 'criar'])->middleware('funcionalidade:recordes');
+            Route::put('/recordes/{id}', [MobileRecordeController::class, 'atualizar'])->whereNumber('id')->middleware('funcionalidade:recordes');
             Route::delete('/recordes/{id}', [MobileRecordeController::class, 'excluir'])->whereNumber('id');
         });
 

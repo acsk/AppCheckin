@@ -212,7 +212,7 @@ class MobileHistoricoService
                     'ano' => $ano,
                     'modalidade_id' => $modalidadeId,
                     'ranking' => $rankingFormatado,
-                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins(),
+                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins($tenantId),
                     'minha_posicao' => $minhaLinha['posicao'] ?? null,
                     'meus_checkins' => $minhaLinha['total_checkins'] ?? 0,
                     'campeoes_mes_anterior' => [
@@ -288,7 +288,7 @@ class MobileHistoricoService
                     'ano' => $ano,
                     'modalidade_id' => $modalidadeId,
                     'ranking' => $rankingFormatado,
-                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins(),
+                    'limite_home' => app(AppVersionService::class)->limiteRankingCheckins($tenantId),
                     'minha_posicao' => $minhaPosicao,
                     'tenant_id_resolvido' => $tenantId,
                     'total_checkins_tenant_ano' => $totalTenantAno,

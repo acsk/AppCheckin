@@ -14325,3 +14325,4 @@
 [2026-10-19 18:45:05] GET /api/webhooks/mercadopago/list
 [2026-10-21 00:59:58] GET /v2/admin/payment-credentials
 [2026-10-21 00:59:58] GET /admin/payment-credentials
+[2026-10-24 18:40:49] GET /v2/app-config

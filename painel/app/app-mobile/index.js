@@ -1,3 +1,3 @@
-import AppMobileScreen from '../../src/screens/superadmin/AppMobileScreen';
+import AppConfigScreen from '../../src/screens/superadmin/AppConfigScreen';
 
-export default AppMobileScreen;
+export default AppConfigScreen;

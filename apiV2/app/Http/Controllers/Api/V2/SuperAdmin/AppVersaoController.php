@@ -8,7 +8,7 @@ use App\Services\AppVersionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/** Super Admin → App mobile: versão publicada e se a atualização é obrigatória. */
+/** Super Admin → App mobile (rotas antigas): obrigatoriedade e limite do ranking, gravados na configuração remota. */
 class AppVersaoController extends Controller
 {
     public function __construct(
@@ -26,7 +26,7 @@ class AppVersaoController extends Controller
 
         return response()->json([
             'message' => $dados['obrigatoria'] ? 'Atualização obrigatória ativada' : 'Atualização passou a ser opcional',
-            'mobile' => AppVersionController::comAndroid($this->versions->definirObrigatoria('mobile', (bool) $dados['obrigatoria'])),
+            'mobile' => AppVersionController::comAndroid($this->versions->definirObrigatoria('mobile', (bool) $dados['obrigatoria'], $this->userId($request))),
         ]);
     }
     public function rankingCheckins(): JsonResponse
@@ -40,8 +40,12 @@ class AppVersaoController extends Controller
 
         return response()->json([
             'message' => 'Limite do ranking atualizado',
-            'limite' => $this->versions->definirLimiteRankingCheckins((int) $dados['limite']),
+            'limite' => $this->versions->definirLimiteRankingCheckins((int) $dados['limite'], $this->userId($request)),
         ]);
     }
 
+    private function userId(Request $request): ?int
+    {
+        return ((int) $request->attributes->get('userId', 0)) ?: null;
+    }
 }

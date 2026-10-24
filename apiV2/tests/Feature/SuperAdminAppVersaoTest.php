@@ -24,7 +24,8 @@ class SuperAdminAppVersaoTest extends TestCase
     public function test_super_admin_desliga_atualizacao_obrigatoria(): void
     {
         $service = Mockery::mock(AppVersionService::class);
-        $service->shouldReceive('definirObrigatoria')->once()->with('mobile', false)
+        $service->shouldReceive('androidRelease')->andReturn(null);
+        $service->shouldReceive('definirObrigatoria')->once()->with('mobile', false, 5)
             ->andReturn(['app' => 'mobile', 'version' => 'v1.3', 'obrigatoria' => false]);
         $this->app->instance(AppVersionService::class, $service);
 
@@ -43,7 +44,7 @@ class SuperAdminAppVersaoTest extends TestCase
     {
         $service = Mockery::mock(AppVersionService::class);
         $service->shouldReceive('limiteRankingCheckins')->once()->andReturn(15);
-        $service->shouldReceive('definirLimiteRankingCheckins')->once()->with(25)->andReturn(25);
+        $service->shouldReceive('definirLimiteRankingCheckins')->once()->with(25, 5)->andReturn(25);
         $this->app->instance(AppVersionService::class, $service);
         $this->getJson('/v2/superadmin/app-versao/ranking-checkins', $this->auth(4))->assertOk()->assertJsonPath('limite', 15);
         $this->putJson('/v2/superadmin/app-versao/ranking-checkins', ['limite' => 25], $this->auth(4))->assertOk()->assertJsonPath('limite', 25);

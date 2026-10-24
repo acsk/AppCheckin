@@ -2,11 +2,25 @@
 
 namespace App\Services;
 
+use App\Support\AppConfigCatalogo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Versão do app web publicada pelo build (app_versions). A obrigatoriedade e o limite do ranking
+ * moram na configuração remota (AppConfigService); os métodos daqui seguem para as telas e APKs antigos.
+ */
 class AppVersionService
 {
+    public function __construct(
+        private ?AppConfigService $config = null,
+    ) {}
+
+    private function config(): AppConfigService
+    {
+        return $this->config ??= app(AppConfigService::class);
+    }
+
     /**
      * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
      */
@@ -14,7 +28,7 @@ class AppVersionService
     {
         $row = $this->find($app);
         if ($row) {
-            return $this->format($app, (int) $row->version, (int) $row->release, (string) $row->release_date, $this->obrigatoria($row));
+            return $this->format($app, (int) $row->version, (int) $row->release, (string) $row->release_date, $this->obrigatoria());
         }
 
         $cfg = config("appcheckin.app_versions.{$app}", [
@@ -28,6 +42,7 @@ class AppVersionService
             (int) ($cfg['version'] ?? 1),
             (int) ($cfg['release'] ?? 0),
             (string) ($cfg['release_date'] ?? date('Y-m-d')),
+            $this->obrigatoria(),
         );
     }
 
@@ -57,57 +72,63 @@ class AppVersionService
             ]);
         }
 
-        return $this->format($app, $version, $release, $releaseDate, $existing ? $this->obrigatoria($existing) : true);
+        return $this->format($app, $version, $release, $releaseDate, $this->obrigatoria());
     }
 
     /**
-     * Super admin decide se a versão nova bloqueia o app (true) ou só avisa (false).
+     * Super admin decide se a versão nova do app web bloqueia (true) ou só avisa (false). Publica na hora.
      *
      * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
      */
-    public function definirObrigatoria(string $app, bool $obrigatoria): array
+    public function definirObrigatoria(string $app, bool $obrigatoria, ?int $userId = null): array
     {
-        if (! $this->find($app)) {
-            $cfg = config("appcheckin.app_versions.{$app}", []);
-            $this->store($app, (int) ($cfg['version'] ?? 1), (int) ($cfg['release'] ?? 0), (string) ($cfg['release_date'] ?? date('Y-m-d')));
-        }
-
-        if (Schema::hasColumn('app_versions', 'obrigatoria')) {
-            DB::table('app_versions')->where('app', $app)->update(['obrigatoria' => $obrigatoria, 'updated_at' => now()]);
-        }
+        $this->config()->aplicarAgora(null, 'versao.web_obrigatoria', $obrigatoria, $obrigatoria ? 'Atualização obrigatória ligada' : 'Atualização passou a ser opcional', $userId);
 
         return $this->show($app);
     }
 
-    /** Limite global do ranking na Home, definido pelo Super Admin. */
-    public function limiteRankingCheckins(): int
+    /** Limite do ranking na Home (global, com sobrescrita por academia). */
+    public function limiteRankingCheckins(?int $tenantId = null): int
     {
-        $row = $this->find('mobile');
-
-        return min(100, max(1, (int) ($row->ranking_checkins_limite ?? 15)));
+        return min(100, max(1, (int) ($this->config()->parametro('ranking_limite_home', $tenantId) ?? 15)));
     }
 
-    public function definirLimiteRankingCheckins(int $limite): int
+    public function definirLimiteRankingCheckins(int $limite, ?int $userId = null): int
     {
         if ($limite < 1 || $limite > 100) {
             throw new \InvalidArgumentException('O limite deve estar entre 1 e 100.');
         }
-        if (! $this->find('mobile')) {
-            $current = $this->show('mobile');
-            $this->store('mobile', $current['version_number'], $current['release'], $current['release_date']);
-        }
-        DB::table('app_versions')->where('app', 'mobile')->update([
-            'ranking_checkins_limite' => $limite,
-            'updated_at' => now(),
-        ]);
+        $this->config()->aplicarAgora(null, 'parametro.ranking_limite_home', $limite, "Limite do ranking: {$limite}", $userId);
 
         return $this->limiteRankingCheckins();
     }
 
-    /** Sem a coluna (migration pendente) vale o comportamento antigo: obrigatória. */
-    private function obrigatoria(object $row): bool
+    /**
+     * APK publicado no formato antigo de /version/mobile. APKs anteriores à configuração remota não mandam
+     * a versão, então só ficam bloqueados quando a mínima alcança a publicada.
+     *
+     * @return array{version: string, apk_url: string, obrigatoria: bool}|null
+     */
+    public function androidRelease(): ?array
     {
-        return ! property_exists($row, 'obrigatoria') || (bool) $row->obrigatoria;
+        $v = $this->config()->versoes();
+        $versao = (string) ($v['android_versao_recomendada'] ?? '');
+        $url = (string) ($v['android_apk_url'] ?? '');
+        if ($versao === '' || $url === '') {
+            return null;
+        }
+        $minima = (string) ($v['android_versao_minima'] ?? '');
+
+        return [
+            'version' => $versao,
+            'apk_url' => $url,
+            'obrigatoria' => $minima !== '' && AppConfigCatalogo::compararVersoes($minima, $versao) >= 0,
+        ];
+    }
+
+    private function obrigatoria(): bool
+    {
+        return (bool) ($this->config()->versoes()['web_obrigatoria'] ?? true);
     }
 
     private function find(string $app): ?object

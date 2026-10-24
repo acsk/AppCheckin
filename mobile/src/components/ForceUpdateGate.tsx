@@ -10,6 +10,7 @@ import {
   startPwaUpdateWatcher,
 } from "@/src/config/appVersion";
 import Modal from "@/src/components/ds/Modal";
+import { atualizarConfigRemota } from "@/src/services/remoteConfig";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
@@ -38,8 +39,15 @@ export default function ForceUpdateGate({ children }: Props) {
   const [webDismissed, setWebDismissed] = useState("");
 
   const checkVersion = useCallback(async (autoReload: boolean) => {
-    // APK: compara com o expo.version embutido no build e oferece o download do novo APK
+    // Nativo: a configuração remota já compara a versão instalada com a mínima (bloqueia)
+    // e a publicada (só avisa). Sem configuração publicada, vale o /version/mobile antigo.
     if (Platform.OS !== "web") {
+      const config = await atualizarConfigRemota({ forcar: true });
+      const at = config.atualizacao;
+      if (config.versao_config > 0) {
+        setApk(at.disponivel && at.url ? { version: at.versao_recomendada || at.versao_minima || "", apk_url: at.url, obrigatoria: !!at.obrigatoria } : null);
+        return;
+      }
       const remote = await fetchMobileVersion();
       const release = remote?.android;
       setApk(release && compareBuildVersions(release.version, APP_VERSION) > 0 ? release : null);

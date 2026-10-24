@@ -32,6 +32,7 @@ import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
 import { ds } from "@/src/components/ds/tokens";
 import { GatewayPickerProvider } from "@/src/hooks/useGatewayPicker";
+import { atualizarConfigRemota, trocarContextoConfigRemota } from "@/src/services/remoteConfig";
 
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
@@ -212,6 +213,8 @@ function RootContent() {
 
     // Listener para mudanças no AppState
     const subscription = AppState.addEventListener("change", (nextAppState) => {
+      // Voltou para o app: busca a configuração remota se o intervalo dela venceu
+      if (nextAppState === "active" && appState.current !== "active") void atualizarConfigRemota();
       appState.current = nextAppState;
     });
 
@@ -219,6 +222,11 @@ function RootContent() {
       subscription.remove();
     };
   }, []);
+
+  // Configuração remota: ao abrir, no login e no logout (cada contexto tem a sua)
+  useEffect(() => {
+    if (isTokenChecked) void trocarContextoConfigRemota();
+  }, [hasToken, isTokenChecked]);
 
   const handleSessionExpiredConfirm = useCallback(async () => {
     dismissSessionExpired();

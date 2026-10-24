@@ -27,6 +27,7 @@ class V2AppVersionRoutesTest extends TestCase
                 'release' => 3,
                 'release_date' => '2026-10-15',
             ]);
+        $service->shouldReceive('androidRelease')->andReturn(null);
         $this->app->instance(AppVersionService::class, $service);
 
         $this->getJson('/v2/version/mobile')
@@ -37,9 +38,9 @@ class V2AppVersionRoutesTest extends TestCase
 
     public function test_get_mobile_version_inclui_apk_android_quando_configurado(): void
     {
-        config(['appcheckin.android_release' => ['version' => '1.0.2', 'apk_url' => 'https://exemplo.com/app.apk']]);
         $service = Mockery::mock(AppVersionService::class);
         $service->shouldReceive('show')->with('mobile')->andReturn(['app' => 'mobile', 'version' => 'v1.3', 'obrigatoria' => false]);
+        $service->shouldReceive('androidRelease')->andReturn(['version' => '1.0.2', 'apk_url' => 'https://exemplo.com/app.apk', 'obrigatoria' => false]);
         $this->app->instance(AppVersionService::class, $service);
 
         $this->getJson('/v2/version/mobile')

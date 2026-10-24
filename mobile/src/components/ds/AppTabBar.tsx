@@ -12,6 +12,8 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useConfigRemota } from "@/src/hooks/useConfigRemota";
+import type { Funcionalidade } from "@/src/services/remoteConfig";
 import { TabIcon, TabIconName } from "./TabIcon";
 import { ds } from "./tokens";
 
@@ -35,13 +37,20 @@ export const TAB_ICONS: Record<string, TabIconName> = {
   conta: "user",
 };
 
+/** Aba que some quando a funcionalidade está desligada na configuração remota. */
+const TAB_FUNCIONALIDADE: Record<string, Funcionalidade> = {
+  checkin: "checkin",
+  planos: "matriculas",
+};
+
 export default function AppTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const [inner, setInner] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
-  // Só as rotas da barra (as demais telas do grupo ficam ocultas).
-  const routes = state.routes.filter((r) => TAB_ICONS[r.name]);
+  const { funcionalidades } = useConfigRemota();
+  // Só as rotas da barra (as demais telas do grupo ficam ocultas), sem as funcionalidades desligadas.
+  const routes = state.routes.filter((r) => TAB_ICONS[r.name] && funcionalidades[TAB_FUNCIONALIDADE[r.name]] !== false);
   const activeRoute = state.routes[state.index];
   const activeIdx = Math.max(0, routes.findIndex((r) => r.key === activeRoute?.key));
   const count = routes.length;

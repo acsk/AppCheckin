@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permissao' => \App\Http\Middleware\PermissaoRequerida::class,
             'permissao.rota' => \App\Http\Middleware\PermissaoPorRota::class,
             'ops.token' => \App\Http\Middleware\OpsViewTokenAuth::class,
+            'funcionalidade' => \App\Http\Middleware\FuncionalidadeAtiva::class,
         ]);
         $middleware->trustProxies(at: '*');
     })

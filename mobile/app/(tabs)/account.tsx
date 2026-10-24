@@ -9,6 +9,7 @@ import { fotoRecordeUrl } from "@/src/utils/recordes";
 import AppHeader from "@/src/components/ds/AppHeader";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
+import { useConfigRemota } from "@/src/hooks/useConfigRemota";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
@@ -76,6 +77,9 @@ export default function AccountScreen() {
   const tenantSwitchInFlightRef = useRef(false);
   const [switchingTenantId, setSwitchingTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const configRemota = useConfigRemota();
+  const rankingAtivo = configRemota.funcionalidades.ranking;
+  const avisoHome = configRemota.parametros.aviso_home.trim();
   const [rankingLimite, setRankingLimite] = useState(15);
   const [rankingExpanded, setRankingExpanded] = useState(false);
   const [campeoesAnteriores, setCampeoesAnteriores] = useState<{ periodo: string; ranking: RankingItem[] } | null>(null);
@@ -860,7 +864,7 @@ export default function AccountScreen() {
       profile.estatisticas
         ? { value: profile.estatisticas.sequencia_dias ?? 0, label: "dias seguidos", icon: "flame" as const }
         : null,
-      posicaoRanking ? { value: `${posicaoRanking}º`, label: "no ranking" } : null,
+      posicaoRanking && rankingAtivo ? { value: `${posicaoRanking}º`, label: "no ranking" } : null,
     ].filter((x): x is NonNullable<typeof x> => Boolean(x));
 
     const goTo = (path: string) => () => {
@@ -882,13 +886,15 @@ export default function AccountScreen() {
             count: pendente ? 1 : null,
             onPress: goTo("/minhas-assinaturas"),
           },
-          {
-            icon: "award",
-            tone: "brand",
-            label: "Recordes",
-            hint: "Suas marcas, escola e ranking",
-            onPress: goTo("/(tabs)/recordes"),
-          },
+          ...(configRemota.funcionalidades.recordes
+            ? [{
+                icon: "award" as const,
+                tone: "brand" as const,
+                label: "Recordes",
+                hint: "Suas marcas, escola e ranking",
+                onPress: goTo("/(tabs)/recordes"),
+              }]
+            : []),
           {
             icon: "key",
             label: "Alterar senha",
@@ -901,7 +907,7 @@ export default function AccountScreen() {
       },
       {
         title: "Grupos do WhatsApp",
-        items: whatsappLinks.map((link) => ({
+        items: (configRemota.funcionalidades.grupos_whatsapp ? whatsappLinks : []).map((link) => ({
           icon: "message-circle" as const,
           mcIcon: "whatsapp" as const,
           tone: "success" as const,
@@ -1368,6 +1374,14 @@ export default function AccountScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Aviso da academia/geral (configuração remota) */}
+        {avisoHome ? (
+          <View style={styles.avisoHome} accessibilityRole="text">
+            <Feather name="info" size={16} color={ds.info} />
+            <Text style={styles.avisoHomeText}>{avisoHome}</Text>
+          </View>
+        ) : null}
+
         {/* Calendário Semanal de Check-ins */}
         <View style={styles.weekCalendarSection} className="notranslate">
           <View style={styles.weekCalendarHeader}>
@@ -1484,7 +1498,8 @@ export default function AccountScreen() {
           </View>
         </View>
 
-        {/* Ranking de Check-ins */}
+        {/* Ranking de Check-ins (desligável na configuração remota) */}
+        {rankingAtivo ? <>
         <View style={styles.rankingSection}>
           <View style={styles.rankingHeading}>
             <Text style={styles.rankingTitle}>RANKING DE CHECK-INS</Text>
@@ -1653,6 +1668,7 @@ export default function AccountScreen() {
             />)}
           </> : <Text style={styles.rankingEmptyText}>Nenhum check-in neste período.</Text>}
         </RankingModal>
+        </> : null}
 
         {/* Member Since */}
         {userProfile.membro_desde && (
@@ -2383,6 +2399,16 @@ const styles = StyleSheet.create({
   academiasSection: {
     marginBottom: 20,
   },
+  avisoHome: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: ds.infoSoft,
+  },
+  avisoHomeText: { flex: 1, fontSize: 14, lineHeight: 20, color: ds.ink },
   rankingSection: {
 
   },

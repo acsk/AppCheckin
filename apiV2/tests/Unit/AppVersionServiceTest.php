@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Services\AppConfigService;
 use App\Services\AppVersionService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +24,7 @@ class AppVersionServiceTest extends TestCase
             $table->unsignedSmallInteger('ranking_checkins_limite')->default(15);
             $table->timestamps();
         });
+        (require database_path('migrations/2026_10_25_100000_app_config_remota.php'))->up();
     }
 
     public function test_store_and_show_formats_version(): void
@@ -56,4 +58,17 @@ class AppVersionServiceTest extends TestCase
         $this->assertFalse($service->show('mobile')['obrigatoria']);
     }
 
+    public function test_apk_antigo_so_fica_bloqueado_quando_a_minima_alcanca_a_publicada(): void
+    {
+        $config = app(AppConfigService::class);
+        $config->aplicarAgora(null, 'versao.android_versao_recomendada', '1.2.0', null, null);
+        $config->aplicarAgora(null, 'versao.android_apk_url', 'https://exemplo.com/app.apk', null, null);
+        $service = new AppVersionService();
+
+        $this->assertFalse($service->androidRelease()['obrigatoria']);
+        $config->aplicarAgora(null, 'versao.android_versao_minima', '1.1.0', null, null);
+        $this->assertFalse($service->androidRelease()['obrigatoria']);
+        $config->aplicarAgora(null, 'versao.android_versao_minima', '1.2.0', null, null);
+        $this->assertTrue($service->androidRelease()['obrigatoria']);
+    }
 }
