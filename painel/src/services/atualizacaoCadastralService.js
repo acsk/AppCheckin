@@ -41,6 +41,14 @@ const atualizacaoCadastralService = {
       throw erro(error, 'Não foi possível encerrar');
     }
   },
+
+  async excluir(id) {
+    try {
+      return (await api.delete(`/superadmin/atualizacoes-cadastrais/${id}`)).data;
+    } catch (error) {
+      throw erro(error, 'Não foi possível excluir a atualização cadastral');
+    }
+  },
 };
 
 export default atualizacaoCadastralService;

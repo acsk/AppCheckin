@@ -26,7 +26,7 @@ class AtualizacaoCadastralService
     {
         $campanhas = array_map(fn ($c) => $c + [
             'publico' => $this->repo->totalPublico($c),
-            'respostas' => $this->repo->totalRespostas($c['id']),
+            'respostas' => $this->repo->totalRespostas($c),
         ], $this->repo->listar());
 
         return $this->ok([
@@ -62,7 +62,7 @@ class AtualizacaoCadastralService
 
         return $this->ok([
             'message' => $id === null ? 'Atualização cadastral criada' : 'Atualização cadastral salva',
-            'campanha' => $campanha + ['publico' => $this->repo->totalPublico($campanha), 'respostas' => $this->repo->totalRespostas($novoId)],
+            'campanha' => $campanha + ['publico' => $this->repo->totalPublico($campanha), 'respostas' => $this->repo->totalRespostas($campanha)],
         ], $id === null ? 201 : 200);
     }
 
@@ -75,6 +75,17 @@ class AtualizacaoCadastralService
         $this->repo->encerrar($id);
 
         return $this->ok(['message' => 'Atualização cadastral encerrada', 'campanha' => $this->repo->find($id)]);
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function excluir(int $id): array
+    {
+        if (! $this->repo->find($id)) {
+            return $this->erro('Campanha não encontrada.', 404);
+        }
+        $this->repo->excluir($id);
+
+        return $this->ok(['message' => 'Atualização cadastral excluída definitivamente']);
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -114,7 +125,9 @@ class AtualizacaoCadastralService
             ], $c['campos']),
             'email_atual' => $atual['email'] ?? null,
             'validar_email' => $c['validar_email'],
-            'email_verificado' => ! empty($atual['email_verificado_em']),
+            'forcar_validacao_email' => $c['forcar_validacao_email'],
+            // Também faz clientes anteriores exibirem a etapa quando a campanha força o código.
+            'email_verificado' => ! $c['forcar_validacao_email'] && ! empty($atual['email_verificado_em']),
             'trocar_senha' => $c['trocar_senha'],
             'senha' => $c['trocar_senha'] ? [
                 'min_caracteres' => $c['senha_min_caracteres'],
@@ -135,7 +148,8 @@ class AtualizacaoCadastralService
             return $this->erro('Este e-mail já é usado por outro cadastro.', 422);
         }
         $nome = (string) DB::table('usuarios')->where('id', $usuarioId)->value('nome');
-        $erro = $this->verificacao->enviarCodigo($usuarioId, $email, $nome);
+        $c = $this->repo->pendenteDoUsuario($usuarioId);
+        $erro = $this->verificacao->enviarCodigo($usuarioId, $email, $nome, ! empty($c['forcar_validacao_email']) ? $c['id'] : null);
 
         return $erro ? $this->erro($erro, $erro === VerificacaoEmailService::ERRO_ENVIO ? 503 : 429) : $this->ok(['message' => "Enviamos um código para {$email}."]);
     }
@@ -144,7 +158,8 @@ class AtualizacaoCadastralService
     public function validarCodigoEmail(int $usuarioId, string $email, string $codigo): array
     {
         $email = mb_strtolower(trim($email), 'UTF-8');
-        $erro = $this->verificacao->validarCodigo($usuarioId, $email, $codigo);
+        $c = $this->repo->pendenteDoUsuario($usuarioId);
+        $erro = $this->verificacao->validarCodigo($usuarioId, $email, $codigo, ! empty($c['forcar_validacao_email']) ? $c['id'] : null);
 
         return $erro ? $this->erro($erro, 422) : $this->ok(['message' => 'E-mail confirmado', 'email' => $email]);
     }
@@ -188,9 +203,9 @@ class AtualizacaoCadastralService
         if ($emailMudou && $this->repo->emailEmUsoPorOutro($emailFinal, $usuarioId)) {
             $erros['email'] = 'Este e-mail já é usado por outro cadastro.';
         }
-        $emailConfirmado = $this->verificacao->confirmado($usuarioId, $emailFinal);
+        $emailConfirmado = $this->verificacao->confirmado($usuarioId, $emailFinal, $c['forcar_validacao_email'] ? $c['id'] : null);
         // Mudar o e-mail de login sempre exige o código, mesmo sem validação pedida na campanha
-        $precisaCodigo = $emailMudou || ($c['validar_email'] && empty($atual['email_verificado_em']));
+        $precisaCodigo = $emailMudou || $c['forcar_validacao_email'] || ($c['validar_email'] && empty($atual['email_verificado_em']));
         if ($precisaCodigo && ! $emailConfirmado) {
             $erros['email'] = 'Confirme o e-mail com o código enviado.';
         }
@@ -257,7 +272,8 @@ class AtualizacaoCadastralService
         }
         $campos = CamposCadastro::filtrar((array) ($data['campos'] ?? []));
         $obrigatorios = array_values(array_intersect(CamposCadastro::filtrar((array) ($data['campos_obrigatorios'] ?? [])), $campos));
-        $validarEmail = filter_var($data['validar_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $forcarValidacaoEmail = filter_var($data['forcar_validacao_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $validarEmail = $forcarValidacaoEmail || filter_var($data['validar_email'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $trocarSenha = filter_var($data['trocar_senha'] ?? false, FILTER_VALIDATE_BOOLEAN);
         if ($campos === [] && ! $validarEmail && ! $trocarSenha) {
             $erros[] = 'Peça ao menos um campo, a validação do e-mail ou a troca de senha.';
@@ -290,6 +306,7 @@ class AtualizacaoCadastralService
             'campos' => $campos,
             'campos_obrigatorios' => $obrigatorios,
             'validar_email' => $validarEmail,
+            'forcar_validacao_email' => $forcarValidacaoEmail,
             'trocar_senha' => $trocarSenha,
             'senha_min_caracteres' => in_array($nivel, PoliticaSenha::NIVEIS, true) ? max(PoliticaSenha::MIN, min(32, $min)) : 8,
             'senha_nivel' => in_array($nivel, PoliticaSenha::NIVEIS, true) ? $nivel : 'media',

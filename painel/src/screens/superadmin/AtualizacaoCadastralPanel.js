@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Callout, ChoiceCard, ChoiceGroup, Modal, SegmentedControl, Switch, TextAreaField, TextField } from '../../components/ck';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Button, Callout, ChoiceCard, ChoiceGroup, Modal, SegmentedControl, Switch, TextAreaField, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
+import AtualizacaoCadastralTable from './AtualizacaoCadastralTable';
 import atualizacaoCadastralService from '../../services/atualizacaoCadastralService';
 import { superAdminService } from '../../services/superAdminService';
 import { showError, showSuccess } from '../../utils/toast';
 
-// Super Admin → App mobile → Atualização cadastral: pede ao usuário do app (alunos e professores) para revisar o
+// Super Admin → App mobile → Atualização cadastral: pede aos alunos com matrícula ativa para revisar o
 // cadastro, confirmar o e-mail por código e/ou trocar a senha. Estilos: ck-mc-*/ck-cj-* (ck-minha-conta.css).
 
 const NIVEIS = [
@@ -24,6 +25,7 @@ const VAZIA = {
   campos: [],
   campos_obrigatorios: [],
   validar_email: false,
+  forcar_validacao_email: false,
   trocar_senha: false,
   senha_nivel: 'media',
   senha_min_caracteres: 8,
@@ -31,13 +33,12 @@ const VAZIA = {
   todas_academias: true,
   academias: [],
 };
-const fdata = (v) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 
 function resumo(c, campos) {
   const rotulo = (k) => (campos.find((f) => f.campo === k) || {}).label || k;
   const partes = [];
   if (c.campos.length) partes.push(`${c.campos.length} campo${c.campos.length > 1 ? 's' : ''}: ${c.campos.map(rotulo).join(', ')}`);
-  if (c.validar_email) partes.push('validação de e-mail');
+  if (c.validar_email) partes.push(c.forcar_validacao_email ? 'nova validação de e-mail obrigatória' : 'validação de e-mail');
   if (c.trocar_senha) partes.push(`troca de senha (${(NIVEIS.find((n) => n.value === c.senha_nivel) || {}).title || c.senha_nivel}, ${c.senha_min_caracteres}+ caracteres)`);
   return partes.join(' · ');
 }
@@ -76,7 +77,7 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
 
   return (
     <Modal open={open} size="lg" title={campanha ? 'Editar atualização cadastral' : 'Nova atualização cadastral'}
-      description="Quem usa o app nas academias escolhidas vê o pedido na próxima vez que abrir o app."
+      description="Alunos com matrícula ativa nas academias escolhidas veem o pedido na próxima vez que abrirem o app."
       dismissable={!saving} onClose={onClose}
       footer={(
         <>
@@ -120,7 +121,11 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
           </ul>
         </div>
 
-        <Switch label="Validar e-mail" description="Envia um código de 6 dígitos para o e-mail; o usuário digita no app. Quem já confirmou o e-mail pula esta etapa." checked={f.validar_email} onChange={set('validar_email')} />
+        <Switch label="Validar e-mail" description="Envia um código de 6 dígitos para o e-mail; o usuário digita no app. Quem já confirmou o e-mail pula esta etapa, exceto quando uma nova validação é forçada."
+          checked={f.validar_email} onChange={(v) => setF((p) => ({ ...p, validar_email: v, forcar_validacao_email: v ? p.forcar_validacao_email : false }))} />
+        {f.validar_email ? <Switch label="Forçar nova validação de e-mail"
+          description="Exige um novo código nesta campanha, mesmo de quem já confirmou o e-mail. Quem já concluiu esta campanha não recebe o pedido novamente; para essas pessoas, crie uma nova campanha."
+          checked={f.forcar_validacao_email} onChange={set('forcar_validacao_email')} /> : null}
 
         <Switch label="Forçar troca de senha" description="Pede a senha atual e uma nova. A nova nunca pode ser o CPF." checked={f.trocar_senha} onChange={set('trocar_senha')} />
         {f.trocar_senha ? (
@@ -144,30 +149,41 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
 function PendentesModal({ campanha, onClose }) {
   const [lista, setLista] = useState(null);
   const [erro, setErro] = useState('');
+  const [busca, setBusca] = useState('');
   useEffect(() => {
     if (!campanha) return;
+    let atual = true;
     setLista(null);
     setErro('');
-    atualizacaoCadastralService.pendentes(campanha.id).then(setLista).catch((e) => setErro(e.message));
+    setBusca('');
+    atualizacaoCadastralService.pendentes(campanha.id)
+      .then((r) => { if (atual) setLista(r); })
+      .catch((e) => { if (atual) setErro(e.message); });
+    return () => { atual = false; };
   }, [campanha]);
 
+  const termo = busca.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const filtrados = (lista || []).filter((u) => `${u.nome} ${u.email} ${u.academias.join(' ')}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(termo));
+
   return (
-    <Modal open={!!campanha} size="md" title="Quem ainda não atualizou" onClose={onClose}
-      description="O cadastro é único: quem está em mais de uma academia responde uma vez e vale para todas.">
+    <Modal open={!!campanha} size="lg" title="Alunos com matrícula ativa pendentes" onClose={onClose}
+      description="Apenas alunos com matrícula ativa nas academias desta campanha. Quem está em mais de uma academia responde uma vez.">
       {erro ? <Callout tone="danger">{erro}</Callout>
         : !lista ? <p className="ck-mc-hint" role="status">Carregando…</p>
-          : lista.length ? (
-            <ul className="ck-cj-rows">
-              {lista.map((u) => (
-                <li key={u.id}>
-                  <span className="ck-cj-rows__main">
-                    <strong>{u.nome}</strong>
-                    <small>{u.email} · {u.academias.join(', ')}</small>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="ck-mc-hint">Todos já atualizaram.</p>}
+          : lista.length ? <div className="ck-cad-table">
+            <TextField label="Buscar usuário" icon="search" type="search" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Nome, e-mail ou academia" />
+            <p className="ck-mc-hint" role="status">{filtrados.length} de {lista.length} alunos com matrícula ativa pendentes</p>
+            <div className="ck-pc__wrap">
+              <table className="ck-pc__table ck-cad-table__pending">
+                <caption className="ck-sr">Alunos com matrícula ativa que ainda não responderam</caption>
+                <thead><tr><th scope="col">Aluno</th><th scope="col">E-mail</th><th scope="col">Academias</th></tr></thead>
+                <tbody>{filtrados.map((u) => <tr key={u.id}><td>{u.nome}</td><td>{u.email}</td><td>{u.academias.join(', ')}</td></tr>)}
+                  {!filtrados.length ? <tr><td colSpan={3} className="ck-cad-table__empty">Nenhum usuário encontrado nesta busca.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+          </div> : <p className="ck-mc-hint">Nenhum aluno com matrícula ativa pendente.</p>}
+
     </Modal>
   );
 }
@@ -180,6 +196,7 @@ export default function AtualizacaoCadastralPanel() {
   const [modal, setModal] = useState(null); // { campanha } (null campanha = nova)
   const [salvando, setSalvando] = useState(false);
   const [encerrar, setEncerrar] = useState(null);
+  const [excluir, setExcluir] = useState(null);
   const [pendentes, setPendentes] = useState(null);
 
   const carregar = useCallback(async () => {
@@ -192,11 +209,6 @@ export default function AtualizacaoCadastralPanel() {
   }, [carregar]);
 
   const campos = dados?.campos || [];
-  const [ativas, encerradas] = useMemo(() => {
-    const lista = dados?.campanhas || [];
-    return [lista.filter((c) => c.ativa), lista.filter((c) => !c.ativa)];
-  }, [dados]);
-
   const salvar = async (form) => {
     setSalvando(true);
     try {
@@ -225,47 +237,50 @@ export default function AtualizacaoCadastralPanel() {
     }
   };
 
-  const linha = (c) => (
-    <li key={c.id}>
-      <span className="ck-cj-rows__main">
-        <strong>{c.titulo}</strong>
-        <small>{resumo(c, campos)}</small>
-        <small>{c.todas_academias ? 'Todas as academias' : c.academias.map((a) => a.nome).join(', ')} · criada em {fdata(c.created_at)}{c.encerrada_em ? ` · encerrada em ${fdata(c.encerrada_em)}` : ''}</small>
-      </span>
-      <Badge tone={c.respostas >= c.publico && c.publico > 0 ? 'success' : 'info'}>{`${c.respostas} de ${c.publico} atualizaram`}</Badge>
-      {c.bloquear_app ? <Badge tone="warning" icon="lock">Bloqueia o app</Badge> : <Badge tone="outline">Pode adiar</Badge>}
-      {c.respostas < c.publico ? <Button size="sm" variant="ghost" icon="users" onClick={() => setPendentes(c)}>Ver pendentes</Button> : null}
-      {c.ativa ? (
-        <>
-          <Button size="sm" variant="ghost" icon="pencil" onClick={() => setModal({ campanha: c })}>Editar</Button>
-          <Button size="sm" variant="ghost" icon="x" onClick={() => setEncerrar(c)}>Encerrar</Button>
-        </>
-      ) : null}
-    </li>
-  );
+  const confirmarExcluir = async () => {
+    if (!excluir || salvando) return;
+    setSalvando(true);
+    try {
+      await atualizacaoCadastralService.excluir(excluir.id);
+      showSuccess('Atualização cadastral excluída definitivamente');
+      setExcluir(null);
+      await carregar();
+    } catch (e) {
+      showError(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   return (
     <>
       <Panel
         title="Atualização cadastral"
-        description="Peça aos usuários do app para revisar o cadastro, confirmar o e-mail ou trocar a senha. Cada usuário responde uma vez, valendo para todas as academias; se houver mais de uma em andamento, o app pede na ordem em que foram criadas."
+        description="Peça aos alunos com matrícula ativa para revisar o cadastro, confirmar o e-mail ou trocar a senha. Cada usuário responde uma vez, valendo para todas as academias; se houver mais de uma em andamento, o app pede na ordem em que foram criadas."
         actions={<Button size="sm" variant="primary" icon="plus" onClick={() => setModal({ campanha: null })}>Nova atualização</Button>}
       >
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout>
           : !dados ? <p className="ck-mc-hint" role="status">Carregando…</p>
-            : ativas.length ? <ul className="ck-cj-rows">{ativas.map(linha)}</ul>
-              : <p className="ck-mc-hint">Nenhuma atualização cadastral em andamento.</p>}
-        {encerradas.length ? (
-          <details>
-            <summary className="ck-mc-hint">{`Encerradas (${encerradas.length})`}</summary>
-            <ul className="ck-cj-rows">{encerradas.map(linha)}</ul>
-          </details>
-        ) : null}
+            : <AtualizacaoCadastralTable campanhas={dados.campanhas || []} resumo={(c) => resumo(c, campos)}
+              onPendentes={setPendentes} onEditar={(c) => setModal({ campanha: c })}
+              onEncerrar={setEncerrar} onExcluir={setExcluir} disabled={salvando} />}
+
       </Panel>
 
       <CampanhaModal open={!!modal} campanha={modal?.campanha} campos={campos} academias={academias} saving={salvando} onSave={salvar} onClose={() => setModal(null)} />
 
       <PendentesModal campanha={pendentes} onClose={() => setPendentes(null)} />
+
+      <Modal open={!!excluir} size="sm" title="Excluir esta atualização definitivamente?" dismissable={!salvando} onClose={() => setExcluir(null)}
+        description="A campanha, as respostas e os códigos de e-mail vinculados a ela serão apagados do banco. Os dados cadastrais, a senha e o e-mail já confirmado dos usuários serão mantidos. Esta ação não pode ser desfeita."
+        footer={<>
+          <span style={{ flex: 1 }} />
+          <Button variant="ghost" disabled={salvando} onClick={() => setExcluir(null)}>Cancelar</Button>
+          <Button variant="danger" icon="trash" loading={salvando} onClick={confirmarExcluir}>Excluir do banco</Button>
+        </>}>
+        <p className="ck-mc-hint">{excluir?.titulo}</p>
+        {excluir?.ativa ? <Callout tone="warning">Esta atualização está em andamento. Os usuários deixam de receber o pedido após a exclusão.</Callout> : null}
+      </Modal>
 
       <Modal open={!!encerrar} size="sm" title="Encerrar esta atualização?" dismissable={!salvando} onClose={() => setEncerrar(null)}
         description="Quem ainda não respondeu deixa de ver o pedido. As respostas já recebidas ficam registradas."

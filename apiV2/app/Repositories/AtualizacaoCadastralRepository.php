@@ -8,8 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class AtualizacaoCadastralRepository
 {
-    /** Papéis que usam o app: aluno e professor. */
-    private const PAPEIS_APP = [1, 2];
+    private const PAPEL_ALUNO = 1;
 
     /** @return list<array<string, mixed>> */
     public function listar(): array
@@ -41,6 +40,7 @@ class AtualizacaoCadastralRepository
                 'campos' => json_encode($dados['campos']),
                 'campos_obrigatorios' => json_encode($dados['campos_obrigatorios']),
                 'validar_email' => $dados['validar_email'],
+                'forcar_validacao_email' => $dados['forcar_validacao_email'],
                 'trocar_senha' => $dados['trocar_senha'],
                 'senha_min_caracteres' => $dados['senha_min_caracteres'],
                 'senha_nivel' => $dados['senha_nivel'],
@@ -70,9 +70,22 @@ class AtualizacaoCadastralRepository
         DB::table('atualizacoes_cadastrais')->where('id', $id)->update(['ativa' => 0, 'encerrada_em' => now(), 'updated_at' => now()]);
     }
 
-    public function totalRespostas(int $id): int
+    public function excluir(int $id): void
     {
-        return DB::table('atualizacao_cadastral_respostas')->where('atualizacao_id', $id)->count();
+        DB::transaction(function () use ($id) {
+            DB::table('verificacoes_email')->where('atualizacao_id', $id)->delete();
+            DB::table('atualizacao_cadastral_respostas')->where('atualizacao_id', $id)->delete();
+            DB::table('atualizacao_cadastral_academias')->where('atualizacao_id', $id)->delete();
+            DB::table('atualizacoes_cadastrais')->where('id', $id)->delete();
+        });
+    }
+
+    public function totalRespostas(array $campanha): int
+    {
+        return (int) $this->publicoQuery($campanha)
+            ->whereExists(fn ($q) => $q->from('atualizacao_cadastral_respostas as r')
+                ->where('r.atualizacao_id', $campanha['id'])->whereColumn('r.usuario_id', 'tup.usuario_id'))
+            ->distinct()->count('tup.usuario_id');
     }
 
     /** Quantos usuários do app a campanha alcança. */
@@ -114,8 +127,8 @@ class AtualizacaoCadastralRepository
             ->where('ac.ativa', 1)
             ->whereNotExists(fn ($q) => $q->from('atualizacao_cadastral_respostas as r')
                 ->whereColumn('r.atualizacao_id', 'ac.id')->where('r.usuario_id', $usuarioId))
-            ->whereExists(fn ($q) => $q->from('tenant_usuario_papel as tup')
-                ->where('tup.usuario_id', $usuarioId)->where('tup.ativo', 1)->whereIn('tup.papel_id', self::PAPEIS_APP)
+            ->whereExists($this->alunosMatriculadosQuery()->selectRaw('1')
+                ->where('tup.usuario_id', $usuarioId)
                 ->where(fn ($w) => $w->where('ac.todas_academias', 1)->orWhereExists(fn ($a) => $a->from('atualizacao_cadastral_academias as aca')
                     ->whereColumn('aca.atualizacao_id', 'ac.id')->whereColumn('aca.tenant_id', 'tup.tenant_id'))))
             ->orderBy('ac.id')
@@ -167,14 +180,26 @@ class AtualizacaoCadastralRepository
         ]);
     }
 
-    private function publicoQuery(array $campanha)
+    /** Aluno ativo com matrícula ativa na mesma academia do vínculo. */
+    private function alunosMatriculadosQuery()
     {
-        // Público é por usuário (cadastro único): quem está em várias academias conta e responde uma vez só
-        $q = DB::table('tenant_usuario_papel as tup')
+        return DB::table('tenant_usuario_papel as tup')
             ->join('usuarios as u', 'u.id', '=', 'tup.usuario_id')
             ->where('u.ativo', 1)
             ->where('tup.ativo', 1)
-            ->whereIn('tup.papel_id', self::PAPEIS_APP);
+            ->where('tup.papel_id', self::PAPEL_ALUNO)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('matriculas as m')
+                ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+                ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+                ->whereColumn('a.usuario_id', 'tup.usuario_id')
+                ->whereColumn('m.tenant_id', 'tup.tenant_id')
+                ->where('sm.codigo', 'ativa'));
+    }
+
+    private function publicoQuery(array $campanha)
+    {
+        // Matrículas duplicadas e múltiplas academias não duplicam o aluno no progresso.
+        $q = $this->alunosMatriculadosQuery();
         if (! $campanha['todas_academias']) {
             $q->whereIn('tup.tenant_id', array_column($campanha['academias'], 'id') ?: [0]);
         }
@@ -216,6 +241,7 @@ class AtualizacaoCadastralRepository
             'campos' => $decode($r->campos),
             'campos_obrigatorios' => $decode($r->campos_obrigatorios),
             'validar_email' => (bool) $r->validar_email,
+            'forcar_validacao_email' => (bool) ($r->forcar_validacao_email ?? false),
             'trocar_senha' => (bool) $r->trocar_senha,
             'senha_min_caracteres' => (int) $r->senha_min_caracteres,
             'senha_nivel' => (string) $r->senha_nivel,

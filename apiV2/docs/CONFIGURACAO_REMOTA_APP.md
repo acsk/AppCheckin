@@ -5,6 +5,10 @@ Painel: **Super Admin → App Mobile**, com as páginas **Configurações** (`/a
 
 Configurações reúne funcionalidades, parâmetros, consulta por academia e histórico. Versões reúne as versões publicadas e as regras de atualização. As duas páginas compartilham o rascunho: revisar e publicar inclui todas as alterações pendentes. Atualização Cadastral gerencia suas campanhas separadamente.
 
+Para exigir outro código de e-mail mesmo de quem já confirmou o endereço, use
+**Forçar nova validação de e-mail** na campanha. Consulte as
+[regras da atualização cadastral](ATUALIZACAO_CADASTRAL.md).
+
 ## Como funciona
 
 ```

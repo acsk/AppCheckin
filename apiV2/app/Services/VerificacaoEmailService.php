@@ -27,7 +27,7 @@ class VerificacaoEmailService
     ) {}
 
     /** @return string|null erro para o usuário, ou null se enviado */
-    public function enviarCodigo(int $usuarioId, string $email, string $nome): ?string
+    public function enviarCodigo(int $usuarioId, string $email, string $nome, ?int $atualizacaoId = null): ?string
     {
         $recentes = DB::table('verificacoes_email')->where('usuario_id', $usuarioId)
             ->where('created_at', '>=', now()->subHour())->orderByDesc('id')->get(['created_at']);
@@ -41,6 +41,7 @@ class VerificacaoEmailService
         $codigo = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         $id = DB::table('verificacoes_email')->insertGetId([
             'usuario_id' => $usuarioId,
+            'atualizacao_id' => $atualizacaoId,
             'email' => $email,
             'codigo_hash' => password_hash($codigo, PASSWORD_BCRYPT),
             'expira_em' => now()->addMinutes(self::EXPIRA_MINUTOS),
@@ -73,9 +74,10 @@ class VerificacaoEmailService
     }
 
     /** @return string|null erro para o usuário, ou null se o código confere */
-    public function validarCodigo(int $usuarioId, string $email, string $codigo): ?string
+    public function validarCodigo(int $usuarioId, string $email, string $codigo, ?int $atualizacaoId = null): ?string
     {
         $v = DB::table('verificacoes_email')->where('usuario_id', $usuarioId)->where('email', $email)
+            ->when($atualizacaoId !== null, fn ($q) => $q->where('atualizacao_id', $atualizacaoId))
             ->whereNull('validado_em')->orderByDesc('id')->first();
         if (! $v || now()->greaterThan($v->expira_em)) {
             return 'Código expirado. Peça um novo.';
@@ -95,9 +97,10 @@ class VerificacaoEmailService
     }
 
     /** E-mail confirmado por código há pouco (vale para concluir a atualização cadastral). */
-    public function confirmado(int $usuarioId, string $email): bool
+    public function confirmado(int $usuarioId, string $email, ?int $atualizacaoId = null): bool
     {
         return DB::table('verificacoes_email')->where('usuario_id', $usuarioId)->where('email', $email)
+            ->when($atualizacaoId !== null, fn ($q) => $q->where('atualizacao_id', $atualizacaoId))
             ->where('validado_em', '>=', now()->subDay())->exists();
     }
 }

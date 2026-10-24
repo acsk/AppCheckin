@@ -39,6 +39,11 @@ class AtualizacaoCadastralController extends Controller
         return $this->json($this->service->pendentes($id));
     }
 
+    public function destroy(int $id): JsonResponse
+    {
+        return $this->json($this->service->excluir($id));
+    }
+
     /** @param  array{status: int, body: array<string, mixed>}  $result */
     private function json(array $result): JsonResponse
     {

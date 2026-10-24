@@ -24,6 +24,7 @@ type Pendente = {
   campos: Campo[];
   email_atual: string | null;
   validar_email: boolean;
+  forcar_validacao_email?: boolean;
   email_verificado: boolean;
   trocar_senha: boolean;
   senha: { min_caracteres: number; nivel: string; regras: string[] } | null;
@@ -109,6 +110,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [confirmaSenha, setConfirmaSenha] = useState("");
   const buscando = useRef(false);
   const idAtual = useRef<number | null>(null);
+  const forcarValidacaoAtual = useRef(false);
 
   const carregar = useCallback(async () => {
     if (!enabled || buscando.current) return;
@@ -128,6 +130,14 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         setNovaSenha("");
         setConfirmaSenha("");
       }
+      // A campanha pode passar a forçar validação enquanto o formulário já está aberto.
+      if (p && idAtual.current === p.id && p.forcar_validacao_email && !forcarValidacaoAtual.current) {
+        setCodigo("");
+        setCodigoEnviadoPara("");
+        setEmailConfirmado("");
+        setAviso("");
+      }
+      forcarValidacaoAtual.current = !!p?.forcar_validacao_email;
       idAtual.current = p?.id ?? null;
       setPendente(p);
     } catch {
@@ -152,7 +162,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const campoEmail = pendente?.campos.find((c) => c.campo === "email");
   const emailFinal = (campoEmail ? valores.email : pendente?.email_atual || "")?.trim().toLowerCase() || "";
   const emailMudou = !!campoEmail && emailFinal !== (pendente?.email_atual || "").toLowerCase();
-  const precisaCodigo = !!pendente && (emailMudou || (pendente.validar_email && !pendente.email_verificado));
+  const precisaCodigo = !!pendente && (emailMudou || pendente.forcar_validacao_email || (pendente.validar_email && !pendente.email_verificado));
   const emailOk = !precisaCodigo || emailConfirmado === emailFinal;
   const faltas = useMemo(
     () => (pendente?.senha ? faltasSenha(novaSenha, pendente.senha.nivel, pendente.senha.min_caracteres) : []),
