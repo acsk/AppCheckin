@@ -36,6 +36,7 @@ class AtualizacaoCadastralTest extends TestCase
             }
             $t->date('data_nascimento')->nullable();
             $t->string('senha_hash');
+            $t->boolean('ativo')->default(true);
             $t->timestamps();
         });
         Schema::create('alunos', function (Blueprint $t) {
@@ -128,6 +129,24 @@ class AtualizacaoCadastralTest extends TestCase
         $this->assertSame('ARAPIRACA', $u->cidade);
         $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
         $this->assertSame(1, $this->service()->listar()['body']['campanhas'][0]['respostas']);
+    }
+
+    public function test_cadastro_unico_conta_e_responde_uma_vez_em_varias_academias(): void
+    {
+        DB::table('tenant_usuario_papel')->insert(['tenant_id' => 2, 'usuario_id' => $this->aluno, 'papel_id' => 2, 'ativo' => 1]);
+        $inativo = (int) DB::table('usuarios')->insertGetId(['nome' => 'INATIVO', 'email' => 'i@x.com', 'senha_hash' => 'x', 'ativo' => 0]);
+        DB::table('tenant_usuario_papel')->insert(['tenant_id' => 1, 'usuario_id' => $inativo, 'papel_id' => 1, 'ativo' => 1]);
+        $id = $this->campanha();
+
+        $this->assertSame(1, $this->service()->listar()['body']['campanhas'][0]['publico']);
+        $pendentes = $this->service()->pendentes($id)['body']['pendentes'];
+        $this->assertSame([$this->aluno], array_column($pendentes, 'id'));
+        $this->assertSame(['Aqua', 'Outra'], $pendentes[0]['academias']);
+
+        $this->service()->responder($this->aluno, $id, ['dados' => ['telefone' => '(82) 98837-6381']]);
+
+        $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
+        $this->assertSame([], $this->service()->pendentes($id)['body']['pendentes']);
     }
 
     public function test_troca_de_senha_segue_a_politica_e_recusa_o_cpf(): void

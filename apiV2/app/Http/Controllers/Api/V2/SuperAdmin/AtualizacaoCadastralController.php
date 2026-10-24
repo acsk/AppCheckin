@@ -34,6 +34,11 @@ class AtualizacaoCadastralController extends Controller
         return $this->json($this->service->encerrar($id));
     }
 
+    public function pendentes(int $id): JsonResponse
+    {
+        return $this->json($this->service->pendentes($id));
+    }
+
     /** @param  array{status: int, body: array<string, mixed>}  $result */
     private function json(array $result): JsonResponse
     {

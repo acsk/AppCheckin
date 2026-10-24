@@ -1,3 +1,6 @@
-import AtualizacaoCadastralScreen from '../../src/screens/superadmin/AtualizacaoCadastralScreen';
+import { Redirect } from 'expo-router';
 
-export default AtualizacaoCadastralScreen;
+// A atualização cadastral agora fica na tela App mobile
+export default function AtualizacaoCadastralRedirect() {
+  return <Redirect href="/app-mobile" />;
+}

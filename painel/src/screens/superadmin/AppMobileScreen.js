@@ -5,9 +5,11 @@ import { Button, Callout, PageHeader, Switch, TextField } from '../../components
 import { Panel } from '../../components/ck/pessoas';
 import { authService } from '../../services/authService';
 import appVersaoService from '../../services/appVersaoService';
+import AtualizacaoCadastralPanel from './AtualizacaoCadastralPanel';
 import { showError, showSuccess } from '../../utils/toast';
 
-// Super Admin → App mobile: versão publicada e se a versão nova bloqueia o app ou só avisa.
+// Super Admin → App mobile: versão publicada, se a versão nova bloqueia o app ou só avisa,
+// ranking da Home e as atualizações cadastrais pedidas ao usuário.
 const fdata = (v) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
 
 export default function AppMobileScreen() {
@@ -74,11 +76,11 @@ export default function AppMobileScreen() {
   return (
     <LayoutBase title="App mobile" pageHeader={false}>
       <div className="ck-mc">
-        <PageHeader title="App mobile" description="Configurações do app do aluno e versões publicadas." />
+        <PageHeader title="App mobile" description="Configurações do app do aluno, atualizações (de versão e cadastral) e versões publicadas." />
 
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
 
-        <Panel title="Atualização" description="Vale para o app na web e para o APK Android.">
+        <Panel title="Atualização do app" description="Vale para o app na web e para o APK Android.">
           {!versao ? <p className="ck-mc-hint" role="status">Carregando…</p> : (
             <div className="ck-mc-form">
               <Switch
@@ -96,6 +98,8 @@ export default function AppMobileScreen() {
             </div>
           )}
         </Panel>
+
+        <AtualizacaoCadastralPanel />
 
         <Panel title="Ranking de check-ins" description="Limite de pessoas exibidas na lista do ranking na Home, em todas as academias.">
           {limiteSalvo === null ? <p className="ck-mc-hint" role="status">Carregando…</p> : (

@@ -1,14 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
-import LayoutBase from '../../components/LayoutBase';
-import { Badge, Button, Callout, ChoiceCard, ChoiceGroup, Modal, PageHeader, SegmentedControl, Switch, TextAreaField, TextField } from '../../components/ck';
+import { Badge, Button, Callout, ChoiceCard, ChoiceGroup, Modal, SegmentedControl, Switch, TextAreaField, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
-import { authService } from '../../services/authService';
 import atualizacaoCadastralService from '../../services/atualizacaoCadastralService';
 import { superAdminService } from '../../services/superAdminService';
 import { showError, showSuccess } from '../../utils/toast';
 
-// Super Admin → Atualização cadastral: pede ao usuário do app (alunos e professores) para revisar o
+// Super Admin → App mobile → Atualização cadastral: pede ao usuário do app (alunos e professores) para revisar o
 // cadastro, confirmar o e-mail por código e/ou trocar a senha. Estilos: ck-mc-*/ck-cj-* (ck-minha-conta.css).
 
 const NIVEIS = [
@@ -144,32 +141,55 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
   );
 }
 
-export default function AtualizacaoCadastralScreen() {
-  const router = useRouter();
-  const [ok, setOk] = useState(false);
+function PendentesModal({ campanha, onClose }) {
+  const [lista, setLista] = useState(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    if (!campanha) return;
+    setLista(null);
+    setErro('');
+    atualizacaoCadastralService.pendentes(campanha.id).then(setLista).catch((e) => setErro(e.message));
+  }, [campanha]);
+
+  return (
+    <Modal open={!!campanha} size="md" title="Quem ainda não atualizou" onClose={onClose}
+      description="O cadastro é único: quem está em mais de uma academia responde uma vez e vale para todas.">
+      {erro ? <Callout tone="danger">{erro}</Callout>
+        : !lista ? <p className="ck-mc-hint" role="status">Carregando…</p>
+          : lista.length ? (
+            <ul className="ck-cj-rows">
+              {lista.map((u) => (
+                <li key={u.id}>
+                  <span className="ck-cj-rows__main">
+                    <strong>{u.nome}</strong>
+                    <small>{u.email} · {u.academias.join(', ')}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="ck-mc-hint">Todos já atualizaram.</p>}
+    </Modal>
+  );
+}
+
+// Seção da tela App mobile (o acesso de super admin é checado pela tela).
+export default function AtualizacaoCadastralPanel() {
   const [dados, setDados] = useState(null);
   const [academias, setAcademias] = useState([]);
   const [erro, setErro] = useState('');
   const [modal, setModal] = useState(null); // { campanha } (null campanha = nova)
   const [salvando, setSalvando] = useState(false);
   const [encerrar, setEncerrar] = useState(null);
-
-  useEffect(() => {
-    authService.getCurrentUser().then((u) => {
-      if (authService.getEffectivePapelId(u) !== 4) { showError('Acesso negado. Apenas Super Admin pode acessar esta página.'); router.replace('/'); return; }
-      setOk(true);
-    });
-  }, []);
+  const [pendentes, setPendentes] = useState(null);
 
   const carregar = useCallback(async () => {
     setErro('');
     try { setDados(await atualizacaoCadastralService.listar()); } catch (e) { setErro(e.message); }
   }, []);
   useEffect(() => {
-    if (!ok) return;
     carregar();
     superAdminService.listarAcademias().then((r) => setAcademias((r.academias || []).map((a) => ({ id: a.id, nome: a.nome })))).catch(() => {});
-  }, [ok, carregar]);
+  }, [carregar]);
 
   const campos = dados?.campos || [];
   const [ativas, encerradas] = useMemo(() => {
@@ -214,6 +234,7 @@ export default function AtualizacaoCadastralScreen() {
       </span>
       <Badge tone={c.respostas >= c.publico && c.publico > 0 ? 'success' : 'info'}>{`${c.respostas} de ${c.publico} atualizaram`}</Badge>
       {c.bloquear_app ? <Badge tone="warning" icon="lock">Bloqueia o app</Badge> : <Badge tone="outline">Pode adiar</Badge>}
+      {c.respostas < c.publico ? <Button size="sm" variant="ghost" icon="users" onClick={() => setPendentes(c)}>Ver pendentes</Button> : null}
       {c.ativa ? (
         <>
           <Button size="sm" variant="ghost" icon="pencil" onClick={() => setModal({ campanha: c })}>Editar</Button>
@@ -223,33 +244,28 @@ export default function AtualizacaoCadastralScreen() {
     </li>
   );
 
-  if (!ok) return <LayoutBase title="Atualização cadastral" pageHeader={false}><p className="ck-mc-hint" role="status">Carregando…</p></LayoutBase>;
-
   return (
-    <LayoutBase title="Atualização cadastral" pageHeader={false}>
-      <div className="ck-mc">
-        <PageHeader
-          title="Atualização cadastral"
-          description="Peça aos usuários do app para revisar o cadastro, confirmar o e-mail ou trocar a senha."
-          actions={<Button variant="primary" icon="plus" onClick={() => setModal({ campanha: null })}>Nova atualização</Button>}
-        />
-
-        {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
-
-        <Panel title="Em andamento" description="Cada usuário responde uma vez. Se houver mais de uma, o app pede na ordem em que foram criadas.">
-          {!dados ? <p className="ck-mc-hint" role="status">Carregando…</p>
+    <>
+      <Panel
+        title="Atualização cadastral"
+        description="Peça aos usuários do app para revisar o cadastro, confirmar o e-mail ou trocar a senha. Cada usuário responde uma vez, valendo para todas as academias; se houver mais de uma em andamento, o app pede na ordem em que foram criadas."
+        actions={<Button size="sm" variant="primary" icon="plus" onClick={() => setModal({ campanha: null })}>Nova atualização</Button>}
+      >
+        {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout>
+          : !dados ? <p className="ck-mc-hint" role="status">Carregando…</p>
             : ativas.length ? <ul className="ck-cj-rows">{ativas.map(linha)}</ul>
               : <p className="ck-mc-hint">Nenhuma atualização cadastral em andamento.</p>}
-        </Panel>
-
         {encerradas.length ? (
-          <Panel title="Encerradas">
+          <details>
+            <summary className="ck-mc-hint">{`Encerradas (${encerradas.length})`}</summary>
             <ul className="ck-cj-rows">{encerradas.map(linha)}</ul>
-          </Panel>
+          </details>
         ) : null}
-      </div>
+      </Panel>
 
       <CampanhaModal open={!!modal} campanha={modal?.campanha} campos={campos} academias={academias} saving={salvando} onSave={salvar} onClose={() => setModal(null)} />
+
+      <PendentesModal campanha={pendentes} onClose={() => setPendentes(null)} />
 
       <Modal open={!!encerrar} size="sm" title="Encerrar esta atualização?" dismissable={!salvando} onClose={() => setEncerrar(null)}
         description="Quem ainda não respondeu deixa de ver o pedido. As respostas já recebidas ficam registradas."
@@ -260,6 +276,6 @@ export default function AtualizacaoCadastralScreen() {
             <Button variant="danger" icon="x" loading={salvando} onClick={confirmarEncerrar}>Encerrar</Button>
           </>
         )} />
-    </LayoutBase>
+    </>
   );
 }

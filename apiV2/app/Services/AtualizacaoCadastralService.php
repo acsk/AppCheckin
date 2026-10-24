@@ -77,6 +77,17 @@ class AtualizacaoCadastralService
         return $this->ok(['message' => 'Atualização cadastral encerrada', 'campanha' => $this->repo->find($id)]);
     }
 
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function pendentes(int $id): array
+    {
+        $campanha = $this->repo->find($id);
+        if (! $campanha) {
+            return $this->erro('Campanha não encontrada.', 404);
+        }
+
+        return $this->ok(['pendentes' => $this->repo->pendentes($campanha)]);
+    }
+
     /* ---------- App ---------- */
 
     /** @return array{status: int, body: array<string, mixed>} */

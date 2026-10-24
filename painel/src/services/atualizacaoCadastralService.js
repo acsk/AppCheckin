@@ -26,6 +26,14 @@ const atualizacaoCadastralService = {
     }
   },
 
+  async pendentes(id) {
+    try {
+      return (await api.get(`/superadmin/atualizacoes-cadastrais/${id}/pendentes`)).data.pendentes;
+    } catch (error) {
+      throw erro(error, 'Não foi possível carregar quem falta atualizar');
+    }
+  },
+
   async encerrar(id) {
     try {
       return (await api.post(`/superadmin/atualizacoes-cadastrais/${id}/encerrar`)).data.campanha;

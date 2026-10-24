@@ -82,6 +82,28 @@ class AtualizacaoCadastralRepository
     }
 
     /**
+     * Usuários do público que ainda não responderam, com as academias onde usam o app.
+     *
+     * @return list<array{id: int, nome: string, email: string, academias: list<string>}>
+     */
+    public function pendentes(array $campanha): array
+    {
+        $out = [];
+        $this->publicoQuery($campanha)
+            ->join('tenants as t', 't.id', '=', 'tup.tenant_id')
+            ->whereNotExists(fn ($q) => $q->from('atualizacao_cadastral_respostas as r')
+                ->where('r.atualizacao_id', $campanha['id'])->whereColumn('r.usuario_id', 'tup.usuario_id'))
+            ->orderBy('u.nome')
+            ->get(['u.id', 'u.nome', 'u.email', 't.nome as academia'])
+            ->each(function ($r) use (&$out) {
+                $out[(int) $r->id] ??= ['id' => (int) $r->id, 'nome' => (string) $r->nome, 'email' => (string) $r->email, 'academias' => []];
+                $out[(int) $r->id]['academias'] = array_values(array_unique([...$out[(int) $r->id]['academias'], (string) $r->academia]));
+            });
+
+        return array_values($out);
+    }
+
+    /**
      * Campanha ativa mais antiga que alcança o usuário e que ele ainda não respondeu.
      *
      * @return array<string, mixed>|null
@@ -147,7 +169,12 @@ class AtualizacaoCadastralRepository
 
     private function publicoQuery(array $campanha)
     {
-        $q = DB::table('tenant_usuario_papel as tup')->where('tup.ativo', 1)->whereIn('tup.papel_id', self::PAPEIS_APP);
+        // Público é por usuário (cadastro único): quem está em várias academias conta e responde uma vez só
+        $q = DB::table('tenant_usuario_papel as tup')
+            ->join('usuarios as u', 'u.id', '=', 'tup.usuario_id')
+            ->where('u.ativo', 1)
+            ->where('tup.ativo', 1)
+            ->whereIn('tup.papel_id', self::PAPEIS_APP);
         if (! $campanha['todas_academias']) {
             $q->whereIn('tup.tenant_id', array_column($campanha['academias'], 'id') ?: [0]);
         }
