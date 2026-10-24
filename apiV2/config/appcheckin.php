@@ -34,6 +34,7 @@ return [
     'mail_allowed_subjects' => [
         '🔐 Código de Recuperação de Senha - App Check-in',
         '🎉 Bem-vindo ao AppCheckin - Seus Dados de Acesso',
+        \App\Services\VerificacaoEmailService::ASSUNTO,
     ],
     'mail_allowed_subject_prefixes' => [
         'AppCheckin [ERRO]',

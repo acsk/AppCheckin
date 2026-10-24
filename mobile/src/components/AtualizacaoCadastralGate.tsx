@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Button from "@/src/components/ds/Button";
+import CodigoInput from "@/src/components/ds/CodigoInput";
 import Section from "@/src/components/ds/Section";
 import TextField from "@/src/components/ds/TextField";
 import { ds, radius, space, type } from "@/src/components/ds/tokens";
@@ -178,14 +179,15 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
     }
   };
 
-  const confirmarCodigo = async () => {
+  const confirmarCodigo = async (valor: string = codigo) => {
     setEnviandoCodigo(true);
     try {
-      await api.post("/mobile/atualizacao-cadastral/email/validar", { email: codigoEnviadoPara, codigo });
+      await api.post("/mobile/atualizacao-cadastral/email/validar", { email: codigoEnviadoPara, codigo: valor });
       setEmailConfirmado(codigoEnviadoPara);
       setAviso("");
       setErros((x) => ({ ...x, codigo: "", email: "" }));
     } catch (e: any) {
+      setCodigo("");
       setErros((x) => ({ ...x, codigo: e?.response?.data?.error || e?.message || "Código incorreto." }));
     } finally {
       setEnviandoCodigo(false);
@@ -305,8 +307,18 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                       {aviso ? <Text style={styles.hint}>{aviso}</Text> : null}
                       {codigoEnviadoPara === emailFinal ? (
                         <>
-                          <TextField label="Código" value={codigo} onChangeText={(v) => setCodigo(digitos(v).slice(0, 6))} keyboardType="number-pad" error={erros.codigo || null} placeholder="000000" />
-                          <Button variant="primary" icon="check" loading={enviandoCodigo} disabled={codigo.length !== 6} onPress={confirmarCodigo}>Confirmar e-mail</Button>
+                          <CodigoInput
+                            value={codigo}
+                            onChange={(v) => {
+                              setCodigo(v);
+                              if (erros.codigo) setErros((x) => ({ ...x, codigo: "" }));
+                            }}
+                            onCompleto={(v) => void confirmarCodigo(v)}
+                            error={erros.codigo || null}
+                            disabled={enviandoCodigo}
+                            autoFocus
+                          />
+                          <Button variant="primary" icon="check" loading={enviandoCodigo} disabled={codigo.length !== 6} onPress={() => void confirmarCodigo()}>Confirmar e-mail</Button>
                         </>
                       ) : null}
                     </>

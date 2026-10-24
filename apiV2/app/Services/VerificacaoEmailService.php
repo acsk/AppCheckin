@@ -13,6 +13,11 @@ class VerificacaoEmailService
 {
     public const EXPIRA_MINUTOS = 15;
 
+    /** Assunto fixo: precisa estar em appcheckin.mail_allowed_subjects (EnforceAllowedOutboundMail). */
+    public const ERRO_ENVIO = 'Não foi possível enviar o e-mail agora. Tente de novo.';
+
+    public const ASSUNTO = '✉️ Código de confirmação de e-mail - App Check-in';
+
     private const MAX_TENTATIVAS = 5;
 
     private const MAX_POR_HORA = 5;
@@ -34,7 +39,7 @@ class VerificacaoEmailService
         }
 
         $codigo = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-        DB::table('verificacoes_email')->insert([
+        $id = DB::table('verificacoes_email')->insertGetId([
             'usuario_id' => $usuarioId,
             'email' => $email,
             'codigo_hash' => password_hash($codigo, PASSWORD_BCRYPT),
@@ -44,17 +49,24 @@ class VerificacaoEmailService
         ]);
 
         try {
-            TransactionalMailSender::send(
+            // false = envio cancelado (ex.: mail guard), sem exceção
+            $enviado = TransactionalMailSender::send(
                 $email,
                 $nome,
-                'Seu código de confirmação: '.$codigo,
+                self::ASSUNTO,
                 $this->templates->codigoVerificacaoEmail($nome, $codigo, self::EXPIRA_MINUTOS),
                 $this->templates->codigoVerificacaoEmailPlainText($nome, $codigo, self::EXPIRA_MINUTOS),
             );
         } catch (\Throwable $e) {
             Log::error('Erro ao enviar código de verificação de e-mail: '.$e->getMessage());
+            $enviado = false;
+        }
+        if (! $enviado) {
+            // Código que não chegou não conta no limite de reenvio
+            DB::table('verificacoes_email')->where('id', $id)->delete();
+            Log::error('Código de verificação de e-mail não enviado', ['usuario_id' => $usuarioId]);
 
-            return 'Não foi possível enviar o e-mail agora. Tente de novo.';
+            return self::ERRO_ENVIO;
         }
 
         return null;

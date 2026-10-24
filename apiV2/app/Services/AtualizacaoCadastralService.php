@@ -137,7 +137,7 @@ class AtualizacaoCadastralService
         $nome = (string) DB::table('usuarios')->where('id', $usuarioId)->value('nome');
         $erro = $this->verificacao->enviarCodigo($usuarioId, $email, $nome);
 
-        return $erro ? $this->erro($erro, 429) : $this->ok(['message' => "Enviamos um código para {$email}."]);
+        return $erro ? $this->erro($erro, $erro === VerificacaoEmailService::ERRO_ENVIO ? 503 : 429) : $this->ok(['message' => "Enviamos um código para {$email}."]);
     }
 
     /** @return array{status: int, body: array<string, mixed>} */

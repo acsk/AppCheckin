@@ -6,7 +6,6 @@ use App\Services\AtualizacaoCadastralService;
 use App\Support\PoliticaSenha;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\RequiresSqlite;
 use Tests\TestCase;
@@ -198,12 +197,26 @@ class AtualizacaoCadastralTest extends TestCase
 
     public function test_envio_do_codigo_respeita_o_intervalo_e_email_de_outro(): void
     {
-        Mail::fake();
+        // Mailer real em memória, com o mail guard ligado: o assunto precisa estar liberado
+        config(['mail.default' => 'array', 'appcheckin.mail_guard_enabled' => true, 'appcheckin.mail_from_address' => '', 'mail.from.address' => 'mail@appcheckin.com.br']);
         DB::table('usuarios')->insert(['nome' => 'OUTRO', 'email' => 'outro@x.com', 'email_global' => 'outro@x.com', 'senha_hash' => 'x']);
 
         $this->assertSame(422, $this->service()->enviarCodigoEmail($this->aluno, 'outro@x.com')['status']);
         $this->assertSame(200, $this->service()->enviarCodigoEmail($this->aluno, 'nova@x.com')['status']);
         $this->assertSame(429, $this->service()->enviarCodigoEmail($this->aluno, 'nova@x.com')['status']);
         $this->assertSame(1, DB::table('verificacoes_email')->count());
+        $enviados = app('mailer')->getSymfonyTransport()->messages();
+        $this->assertCount(1, $enviados);
+        $this->assertStringContainsString('nova@x.com', $enviados[0]->getEnvelope()->getRecipients()[0]->getAddress());
+    }
+
+    public function test_envio_bloqueado_pelo_mail_guard_nao_finge_que_enviou(): void
+    {
+        config(['mail.default' => 'array', 'appcheckin.mail_guard_enabled' => true, 'appcheckin.mail_allowed_subjects' => ['Outro assunto']]);
+
+        $r = $this->service()->enviarCodigoEmail($this->aluno, 'nova@x.com');
+
+        $this->assertSame(503, $r['status']);
+        $this->assertSame(0, DB::table('verificacoes_email')->count());
     }
 }
