@@ -30,6 +30,8 @@ final class AppConfigCatalogo
     ];
 
     public const PARAMETROS = [
+        'checkin_exigir_matricula_ativa' => ['nome' => 'Exigir matrícula ativa para acessar Check-in', 'modulo' => 'Aulas', 'tipo' => 'booleano', 'padrao' => true, 'escopo' => 'tenant',
+            'descricao' => 'Alunos só acessam a tela de Check-in com matrícula ativa e plano vinculado nesta academia. Desligado libera a tela; o registro da presença continua sujeito às regras da API.'],
         'ranking_limite_home' => ['nome' => 'Pessoas no ranking da Home', 'modulo' => 'Início', 'tipo' => 'inteiro', 'min' => 1, 'max' => 100, 'padrao' => 15, 'escopo' => 'tenant',
             'descricao' => 'De 1 a 100. O pódio continua mostrando os três campeões.'],
         'aviso_home' => ['nome' => 'Aviso na tela inicial', 'modulo' => 'Início', 'tipo' => 'texto', 'max' => 280, 'padrao' => '', 'escopo' => 'tenant',

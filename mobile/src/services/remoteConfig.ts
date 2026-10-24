@@ -27,6 +27,7 @@ export type Funcionalidade =
   | "grupos_whatsapp";
 
 export type Parametros = {
+  checkin_exigir_matricula_ativa: boolean;
   ranking_limite_home: number;
   aviso_home: string;
 };
@@ -63,7 +64,7 @@ export const PADROES: ConfigRemota = {
     recordes: true,
     grupos_whatsapp: true,
   },
-  parametros: { ranking_limite_home: 15, aviso_home: "" },
+  parametros: { checkin_exigir_matricula_ativa: true, ranking_limite_home: 15, aviso_home: "" },
   atualizacao: { obrigatoria: false },
 };
 
@@ -104,6 +105,7 @@ export function normalizar(bruto: unknown): ConfigRemota | null {
     cache_ttl_segundos: Number.isFinite(ttl) && ttl >= 60 ? ttl : PADROES.cache_ttl_segundos,
     funcionalidades,
     parametros: {
+      checkin_exigir_matricula_ativa: typeof p.checkin_exigir_matricula_ativa === 'boolean' ? p.checkin_exigir_matricula_ativa : true,
       ranking_limite_home: Number.isInteger(limite) && limite >= 1 && limite <= 100 ? limite : PADROES.parametros.ranking_limite_home,
       aviso_home: typeof p.aviso_home === "string" ? p.aviso_home : "",
     },

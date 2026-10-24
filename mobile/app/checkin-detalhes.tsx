@@ -1,3 +1,4 @@
+import CheckinAccessGate from '@/src/components/CheckinAccessGate';
 import { AlunoResumoFinanceiro } from "@/src/components/AlunoResumoFinanceiro";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather } from "@expo/vector-icons";
@@ -47,7 +48,7 @@ const ESTADO: Record<Estado, { label: string; tone: "success" | "danger" | "neut
   pending: { label: "Aguardando confirmação", tone: "neutral", icon: "clock", ring: ds.line },
 };
 
-export default function CheckinDetalhesScreen() {
+function CheckinDetalhesScreenContent() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
@@ -181,3 +182,7 @@ const styles = StyleSheet.create({
   kvK: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0.66, color: ds.inkMuted },
   kvV: { fontSize: 15, lineHeight: 20, fontWeight: "800", color: ds.ink, marginTop: 2 },
 });
+
+export default function CheckinDetalhesScreen() {
+  return <CheckinAccessGate><CheckinDetalhesScreenContent /></CheckinAccessGate>;
+}

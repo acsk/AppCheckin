@@ -22,6 +22,8 @@ class AppConfigTest extends TestCase
     {
         parent::setUp();
         $this->requireSqlite();
+        config(['cache.default' => 'array']);
+        \Illuminate\Support\Facades\Cache::forget('app_config:publicada');
 
         Schema::create('tenants', function (Blueprint $t) {
             $t->increments('id');
@@ -57,6 +59,18 @@ class AppConfigTest extends TestCase
     private function contrato(?int $tenantId = null, string $plataforma = 'web', ?string $versao = null, ?int $usuarioId = null): array
     {
         return $this->service()->contrato(['tenant_id' => $tenantId, 'usuario_id' => $usuarioId, 'plataforma' => $plataforma, 'versao_app' => $versao]);
+    }
+
+    public function test_exigencia_de_matricula_publicada_aceita_excecao_por_academia(): void
+    {
+        $s = $this->service();
+        $this->assertTrue($s->parametro('checkin_exigir_matricula_ativa', 1));
+        $s->definir(null, 'parametro.checkin_exigir_matricula_ativa', false, 5);
+        $this->assertTrue($s->parametro('checkin_exigir_matricula_ativa', 1));
+        $s->definir(1, 'parametro.checkin_exigir_matricula_ativa', true, 5);
+        $s->publicar('Controle de acesso ao Check-in', 5);
+        $this->assertTrue($s->parametro('checkin_exigir_matricula_ativa', 1));
+        $this->assertFalse($s->parametro('checkin_exigir_matricula_ativa', 2));
     }
 
     public function test_sem_nada_publicado_vale_o_comportamento_atual(): void

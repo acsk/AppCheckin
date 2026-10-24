@@ -1,3 +1,4 @@
+import CheckinAccessGate from '@/src/components/CheckinAccessGate';
 import { AlunoResumoFinanceiro } from "@/src/components/AlunoResumoFinanceiro";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
@@ -141,7 +142,7 @@ const getHeaderTitle = (turma: any | null) => {
   return cleanTurmaName(turma?.nome, turma?.modalidade, turma?.professor);
 };
 
-export default function CheckinTurmaScreen() {
+function CheckinTurmaScreenContent() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{
     turmaId?: string | string[];
@@ -2702,3 +2703,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
 });
+
+export default function CheckinTurmaScreen() {
+  return <CheckinAccessGate><CheckinTurmaScreenContent /></CheckinAccessGate>;
+}

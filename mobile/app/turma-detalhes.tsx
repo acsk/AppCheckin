@@ -1,3 +1,4 @@
+import CheckinAccessGate from '@/src/components/CheckinAccessGate';
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { Feather } from "@expo/vector-icons";
@@ -22,7 +23,9 @@ import { feedbackBloqueioCheckin } from "../src/utils/checkinFeedback";
 
 import AppHeader from "@/src/components/ds/AppHeader";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
-import { ds } from "@/src/components/ds/tokens";export default function TurmaDetalhesScreen() {
+import { ds } from "@/src/components/ds/tokens";
+
+function TurmaDetalhesScreenContent() {
   const router = useRouter();
   const { turmaId, data } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
@@ -1471,3 +1474,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+
+export default function TurmaDetalhesScreen() {
+  return <CheckinAccessGate><TurmaDetalhesScreenContent /></CheckinAccessGate>;
+}

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\MobileAtualizacaoCadastralController;
+use App\Http\Controllers\Api\V2\MobileCheckinAcessoController;
 use App\Http\Controllers\Api\V2\MobileRecordeController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
@@ -84,6 +85,7 @@ Route::prefix('v2')->group(function () {
             Route::get('/acesso', [MobileController::class, 'verificarAcesso']);
             Route::get('/tenants', [MobileController::class, 'tenants']);
             Route::get('/checkins', [MobileController::class, 'historicoCheckins']);
+            Route::get('/checkin/acesso', MobileCheckinAcessoController::class);
             Route::get('/checkins/por-modalidade', [MobileController::class, 'checkinsPorModalidade']);
             Route::get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
             Route::get('/ranking/anual', [MobileController::class, 'rankingAnual']);

@@ -5,6 +5,24 @@ Painel: **Super Admin → App Mobile**, com as páginas **Configurações** (`/a
 
 Configurações reúne funcionalidades, parâmetros, consulta por academia e histórico. Versões reúne as versões publicadas e as regras de atualização. As duas páginas compartilham o rascunho: revisar e publicar inclui todas as alterações pendentes. Atualização Cadastral gerencia suas campanhas separadamente.
 
+Em **Configurações → Parâmetros → Aulas**, **Exigir matrícula ativa para acessar
+Check-in** (`parametro.checkin_exigir_matricula_ativa`) controla o acesso dos alunos
+à tela. O padrão é ligado e aceita exceções por academia. Revise e publique o
+rascunho para aplicar a alteração.
+
+Ligado, exige matrícula com status `ativa`, plano vinculado à mesma academia e
+acesso vigente (usa `proxima_data_vencimento`, com `data_vencimento` como reserva).
+Professor, administrador e super admin com vínculo ativo mantêm o acesso para
+gestão de turmas. Desligado, libera a tela ao aluno sem matrícula; as regras para
+registrar presença continuam sendo conferidas pela API.
+
+O mobile consulta `GET /v2/mobile/checkin/acesso` ao entrar, ao voltar ao app e
+quando recebe uma mudança desse parâmetro. A proteção também cobre links diretos
+para turma e detalhes, exibindo orientação para consultar os planos em caso de
+bloqueio. Falhas de consulta permitem tentar novamente sem carregar as turmas.
+Publique a API antes do mobile atualizado. Este recurso requer atualizar o
+bundle web e os builds nativos; não requer migration adicional.
+
 Para exigir outro código de e-mail mesmo de quem já confirmou o endereço, use
 **Forçar nova validação de e-mail** na campanha. Consulte as
 [regras da atualização cadastral](ATUALIZACAO_CADASTRAL.md).

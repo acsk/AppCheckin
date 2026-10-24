@@ -150,7 +150,9 @@ function ParametrosTab({ estado, defs, academias, onDefinir, onExcecoes }) {
               </div>
               <div className="ck-pm-row__ctl">
                 {d.escopo === 'tenant' ? <ExcecoesButton def={d} estado={estado} onClick={() => onExcecoes(d)} /> : <Badge tone="outline">Vale para todas</Badge>}
-                {!texto ? <ConfigValueInput def={d} valor={valor} unit={unidade} onSalvar={(v) => onDefinir(d.chave, v)} /> : null}
+                {d.tipo === 'booleano' ? <Switch ariaLabel={d.nome} checked={!!valor}
+                  onChange={(v) => onDefinir(d.chave, v).catch((e) => showError(e.message))} />
+                  : !texto ? <ConfigValueInput def={d} valor={valor} unit={unidade} onSalvar={(v) => onDefinir(d.chave, v)} /> : null}
               </div>
             </li>
           );

@@ -1,3 +1,4 @@
+import CheckinAccessGate from '@/src/components/CheckinAccessGate';
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -58,7 +59,7 @@ const formatDateParam = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-export default function CheckinScreen() {
+function CheckinScreenContent() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{ data?: string | string[] }>();
   const routeData = getRouteParam(routeParams.data);
@@ -3063,3 +3064,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
+
+export default function CheckinScreen() {
+  return <CheckinAccessGate><CheckinScreenContent /></CheckinAccessGate>;
+}
