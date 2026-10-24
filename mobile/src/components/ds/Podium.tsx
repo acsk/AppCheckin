@@ -9,7 +9,7 @@ const MEDAL = [ds.medalGold, ds.medalSilver, ds.medalBronze];
 const STEP = [64, 44, 32];
 
 // Os três primeiros de uma prova, na ordem 2 · 1 · 3.
-export default function Podium({ items }: { items: PodiumItem[] }) {
+export default function Podium({ items, compact = false, unit }: { items: PodiumItem[]; compact?: boolean; unit?: string }) {
   return (
     <View style={styles.row}>
       {[1, 0, 2].map((i) => {
@@ -17,7 +17,7 @@ export default function Podium({ items }: { items: PodiumItem[] }) {
         if (!x) return <View key={i} style={styles.pod} />;
         const medal = MEDAL[i];
         return (
-          <View key={i} style={styles.pod} accessible accessibilityLabel={`${i + 1}º lugar, ${x.name}, ${x.value}`}>
+          <View key={i} style={styles.pod} accessible accessibilityLabel={`${i + 1}º lugar, ${x.name}, ${x.value} ${unit ?? ""}`}>
             <View style={[styles.av, { borderColor: medal }]}>
               <Avatar name={x.name} uri={x.avatarUri} size={i === 0 ? 64 : 52} />
               <View style={[styles.num, { backgroundColor: medal }]}>
@@ -27,9 +27,10 @@ export default function Podium({ items }: { items: PodiumItem[] }) {
             <Text style={[styles.name, x.self && { color: ds.brandInk }]} numberOfLines={1}>
               {x.name.split(" ")[0]}
             </Text>
-            <Text style={[styles.value, i === 0 && { fontSize: 20 }]}>{x.value}</Text>
-            <View style={[styles.step, { height: STEP[i], backgroundColor: medal }]}>
-              <Text style={[styles.stepText, i === 0 && { fontSize: 26, lineHeight: 30 }]}>{i + 1}</Text>
+            <Text style={[styles.value, i === 0 && { fontSize: 20 }, compact && { fontSize: 16 }]}>{x.value}</Text>
+            {unit ? <Text style={styles.unit}>{unit}</Text> : null}
+            <View style={[styles.step, { height: compact ? [48, 34, 24][i] : STEP[i], backgroundColor: medal }]}>
+              <Text style={[styles.stepText, i === 0 && { fontSize: 26, lineHeight: 30 }, compact && { fontSize: i === 0 ? 20 : 16, lineHeight: 24 }]}>{i + 1}</Text>
             </View>
           </View>
         );
@@ -57,6 +58,7 @@ const styles = StyleSheet.create({
   numText: { fontSize: 12, fontWeight: "900", color: "#171a21" },
   name: { marginTop: 6, maxWidth: "100%", fontSize: 13, lineHeight: 16, fontWeight: "800", textTransform: "uppercase", color: ds.ink },
   value: { fontSize: 17, lineHeight: 22, fontWeight: "900", color: ds.ink, fontVariant: ["tabular-nums"] },
+  unit: { fontSize: 10, lineHeight: 14, fontWeight: "700", textTransform: "uppercase", color: ds.inkMuted },
   step: { width: "100%", marginTop: 8, alignItems: "center", paddingTop: 6, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomLeftRadius: 4, borderBottomRightRadius: 4 },
   stepText: { fontSize: 20, lineHeight: 24, fontWeight: "900", color: "#171a21" },
 });

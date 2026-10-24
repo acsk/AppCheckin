@@ -2,6 +2,10 @@ import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import AuthService from "@/src/services/authService";
 import SideMenu, { SideMenuGroup } from "@/src/components/ds/SideMenu";
+import Podium from "@/src/components/ds/Podium";
+import RankingRow from "@/src/components/ds/RankingRow";
+import RankingModal from "@/src/components/ds/Modal";
+import { fotoRecordeUrl } from "@/src/utils/recordes";
 import AppHeader from "@/src/components/ds/AppHeader";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
@@ -67,6 +71,9 @@ export default function AccountScreen() {
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [switchingTenantId, setSwitchingTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rankingExpanded, setRankingExpanded] = useState(false);
+  const [campeoesAnteriores, setCampeoesAnteriores] = useState<{ periodo: string; ranking: RankingItem[] } | null>(null);
+  const [meusCheckins, setMeusCheckins] = useState<number | null>(null);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingError, setRankingError] = useState<string | null>(null);
   const [ranking, setRanking] = useState<RankingItem[]>([]);
@@ -536,6 +543,8 @@ export default function AccountScreen() {
             : 0,
         });
         setRanking(rankingData?.ranking || []);
+        setCampeoesAnteriores(rankingData?.campeoes_mes_anterior ?? null);
+        setMeusCheckins(typeof rankingData?.meus_checkins === "number" ? rankingData.meus_checkins : null);
         setRankingPeriodo(rankingData?.periodo || "");
         setRankingMinhaPosicao(
           typeof rankingData?.minha_posicao === "number"
@@ -787,6 +796,10 @@ export default function AccountScreen() {
     setPhotoError(null);
     setHasPhotoLoadError(false);
     setRanking([]);
+    setCampeoesAnteriores(null);
+    setMeusCheckins(null);
+    setRankingMinhaPosicao(null);
+    setRankingExpanded(false);
     setRankingPeriodo("");
     setRankingModalidades([]);
     setSelectedModalidadeId(null);
@@ -1457,9 +1470,13 @@ export default function AccountScreen() {
 
         {/* Ranking de Check-ins */}
         <View style={styles.rankingSection}>
-          <Text style={styles.sectionTitle}>
-            RANKING{rankingPeriodo ? ` · ${rankingPeriodo.toUpperCase()}` : ""}
-          </Text>
+          <View style={styles.rankingHeading}>
+            <Text style={styles.rankingTitle}>RANKING DE CHECK-INS</Text>
+            <TouchableOpacity onPress={() => setRankingExpanded(true)} accessibilityRole="button" accessibilityLabel="Ver ranking de check-ins completo" style={styles.rankingSeeAll}>
+              <Text style={styles.rankingSeeAllText}>Ver todos</Text>
+              <Feather name="chevron-right" size={16} color={ds.brandInk} />
+            </TouchableOpacity>
+          </View>
           <View style={styles.periodoTabs}>
             {(["mensal", "anual"] as RankingPeriodoTipo[]).map((periodo) => {
               const active = rankingPeriodoTipo === periodo;
@@ -1544,117 +1561,67 @@ export default function AccountScreen() {
               <Text style={styles.rankingErrorText}>{rankingError}</Text>
             ) : (
               <>
-                <View style={styles.rankingList}>
-                  {ranking.length === 0 ? (
-                    <Text style={styles.rankingEmptyText}>
-                      Nenhum check-in neste período.
-                    </Text>
-                  ) : null}
-                  {ranking
-                    .slice(0, rankingPeriodoTipo === "anual" ? 10 : 3)
-                    .map((item) => {
-                    const pos = Number(item.posicao) || 0;
-                    const isGold = pos === 1;
-                    const isSilver = pos === 2;
-                    const isBronze = pos === 3;
-                    const badgeColor = isGold
-                      ? ds.medalGold
-                      : isSilver
-                        ? ds.medalSilver
-                        : isBronze
-                          ? ds.medalBronze
-                          : ds.lineStrong;
-                    return (
-                      <View
-                        key={item.aluno?.id ?? item.posicao}
-                        style={[
-                          styles.rankingListItem,
-                          isGold && styles.rankingListItemGold,
-                          isSilver && styles.rankingListItemSilver,
-                          isBronze && styles.rankingListItemBronze,
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.rankingPosition,
-                            { backgroundColor: badgeColor },
-                          ]}
-                        >
-                          {isGold && (
-                            <MaterialCommunityIcons
-                              name="crown"
-                              size={14}
-                              color={ds.ink}
-                            />
-                          )}
-                          <Text style={styles.rankingPositionNumber}>
-                            {item.posicao}
-                          </Text>
-                        </View>
-                        <View style={styles.rankingAvatar}>
-                          {item.aluno?.foto_caminho && apiUrl ? (
-                            <Image
-                              source={{
-                                uri: `${apiUrl}${item.aluno.foto_caminho}`,
-                              }}
-                              style={styles.rankingAvatarImage}
-                            />
-                          ) : (
-                            <View style={styles.rankingAvatarPlaceholder}>
-                              <MaterialCommunityIcons
-                                name="account"
-                                size={20}
-                                color="#9ca3af"
-                              />
-                            </View>
-                          )}
-                        </View>
-                        <View style={styles.rankingListContent}>
-                          <View style={styles.rankingNameRow}>
-                            <Text style={styles.rankingName}>
-                              {item.aluno?.nome ?? "Usuário"}
-                            </Text>
-
-                          </View>
-                          <Text style={styles.rankingCheckins}>
-                            {item.total_checkins} check-ins
-                          </Text>
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-                <View style={styles.rankingDivider} />
-                <View style={styles.rankingUserRow}>
-                  <View>
-                    <Text style={styles.rankingUserLabel}>SUA POSIÇÃO</Text>
-                    <Text style={styles.rankingUserName}>
-                      {userProfile.nome}
+                <View style={styles.rankingPodiumCard}>
+                  <View style={styles.rankingCaptionRow}>
+                    <Feather name="award" size={14} color={ds.inkMuted} />
+                    <Text style={styles.rankingCaption}>
+                      {rankingPeriodoTipo === "mensal" && campeoesAnteriores
+                        ? `Campeões de ${campeoesAnteriores.periodo}`
+                        : `Destaques · ${rankingPeriodo}`}
                     </Text>
                   </View>
-                  <View style={styles.rankingUserPosition}>
-                    <Text style={styles.rankingUserPositionText}>
-                      {rankingPeriodoTipo === "anual"
-                        ? rankingMinhaPosicao ??
-                          ranking.find(
-                            (item) => item.aluno?.id === userProfile.id,
-                          )?.posicao ??
-                          "--"
-                        : userProfile.ranking_modalidades?.find(
-                            (item) =>
-                              item.modalidade_id === selectedModalidadeId,
-                          )?.posicao ||
-                          ranking.find(
-                            (item) => item.aluno?.id === userProfile.id,
-                          )?.posicao ||
-                          "--"}
-                    </Text>
-                  </View>
+                  {(rankingPeriodoTipo === "mensal" ? campeoesAnteriores?.ranking ?? [] : ranking).length ? (
+                    <Podium compact unit="check-ins" items={(rankingPeriodoTipo === "mensal" ? campeoesAnteriores?.ranking ?? [] : ranking).slice(0, 3).map(item => ({
+                      name: (item.aluno ?? item.usuario)?.nome ?? "Aluno",
+                      value: String(item.total_checkins),
+                      avatarUri: fotoRecordeUrl((item.aluno ?? item.usuario)?.foto_caminho, apiUrl),
+                    }))} />
+                  ) : <Text style={styles.rankingEmptyText}>Nenhum check-in {rankingPeriodoTipo === "mensal" ? "no mês anterior" : "neste ano"}.</Text>}
                 </View>
+                <View style={styles.rankingCurrentHeading}>
+                  <Text style={styles.rankingCaption}>Você em {rankingPeriodo || (rankingPeriodoTipo === "mensal" ? "este mês" : "este ano")}</Text>
+                </View>
+                <RankingRow
+                  position={meusCheckins !== null ? rankingMinhaPosicao : rankingMinhaPosicao ?? (rankingPeriodoTipo === "mensal" ? userProfile.ranking_modalidades?.find(item => item.modalidade_id === selectedModalidadeId)?.posicao : null) ?? null}
+                  name={userProfile.nome}
+                  value={String(meusCheckins ?? (rankingPeriodoTipo === "mensal" ? userProfile.ranking_modalidades?.find(item => item.modalidade_id === selectedModalidadeId)?.total_checkins : ranking.find(item => (item.aluno ?? item.usuario)?.id === userProfile.aluno_id)?.total_checkins) ?? (rankingPeriodoTipo === "mensal" ? 0 : "–"))}
+                  unit="CHECK-INS"
+                  avatarUri={fotoRecordeUrl(userProfile.foto_caminho, apiUrl)}
+                  self
+                />
               </>
             )}
           </View>
         </View>
+
+        <RankingModal
+          visible={rankingExpanded}
+          title="Ranking de check-ins"
+          eyebrow={rankingPeriodo}
+          icon="award"
+          onClose={() => setRankingExpanded(false)}
+          primary={{ label: "Voltar para o início", onPress: () => setRankingExpanded(false) }}
+        >
+          <Text style={styles.rankingCaption}>{rankingPeriodoTipo === "mensal" ? "Parcial · atualiza a cada check-in" : "Destaques do ano · 10 primeiros"}</Text>
+          {rankingLoading ? <ActivityIndicator color={ds.brand} /> : rankingError ? <Text style={styles.rankingErrorText}>{rankingError}</Text> : ranking.length ? <>
+            <Podium unit="check-ins" items={ranking.slice(0, 3).map(item => ({
+              name: (item.aluno ?? item.usuario)?.nome ?? "Aluno",
+              value: String(item.total_checkins),
+              self: (item.aluno ?? item.usuario)?.id === userProfile.aluno_id,
+              avatarUri: fotoRecordeUrl((item.aluno ?? item.usuario)?.foto_caminho, apiUrl),
+            }))} />
+            {ranking.length > 3 ? <Text style={styles.rankingCaption}>CLASSIFICAÇÃO</Text> : null}
+            {ranking.slice(3).map(item => <RankingRow
+              key={(item.aluno ?? item.usuario)?.id ?? item.posicao}
+              position={item.posicao}
+              name={(item.aluno ?? item.usuario)?.nome ?? "Aluno"}
+              value={String(item.total_checkins)}
+              unit="CHECK-INS"
+              self={(item.aluno ?? item.usuario)?.id === userProfile.aluno_id}
+              avatarUri={fotoRecordeUrl((item.aluno ?? item.usuario)?.foto_caminho, apiUrl)}
+            />)}
+          </> : <Text style={styles.rankingEmptyText}>Nenhum check-in neste período.</Text>}
+        </RankingModal>
 
         {/* Member Since */}
         {userProfile.membro_desde && (
@@ -2458,155 +2425,17 @@ const styles = StyleSheet.create({
     borderColor: ds.line,
     overflow: "hidden",
   },
-  rankingList: {
-
-  },
-  rankingListItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 64,
-    borderBottomWidth: 1,
-    borderBottomColor: ds.line,
-  },
-  rankingListItemGold: {
-
-  },
-  rankingListItemSilver: {
-
-  },
-  rankingListItemBronze: {
-
-  },
-  rankingPosition: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankingPositionNumber: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: ds.ink,
-    fontVariant: ["tabular-nums"],
-  },
-  rankingAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  rankingAvatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  rankingAvatarPlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: ds.surfaceSunken,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  rankingAvatarText: {
-    fontSize: 20,
-  },
-  rankingNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  rankingTopBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  rankingTopBadgeText: {
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  rankingListContent: {
-    flex: 1,
-  },
-  rankingName: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
-    color: ds.ink,
-    textTransform: "uppercase",
-  },
-  rankingCheckins: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: ds.inkMuted,
-    marginTop: 2,
-  },
-  rankingLoading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 16,
-  },
-  rankingLoadingText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: ds.inkMuted,
-  },
-  rankingErrorText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: ds.danger,
-    padding: 16,
-  },
-  rankingDivider: {
-    height: 0,
-  },
-  rankingUserRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: ds.brandSoft,
-  },
-  rankingUserLabel: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "800",
-    letterSpacing: 0.66,
-    color: ds.brandInk,
-    marginBottom: 2,
-  },
-  rankingUserName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: ds.ink,
-    textTransform: "uppercase",
-  },
-  rankingUserPosition: {
-    minWidth: 44,
-    height: 36,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: ds.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankingUserPositionText: {
-    fontSize: 15,
-    fontWeight: "900",
-    color: ds.onBrand,
-    fontVariant: ["tabular-nums"],
-  },
+  rankingHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 },
+  rankingTitle: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: "800", letterSpacing: 0.8, color: ds.inkMuted },
+  rankingSeeAll: { flexDirection: "row", alignItems: "center", minHeight: 44, gap: 2 },
+  rankingSeeAllText: { fontSize: 13, fontWeight: "700", color: ds.brandInk },
+  rankingPodiumCard: { paddingHorizontal: 16, paddingTop: 16 },
+  rankingCaptionRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  rankingCaption: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: ds.inkMuted },
+  rankingCurrentHeading: { borderTopWidth: 1, borderTopColor: ds.line, paddingTop: 12, paddingHorizontal: 16, paddingBottom: 8 },
+  rankingLoading: { flexDirection: "row", alignItems: "center", gap: 8, padding: 16 },
+  rankingLoadingText: { fontSize: 13, fontWeight: "600", color: ds.inkMuted },
+  rankingErrorText: { fontSize: 13, fontWeight: "600", color: ds.danger, padding: 16 },
   academiaCard: {
     backgroundColor: "#fff",
     borderRadius: 16,

@@ -432,7 +432,7 @@ class CheckinRepository
      */
     public function rankingMesAtual(
         int $tenantId,
-        int $limite = 3,
+        ?int $limite = 3,
         ?int $modalidadeId = null,
         ?int $mes = null,
         ?int $ano = null,
@@ -460,7 +460,8 @@ class CheckinRepository
         return $query
             ->groupBy('a.id', 'a.nome', 'u.email', ...Pessoa::agrupar('foto_caminho'))
             ->orderByDesc(DB::raw('COUNT(c.id)'))
-            ->limit($limite)
+            ->orderBy('a.id')
+            ->when($limite !== null, fn ($q) => $q->limit($limite))
             ->get([
                 'a.id as aluno_id',
                 'a.nome',

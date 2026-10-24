@@ -145,7 +145,7 @@ class MobileHistoricoService
     /**
      * @return array{status: int, body: array<string, mixed>, headers?: array<string, string>}
      */
-    public function rankingMensal(?int $tenantId, ?int $modalidadeId): array
+    public function rankingMensal(?int $tenantId, ?int $modalidadeId, ?int $alunoId = null): array
     {
         if (! $tenantId) {
             return [
@@ -162,7 +162,7 @@ class MobileHistoricoService
         $ano = $periodo['ano'];
 
         $totalTenantMes = $this->checkins->contarCheckinsTenantMes($tenantId, $mes, $ano);
-        $ranking = $this->checkins->rankingMesAtual($tenantId, 3, $modalidadeId, $mes, $ano);
+        $ranking = $this->checkins->rankingMesAtual($tenantId, null, $modalidadeId, $mes, $ano);
 
         $rankingFormatado = [];
         foreach ($ranking as $index => $item) {
@@ -178,6 +178,27 @@ class MobileHistoricoService
             ];
         }
 
+        // O mês anterior é calculado no fuso da academia, inclusive na virada do ano.
+        $mesAnterior = $mes === 1 ? 12 : $mes - 1;
+        $anoAnterior = $mes === 1 ? $ano - 1 : $ano;
+        $campeoes = $this->checkins->rankingMesAtual($tenantId, 3, $modalidadeId, $mesAnterior, $anoAnterior);
+        $campeoesFormatados = array_map(fn ($item, $index) => [
+            'posicao' => $index + 1,
+            'aluno' => [
+                'id' => (int) $item['aluno_id'],
+                'nome' => $item['nome'],
+                'foto_caminho' => $item['foto_caminho'] ?? null,
+            ],
+            'total_checkins' => (int) $item['total_checkins'],
+        ], $campeoes, array_keys($campeoes));
+        $minhaLinha = null;
+        foreach ($rankingFormatado as $linha) {
+            if ($alunoId && $linha['aluno']['id'] === $alunoId) {
+                $minhaLinha = $linha;
+                break;
+            }
+        }
+
         $mesAtualNome = self::nomeMes($mes);
 
         return [
@@ -190,6 +211,12 @@ class MobileHistoricoService
                     'ano' => $ano,
                     'modalidade_id' => $modalidadeId,
                     'ranking' => $rankingFormatado,
+                    'minha_posicao' => $minhaLinha['posicao'] ?? null,
+                    'meus_checkins' => $minhaLinha['total_checkins'] ?? 0,
+                    'campeoes_mes_anterior' => [
+                        'periodo' => self::nomeMes($mesAnterior)."/{$anoAnterior}",
+                        'ranking' => $campeoesFormatados,
+                    ],
                     'tenant_id_resolvido' => $tenantId,
                     'total_checkins_tenant_mes' => $totalTenantMes,
                 ],

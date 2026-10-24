@@ -10,7 +10,7 @@ export interface RankingUsuario {
 
 export interface RankingItem {
   posicao: number;
-  usuario: RankingUsuario;
+  usuario?: RankingUsuario;
   aluno?: RankingUsuario;
   total_checkins: number;
 }

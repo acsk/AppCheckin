@@ -41,7 +41,11 @@ class MobileHistoricoServiceTest extends TestCase
             ->andReturn(0);
         $checkins->shouldReceive('rankingMesAtual')
             ->once()
-            ->with(1, 3, null, $periodo['mes'], $periodo['ano'])
+            ->with(1, null, null, $periodo['mes'], $periodo['ano'])
+            ->andReturn([]);
+
+        $checkins->shouldReceive('rankingMesAtual')->once()
+            ->with(1, 3, null, $periodo['mes'] === 1 ? 12 : $periodo['mes'] - 1, $periodo['mes'] === 1 ? $periodo['ano'] - 1 : $periodo['ano'])
             ->andReturn([]);
 
         $service = new MobileHistoricoService($checkins);
@@ -49,6 +53,29 @@ class MobileHistoricoServiceTest extends TestCase
 
         $this->assertSame($periodo['mes'], $result['body']['data']['mes']);
         $this->assertSame($periodo['ano'], $result['body']['data']['ano']);
+        $this->assertNull($result['body']['data']['minha_posicao']);
+        $this->assertSame(0, $result['body']['data']['meus_checkins']);
+        $this->assertSame([], $result['body']['data']['campeoes_mes_anterior']['ranking']);
+    }
+
+    public function test_ranking_mensal_returns_previous_champions_and_student_beyond_podium(): void
+    {
+        $p = AcademyDateTime::currentMonthYear();
+        $row = fn ($id, $count) => ['aluno_id' => $id, 'nome' => "Aluno {$id}", 'email' => "{$id}@example.com", 'total_checkins' => $count];
+        $checkins = Mockery::mock(CheckinRepository::class);
+        $checkins->shouldReceive('contarCheckinsTenantMes')->with(7, $p['mes'], $p['ano'])->once()->andReturn(50);
+        $checkins->shouldReceive('rankingMesAtual')->with(7, null, 3, $p['mes'], $p['ano'])->once()
+            ->andReturn([$row(1, 15), $row(2, 12), $row(3, 10), $row(22, 9)]);
+        $checkins->shouldReceive('rankingMesAtual')
+            ->with(7, 3, 3, $p['mes'] === 1 ? 12 : $p['mes'] - 1, $p['mes'] === 1 ? $p['ano'] - 1 : $p['ano'])
+            ->once()->andReturn([$row(3, 20)]);
+
+        $data = (new MobileHistoricoService($checkins))->rankingMensal(7, 3, 22)['body']['data'];
+        $this->assertCount(4, $data['ranking']);
+        $this->assertSame(4, $data['minha_posicao']);
+        $this->assertSame(9, $data['meus_checkins']);
+        $this->assertSame(3, $data['campeoes_mes_anterior']['ranking'][0]['aluno']['id']);
+        $this->assertSame(20, $data['campeoes_mes_anterior']['ranking'][0]['total_checkins']);
     }
 
     public function test_ranking_anual_returns_top_10_and_user_position(): void

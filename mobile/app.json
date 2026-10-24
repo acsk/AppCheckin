@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "AppCheckin",
     "slug": "mobile",
     "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/app-icon/icon.png",
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,10 +13,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#ffffff",
+        "foregroundImage": "./assets/app-icon/adaptive-foreground.png",
+        "monochromeImage": "./assets/app-icon/monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -51,13 +50,13 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash/splash-icon.png",
-          "imageWidth": 125,
+          "image": "./assets/splash/icon.png",
+          "imageWidth": 128,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
-            "image": "./assets/splash/splash-icon.png",
-            "backgroundColor": "#ffffff"
+            "image": "./assets/splash/icon-white.png",
+            "backgroundColor": "#15181e"
           }
         }
       ],

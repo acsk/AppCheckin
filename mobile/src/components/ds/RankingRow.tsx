@@ -4,9 +4,10 @@ import Avatar from "./Avatar";
 import { ds, radius, space } from "./tokens";
 
 type Props = {
-  position: number;
+  position: number | null;
   name: string;
   value: string;
+  unit?: string;
   /** Distância para o primeiro ("+1,18"). */
   gap?: string | null;
   self?: boolean;
@@ -16,12 +17,12 @@ type Props = {
 const MEDAL: Record<number, string> = { 1: ds.medalGold, 2: ds.medalSilver, 3: ds.medalBronze };
 
 // Uma linha do ranking: posição (medalha no pódio), aluno, marca e a distância para o líder.
-export default function RankingRow({ position, name, value, gap, self, avatarUri }: Props) {
-  const medal = MEDAL[position];
+export default function RankingRow({ position, name, value, unit, gap, self, avatarUri }: Props) {
+  const medal = position ? MEDAL[position] : undefined;
   return (
-    <View style={[styles.row, self && { backgroundColor: ds.brandSoft }]} accessible accessibilityLabel={`${position}º, ${name}, ${value}`}>
+    <View style={[styles.row, self && { backgroundColor: ds.brandSoft }]} accessible accessibilityLabel={`${position ? `${position}º` : "Sem posição"}, ${name}, ${value} ${unit ?? ""}`}>
       <View style={[styles.pos, medal ? { backgroundColor: medal } : null]}>
-        <Text style={[styles.posText, medal ? { color: "#171a21" } : null]}>{position}</Text>
+        <Text style={[styles.posText, medal ? { color: "#171a21" } : null]}>{position ?? "–"}</Text>
       </View>
       <Avatar name={name} uri={avatarUri} size={36} />
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -32,6 +33,7 @@ export default function RankingRow({ position, name, value, gap, self, avatarUri
       </View>
       <View style={styles.right}>
         <Text style={styles.value}>{value}</Text>
+        {unit ? <Text style={styles.gap}>{unit}</Text> : null}
         {gap ? <Text style={styles.gap}>{gap}</Text> : null}
       </View>
     </View>

@@ -21,28 +21,28 @@ const H = 844;
 const TRI_W = 32;
 const TRI_H = 27.7128;
 
-export default function TechBackground() {
+export default function TechBackground({ backgroundColor = ds.surfaceSunken, dark = false }: { backgroundColor?: string; dark?: boolean }) {
   const poly = (points: string, fill: string, opacity = 1) => (
     <Polygon points={points} fill={fill} opacity={opacity} />
   );
 
   return (
-    <View pointerEvents="none" style={styles.root} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View pointerEvents="none" style={[styles.root, { backgroundColor }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {/* Malha triangular, mais visível nas bordas */}
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
         <Defs>
           <Pattern id="acTri" width={TRI_W} height={TRI_H * 2} patternUnits="userSpaceOnUse">
             <Path
               d={`M0 0H${TRI_W}M0 ${TRI_H}H${TRI_W}M0 0L${TRI_W} ${TRI_H * 2}M${TRI_W} 0L0 ${TRI_H * 2}`}
-              stroke={ds.ink}
+              stroke={dark ? "#f3f4f6" : ds.ink}
               strokeOpacity={0.09}
               strokeWidth={1}
               fill="none"
             />
           </Pattern>
           <RadialGradient id="acFade" cx="50%" cy="50%" rx="60%" ry="38%">
-            <Stop offset="0.3" stopColor={ds.surfaceSunken} stopOpacity={1} />
-            <Stop offset="1" stopColor={ds.surfaceSunken} stopOpacity={0} />
+            <Stop offset="0.3" stopColor={backgroundColor} stopOpacity={1} />
+            <Stop offset="1" stopColor={backgroundColor} stopOpacity={0} />
           </RadialGradient>
           <RadialGradient id="acGlow" cx="50%" cy="30%" rx="46%" ry="22%">
             <Stop offset="0" stopColor={ds.brand} stopOpacity={0.14} />

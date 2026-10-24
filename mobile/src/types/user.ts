@@ -4,6 +4,7 @@
 
 export interface UserProfile {
   id?: number;
+  aluno_id?: number;
   nome: string;
   email: string;
   cpf?: string;

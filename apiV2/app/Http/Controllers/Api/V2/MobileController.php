@@ -234,9 +234,11 @@ class MobileController extends Controller
     {
         try {
             $modalidadeId = $request->query('modalidade_id');
+            $alunoId = $request->attributes->get('aluno_id');
             $result = $this->historico->rankingMensal(
                 $this->tenantId($request),
                 $modalidadeId !== null && $modalidadeId !== '' ? (int) $modalidadeId : null,
+                $alunoId !== null && $alunoId !== '' ? (int) $alunoId : null,
             );
 
             return $this->jsonWithOptionalHeaders($result);
