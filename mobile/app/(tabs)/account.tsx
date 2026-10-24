@@ -927,10 +927,11 @@ export default function AccountScreen() {
         forcingUpdate={forcingUpdate}
         onClose={closeSidebar}
         onEditPhoto={handleChangePhoto}
-        onForceUpdate={async () => {
+        // No APK a atualização vem pelo aviso de nova versão (ForceUpdateGate)
+        onForceUpdate={Platform.OS === "web" ? async () => {
           setForcingUpdate(true);
           await forceReloadApp();
-        }}
+        } : undefined}
         onLogout={() => {
           closeSidebar();
           router.push("/logout");

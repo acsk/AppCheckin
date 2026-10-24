@@ -19,6 +19,8 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await AsyncStorage.getItem(TOKEN_KEY);
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+    // Sessão deslizante: a API devolve o token renovado em X-Refresh-Token
+    headers["X-Session-Renew"] = "1";
   }
 
   // Prefer persisted tenant_id; fallback to current_tenant JSON; last-resort tenant_slug
@@ -125,9 +127,19 @@ client.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
+async function guardarTokenRenovado(headers: any) {
+  const novo = headers?.["x-refresh-token"];
+  // Só troca um token existente: se a pessoa saiu durante a requisição, continua deslogada
+  if (novo && (await AsyncStorage.getItem(TOKEN_KEY))) await AsyncStorage.setItem(TOKEN_KEY, String(novo));
+}
+
 client.interceptors.response.use(
-  (response: AxiosResponse) => response,
+  async (response: AxiosResponse) => {
+    await guardarTokenRenovado(response.headers);
+    return response;
+  },
   async (error: AxiosError) => {
+    if (error.response?.status !== 401) await guardarTokenRenovado(error.response?.headers);
     const status = error.response?.status;
     const data: any = error.response?.data;
     const code = data?.code;

@@ -3,6 +3,8 @@
 return [
     'jwt_secret' => env('JWT_SECRET', ''),
     'jwt_expiration' => (int) env('JWT_EXPIRATION', 86400),
+    // App do aluno (X-Session-Renew): o token é renovado a cada uso e só expira após N dias sem abrir o app
+    'jwt_app_session_days' => (int) env('JWT_APP_SESSION_DAYS', 30),
 
     // Usuário de suporte do Check-in: Admin + Aluno em toda academia, oculto para o tenant
     // (App\Support\UsuarioSuporte). A senha nunca fica no código: SUPORTE_SENHA só no .env.
@@ -51,6 +53,16 @@ return [
             'release' => (int) env('APP_MOBILE_RELEASE', 0),
             'release_date' => env('APP_MOBILE_RELEASE_DATE', '2026-10-15'),
         ],
+    ],
+
+    /*
+    | APK Android publicado. version = expo.version do app.json usado no build (ex.: 1.0.2).
+    | O app instalado com versão menor mostra "Nova versão disponível" com o link do APK.
+    | Se bloqueia ou só avisa: Super Admin → App mobile (app_versions.obrigatoria).
+    */
+    'android_release' => [
+        'version' => env('APP_ANDROID_VERSION', ''),
+        'apk_url' => env('APP_ANDROID_APK_URL', ''),
     ],
 
     /*

@@ -28,11 +28,13 @@ class UsuarioRepository
         return $row ?: null;
     }
 
-    public function getPapeis(int $usuarioId): array
+    /** Sem $tenantId: papéis em todas as academias (só serve antes de escolher a academia). */
+    public function getPapeis(int $usuarioId, ?int $tenantId = null): array
     {
         $rows = DB::table('tenant_usuario_papel as tup')
             ->leftJoin('papeis as p', 'p.id', '=', 'tup.papel_id')
             ->where('tup.usuario_id', $usuarioId)
+            ->when($tenantId !== null, fn ($q) => $q->where('tup.tenant_id', $tenantId))
             ->where('tup.ativo', 1)
             ->select('tup.papel_id', 'p.nome as papel_nome')
             ->groupBy('tup.papel_id', 'p.nome')

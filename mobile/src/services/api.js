@@ -169,6 +169,8 @@ const api = {
 
       if (shouldAttachAuthHeader) {
         headers["Authorization"] = `Bearer ${token}`;
+        // Sessão deslizante: a API devolve o token renovado em X-Refresh-Token
+        headers["X-Session-Renew"] = "1";
         console.log(
           "🔑 Token adicionado ao header:",
           token.substring(0, 20) + "...",
@@ -229,6 +231,12 @@ const api = {
 
       // Fazer requisição
       const response = await fetch(`${API_URL}${endpoint}`, fetchConfig);
+
+      const tokenRenovado = response.headers.get("x-refresh-token");
+      // Só troca um token existente: se a pessoa saiu durante a requisição, continua deslogada
+      if (tokenRenovado && response.status !== 401 && (await AsyncStorage.getItem("@appcheckin:token"))) {
+        await AsyncStorage.setItem("@appcheckin:token", tokenRenovado);
+      }
 
       // Parsear resposta
       let responseData;

@@ -24,7 +24,9 @@ import {
 } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import AppSplash from "@/src/components/AppSplash";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
+import * as SplashScreen from "expo-splash-screen";
 import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
 import { ds } from "@/src/components/ds/tokens";
@@ -33,6 +35,8 @@ import { GatewayPickerProvider } from "@/src/hooks/useGatewayPicker";
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
   require("react-native-reanimated");
+  // A splash nativa fica até a AppSplash (logo + barra) ser desenhada por cima.
+  void SplashScreen.preventAutoHideAsync().catch(() => {});
 }
 
 // Web: estilos globais — sem contorno azul nos campos em foco e selo do reCAPTCHA controlado.
@@ -97,6 +101,8 @@ function RootContent() {
   const appState = useRef(AppState.currentState);
   const segments = useSegments();
   const [isTokenChecked, setIsTokenChecked] = useState(false);
+  const [splashVisible, setSplashVisible] = useState(Platform.OS !== "web");
+  const hideSplash = useCallback(() => setSplashVisible(false), []);
   const [hasToken, setHasToken] = useState(false);
   const [sessionExpiredVisible, setSessionExpiredVisible] = useState(false);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(
@@ -221,7 +227,8 @@ function RootContent() {
     router.replace("/(auth)/login");
   }, [router]);
 
-  const bootScreen = (
+  // No app nativo a AppSplash cobre o carregamento; na web segue o indicador simples.
+  const bootScreen = Platform.OS !== "web" ? null : (
     <View style={[styles.root, styles.bootSplash]}>
       <ActivityIndicator size="large" color={colors.primary} />
     </View>
@@ -284,6 +291,7 @@ function RootContent() {
           </ForceUpdateGate>
           </GatewayPickerProvider>
           <StatusBar style="light" backgroundColor={colors.primary} />
+          {splashVisible ? <AppSplash done={isTokenChecked} onFinish={hideSplash} /> : null}
         </ErrorBoundary>
       </ThemeProvider>
     </SafeAreaProvider>

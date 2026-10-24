@@ -92,6 +92,25 @@ class AuthServiceSelectTenantTest extends TestCase
         );
     }
 
+    public function test_select_tenant_usa_so_papeis_da_academia_escolhida(): void
+    {
+        // Admin em outra academia, só aluno nesta: não pode ver ações de staff aqui
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('temAcessoTenant')->with(2, 5)->andReturn(true);
+        $usuarios->shouldReceive('findAuthContext')->with(2)->andReturn(['id' => 2, 'nome' => 'A', 'email' => 'a@b.com', 'papel_id' => 3]);
+        $usuarios->shouldReceive('findAlunoIdInTenant')->with(2, 5)->andReturn(40);
+        $usuarios->shouldReceive('getTenantsByUsuario')->andReturn([['tenant' => ['id' => 5, 'nome' => 'Aqua']]]);
+        $usuarios->shouldReceive('getPapeis')->with(2)->andReturn([['id' => 3, 'nome' => 'admin'], ['id' => 1, 'nome' => 'aluno']]);
+        $usuarios->shouldReceive('getPapeis')->with(2, 5)->andReturn([['id' => 1, 'nome' => 'aluno']]);
+        $jwt = Mockery::mock(JwtService::class);
+        $jwt->shouldReceive('encode')->once()->with(Mockery::on(fn ($p) => $p['aluno_id'] === 40))->andReturn('t');
+
+        $data = $this->authService($jwt, $usuarios)->selectTenant(2, 5)->getData(true);
+
+        $this->assertSame(1, $data['user']['papel_id']);
+        $this->assertSame([['id' => 1, 'nome' => 'aluno']], $data['user']['papeis']);
+    }
+
     private function assertSelectTenantResolvesTenant(
         int|string $tenantIdInList,
         int $papelId,
@@ -111,9 +130,7 @@ class AuthServiceSelectTenantTest extends TestCase
             'foto_base64' => null,
         ]);
 
-        if ($alunoId !== null) {
-            $usuarios->shouldReceive('findAlunoIdInTenant')->with($userId, $tenantId)->andReturn($alunoId);
-        }
+        $usuarios->shouldReceive('findAlunoIdInTenant')->with($userId, $tenantId)->andReturn($alunoId);
 
         $usuarios->shouldReceive('getTenantsByUsuario')->with($userId)->andReturn([
             [
@@ -122,6 +139,9 @@ class AuthServiceSelectTenantTest extends TestCase
             ],
         ]);
         $usuarios->shouldReceive('getPapeis')->with($userId)->andReturn([
+            ['id' => $papelId, 'nome' => 'aluno'],
+        ]);
+        $usuarios->shouldReceive('getPapeis')->with($userId, $tenantId)->andReturn([
             ['id' => $papelId, 'nome' => 'aluno'],
         ]);
 

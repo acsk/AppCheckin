@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Schema;
 class AppVersionService
 {
     /**
-     * @return array{app: string, version: string, version_number: int, release: int, release_date: string}
+     * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
      */
     public function show(string $app): array
     {
         $row = $this->find($app);
         if ($row) {
-            return $this->format($app, (int) $row->version, (int) $row->release, (string) $row->release_date);
+            return $this->format($app, (int) $row->version, (int) $row->release, (string) $row->release_date, $this->obrigatoria($row));
         }
 
         $cfg = config("appcheckin.app_versions.{$app}", [
@@ -32,7 +32,7 @@ class AppVersionService
     }
 
     /**
-     * @return array{app: string, version: string, version_number: int, release: int, release_date: string}
+     * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
      */
     public function store(string $app, int $version, int $release, string $releaseDate): array
     {
@@ -57,7 +57,32 @@ class AppVersionService
             ]);
         }
 
-        return $this->format($app, $version, $release, $releaseDate);
+        return $this->format($app, $version, $release, $releaseDate, $existing ? $this->obrigatoria($existing) : true);
+    }
+
+    /**
+     * Super admin decide se a versão nova bloqueia o app (true) ou só avisa (false).
+     *
+     * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
+     */
+    public function definirObrigatoria(string $app, bool $obrigatoria): array
+    {
+        if (! $this->find($app)) {
+            $cfg = config("appcheckin.app_versions.{$app}", []);
+            $this->store($app, (int) ($cfg['version'] ?? 1), (int) ($cfg['release'] ?? 0), (string) ($cfg['release_date'] ?? date('Y-m-d')));
+        }
+
+        if (Schema::hasColumn('app_versions', 'obrigatoria')) {
+            DB::table('app_versions')->where('app', $app)->update(['obrigatoria' => $obrigatoria, 'updated_at' => now()]);
+        }
+
+        return $this->show($app);
+    }
+
+    /** Sem a coluna (migration pendente) vale o comportamento antigo: obrigatória. */
+    private function obrigatoria(object $row): bool
+    {
+        return ! property_exists($row, 'obrigatoria') || (bool) $row->obrigatoria;
     }
 
     private function find(string $app): ?object
@@ -72,9 +97,9 @@ class AppVersionService
     }
 
     /**
-     * @return array{app: string, version: string, version_number: int, release: int, release_date: string}
+     * @return array{app: string, version: string, version_number: int, release: int, release_date: string, obrigatoria: bool}
      */
-    private function format(string $app, int $version, int $release, string $releaseDate): array
+    private function format(string $app, int $version, int $release, string $releaseDate, bool $obrigatoria = true): array
     {
         return [
             'app' => $app,
@@ -82,6 +107,7 @@ class AppVersionService
             'version_number' => $version,
             'release' => $release,
             'release_date' => substr($releaseDate, 0, 10),
+            'obrigatoria' => $obrigatoria,
         ];
     }
 }

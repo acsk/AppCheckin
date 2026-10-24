@@ -1,5 +1,6 @@
 import appJson from "../../app.json";
 import buildInfo from "../../buildInfo.json";
+import { Platform } from "react-native";
 import { getApiUrlRuntime } from "@/src/config/urls";
 
 export const APP_VERSION = String((appJson as { expo?: { version?: string } })?.expo?.version ?? "1.0.0");
@@ -11,7 +12,20 @@ export type RemoteAppVersion = {
   app: string;
   version: string;
   release_date: string;
+  /** Super admin decide no painel: true bloqueia até atualizar, false só avisa. */
+  obrigatoria: boolean;
+  android: AndroidRelease | null;
 };
+
+/** APK publicado: version é o expo.version (app.json) do build. */
+export type AndroidRelease = {
+  version: string;
+  apk_url: string;
+  obrigatoria: boolean;
+};
+
+// Só a web recarrega o bundle; no APK não existe window.location (quebrava o login).
+const isWeb = Platform.OS === "web";
 
 export function isProductionRuntime(): boolean {
   const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || "").toLowerCase();
@@ -114,9 +128,12 @@ export function startPwaUpdateWatcher(): () => void {
  * Se já tentou e o bundle ainda é antigo, retorna "blocked".
  */
 export async function ensureAppIsCurrent(): Promise<"ok" | "reloading" | "blocked"> {
+  if (!isWeb) return "ok";
   const remote = await fetchMobileVersion();
   if (!remote) return "ok";
   if (compareBuildVersions(remote.version, APP_BUILD_VERSION) <= 0) return "ok";
+  // Atualização opcional: não recarrega no meio do login; o aviso aparece no ForceUpdateGate
+  if (!remote.obrigatoria) return "ok";
 
   try {
     const last =
@@ -138,7 +155,7 @@ export async function ensureAppIsCurrent(): Promise<"ok" | "reloading" | "blocke
 
 /** Limpa cache/PWA e recarrega o app web para buscar a versão nova. */
 export async function forceReloadApp(): Promise<void> {
-  if (typeof window === "undefined") return;
+  if (!isWeb || typeof window === "undefined" || !window.location) return;
 
   try {
     if ("caches" in window) {
@@ -176,10 +193,19 @@ export async function fetchMobileVersion(): Promise<RemoteAppVersion | null> {
     const raw: any = await response.json().catch(() => ({}));
     const body = raw?.data ?? raw?.body ?? raw ?? {};
     if (!body?.version) return null;
+    const android = body.android?.version && body.android?.apk_url
+      ? {
+          version: String(body.android.version),
+          apk_url: String(body.android.apk_url),
+          obrigatoria: !!body.android.obrigatoria,
+        }
+      : null;
     return {
       app: String(body.app ?? "mobile"),
       version: String(body.version),
       release_date: String(body.release_date ?? ""),
+      obrigatoria: body.obrigatoria !== false,
+      android,
     };
   } catch {
     return null;

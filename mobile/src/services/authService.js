@@ -71,7 +71,8 @@ export const authService = {
     return {
       ...user,
       papeis: unique,
-      papel_id: user?.papel_id ?? unique[0]?.id ?? unique[0]?.papel_id ?? null,
+      // Papel da academia atual: o papel_id global (ex.: admin em outra academia) não vale aqui
+      papel_id: unique[0]?.id ?? unique[0]?.papel_id ?? null,
     };
   },
   /**

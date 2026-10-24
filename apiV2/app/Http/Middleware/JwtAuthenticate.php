@@ -92,10 +92,38 @@ class JwtAuthenticate
 
         $response = $next($request);
 
+        $this->renovarSessaoDoApp($request, $response, $payload, (bool) $acessoSuporte);
+
         if ($acessoSuporte && ! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && ! $request->is('v2/suporte/acesso/encerrar')) {
             app(AcessoSuporteService::class)->registrarAcao((int) $acessoSuporte['id'], $request->method(), '/'.$request->path(), $response->getStatusCode());
         }
 
         return $response;
+    }
+
+    /**
+     * Sessão deslizante do app: com X-Session-Renew: 1 o token volta renovado em X-Refresh-Token
+     * (no máximo uma vez por dia). Quem abre o app pelo menos uma vez a cada N dias não desloga.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private function renovarSessaoDoApp(Request $request, Response $response, array $payload, bool $acessoSuporte): void
+    {
+        $dias = (int) config('appcheckin.jwt_app_session_days', 30);
+        if ($acessoSuporte || $dias <= 0 || $request->header('X-Session-Renew') !== '1' || $response->getStatusCode() === 401) {
+            return;
+        }
+
+        $ttl = $dias * 86400;
+        if ((int) ($payload['exp'] ?? 0) > time() + $ttl - 86400) {
+            return;
+        }
+
+        try {
+            unset($payload['iat'], $payload['exp']);
+            $response->headers->set('X-Refresh-Token', $this->jwt->encode($payload, $ttl));
+        } catch (\RuntimeException) {
+            // Sem renovar: o token atual continua valendo até expirar
+        }
     }
 }

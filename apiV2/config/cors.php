@@ -6,7 +6,7 @@ return [
     'allowed_origins' => ['*'],
     'allowed_origins_patterns' => [],
     'allowed_headers' => ['*'],
-    'exposed_headers' => [],
+    'exposed_headers' => ['X-Refresh-Token'],
     'max_age' => 86400,
     'supports_credentials' => false,
 ];

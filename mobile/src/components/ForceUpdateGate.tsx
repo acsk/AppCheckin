@@ -1,4 +1,5 @@
 import {
+  AndroidRelease,
   APP_BUILD_VERSION,
   APP_VERSION,
   compareBuildVersions,
@@ -8,11 +9,13 @@ import {
   isProductionRuntime,
   startPwaUpdateWatcher,
 } from "@/src/config/appVersion";
+import Modal from "@/src/components/ds/Modal";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   AppState,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -28,8 +31,21 @@ export default function ForceUpdateGate({ children }: Props) {
   const [mustUpdate, setMustUpdate] = useState(false);
   const [remoteVersion, setRemoteVersion] = useState("");
   const [remoteDate, setRemoteDate] = useState("");
+  const [apk, setApk] = useState<AndroidRelease | null>(null);
+  const [apkDismissed, setApkDismissed] = useState("");
+  // Web com atualização opcional (definida pelo super admin): só avisa, sem bloquear
+  const [webOpcional, setWebOpcional] = useState("");
+  const [webDismissed, setWebDismissed] = useState("");
 
   const checkVersion = useCallback(async (autoReload: boolean) => {
+    // APK: compara com o expo.version embutido no build e oferece o download do novo APK
+    if (Platform.OS !== "web") {
+      const remote = await fetchMobileVersion();
+      const release = remote?.android;
+      setApk(release && compareBuildVersions(release.version, APP_VERSION) > 0 ? release : null);
+      return;
+    }
+
     if (!isProductionRuntime()) {
       setMustUpdate(false);
       return;
@@ -38,11 +54,19 @@ export default function ForceUpdateGate({ children }: Props) {
     const remote = await fetchMobileVersion();
     if (!remote || compareBuildVersions(remote.version, APP_BUILD_VERSION) <= 0) {
       setMustUpdate(false);
+      setWebOpcional("");
       return;
     }
 
     setRemoteVersion(remote.version);
     setRemoteDate(remote.release_date);
+
+    if (!remote.obrigatoria) {
+      setMustUpdate(false);
+      setWebOpcional(remote.version);
+      return;
+    }
+    setWebOpcional("");
 
     if (autoReload && Platform.OS === "web") {
       try {
@@ -93,6 +117,30 @@ export default function ForceUpdateGate({ children }: Props) {
     await forceReloadApp();
   };
 
+  const downloadApk = () => {
+    if (apk?.apk_url) void Linking.openURL(apk.apk_url);
+  };
+
+  if (apk?.obrigatoria) {
+    return (
+      <View style={styles.overlay}>
+        <View style={styles.card}>
+          <View style={styles.iconWrap}>
+            <Feather name="download" size={28} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>Atualização obrigatória</Text>
+          <Text style={styles.body}>
+            Baixe e instale a nova versão do AppCheckin para continuar.
+          </Text>
+          <Text style={styles.meta}>Seu app: {APP_VERSION} · Disponível: {apk.version}</Text>
+          <TouchableOpacity style={styles.button} onPress={downloadApk}>
+            <Text style={styles.buttonText}>Baixar atualização</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (mustUpdate) {
     return (
       <View style={styles.overlay}>
@@ -119,7 +167,29 @@ export default function ForceUpdateGate({ children }: Props) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <Modal
+        visible={!!apk && apkDismissed !== apk.version}
+        variant="dialog"
+        icon="download"
+        title="Nova versão disponível"
+        description={`A versão ${apk?.version ?? ""} do AppCheckin já está disponível (a sua é ${APP_VERSION}). Baixe e instale para receber as novidades.`}
+        primary={{ label: "Baixar atualização", icon: "download", onPress: downloadApk }}
+        onClose={() => setApkDismissed(apk?.version ?? "")}
+      />
+      <Modal
+        visible={!!webOpcional && webDismissed !== webOpcional}
+        variant="dialog"
+        icon="refresh-cw"
+        title="Nova versão disponível"
+        description={`A versão ${webOpcional} do AppCheckin já está disponível (a sua é ${APP_BUILD_VERSION}). Atualize para receber as novidades.`}
+        primary={{ label: "Atualizar agora", icon: "refresh-cw", onPress: () => void forceReloadApp() }}
+        onClose={() => setWebDismissed(webOpcional)}
+      />
+    </>
+  );
 }
 
 const styles = StyleSheet.create({

@@ -35,6 +35,20 @@ class V2AppVersionRoutesTest extends TestCase
             ->assertJsonPath('data.version', 'v1.3');
     }
 
+    public function test_get_mobile_version_inclui_apk_android_quando_configurado(): void
+    {
+        config(['appcheckin.android_release' => ['version' => '1.0.2', 'apk_url' => 'https://exemplo.com/app.apk']]);
+        $service = Mockery::mock(AppVersionService::class);
+        $service->shouldReceive('show')->with('mobile')->andReturn(['app' => 'mobile', 'version' => 'v1.3', 'obrigatoria' => false]);
+        $this->app->instance(AppVersionService::class, $service);
+
+        $this->getJson('/v2/version/mobile')
+            ->assertOk()
+            ->assertJsonPath('data.android.version', '1.0.2')
+            ->assertJsonPath('data.android.apk_url', 'https://exemplo.com/app.apk')
+            ->assertJsonPath('data.android.obrigatoria', false);
+    }
+
     public function test_post_mobile_version_requires_token_in_production(): void
     {
         config([

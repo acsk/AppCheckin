@@ -15,7 +15,7 @@ class JwtService
         private readonly int $expiration = 86400,
     ) {}
 
-    public function encode(array $payload): string
+    public function encode(array $payload, ?int $ttl = null): string
     {
         if (strlen($this->secret) < 16) {
             throw new \RuntimeException('JWT_SECRET inválido ou não configurado');
@@ -24,7 +24,7 @@ class JwtService
         $issuedAt = time();
         $data = array_merge($payload, [
             'iat' => $issuedAt,
-            'exp' => $issuedAt + $this->expiration,
+            'exp' => $issuedAt + ($ttl ?? $this->expiration),
         ]);
 
         try {

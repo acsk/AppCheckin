@@ -96,9 +96,10 @@ class AuthService
                     );
                 }
 
-                $alunoId = $papelId === 1
-                    ? $this->usuarios->findAlunoId((int) $usuario->id)
-                    : null;
+                // Papéis só desta academia: admin/professor em outra não vira staff aqui
+                $papeis = $this->papeisNoTenant((int) $usuario->id, $tenantId, $papeis);
+                $papelId = $papeis[0]['id'] ?? null;
+                $alunoId = $this->usuarios->findAlunoIdInTenant((int) $usuario->id, $tenantId);
 
                 try {
                     $token = $this->jwt->encode([
@@ -201,10 +202,7 @@ class AuthService
             return ApiError::json('Usuário não encontrado', 'USER_NOT_FOUND', 404);
         }
 
-        $papelId = (int) ($usuario['papel_id'] ?? 0);
-        $alunoId = $papelId === 1
-            ? $this->usuarios->findAlunoIdInTenant($userId, $tenantId)
-            : null;
+        $alunoId = $this->usuarios->findAlunoIdInTenant($userId, $tenantId);
 
         try {
             $token = $this->jwt->encode([
@@ -233,8 +231,8 @@ class AuthService
             }
         }
 
-        $papeis = $this->usuarios->getPapeis($userId);
-        $papelId = ! empty($papeis) ? $papeis[0]['id'] : ($usuario['papel_id'] ?? null);
+        $papeis = $this->papeisNoTenant($userId, $tenantId, $this->usuarios->getPapeis($userId));
+        $papelId = $papeis[0]['id'] ?? null;
 
         $payload = [
             'message' => 'Academia selecionada com sucesso',
@@ -256,6 +254,24 @@ class AuthService
         }
 
         return response()->json($payload, 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Papéis do usuário na academia escolhida. Super admin (papel global) continua valendo.
+     *
+     * @param  list<array{id: int, nome: ?string}>  $papeisGlobais
+     * @return list<array{id: int, nome: ?string}>
+     */
+    private function papeisNoTenant(int $userId, int $tenantId, array $papeisGlobais): array
+    {
+        $papeis = $this->usuarios->getPapeis($userId, $tenantId);
+        foreach ($papeisGlobais as $papel) {
+            if ((int) $papel['id'] === 4 && ! in_array(4, array_column($papeis, 'id'), true)) {
+                array_unshift($papeis, $papel);
+            }
+        }
+
+        return $papeis;
     }
 
     public function register(string $nome, string $email, string $senha, int $tenantId, ?string $cpf = null): JsonResponse

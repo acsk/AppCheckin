@@ -19,6 +19,7 @@ class AppVersionServiceTest extends TestCase
             $table->unsignedInteger('version');
             $table->unsignedInteger('release');
             $table->date('release_date');
+            $table->boolean('obrigatoria')->default(true);
             $table->timestamps();
         });
     }
@@ -31,5 +32,16 @@ class AppVersionServiceTest extends TestCase
         $this->assertSame('v1.5', $stored['version']);
         $this->assertSame('v1.5', $service->show('mobile')['version']);
         $this->assertSame(5, $service->show('mobile')['release']);
+    }
+
+    public function test_super_admin_define_se_atualizacao_e_obrigatoria(): void
+    {
+        $service = new AppVersionService();
+        $service->store('mobile', 1, 5, '2026-10-15');
+        $this->assertTrue($service->show('mobile')['obrigatoria']);
+
+        $this->assertFalse($service->definirObrigatoria('mobile', false)['obrigatoria']);
+        // Publicar versão nova não muda a escolha do super admin
+        $this->assertFalse($service->store('mobile', 1, 6, '2026-10-24')['obrigatoria']);
     }
 }
