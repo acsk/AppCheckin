@@ -18,7 +18,16 @@ const SECTIONS = [
       { id: 'unificar', label: 'Unificar cadastros', path: '/unificar-usuarios', icon: 'users', roles: [4] },
       { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
       { id: 'planos-sistema', label: 'Planos', path: '/planos-sistema', icon: 'layers', roles: [4] },
-      { id: 'app-mobile', label: 'Configurações do app', path: '/app-mobile', icon: 'smartphone', roles: [4] },
+      {
+        id: 'app-mobile',
+        label: 'App Mobile',
+        icon: 'smartphone',
+        children: [
+          { id: 'app-mobile-configuracoes', label: 'Configurações', path: '/app-mobile/configuracoes', roles: [4] },
+          { id: 'app-mobile-cadastral', label: 'Atualização Cadastral', path: '/app-mobile/atualizacao-cadastral', roles: [4] },
+          { id: 'app-mobile-versoes', label: 'Versões', path: '/app-mobile/versoes', roles: [4] },
+        ],
+      },
     ],
   },
   {

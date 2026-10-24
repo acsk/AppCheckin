@@ -1,6 +1,6 @@
 import { Redirect } from 'expo-router';
 
-// A atualização cadastral agora fica em Configurações do app
+// Mantém os links antigos apontando para a página dedicada.
 export default function AtualizacaoCadastralRedirect() {
-  return <Redirect href="/app-mobile" />;
+  return <Redirect href="/app-mobile/atualizacao-cadastral" />;
 }

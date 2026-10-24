@@ -1,3 +1,5 @@
-import AppConfigScreen from '../../src/screens/superadmin/AppConfigScreen';
+import { Redirect } from 'expo-router';
 
-export default AppConfigScreen;
+export default function AppMobileRedirect() {
+  return <Redirect href="/app-mobile/configuracoes" />;
+}

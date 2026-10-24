@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'expo-router';
-import LayoutBase from '../../components/LayoutBase';
-import { Badge, Button, Callout, Modal, PageHeader, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from '../../components/ck';
+import AppMobileLayout from './AppMobileLayout';
+import { Badge, Button, Callout, Modal, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
-import { authService } from '../../services/authService';
 import appConfigService from '../../services/appConfigService';
 import appVersaoService from '../../services/appVersaoService';
 import { superAdminService } from '../../services/superAdminService';
 import { showError, showSuccess } from '../../utils/toast';
-import AtualizacaoCadastralPanel from './AtualizacaoCadastralPanel';
 
-// Super Admin → Configurações do app: funcionalidades, parâmetros e versões do app do aluno, editados
-// num rascunho e publicados de uma vez (com histórico e rollback). O catálogo vem da API
+// Super Admin → App Mobile: editor compartilhado de configurações e versões do app,
+// com rascunho e publicação conjunta (com histórico e rollback). O catálogo vem da API
 // (App\Support\AppConfigCatalogo); aqui só se escolhem valores. Estilos: ck-mc-*/ck-cj-* (ck-minha-conta.css).
 
 const fdata = (v) => (v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—');
@@ -287,9 +284,8 @@ function HistoricoTab({ versaoAtual, onRestaurar }) {
   );
 }
 
-export default function AppConfigScreen() {
-  const router = useRouter();
-  const [ok, setOk] = useState(false);
+function AppConfigEditor({ secao }) {
+  const versoes = secao === 'versoes';
   const [estado, setEstado] = useState(null);
   const [academias, setAcademias] = useState([]);
   const [erro, setErro] = useState('');
@@ -302,22 +298,14 @@ export default function AppConfigScreen() {
   const [restaurar, setRestaurar] = useState(null);
   const [salvando, setSalvando] = useState(false);
 
-  useEffect(() => {
-    authService.getCurrentUser().then((u) => {
-      if (authService.getEffectivePapelId(u) !== 4) { showError('Acesso negado. Apenas Super Admin pode acessar esta página.'); router.replace('/'); return; }
-      setOk(true);
-    });
-  }, []);
-
   const carregar = useCallback(async () => {
     setErro('');
     try { setEstado(await appConfigService.estado()); } catch (e) { setErro(e.message); }
   }, []);
   useEffect(() => {
-    if (!ok) return;
     carregar();
     superAdminService.listarAcademias().then((r) => setAcademias((r.academias || []).map((a) => ({ id: a.id, nome: a.nome })))).catch(() => {});
-  }, [ok, carregar]);
+  }, [carregar]);
 
   const defs = estado?.catalogo || [];
   const defPorChave = useMemo(() => Object.fromEntries(defs.map((d) => [d.chave, d])), [defs]);
@@ -335,23 +323,19 @@ export default function AppConfigScreen() {
   };
   const confirmarRestaurar = async () => { if (await acao(() => appConfigService.restaurar(restaurar), `Versão ${restaurar} restaurada`)()) setRestaurar(null); };
 
-  if (!ok) return <LayoutBase title="Configurações do app" pageHeader={false}><p className="ck-mc-hint" role="status">Carregando…</p></LayoutBase>;
-
   const pend = estado?.pendencias || [];
   const props = { estado, defs, academias, onDefinir: definir, onExcecoes: setExcecoes };
   const ABAS = [
     { value: 'funcionalidades', label: 'Funcionalidades' },
     { value: 'parametros', label: 'Parâmetros' },
-    { value: 'versoes', label: 'Versões' },
-    { value: 'cadastral', label: 'Atualização cadastral' },
     { value: 'efetiva', label: 'Por academia' },
     { value: 'historico', label: 'Histórico' },
   ];
 
   return (
-    <LayoutBase title="Configurações do app" pageHeader={false}>
+    <>
       <div className="ck-mc">
-        <PageHeader title="Configurações do app" description={`Liga, desliga e ajusta o app do aluno sem publicar versão nova.${estado ? ` Em uso: versão ${estado.versao_publicada} da configuração.` : ''}`} />
+        {estado ? <p className="ck-mc-hint">{`Em uso: versão ${estado.versao_publicada} da configuração.`}</p> : null}
 
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={carregar}>Tentar de novo</Button>}>{erro}</Callout> : null}
         {pend.length ? (
@@ -362,19 +346,18 @@ export default function AppConfigScreen() {
                 <Button size="sm" variant="primary" icon="check" onClick={() => setPublicar(true)}>Revisar e publicar</Button>
               </span>
             )}>
-            O app só recebe as mudanças depois de publicar.
+            O app só recebe as mudanças depois de publicar. O rascunho reúne alterações de Configurações e Versões.
           </Callout>
         ) : null}
 
-        <Tabs label="Seções das configurações do app" value={aba} onChange={setAba} tabs={ABAS} className="ck-mc-tabs" />
+        {!versoes ? <Tabs label="Seções das configurações do app" value={aba} onChange={setAba} tabs={ABAS} className="ck-mc-tabs" /> : null}
 
-        {aba === 'cadastral' ? <AtualizacaoCadastralPanel />
-          : !estado ? (erro ? null : <p className="ck-mc-hint" role="status">Carregando…</p>)
+        {!estado ? (erro ? null : <p className="ck-mc-hint" role="status">Carregando…</p>)
+          : versoes ? <VersoesTab {...props} />
             : aba === 'funcionalidades' ? <FuncionalidadesTab {...props} busca={busca} setBusca={setBusca} onBloqueio={(def, bloquear) => setBloqueio({ def, bloquear })} />
               : aba === 'parametros' ? <ItensTab {...props} grupo="parametro" />
-                : aba === 'versoes' ? <VersoesTab {...props} />
-                  : aba === 'efetiva' ? <EfetivaTab defs={defs} academias={academias} />
-                    : <HistoricoTab versaoAtual={estado.versao_publicada} onRestaurar={setRestaurar} />}
+                : aba === 'efetiva' ? <EfetivaTab defs={defs} academias={academias} />
+                  : <HistoricoTab versaoAtual={estado.versao_publicada} onRestaurar={setRestaurar} />}
       </div>
 
       {excecoes && estado ? <ExcecoesModal def={excecoes} estado={estado} academias={academias} onDefinir={definir} onClose={() => setExcecoes(null)} /> : null}
@@ -435,6 +418,20 @@ export default function AppConfigScreen() {
             <Button variant="primary" icon="refresh-cw" loading={salvando} onClick={confirmarRestaurar}>Restaurar</Button>
           </>
         )} />
-    </LayoutBase>
+    </>
+  );
+}
+
+export default function AppConfigScreen({ secao = 'configuracoes' }) {
+  const versoes = secao === 'versoes';
+  return (
+    <AppMobileLayout
+      title={versoes ? 'Versões' : 'Configurações'}
+      description={versoes
+        ? 'Gerencie as versões publicadas, as versões mínimas e os avisos de atualização do app.'
+        : 'Liga, desliga e ajusta o app do aluno sem publicar versão nova.'}
+    >
+      <AppConfigEditor key={secao} secao={secao} />
+    </AppMobileLayout>
   );
 }

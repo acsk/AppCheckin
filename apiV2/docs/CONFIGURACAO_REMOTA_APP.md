@@ -1,7 +1,9 @@
 # Configuração remota do app
 
 Liga, desliga e ajusta o app do aluno sem publicar versão nova.
-Painel: **Super Admin → Configurações do app** (`/app-mobile`). Só o Super Admin edita.
+Painel: **Super Admin → App Mobile**, com as páginas **Configurações** (`/app-mobile/configuracoes`), **Atualização Cadastral** (`/app-mobile/atualizacao-cadastral`) e **Versões** (`/app-mobile/versoes`). Só o Super Admin edita. O endereço `/app-mobile` redireciona para Configurações.
+
+Configurações reúne funcionalidades, parâmetros, consulta por academia e histórico. Versões reúne as versões publicadas e as regras de atualização. As duas páginas compartilham o rascunho: revisar e publicar inclui todas as alterações pendentes. Atualização Cadastral gerencia suas campanhas separadamente.
 
 ## Como funciona
 
