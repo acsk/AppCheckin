@@ -1,5 +1,23 @@
 # Welcome to your Expo app 👋
 
+## APK Android com versão automática
+
+Execute `npm run android:apk` com Node 22, JDK 17 e Android SDK. A cada build novo,
+o comando incrementa o patch de `expo.version` (1.0.1 → 1.0.2 → 1.0.3) e o
+`android.versionCode`, sincroniza os arquivos de versão e gera um APK autônomo em
+`artifacts/appcheckin-<versão>-<versionCode>.apk`, com assinatura conferida.
+
+O padrão é a API de produção. Para outro ambiente, informe `EXPO_PUBLIC_APP_ENV`
+e `EXPO_PUBLIC_API_URL` no comando. O processo não publica a versão na API.
+
+Se um build falhar, corrija a causa e execute `npm run android:apk -- --retry`
+para retomar a mesma versão reservada. A versão não é reduzida em caso de falha.
+Gradle executado diretamente não incrementa a versão; use o comando acima.
+O contador web (`buildNumber.json`/`buildInfo.json`) segue seu fluxo separado.
+
+A skill pessoal `$appcheckin-apk` orienta o Codex a usar essa rotina ao gerar APKs.
+Teste do incremento: `npm run test:android-version`.
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started

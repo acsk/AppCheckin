@@ -89,6 +89,15 @@ const SECTIONS = [
     items: [
       { id: 'sa-pagamentos', label: 'Recebimentos', path: '/configuracoes-pagamento', icon: 'credit-card', roles: [4] },
       {
+        id: 'monetizacao',
+        label: 'Monetização',
+        icon: 'target',
+        children: [
+          { id: 'monetizacao-adsense', label: 'Google AdSense', path: '/monetizacao/adsense', roles: [4] },
+          { id: 'monetizacao-admob', label: 'Google AdMob', path: '/monetizacao/admob', roles: [4] },
+        ],
+      },
+      {
         id: 'config',
         label: 'Configurações',
         icon: 'settings',

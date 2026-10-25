@@ -1,0 +1,23 @@
+.ck-monetizacao { min-width: 0; padding-bottom: 24px; }
+.ck-monetizacao__form { display: grid; gap: var(--space-5); min-width: 0; border: 0; padding: 0; margin: 0; }
+.ck-monetizacao__context { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-4); }
+.ck-monetizacao__context > .ck-field { flex: 1 1 220px; }
+.ck-monetizacao__stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); }
+.ck-monetizacao__stats > div { display: grid; justify-items: start; align-content: start; gap: 8px; padding: var(--space-4); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.ck-monetizacao__stats small { color: var(--ink-muted); font-size: 12px; }
+.ck-monetizacao__stats strong { color: var(--ink); font-size: 16px; font-weight: 600; }
+.ck-monetizacao__table { min-width: 880px; }
+.ck-monetizacao__table small { display: block; color: var(--ink-muted); font-size: 12px; margin-top: 4px; }
+.ck-monetizacao__table code { font-size: 12px; overflow-wrap: anywhere; }
+.ck-monetizacao__audit { min-width: 560px; }
+.ck-monetizacao__actions { display: flex; gap: 4px; }
+.ck-monetizacao__checks { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ck-monetizacao__checks li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 14px; }
+.ck-monetizacao__save { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); position: sticky; bottom: 12px; z-index: 15; background: var(--surface-raised); border: 1px solid var(--line); box-shadow: var(--shadow-md); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); }
+.ck-monetizacao__save > span { flex: 1; }
+@media (max-width: 1050px) { .ck-monetizacao__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) {
+  .ck-monetizacao__stats { grid-template-columns: 1fr; }
+  .ck-monetizacao__save > span { flex-basis: 100%; }
+  .ck-monetizacao__save > .ck-btn { flex: 1; }
+}
