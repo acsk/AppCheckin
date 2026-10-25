@@ -50,3 +50,42 @@ em andamento e encerradas; campanhas excluídas deixam de ser entregues no app.
 
 Testes: `php vendor/bin/phpunit tests/Feature/AtualizacaoCadastralTest.php`
 (SQLite em memória).
+
+## Dispensa opcional por revalidação recente
+
+Na criação ou edição de uma campanha, ative **Dispensar alunos revalidados
+recentemente** e informe o **Intervalo entre recadastramentos (meses)**, de 1 a
+120 meses inteiros. A flag `dispensar_revalidados` começa desativada, inclusive
+nas campanhas existentes. Desativada, `intervalo_meses` é salvo como `null` e o
+comportamento anterior permanece: cada aluno elegível responde uma vez.
+
+Ativada, a campanha só é entregue a quem nunca concluiu um recadastramento ou
+cuja última conclusão ocorreu há pelo menos X meses. A referência é
+`usuarios.cadastro_revalidado_em`, atualizada somente ao concluir uma campanha
+com sucesso, independentemente de a flag estar ligada. Confirmar apenas o e-mail,
+editar o perfil ou cancelar a tela não marca o cadastro como revalidado.
+A marca considera o cadastro único do usuário, inclusive conclusões em outras
+academias, e permanece após a exclusão de campanhas.
+
+Exemplo: com prazo de 6 meses, quem concluiu em 24/10 fica dispensado até 24/04.
+Quem se matricular depois e nunca concluiu recebe a campanha ativa normalmente.
+O cálculo usa meses de calendário: uma conclusão em 31/01 com prazo de 1 mês
+vence em 28/02 (29/02 em ano bissexto), no mesmo horário.
+
+A dispensa vale para toda a campanha, inclusive validação forçada de e-mail e
+troca de senha. Deixe a flag desativada se precisar exigir essas ações de todos.
+Quem já respondeu uma campanha não a recebe novamente depois do prazo: o SA
+cria outra campanha. Para quem ainda não respondeu, a dispensa é calculada na
+consulta; se o prazo vencer e houver campanha ativa elegível, ela poderá aparecer.
+Não são criadas campanhas automaticamente.
+
+A tabela mostra separadamente respostas e dispensados. O progresso soma os dois,
+sem duplicar alunos; os dispensados não aparecem em **Pendentes**. Os filtros de
+conta, vínculo e matrícula ativa continuam valendo. Os totais refletem o público
+e o prazo na data da consulta, inclusive para campanhas encerradas.
+
+Instalação: execute `php artisan migrate --force` antes de publicar a API e o
+painel. A migration `2026_10_25_130000_periodo_recadastramento.php` adiciona os
+campos e aproveita a última resposta ainda registrada no banco para cada usuário.
+Respostas já excluídas antes dessa migration não podem ser recuperadas.
+A regra é aplicada no servidor e funciona com o mobile existente, sem novo APK.

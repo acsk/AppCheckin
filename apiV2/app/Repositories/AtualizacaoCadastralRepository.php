@@ -41,6 +41,8 @@ class AtualizacaoCadastralRepository
                 'campos_obrigatorios' => json_encode($dados['campos_obrigatorios']),
                 'validar_email' => $dados['validar_email'],
                 'forcar_validacao_email' => $dados['forcar_validacao_email'],
+                'dispensar_revalidados' => $dados['dispensar_revalidados'],
+                'intervalo_meses' => $dados['intervalo_meses'],
                 'trocar_senha' => $dados['trocar_senha'],
                 'senha_min_caracteres' => $dados['senha_min_caracteres'],
                 'senha_nivel' => $dados['senha_nivel'],
@@ -88,6 +90,36 @@ class AtualizacaoCadastralRepository
             ->distinct()->count('tup.usuario_id');
     }
 
+    /** Recentemente revalidados, sem resposta nesta campanha (sem dupla contagem). */
+    public function totalDispensados(array $campanha): int
+    {
+        if (! $campanha['dispensar_revalidados']) {
+            return 0;
+        }
+
+        return (int) $this->publicoQuery($campanha)
+            ->whereNotExists(fn ($q) => $q->from('atualizacao_cadastral_respostas as r')
+                ->where('r.atualizacao_id', $campanha['id'])->whereColumn('r.usuario_id', 'tup.usuario_id'))
+            ->whereRaw($this->prazoRevalidacaoSql((string) (int) $campanha['intervalo_meses']).' > ?', [now()])
+            ->distinct()->count('tup.usuario_id');
+    }
+
+    /** Soma meses de calendário, limitando o dia ao último dia do mês de destino. */
+    private function prazoRevalidacaoSql(string $meses): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "datetime(u.cadastro_revalidado_em, '+' || {$meses} || ' months', 'floor')"
+            : "DATE_ADD(u.cadastro_revalidado_em, INTERVAL {$meses} MONTH)";
+    }
+
+    private function somenteDevidos($query, array $campanha): void
+    {
+        if ($campanha['dispensar_revalidados']) {
+            $query->where(fn ($q) => $q->whereNull('u.cadastro_revalidado_em')
+                ->orWhereRaw($this->prazoRevalidacaoSql((string) (int) $campanha['intervalo_meses']).' <= ?', [now()]));
+        }
+    }
+
     /** Quantos usuários do app a campanha alcança. */
     public function totalPublico(array $campanha): int
     {
@@ -102,8 +134,9 @@ class AtualizacaoCadastralRepository
     public function pendentes(array $campanha): array
     {
         $out = [];
-        $this->publicoQuery($campanha)
-            ->join('tenants as t', 't.id', '=', 'tup.tenant_id')
+        $query = $this->publicoQuery($campanha);
+        $this->somenteDevidos($query, $campanha);
+        $query->join('tenants as t', 't.id', '=', 'tup.tenant_id')
             ->whereNotExists(fn ($q) => $q->from('atualizacao_cadastral_respostas as r')
                 ->where('r.atualizacao_id', $campanha['id'])->whereColumn('r.usuario_id', 'tup.usuario_id'))
             ->orderBy('u.nome')
@@ -129,6 +162,9 @@ class AtualizacaoCadastralRepository
                 ->whereColumn('r.atualizacao_id', 'ac.id')->where('r.usuario_id', $usuarioId))
             ->whereExists($this->alunosMatriculadosQuery()->selectRaw('1')
                 ->where('tup.usuario_id', $usuarioId)
+                ->where(fn ($q) => $q->where('ac.dispensar_revalidados', 0)
+                    ->orWhereNull('u.cadastro_revalidado_em')
+                    ->orWhereRaw($this->prazoRevalidacaoSql('ac.intervalo_meses').' <= ?', [now()]))
                 ->where(fn ($w) => $w->where('ac.todas_academias', 1)->orWhereExists(fn ($a) => $a->from('atualizacao_cadastral_academias as aca')
                     ->whereColumn('aca.atualizacao_id', 'ac.id')->whereColumn('aca.tenant_id', 'tup.tenant_id'))))
             ->orderBy('ac.id')
@@ -169,7 +205,7 @@ class AtualizacaoCadastralRepository
     /** @param  list<string>  $alterados */
     public function registrarResposta(int $atualizacaoId, int $usuarioId, array $alterados, bool $senhaTrocada): void
     {
-        DB::table('atualizacao_cadastral_respostas')->insertOrIgnore([
+        $inserida = DB::table('atualizacao_cadastral_respostas')->insertOrIgnore([
             'atualizacao_id' => $atualizacaoId,
             'usuario_id' => $usuarioId,
             'campos_alterados' => json_encode(array_values($alterados)),
@@ -178,6 +214,9 @@ class AtualizacaoCadastralRepository
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        if ($inserida) {
+            DB::table('usuarios')->where('id', $usuarioId)->update(['cadastro_revalidado_em' => now()]);
+        }
     }
 
     /** Aluno ativo com matrícula ativa na mesma academia do vínculo. */
@@ -242,6 +281,8 @@ class AtualizacaoCadastralRepository
             'campos_obrigatorios' => $decode($r->campos_obrigatorios),
             'validar_email' => (bool) $r->validar_email,
             'forcar_validacao_email' => (bool) ($r->forcar_validacao_email ?? false),
+            'dispensar_revalidados' => (bool) $r->dispensar_revalidados,
+            'intervalo_meses' => $r->intervalo_meses === null ? null : (int) $r->intervalo_meses,
             'trocar_senha' => (bool) $r->trocar_senha,
             'senha_min_caracteres' => (int) $r->senha_min_caracteres,
             'senha_nivel' => (string) $r->senha_nivel,

@@ -3,6 +3,7 @@ import { Badge, Button, IconButton, SegmentedControl, TextField } from '../../co
 
 const POR_PAGINA = 10;
 const data = (v) => v ? String(v).slice(0, 10).split('-').reverse().join('/') : '—';
+const regularizados = (c) => c.respostas + (c.dispensados || 0);
 const normalizar = (v) => String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 export default function AtualizacaoCadastralTable({ campanhas, resumo, onPendentes, onEditar, onEncerrar, onExcluir, disabled }) {
@@ -47,14 +48,15 @@ export default function AtualizacaoCadastralTable({ campanhas, resumo, onPendent
                   <Badge tone={c.bloquear_app ? 'warning' : 'outline'} icon={c.bloquear_app ? 'lock' : undefined}>{c.bloquear_app ? 'Bloqueia o app' : 'Pode adiar'}</Badge>
                 </div></td>
                 <td><div className="ck-cad-table__progress">
-                  <strong>{c.respostas} de {c.publico}</strong>
-                  <progress value={c.respostas} max={Math.max(1, c.publico)} aria-label={`${c.titulo}: ${c.respostas} de ${c.publico} alunos com matrícula ativa atualizaram`} />
-                  <small>{c.publico ? `${Math.max(0, c.publico - c.respostas)} pendente${c.publico - c.respostas === 1 ? '' : 's'}` : 'Sem alunos com matrícula ativa'}</small>
+                  <strong>{regularizados(c)} de {c.publico} regularizados</strong>
+                  <small>{c.respostas} atualizaram · {c.dispensados || 0} dispensados</small>
+                  <progress value={regularizados(c)} max={Math.max(1, c.publico)} aria-label={`${c.titulo}: ${regularizados(c)} de ${c.publico} alunos regularizados`} />
+                  <small>{c.publico ? `${Math.max(0, c.publico - regularizados(c))} pendente${c.publico - regularizados(c) === 1 ? '' : 's'}` : 'Sem alunos com matrícula ativa'}</small>
                 </div></td>
                 <td><span className="ck-cad-table__date">{data(c.created_at)}</span>
                   {c.encerrada_em ? <small className="ck-cad-table__summary">Encerrada em {data(c.encerrada_em)}</small> : null}</td>
                 <td><div className="ck-cad-table__actions">
-                  <Button size="sm" variant="ghost" icon="users" disabled={disabled || c.respostas >= c.publico} onClick={() => onPendentes(c)}>Pendentes</Button>
+                  <Button size="sm" variant="ghost" icon="users" disabled={disabled || regularizados(c) >= c.publico} onClick={() => onPendentes(c)}>Pendentes</Button>
                   {c.ativa ? <>
                     <IconButton size="sm" icon="pencil" label={`Editar ${c.titulo}`} disabled={disabled} onClick={() => onEditar(c)} />
                     <IconButton size="sm" icon="x" label={`Encerrar ${c.titulo}`} disabled={disabled} onClick={() => onEncerrar(c)} />

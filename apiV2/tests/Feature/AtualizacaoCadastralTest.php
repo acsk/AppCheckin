@@ -67,6 +67,7 @@ class AtualizacaoCadastralTest extends TestCase
         ]);
         (require database_path('migrations/2026_10_24_110000_atualizacao_cadastral.php'))->up();
         (require database_path('migrations/2026_10_25_110000_forcar_validacao_email_campanha.php'))->up();
+        (require database_path('migrations/2026_10_25_130000_periodo_recadastramento.php'))->up();
 
         DB::table('tenants')->insert([['id' => 1, 'nome' => 'Aqua'], ['id' => 2, 'nome' => 'Outra']]);
         $this->aluno = (int) DB::table('usuarios')->insertGetId([
@@ -94,6 +95,79 @@ class AtualizacaoCadastralTest extends TestCase
         $this->assertSame(201, $r['status'], json_encode($r['body']));
 
         return $r['body']['campanha']['id'];
+    }
+
+    public function test_dispensa_e_opcional_e_prazo_e_validado(): void
+    {
+        DB::table('usuarios')->where('id', $this->aluno)->update(['cadastro_revalidado_em' => now()]);
+        $id = $this->campanha(['intervalo_meses' => 'invalido']);
+        $c = $this->service()->listar()['body']['campanhas'][0];
+        $this->assertFalse($c['dispensar_revalidados']);
+        $this->assertNull($c['intervalo_meses']);
+        $this->assertSame($id, $this->service()->pendente($this->aluno)['body']['pendente']['id']);
+        $editada = $this->service()->salvar($id, array_replace($c, ['dispensar_revalidados' => true, 'intervalo_meses' => 6]), 99);
+        $this->assertSame(200, $editada['status']);
+        $this->assertTrue($editada['body']['campanha']['dispensar_revalidados']);
+        $this->assertSame(6, $editada['body']['campanha']['intervalo_meses']);
+        $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
+        $this->assertSame(200, $this->service()->salvar($id, $c, 99)['status']);
+        $this->assertSame($id, $this->service()->pendente($this->aluno)['body']['pendente']['id']);
+        foreach ([null, 0, -1, 121, 'abc', 1.5] as $meses) {
+            $r = $this->service()->salvar(null, ['titulo' => 'Teste', 'campos' => ['telefone'], 'dispensar_revalidados' => true, 'intervalo_meses' => $meses], 99);
+            $this->assertSame(422, $r['status']);
+        }
+    }
+
+    public function test_conclusao_dispensa_nova_campanha_e_marca_sobrevive_a_exclusao(): void
+    {
+        $this->travelTo(now()->setDate(2026, 1, 31)->setTime(10, 0));
+        $id = $this->campanha();
+        $r = $this->service()->responder($this->aluno, $id, ['dados' => ['telefone' => '82988376381']]);
+        $this->assertSame(200, $r['status']);
+        $this->assertSame('2026-01-31 10:00:00', DB::table('usuarios')->where('id', $this->aluno)->value('cadastro_revalidado_em'));
+        $this->service()->excluir($id);
+        $nova = $this->campanha(['dispensar_revalidados' => true, 'intervalo_meses' => 1, 'forcar_validacao_email' => true]);
+        $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
+        $this->assertSame([], $this->service()->pendentes($nova)['body']['pendentes']);
+        $c = $this->service()->listar()['body']['campanhas'][0];
+        $this->assertSame(1, $c['publico']);
+        $this->assertSame(0, $c['respostas']);
+        $this->assertSame(1, $c['dispensados']);
+
+        $this->travelTo(now()->setDate(2026, 2, 28)->setTime(9, 59, 59));
+        $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
+        $this->travelTo(now()->addSecond());
+        $this->assertSame($nova, $this->service()->pendente($this->aluno)['body']['pendente']['id']);
+        $this->assertCount(1, $this->service()->pendentes($nova)['body']['pendentes']);
+        $this->assertSame(0, $this->service()->listar()['body']['campanhas'][0]['dispensados']);
+    }
+
+    public function test_nunca_revalidado_recebe_e_campanha_respondida_nao_reabre(): void
+    {
+        $id = $this->campanha(['dispensar_revalidados' => true, 'intervalo_meses' => 6]);
+        $this->assertSame($id, $this->service()->pendente($this->aluno)['body']['pendente']['id']);
+        $this->assertCount(1, $this->service()->pendentes($id)['body']['pendentes']);
+        $this->assertSame(200, $this->service()->responder($this->aluno, $id, ['dados' => ['telefone' => '82988376381']])['status']);
+        $c = $this->service()->listar()['body']['campanhas'][0];
+        $this->assertSame(1, $c['respostas']);
+        $this->assertSame(0, $c['dispensados']);
+        $this->travelTo(now()->addMonthsNoOverflow(7));
+        $this->assertNull($this->service()->pendente($this->aluno)['body']['pendente']);
+        $nova = $this->campanha(['dispensar_revalidados' => true, 'intervalo_meses' => 6]);
+        $this->assertSame($nova, $this->service()->pendente($this->aluno)['body']['pendente']['id']);
+    }
+
+    public function test_migration_aproveita_a_ultima_resposta_anterior(): void
+    {
+        $migration = require database_path('migrations/2026_10_25_130000_periodo_recadastramento.php');
+        $migration->down();
+        foreach (['2026-01-01 12:00:00', '2026-03-01 12:00:00'] as $data) {
+            $id = DB::table('atualizacoes_cadastrais')->insertGetId(['titulo' => 'Anterior', 'campos' => '[]', 'campos_obrigatorios' => '[]']);
+            DB::table('atualizacao_cadastral_respostas')->insert(['atualizacao_id' => $id, 'usuario_id' => $this->aluno, 'campos_alterados' => '[]', 'concluida_em' => $data]);
+        }
+        $migration->up();
+        $this->assertSame('2026-03-01 12:00:00', DB::table('usuarios')->where('id', $this->aluno)->value('cadastro_revalidado_em'));
+        $this->assertSame(0, (int) DB::table('atualizacoes_cadastrais')->first()->dispensar_revalidados);
     }
 
     public function test_campanha_precisa_pedir_algo(): void

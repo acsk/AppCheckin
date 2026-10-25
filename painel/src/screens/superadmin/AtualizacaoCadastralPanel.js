@@ -26,6 +26,8 @@ const VAZIA = {
   campos_obrigatorios: [],
   validar_email: false,
   forcar_validacao_email: false,
+  dispensar_revalidados: false,
+  intervalo_meses: 6,
   trocar_senha: false,
   senha_nivel: 'media',
   senha_min_caracteres: 8,
@@ -40,6 +42,7 @@ function resumo(c, campos) {
   if (c.campos.length) partes.push(`${c.campos.length} campo${c.campos.length > 1 ? 's' : ''}: ${c.campos.map(rotulo).join(', ')}`);
   if (c.validar_email) partes.push(c.forcar_validacao_email ? 'nova validação de e-mail obrigatória' : 'validação de e-mail');
   if (c.trocar_senha) partes.push(`troca de senha (${(NIVEIS.find((n) => n.value === c.senha_nivel) || {}).title || c.senha_nivel}, ${c.senha_min_caracteres}+ caracteres)`);
+  if (c.dispensar_revalidados) partes.push(`dispensa revalidados há menos de ${c.intervalo_meses} meses`);
   return partes.join(' · ');
 }
 
@@ -49,7 +52,7 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
   useEffect(() => {
     if (!open) return;
     setTentou(false);
-    setF(campanha ? { ...VAZIA, ...campanha, academias: (campanha.academias || []).map((a) => a.id) } : VAZIA);
+    setF(campanha ? { ...VAZIA, ...campanha, intervalo_meses: campanha.intervalo_meses ?? 6, academias: (campanha.academias || []).map((a) => a.id) } : VAZIA);
   }, [open, campanha]);
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
@@ -63,7 +66,9 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
   const pedirTodos = (v) => setF((p) => ({ ...p, campos: v === 'nao' ? [] : campos.map((c) => c.campo), campos_obrigatorios: v === 'obrigatorio' ? campos.map((c) => c.campo) : [] }));
 
   const min = Number(f.senha_min_caracteres) || 0;
+  const intervalo = Number(f.intervalo_meses);
   const erros = {};
+  if (f.dispensar_revalidados && (!Number.isInteger(intervalo) || intervalo < 1 || intervalo > 120)) erros.intervalo = 'Informe de 1 a 120 meses inteiros.';
   if (!f.titulo.trim()) erros.titulo = 'Dê um título.';
   if (!f.campos.length && !f.validar_email && !f.trocar_senha) erros.geral = 'Peça ao menos um campo, a validação do e-mail ou a troca de senha.';
   if (f.trocar_senha && (min < 6 || min > 32)) erros.min = 'Entre 6 e 32 caracteres.';
@@ -72,7 +77,7 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
 
   const salvar = () => {
     setTentou(true);
-    if (ok && !saving) onSave({ ...f, senha_min_caracteres: min });
+    if (ok && !saving) onSave({ ...f, senha_min_caracteres: min, intervalo_meses: f.dispensar_revalidados ? intervalo : null });
   };
 
   return (
@@ -120,6 +125,14 @@ function CampanhaModal({ open, campanha, campos, academias, saving, onSave, onCl
             ))}
           </ul>
         </div>
+
+        <Switch label="Dispensar alunos revalidados recentemente"
+          description="Opcional. Considera a última atualização cadastral concluída pelo aluno, inclusive em outra campanha. Desativada, todos os alunos elegíveis recebem esta campanha."
+          checked={f.dispensar_revalidados} onChange={set('dispensar_revalidados')} />
+        {f.dispensar_revalidados ? <TextField label="Intervalo entre recadastramentos (meses)" inputMode="numeric"
+          value={String(f.intervalo_meses ?? '')} onChange={(e) => set('intervalo_meses')(e.target.value)}
+          error={tentou ? erros.intervalo : null}
+          hint="De 1 a 120 meses. Dentro desse prazo, o aluno fica dispensado de toda a campanha, inclusive da validação de e-mail e troca de senha. Quem nunca concluiu recebe o pedido. O SA deve criar uma nova campanha para solicitar novamente a quem já respondeu esta." /> : null}
 
         <Switch label="Validar e-mail" description="Envia um código de 6 dígitos para o e-mail; o usuário digita no app. Quem já confirmou o e-mail pula esta etapa, exceto quando uma nova validação é forçada."
           checked={f.validar_email} onChange={(v) => setF((p) => ({ ...p, validar_email: v, forcar_validacao_email: v ? p.forcar_validacao_email : false }))} />
@@ -272,7 +285,7 @@ export default function AtualizacaoCadastralPanel() {
       <PendentesModal campanha={pendentes} onClose={() => setPendentes(null)} />
 
       <Modal open={!!excluir} size="sm" title="Excluir esta atualização definitivamente?" dismissable={!salvando} onClose={() => setExcluir(null)}
-        description="A campanha, as respostas e os códigos de e-mail vinculados a ela serão apagados do banco. Os dados cadastrais, a senha e o e-mail já confirmado dos usuários serão mantidos. Esta ação não pode ser desfeita."
+        description="A campanha, as respostas e os códigos de e-mail vinculados a ela serão apagados do banco. Os dados cadastrais, a senha, o e-mail já confirmado e a data da última revalidação dos usuários serão mantidos. Esta ação não pode ser desfeita."
         footer={<>
           <span style={{ flex: 1 }} />
           <Button variant="ghost" disabled={salvando} onClick={() => setExcluir(null)}>Cancelar</Button>

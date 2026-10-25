@@ -27,6 +27,7 @@ class AtualizacaoCadastralService
         $campanhas = array_map(fn ($c) => $c + [
             'publico' => $this->repo->totalPublico($c),
             'respostas' => $this->repo->totalRespostas($c),
+            'dispensados' => $this->repo->totalDispensados($c),
         ], $this->repo->listar());
 
         return $this->ok([
@@ -62,7 +63,7 @@ class AtualizacaoCadastralService
 
         return $this->ok([
             'message' => $id === null ? 'Atualização cadastral criada' : 'Atualização cadastral salva',
-            'campanha' => $campanha + ['publico' => $this->repo->totalPublico($campanha), 'respostas' => $this->repo->totalRespostas($campanha)],
+            'campanha' => $campanha + ['publico' => $this->repo->totalPublico($campanha), 'respostas' => $this->repo->totalRespostas($campanha), 'dispensados' => $this->repo->totalDispensados($campanha)],
         ], $id === null ? 201 : 200);
     }
 
@@ -279,6 +280,12 @@ class AtualizacaoCadastralService
             $erros[] = 'Peça ao menos um campo, a validação do e-mail ou a troca de senha.';
         }
 
+        $dispensar = filter_var($data['dispensar_revalidados'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $intervalo = $dispensar ? filter_var($data['intervalo_meses'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 120]]) : null;
+        if ($dispensar && $intervalo === false) {
+            $erros[] = 'Informe um intervalo inteiro entre 1 e 120 meses para dispensar alunos revalidados.';
+        }
+
         $nivel = (string) ($data['senha_nivel'] ?? 'media');
         $min = (int) ($data['senha_min_caracteres'] ?? 8);
         if ($trocarSenha) {
@@ -305,6 +312,8 @@ class AtualizacaoCadastralService
             'mensagem' => trim((string) ($data['mensagem'] ?? '')) ?: null,
             'campos' => $campos,
             'campos_obrigatorios' => $obrigatorios,
+            'dispensar_revalidados' => $dispensar,
+            'intervalo_meses' => $intervalo,
             'validar_email' => $validarEmail,
             'forcar_validacao_email' => $forcarValidacaoEmail,
             'trocar_senha' => $trocarSenha,
