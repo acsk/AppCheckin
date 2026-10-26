@@ -250,12 +250,12 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
     var ex = (p.exclude || []).map(String);
     var full = p.max != null && sel.length >= p.max;
     var res = (p.students || []).filter(function (s) { return ids.indexOf(String(s.id)) < 0 && ex.indexOf(String(s.id)) < 0 && (!q || pcNorm(s.name + ' ' + (s.email || '') + ' ' + (s.cpf || '') + ' ' + String(s.cpf || '').replace(/\D/g, '') + ' ' + (s.enrollment || '') + ' ' + s.id).indexOf(q) >= 0); }).slice(0, 6);
-    var open = !full && (q || focus[0]) && (!p.single || !sel.length);
+    var open = !full && focus[0] && (!p.single || !sel.length);
     return h('div', { className: 'ck-pc__people' },
-      p.single && sel.length ? h('span', { className: 'ck-field__label' }, p.label) : h('div', { className: 'ck-pc__pick', onBlur: function (e) { if (!e.currentTarget.contains(e.relatedTarget)) focus[1](false); } },
-        h(TextField, { label: p.label, labelAside: p.labelAside, icon: 'search', value: qs[0], disabled: full, placeholder: full ? 'Todas as vagas preenchidas' : p.placeholder || 'Nome ou e-mail do aluno', error: p.error, onFocus: function () { focus[1](true); }, onChange: function (e) { qs[1](e.target.value); } }),
+      p.single && sel.length ? h('span', { className: 'ck-field__label' }, p.label) : h('div', { className: 'ck-pc__pick', onBlur: function (e) { if (!e.currentTarget.contains(e.relatedTarget)) focus[1](false); }, onKeyDown: function (e) { if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); focus[1](false); } } },
+        h(TextField, { label: p.label, labelAside: p.labelAside, icon: 'search', value: qs[0], disabled: full, placeholder: full ? 'Todas as vagas preenchidas' : p.placeholder || 'Nome ou e-mail do aluno', error: p.error, onFocus: function () { focus[1](true); }, onClick: function () { focus[1](true); }, onChange: function (e) { qs[1](e.target.value); focus[1](true); } }),
         open ? h('ul', { className: 'ck-pc__res', role: 'listbox', 'aria-label': 'Alunos encontrados' }, res.length ? res.map(function (s) {
-          return h('li', { key: s.id }, h('button', { type: 'button', role: 'option', 'aria-selected': false, onClick: function () { p.onAdd(s); qs[1](''); } },
+          return h('li', { key: s.id }, h('button', { type: 'button', role: 'option', 'aria-selected': false, onClick: function () { qs[1](''); focus[1](false); p.onAdd(s); } },
             h(Avatar, { name: titleCase(s.name), size: 'sm' }), h('span', null, h('strong', null, titleCase(s.name)), h('small', null, s.email || 'Sem e-mail')), h(Icon, { name: 'plus', size: 16 })));
         }) : h('li', { className: 'ck-pc__resempty' }, q ? 'Nenhum aluno com "' + qs[0] + '".' : 'Comece a digitar o nome.')) : null),
       sel.length ? h('ul', { className: 'ck-pc__sel', 'aria-label': 'Pessoas escolhidas' }, sel.map(function (s) {
