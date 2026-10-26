@@ -23,6 +23,7 @@ const toAcademy = (a) => ({
   phone: a.telefone || '',
   email: a.email || '',
   address: { cep: a.cep, street: a.logradouro, number: a.numero, complement: a.complemento, district: a.bairro, city: a.cidade, uf: a.estado },
+  instagram: a.instagram_url || '',
   whatsapp: Array.isArray(a.whatsapp_links) ? a.whatsapp_links : [],
   active: bool(a.ativo),
 });
@@ -235,6 +236,7 @@ export default function AcademiaFormScreen() {
       cidade: v.address.city,
       estado: v.address.uf,
       whatsapp_links: v.whatsapp,
+      instagram_url: v.instagram || null,
     };
     setSaving(true);
     try {

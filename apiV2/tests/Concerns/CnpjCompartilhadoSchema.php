@@ -33,6 +33,7 @@ trait CnpjCompartilhadoSchema
             $t->string('cnpj', 18)->nullable()->unique('unique_tenant_cnpj');
             $t->string('telefone')->nullable();
             $t->text('whatsapp_links')->nullable();
+            $t->string('instagram_url', 2048)->nullable();
             foreach (['responsavel_nome', 'responsavel_cpf', 'responsavel_telefone', 'responsavel_email', 'endereco',
                 'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'] as $c) {
                 $t->string($c)->nullable();

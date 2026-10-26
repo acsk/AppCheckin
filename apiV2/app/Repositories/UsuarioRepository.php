@@ -74,6 +74,7 @@ class UsuarioRepository
                 't.email as tenant_email',
                 't.telefone as tenant_telefone',
                 't.whatsapp_links as tenant_whatsapp_links',
+                't.instagram_url as tenant_instagram_url',
                 'p.nome as papel_nome',
             ])
             ->get();
@@ -93,6 +94,7 @@ class UsuarioRepository
                         'email' => $row->tenant_email,
                         'telefone' => $row->tenant_telefone,
                         'whatsapp_links' => TenantWhatsappLinks::parse($row->tenant_whatsapp_links ?? null),
+                        'instagram_url' => $row->tenant_instagram_url ?? null,
                     ],
                     'papeis' => [],
                     'plano' => null,

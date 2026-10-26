@@ -10,6 +10,7 @@ use App\Repositories\UsuarioRepository;
 use App\Services\EntidadeJuridica\EntidadeJuridicaException;
 use App\Services\EntidadeJuridica\EntidadeJuridicaService;
 use App\Services\PermissaoService;
+use App\Support\TenantInstagram;
 use App\Support\TenantWhatsappLinks;
 use App\Support\TipoCobrancaPlanoSistema;
 use Illuminate\Support\Facades\DB;
@@ -159,6 +160,10 @@ class SuperAdminAcademiaService
             $errors[] = 'Email já está sendo utilizado por outro usuário';
         }
 
+        if (($instagramError = TenantInstagram::validar($data['instagram_url'] ?? null)) !== null) {
+            $errors[] = $instagramError;
+        }
+
         if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
             $errors[] = $whatsappError;
         }
@@ -180,6 +185,7 @@ class SuperAdminAcademiaService
             'email' => $data['email'],
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null,
             'whatsapp_links' => TenantWhatsappLinks::parse($data['whatsapp_links'] ?? null),
+            'instagram_url' => TenantInstagram::normalizar($data['instagram_url'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
             'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : null,
@@ -382,6 +388,10 @@ class SuperAdminAcademiaService
             $errors[] = $erroCnpj;
         }
 
+        if (($instagramError = TenantInstagram::validar($data['instagram_url'] ?? null)) !== null) {
+            $errors[] = $instagramError;
+        }
+
         if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
             $errors[] = $whatsappError;
         }
@@ -401,6 +411,9 @@ class SuperAdminAcademiaService
             'slug' => $slug,
             'email' => $data['email'],
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : $academia['telefone'],
+            'instagram_url' => array_key_exists('instagram_url', $data)
+                ? TenantInstagram::normalizar($data['instagram_url'])
+                : ($academia['instagram_url'] ?? null),
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::parse($data['whatsapp_links'])
                 : TenantWhatsappLinks::parse($academia['whatsapp_links'] ?? null),

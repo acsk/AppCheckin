@@ -163,6 +163,12 @@ export default function ContaScreen() {
     return Array.isArray(tenant?.whatsapp_links) ? tenant.whatsapp_links : [];
   }, [profile, tenantId]);
 
+  const instagramUrl = useMemo(() => {
+    const tenant = profile?.tenants?.find((t) => Number(t.id) === tenantId)
+      ?? (profile?.tenants?.length === 1 ? profile.tenants[0] : undefined);
+    return tenant?.instagram_url;
+  }, [profile, tenantId]);
+
   const tenantNome = useMemo(() => {
     const tenant = profile?.tenants?.find((t) => Number(t.id) === tenantId);
     return tenant?.nome ?? profile?.tenant?.nome ?? null;
@@ -258,6 +264,13 @@ export default function ContaScreen() {
                 onPress={() => Linking.openURL(link.url)}
               />
             ))}
+          </Section>
+        ) : null}
+
+        {instagramUrl ? (
+          <Section title="REDES SOCIAIS">
+            <Row icon="instagram" tone="brand" title="Instagram da academia"
+              subtitle="Acompanhe as novidades" onPress={() => Linking.openURL(instagramUrl)} />
           </Section>
         ) : null}
 

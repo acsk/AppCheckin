@@ -123,6 +123,7 @@ class TenantRepository
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::encode($data['whatsapp_links'])
                 : null,
+            ...(array_key_exists('instagram_url', $data) ? ['instagram_url' => $data['instagram_url']] : []),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
             'responsavel_telefone' => $data['responsavel_telefone'] ?? null,
@@ -146,10 +147,11 @@ class TenantRepository
     /**
      * @param  list<array{nome: string, url: string}>  $links
      */
-    public function updateWhatsappLinks(int $id, array $links): bool
+    public function updateContactLinks(int $id, array $links, ?string $instagramUrl): bool
     {
         return DB::table('tenants')->where('id', $id)->update([
             'whatsapp_links' => TenantWhatsappLinks::encode($links),
+            'instagram_url' => $instagramUrl,
         ]) >= 0;
     }
 
@@ -168,6 +170,7 @@ class TenantRepository
             'whatsapp_links' => array_key_exists('whatsapp_links', $data)
                 ? TenantWhatsappLinks::encode($data['whatsapp_links'])
                 : null,
+            ...(array_key_exists('instagram_url', $data) ? ['instagram_url' => $data['instagram_url']] : []),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => $data['responsavel_cpf'] ?? null,
             'responsavel_telefone' => $data['responsavel_telefone'] ?? null,

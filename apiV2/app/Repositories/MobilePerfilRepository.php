@@ -27,6 +27,7 @@ class MobilePerfilRepository
                 't.email',
                 't.telefone',
                 't.whatsapp_links',
+                't.instagram_url',
             ])
             ->map(fn ($row) => TenantWhatsappLinks::attachToTenant((array) $row))
             ->all();

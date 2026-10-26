@@ -19,6 +19,7 @@ export interface UserProfile {
     nome: string;
     email?: string;
     telefone?: string;
+    instagram_url?: string | null;
     whatsapp_links?: { nome: string; url: string }[];
   }[];
   estatisticas?: {

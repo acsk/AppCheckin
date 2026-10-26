@@ -6,8 +6,8 @@ class TenantWhatsappService {
     return response.data;
   }
 
-  async salvarLinks(whatsappLinks) {
-    const response = await api.put('/admin/tenant/whatsapp-links', { whatsapp_links: whatsappLinks });
+  async salvarLinks(whatsappLinks, instagramUrl) {
+    const response = await api.put('/admin/tenant/whatsapp-links', { whatsapp_links: whatsappLinks, ...(instagramUrl !== undefined ? { instagram_url: instagramUrl } : {}) });
     return response.data;
   }
 }

@@ -10,11 +10,13 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
+import { isInstagramProfileUrl } from '../../utils/instagram';
 import tenantWhatsappService from '../../services/tenantWhatsappService';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
 
 export default function GruposWhatsappScreen() {
   const [loading, setLoading] = useState(true);
+  const [instagramUrl, setInstagramUrl] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [whatsappLinks, setWhatsappLinks] = useState([{ nome: '', url: '' }]);
 
@@ -28,6 +30,7 @@ export default function GruposWhatsappScreen() {
       const response = await tenantWhatsappService.obterLinks();
 
       if (response.success) {
+        setInstagramUrl(response.data?.instagram_url || '');
         const links = Array.isArray(response.data?.whatsapp_links) ? response.data.whatsapp_links : [];
         setWhatsappLinks(
           links.length > 0
@@ -40,7 +43,7 @@ export default function GruposWhatsappScreen() {
       }
     } catch (error) {
       console.error('Erro ao carregar links WhatsApp:', error);
-      showError('Erro ao carregar grupos WhatsApp');
+      showError('Erro ao carregar links da academia');
     } finally {
       setLoading(false);
     }
@@ -75,6 +78,10 @@ export default function GruposWhatsappScreen() {
 
   const handleSalvar = async () => {
     const linksPayload = buildWhatsappLinksPayload();
+    if (!isInstagramProfileUrl(instagramUrl)) {
+      showError('Use o link do perfil: https://www.instagram.com/usuario/');
+      return;
+    }
 
     for (const link of linksPayload) {
       if (!link.nome || !link.url) {
@@ -87,14 +94,14 @@ export default function GruposWhatsappScreen() {
       }
     }
 
-    const toastId = showLoading('Salvando grupos WhatsApp...');
+    const toastId = showLoading('Salvando links da academia...');
 
     try {
       setSalvando(true);
-      const response = await tenantWhatsappService.salvarLinks(linksPayload);
+      const response = await tenantWhatsappService.salvarLinks(linksPayload, instagramUrl.trim() || null);
 
       if (response.success) {
-        showSuccess(response.message || 'Grupos WhatsApp salvos com sucesso');
+        showSuccess(response.message || 'Links da academia salvos com sucesso');
         const saved = Array.isArray(response.data?.whatsapp_links) ? response.data.whatsapp_links : linksPayload;
         setWhatsappLinks(
           saved.length > 0
@@ -102,11 +109,11 @@ export default function GruposWhatsappScreen() {
             : [{ nome: '', url: '' }],
         );
       } else {
-        showError(response.message || 'Erro ao salvar grupos WhatsApp');
+        showError(response.message || 'Erro ao salvar links da academia');
       }
     } catch (error) {
       console.error('Erro ao salvar links WhatsApp:', error);
-      showError(error.response?.data?.message || 'Erro ao salvar grupos WhatsApp');
+      showError(error.response?.data?.message || 'Erro ao salvar links da academia');
     } finally {
       setSalvando(false);
       dismissToast(toastId);
@@ -115,7 +122,7 @@ export default function GruposWhatsappScreen() {
 
   if (loading) {
     return (
-      <LayoutBase title="Grupos WhatsApp">
+      <LayoutBase title="WhatsApp e Instagram">
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#f97316" />
           <Text style={styles.loadingText}>Carregando...</Text>
@@ -125,8 +132,24 @@ export default function GruposWhatsappScreen() {
   }
 
   return (
-    <LayoutBase title="Grupos WhatsApp">
+    <LayoutBase title="WhatsApp e Instagram">
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Feather name="instagram" size={20} color="#f97316" />
+            <Text style={styles.cardTitle}>Instagram da academia</Text>
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.helperText}>Opcional. Aparece no menu e na aba Conta do app, para os alunos acompanharem a academia.</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Link do perfil</Text>
+              <TextInput style={styles.input} value={instagramUrl} onChangeText={setInstagramUrl}
+                placeholder="https://www.instagram.com/usuario/" keyboardType="url"
+                autoCapitalize="none" autoCorrect={false} editable={!salvando} maxLength={2048}
+                accessibilityLabel="Link do perfil do Instagram" />
+            </View>
+          </View>
+        </View>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderIcon}>

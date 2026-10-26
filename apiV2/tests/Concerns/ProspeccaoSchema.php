@@ -33,6 +33,7 @@ trait ProspeccaoSchema
             $t->string('email')->nullable();
             $t->string('telefone')->nullable();
             $t->text('whatsapp_links')->nullable();
+            $t->string('instagram_url', 2048)->nullable();
             $t->boolean('ativo')->default(true);
         });
         Schema::create('papeis', function (Blueprint $t) {

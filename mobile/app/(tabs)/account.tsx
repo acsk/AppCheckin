@@ -837,6 +837,7 @@ export default function AccountScreen() {
     const tenantAtual =
       profile.tenants?.find((t) => Number(t.id) === Number(currentId)) ??
       (profile.tenants?.length === 1 ? profile.tenants[0] : undefined);
+    const instagramUrl = tenantAtual?.instagram_url;
     const whatsappLinks = Array.isArray(tenantAtual?.whatsapp_links) ? tenantAtual.whatsapp_links : [];
 
     const plano = profile.plano;
@@ -918,6 +919,19 @@ export default function AccountScreen() {
             void Linking.openURL(link.url);
           },
         })),
+      },
+      {
+        title: "Redes sociais",
+        items: instagramUrl ? [{
+          icon: "instagram" as const,
+          tone: "brand" as const,
+          label: "Instagram da academia",
+          hint: "Acompanhe as novidades",
+          onPress: () => {
+            closeSidebar();
+            void Linking.openURL(instagramUrl);
+          },
+        }] : [],
       },
     ];
 

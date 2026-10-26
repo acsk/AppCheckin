@@ -104,7 +104,7 @@ const SECTIONS = [
         children: [
           { id: 'equipe', label: 'Equipe e permissões', path: '/equipe', roles: [3], perm: 'equipe.gerenciar' },
           { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3], perm: 'configuracoes.editar' },
-          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3], perm: 'configuracoes.editar' },
+          { id: 'whatsapp', label: 'WhatsApp e Instagram', path: '/grupos-whatsapp', roles: [3], perm: 'configuracoes.editar' },
         ],
       },
       {

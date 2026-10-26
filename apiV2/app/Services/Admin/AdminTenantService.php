@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Repositories\TenantRepository;
+use App\Support\TenantInstagram;
 use App\Support\TenantWhatsappLinks;
 use Throwable;
 
@@ -36,6 +37,7 @@ class AdminTenantService
                     'success' => true,
                     'data' => [
                         'whatsapp_links' => TenantWhatsappLinks::parse($tenant['whatsapp_links'] ?? null),
+                        'instagram_url' => $tenant['instagram_url'] ?? null,
                     ],
                 ],
             ];
@@ -46,7 +48,7 @@ class AdminTenantService
                 'status' => 500,
                 'body' => [
                     'success' => false,
-                    'message' => 'Erro ao obter links de WhatsApp',
+                    'message' => 'Erro ao obter links da academia',
                 ],
             ];
         }
@@ -71,7 +73,7 @@ class AdminTenantService
                 ];
             }
 
-            $links = $body['whatsapp_links'] ?? null;
+            $links = $body['whatsapp_links'] ?? TenantWhatsappLinks::parse($tenant['whatsapp_links'] ?? null);
 
             if (($error = TenantWhatsappLinks::validateForSave($links)) !== null) {
                 return [
@@ -83,14 +85,19 @@ class AdminTenantService
                 ];
             }
 
+            $instagram = array_key_exists('instagram_url', $body) ? $body['instagram_url'] : ($tenant['instagram_url'] ?? null);
+            if (($error = TenantInstagram::validar($instagram)) !== null) {
+                return ['status' => 422, 'body' => ['success' => false, 'message' => $error]];
+            }
+            $instagram = TenantInstagram::normalizar($instagram);
             $parsed = TenantWhatsappLinks::parse($links ?? []);
 
-            if (! $this->tenants->updateWhatsappLinks($tenantId, $parsed)) {
+            if (! $this->tenants->updateContactLinks($tenantId, $parsed, $instagram)) {
                 return [
                     'status' => 500,
                     'body' => [
                         'success' => false,
-                        'message' => 'Erro ao salvar links de WhatsApp',
+                        'message' => 'Erro ao salvar links da academia',
                     ],
                 ];
             }
@@ -99,9 +106,10 @@ class AdminTenantService
                 'status' => 200,
                 'body' => [
                     'success' => true,
-                    'message' => 'Links de WhatsApp salvos com sucesso',
+                    'message' => 'Links da academia salvos com sucesso',
                     'data' => [
                         'whatsapp_links' => $parsed,
+                        'instagram_url' => $instagram,
                     ],
                 ],
             ];
@@ -112,7 +120,7 @@ class AdminTenantService
                 'status' => 500,
                 'body' => [
                     'success' => false,
-                    'message' => 'Erro ao salvar links de WhatsApp',
+                    'message' => 'Erro ao salvar links da academia',
                 ],
             ];
         }

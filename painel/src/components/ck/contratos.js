@@ -2,6 +2,7 @@
    Estilos: src/theme/ck-contratos.css (reaproveita ck-al-*, ck-ml* e ck-stat de ck-pessoas.css). Primitivas de ./index.
    TrocarPlanoContrato (troca de plano do contrato) também mora aqui e usa as mesmas peças do Novo contrato. */
 import React from 'react';
+import { isInstagramProfileUrl } from '../../utils/instagram';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch,
   TextAreaField, TextField,
@@ -131,6 +132,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     return {
       name: a.name || '', cnpj: maskCnpj(a.cnpj), phone: maskPhone(a.phone), email: a.email || '',
       cep: maskCep(ad.cep), street: ad.street || '', number: ad.number || '', complement: ad.complement || '', district: ad.district || '', city: ad.city || '', uf: ad.uf || '',
+      instagram: a.instagram || '',
       whatsapp: (a.whatsapp || []).map(function (w) { return { nome: w.nome || '', url: w.url || '' }; }),
       active: a.active !== false,
     };
@@ -225,6 +227,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
 
     var waRows = f.whatsapp.filter(function (w) { return w.nome.trim() || w.url.trim(); });
     var err = {};
+    if (!isInstagramProfileUrl(f.instagram)) err.instagram = 'Use https://www.instagram.com/usuario/';
     if (!f.name.trim()) err.name = 'Informe o nome da academia.';
     if (f.cnpj && digits(f.cnpj).length !== 14) err.cnpj = 'O CNPJ tem 14 números.';
     if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
@@ -269,6 +272,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       p.onSave && p.onSave({
         name: f.name.trim(), cnpj: digits(f.cnpj) || null, phone: digits(f.phone) || null, email: f.email.trim().toLowerCase(),
         address: { cep: digits(f.cep) || null, street: f.street || null, number: f.number || null, complement: f.complement || null, district: f.district || null, city: f.city || null, uf: f.uf || null },
+        instagram: f.instagram.trim() || null,
         whatsapp: waRows.map(function (w) { return { nome: w.nome.trim(), url: w.url.trim() }; }),
         active: f.active,
         planId: edit ? null : planId[0], endDate: edit || endMode[0] === 'sem' ? null : endDate[0],
@@ -340,6 +344,9 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
                 h(TextField, { label: 'Link de convite', value: w.url, placeholder: 'https://chat.whatsapp.com/…', error: show['wau' + i], onChange: function (e) { setWa(i, 'url', e.target.value); } }),
                 h(IconButton, { icon: 'trash', label: 'Remover grupo', size: 'sm', className: 'ck-ct-wa__del', onClick: function () { set('whatsapp', f.whatsapp.filter(function (_, j) { return j !== i; })); } }));
             })) : h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'Nenhum grupo cadastrado.')),
+          h(Section, { id: 'ac-instagram', icon: 'instagram', title: 'Instagram', description: 'Opcional. O perfil aparece no menu e na aba Conta do app.', done: !!f.instagram && !err.instagram },
+            h(TextField, { label: 'Link do perfil', value: f.instagram, maxLength: 2048, placeholder: 'https://www.instagram.com/usuario/', error: show.instagram,
+              onChange: function (e) { set('instagram', e.target.value); } })),
           !edit ? h(Section, { id: 'ac-s4', icon: 'file-text', title: 'Plano do sistema', description: 'O contrato começa hoje. Dá para trocar de plano depois, em Contratos.', done: steps[3].done },
             h('div', { className: cx('ck-ct-plans ck-ct-pick', show.plan && 'is-error'), role: 'radiogroup', 'aria-label': 'Plano do sistema' },
               p.plansLoading ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'loader', size: 15, className: 'ck-spin' }), 'Carregando planos…')
