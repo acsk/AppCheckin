@@ -1,8 +1,8 @@
 /* Pacotes portados do layout HTML fornecido (Pacotes.html). */
 import React from 'react';
-import { ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from './index';
+import { ActionMenu, Avatar, Badge, Button, Callout, ChoiceCard, ChoiceGroup, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from './index';
 const h = React.createElement;
-const { useState } = React;
+const { useState, useEffect, useRef } = React;
 const cx = (...values) => values.filter(Boolean).join(' ');
 function useControlled(value, initial, onChange) {
   const [state, setState] = useState(initial);
@@ -145,7 +145,11 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
 
   function PacoteModal(p) {
     var k = p.package || {}, edit = k.id != null, plans = p.plans || [];
+    // Com contrato em aberto, plano e ciclo ficam presos ao grupo já formado (a API também recusa)
+    var locked = edit && k.contracts > 0;
     var init = useState(function () { return { name: k.name || '', description: k.description || '', plan: k.plan ? String(k.plan.id) : '', cycle: k.cycle ? String(k.cycle.id) : '', people: k.people ? String(k.people) : '2', total: pcMoneyIn(k.total), active: k.active !== false, sale: k.sale || 'nao' }; })[0];
+    var appRef = useRef(null);
+    useEffect(function () { if (p.initialSection === 'app') appRef.current?.scrollIntoView({ block: 'start' }); }, []);
     var fm = useState(init), f = fm[0], tried = useState(false);
     function set(key, v) { var n = Object.assign({}, f); n[key] = v; fm[1](n); }
     var plan = plans.filter(function (x) { return String(x.id) === String(f.plan); })[0];
@@ -172,22 +176,31 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
       p.onSave && p.onSave({ id: k.id, name: f.name.trim(), description: f.description.trim() || null, planId: plan.id, cycleId: cycle.id, people: +f.people, total: total, active: f.active, sale: f.sale });
     }
     function suggest(pct) { set('total', (Math.round(c.normal * (1 - pct) * 100) / 100).toFixed(2).replace('.', ',')); }
-    return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, size: 'lg', dialogClassName: 'ck-pc__dlg',
+    function sec(n, title, desc, kids, ref) {
+      return h('section', { className: 'ck-pc__sec', ref: ref },
+        h('header', null, h('span', { className: 'ck-pc__secn', 'aria-hidden': true }, n), h('div', null, h('h3', null, title), desc ? h('p', null, desc) : null)), kids);
+    }
+    var live = (p.releases || []).filter(function (r) { return !r.vencida; }).length;
+    return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, dismissable: !p.saving, size: 'lg', dialogClassName: 'ck-pc__dlg',
       leading: h('span', { className: 'ck-adm__icon', 'aria-hidden': true }, h(Icon, { name: 'package', size: 20 })),
       title: edit ? 'Editar pacote' : 'Novo pacote',
-      description: edit && k.contracts ? 'Tem ' + k.contracts + (k.contracts === 1 ? ' contrato em aberto' : ' contratos em aberto') + '. Mudanças valem para os próximos contratos.' : 'Várias pessoas com o mesmo plano, num só pagamento.',
-      footer: h('div', { className: 'ck-adm__foot' },
-        h(Button, { variant: 'ghost', onClick: p.onCancel }, 'Cancelar'),
+      description: edit && k.contracts ? 'Tem ' + k.contracts + (k.contracts === 1 ? ' contrato em aberto' : ' contratos em aberto') + '. O valor novo vale para os próximos contratos e renovações; plano, ciclo e menos vagas ficam travados.' : 'Várias pessoas com o mesmo plano, num só pagamento.',
+      footer: h('div', { className: 'ck-adm__foot ck-pc__foot' },
+        h('span', { className: 'ck-pc__footnote' }, dirty ? 'Alterações não salvas' : edit ? 'Nada alterado' : null),
+        h(Button, { variant: 'ghost', disabled: p.saving, onClick: p.onCancel }, 'Cancelar'),
         h(Button, { variant: 'primary', icon: edit ? 'save' : 'plus', loading: p.saving, disabled: edit && !dirty, onClick: save }, edit ? 'Salvar pacote' : 'Criar pacote')) },
       h('div', { className: 'ck-pc__form' },
         h('div', { className: 'ck-pc__fields' },
+          sec(1, 'Pacote', null, h(React.Fragment, null,
           h(TextField, { label: 'Nome', value: f.name, error: show.name, placeholder: 'Ex.: Família 2x bimestral', onChange: function (e) { set('name', e.target.value); } }),
-          h(TextAreaField, { label: 'Descrição', labelAside: 'opcional', rows: 2, value: f.description, placeholder: 'Ex.: Para pessoas da mesma família.', onChange: function (e) { set('description', e.target.value); } }),
-          h(SelectField, { label: 'Plano de cada pessoa', value: f.plan, placeholder: 'Escolha o plano', error: show.plan, options: plans.map(function (x) { return { value: String(x.id), label: x.name + (x.modality ? ', ' + x.modality : '') + ' — ' + money(x.price) + '/mês' }; }), onChange: function (e) { pickPlan(e.target.value); } }),
+          h(TextAreaField, { label: 'Descrição', labelAside: 'opcional', rows: 2, value: f.description, placeholder: 'Ex.: Para pessoas da mesma família.', onChange: function (e) { set('description', e.target.value); } }))),
+          sec(2, 'Preço', 'Quanto custa e o que cada pessoa recebe.', h(React.Fragment, null,
+          h(SelectField, { label: 'Plano de cada pessoa', value: f.plan, placeholder: 'Escolha o plano', error: show.plan, disabled: locked,
+            hint: locked ? 'Plano e ciclo não mudam com contratos em aberto. Para mudar, duplique o pacote e desative este.' : undefined, options: plans.map(function (x) { return { value: String(x.id), label: x.name + (x.modality ? ', ' + x.modality : '') + ' — ' + money(x.price) + '/mês' }; }), onChange: function (e) { pickPlan(e.target.value); } }),
           plan ? h('div', { className: 'ck-field' },
             h('span', { className: 'ck-field__label' }, 'Ciclo'),
             cycles.length ? h('div', { className: 'ck-ml__filters', role: 'radiogroup', 'aria-label': 'Ciclo' }, cycles.map(function (x) {
-              return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': String(f.cycle) === String(x.id), className: 'ck-ml__chip', onClick: function () { set('cycle', String(x.id)); } }, pcCycleLabel(+x.months));
+              return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': String(f.cycle) === String(x.id), className: 'ck-ml__chip', disabled: locked, onClick: function () { set('cycle', String(x.id)); } }, pcCycleLabel(+x.months));
             })) : null,
             show.cycle ? h('span', { className: 'ck-field__error' }, show.cycle) : cycle ? h('span', { className: 'ck-field__hint' }, 'O pacote cobre ' + pcMonthsTxt(c.months) + '. No plano, esse ciclo custa ' + money(cycle.value) + ' por pessoa.') : null) : null,
           h('div', { className: 'ck-al-grid' },
@@ -198,11 +211,17 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
                 h('input', { className: 'ck-au__stepin', inputMode: 'numeric', value: f.people, 'aria-label': 'Quantidade de pessoas', onChange: function (e) { set('people', e.target.value.replace(/\D/g, '').slice(0, 2)); } }),
                 h(IconButton, { icon: 'plus', label: 'Mais uma pessoa', variant: 'secondary', onClick: function () { set('people', String((+f.people || 0) + 1)); } })),
               show.people ? h('span', { className: 'ck-field__error' }, show.people) : h('span', { className: 'ck-field__hint' }, 'Contando quem paga.')),
-            h(TextField, { label: 'Valor do pacote', prefix: 'R$', inputMode: 'decimal', value: f.total, error: show.total, placeholder: '0,00', hint: !show.total ? 'Total pago pelo ciclo inteiro' : null, onChange: function (e) { set('total', e.target.value.replace(/[^\d,.]/g, '')); } })),
-          h('div', { className: 'ck-field' },
-            h(SegmentedControl, { label: 'Venda pelo app', options: PC_SALE, value: f.sale, onChange: function (v) { set('sale', v); } }),
-            h('span', { className: 'ck-field__hint' }, PC_SALE_HINT[f.sale] + (f.sale !== 'nao' ? ' Quem compra vira o pagante; depois do pagamento você associa os demais. O pagante renova pelo app.' : ''))),
-          h('div', { className: 'ck-al-active' }, h(Switch, { label: 'Pacote ativo', description: f.active ? 'Pode ser contratado.' : 'Não aparece para novos contratos.', checked: f.active, onChange: function (v) { set('active', v); } }))),
+            h(TextField, { label: 'Valor do pacote', prefix: 'R$', inputMode: 'decimal', value: f.total, error: show.total, placeholder: '0,00', hint: !show.total ? 'Total pago pelo ciclo inteiro' : null, onChange: function (e) { set('total', e.target.value.replace(/[^\d,.]/g, '')); } })))),
+          sec(3, 'Venda', 'Onde o pacote pode ser contratado.', h(React.Fragment, null,
+            h('div', { className: 'ck-al-active' }, h(Switch, { label: 'Pacote ativo', description: f.active ? 'Pode ser contratado.' : 'Não aparece para novos contratos. Contratos atuais continuam.', checked: f.active, onChange: function (v) { set('active', v); } })),
+            h(ChoiceGroup, { label: 'Venda pelo app', className: 'ck-pc__sale' }, PC_SALE.map(function (sale) {
+              return h(ChoiceCard, { key: sale.value, title: sale.label, description: { nao: 'Só pelo painel.', liberados: 'Apenas alunos escolhidos.', todos: 'Qualquer aluno pode contratar.' }[sale.value], checked: f.sale === sale.value, disabled: !f.active, onSelect: function () { set('sale', sale.value); } });
+            })),
+            f.sale !== 'nao' ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'Quem compra vira o pagante. Depois do pagamento, você completa os beneficiários em Contratos. O pagante renova pelo app.') : null,
+            edit && p.initialSection === 'app' && f.sale !== 'liberados' ? h(Callout, { tone: 'info' }, 'A lista fica guardada, mas só vale quando a venda está em “Só liberados”.') : null,
+            f.sale === 'liberados' || (edit && p.initialSection === 'app') ? (edit ? h(PacoteLiberacoesEditor, { releases: p.releases, students: p.students, saving: p.saving, onAdd: p.onRelease, onRemove: p.onRevoke, error: p.releasesError, onRetry: p.onRetryReleases })
+              : h(Callout, { tone: 'info' }, 'Salve o novo pacote para liberar os alunos nesta seção.'))
+              : (p.releases || []).length ? h('p', { className: 'ck-al-hint' }, 'A lista de alunos liberados fica guardada, mas só vale em “Só liberados”.') : null), appRef)),
         h('aside', { className: 'ck-pc__calc', 'aria-live': 'polite' },
           h('span', { className: 'ck-pc__calctitle' }, 'Comparação com o plano avulso'),
           plan && cycle ? h(React.Fragment, null,
@@ -216,8 +235,11 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
               h('div', null, h('dt', null, 'Por pessoa, no ciclo'), h('dd', null, money(c.perPerson)))) : null,
             c.save < -0.004 && total ? h('p', { className: 'ck-pc__warn', role: 'alert' }, h(Icon, { name: 'alert-triangle', size: 15 }), 'O pacote está mais caro que cada pessoa pagar o plano. Confira o valor ou o ciclo.') : null,
             c.normal ? h('div', { className: 'ck-pc__sugg' }, h('span', null, 'Sugerir valor com desconto'),
-              h('div', null, [0.1, 0.15, 0.2, 0.25].map(function (x) { return h('button', { key: x, type: 'button', className: 'ck-ml__chip', onClick: function () { suggest(x); } }, pcPct(x)); }))) : null)
-            : h('p', { className: 'ck-pc__calcempty' }, plan ? 'Escolha o ciclo para ver quanto o pacote economiza.' : 'Escolha o plano para ver quanto o pacote economiza.'))));
+              h('div', null, [0.1, 0.15, 0.2, 0.25].map(function (x) { return h('button', { key: x, type: 'button', className: 'ck-ml__chip', 'aria-pressed': Math.abs(Math.round(c.normal * (1 - x) * 100) / 100 - total) < 0.005, onClick: function () { suggest(x); } }, pcPct(x)); }))) : null)
+            : h('p', { className: 'ck-pc__calcempty' }, plan ? 'Escolha o ciclo para ver quanto o pacote economiza.' : 'Escolha o plano para ver quanto o pacote economiza.'),
+          h('div', { className: 'ck-pc__calcsale' }, h('span', null, 'No app'),
+            h('strong', null, !f.active ? 'Inativo' : f.sale === 'nao' ? 'Não aparece' : f.sale === 'todos' ? 'Todos os alunos' : p.releases == null && edit ? 'Carregando liberações…' : live ? live + (live === 1 ? ' aluno liberado' : ' alunos liberados') : 'Ninguém liberado'),
+            f.active && f.sale === 'liberados' && !live ? h('small', null, 'Sem liberações válidas, não aparece para ninguém.') : null))));
   }
 
   function pcNorm(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
@@ -227,7 +249,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
     var sel = p.value || [], ids = sel.map(function (s) { return String(s.id); });
     var ex = (p.exclude || []).map(String);
     var full = p.max != null && sel.length >= p.max;
-    var res = (p.students || []).filter(function (s) { return ids.indexOf(String(s.id)) < 0 && ex.indexOf(String(s.id)) < 0 && (!q || pcNorm(s.name + ' ' + (s.email || '') + ' ' + s.id).indexOf(q) >= 0); }).slice(0, 6);
+    var res = (p.students || []).filter(function (s) { return ids.indexOf(String(s.id)) < 0 && ex.indexOf(String(s.id)) < 0 && (!q || pcNorm(s.name + ' ' + (s.email || '') + ' ' + (s.cpf || '') + ' ' + String(s.cpf || '').replace(/\D/g, '') + ' ' + (s.enrollment || '') + ' ' + s.id).indexOf(q) >= 0); }).slice(0, 6);
     var open = !full && (q || focus[0]) && (!p.single || !sel.length);
     return h('div', { className: 'ck-pc__people' },
       p.single && sel.length ? h('span', { className: 'ck-field__label' }, p.label) : h('div', { className: 'ck-pc__pick', onBlur: function (e) { if (!e.currentTarget.contains(e.relatedTarget)) focus[1](false); } },
@@ -357,40 +379,51 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
         mem.length < slots ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'Quem entrar depois em Beneficiários ganha matrícula até o fim da mesma vigência.') : null));
   }
 
-  /* Alunos liberados para contratar o pacote pelo app (venda "Só liberados"). */
-  function PacoteLiberacoesModal(p) {
-    var k = p.package || {}, list = p.releases, students = p.students || [];
-    var fs = useState({ student: '', until: '', note: '' }), f = fs[0];
-    function set(key, v) { var n = Object.assign({}, f); n[key] = v; fs[1](n); }
-    var taken = (list || []).map(function (r) { return String(r.aluno_id); });
-    var options = students.filter(function (s) { return taken.indexOf(String(s.id)) < 0; })
-      .map(function (s) { return { value: String(s.id), label: titleCase(s.name) + (s.email ? ' — ' + s.email : '') }; });
-    function add() {
-      if (!f.student || !p.onAdd) return;
-      p.onAdd({ aluno_id: +f.student, valida_ate: f.until || null, observacao: f.note.trim() || null }).then(function () { fs[1]({ student: '', until: '', note: '' }); }).catch(function () {});
-    }
-    return h(Modal, { open: p.open, onClose: p.onCancel, size: 'md', title: 'Alunos liberados no app',
-      description: k.name + '. Quem está aqui vê o pacote no app e pode contratar e pagar.',
-      footer: h('div', { className: 'ck-adm__foot' }, h(Button, { onClick: p.onCancel }, 'Fechar')) },
-      h('div', { className: 'ck-pc__form' }, h('div', { className: 'ck-pc__fields' },
-        k.sale !== 'liberados' ? h(Callout, { tone: 'warning' }, k.sale === 'todos'
-          ? 'Este pacote já vende para todos os alunos: a lista só vale se você mudar para "Só liberados".'
-          : 'Este pacote não vende pelo app. Edite o pacote e escolha "Só liberados" para a lista valer.') : null,
-        list == null ? h('p', { className: 'ck-field__hint' }, 'Carregando…')
-          : list.length ? h('ul', { className: 'ck-pc__rel' }, list.map(function (r) {
-            return h('li', { key: r.aluno_id, className: 'ck-pc__person' },
-              h(Avatar, { name: titleCase(r.nome), size: 'sm' }),
-              h('div', { style: { flex: 1, minWidth: 0 } },
-                h('strong', null, titleCase(r.nome)),
-                h('span', { className: 'ck-pc__sub' }, (r.valida_ate ? (r.vencida ? 'Venceu em ' : 'Até ') + fdate(r.valida_ate) : 'Sem prazo') + (r.observacao ? ' · ' + r.observacao : ''))),
-              r.vencida ? h(Badge, { tone: 'outline' }, 'Vencida') : null,
-              h(IconButton, { icon: 'x', label: 'Remover ' + titleCase(r.nome), onClick: function () { p.onRemove && p.onRemove(r.aluno_id); } }));
-          })) : h('p', { className: 'ck-field__hint' }, 'Nenhum aluno liberado ainda.'),
-        h(SelectField, { label: 'Liberar para', value: f.student, placeholder: 'Escolha o aluno', options: options, onChange: function (e) { set('student', e.target.value); } }),
+  /* Liberações usam os endpoints existentes; alterações são imediatas, separadas do pacote. */
+  function PacoteLiberacoesEditor(p) {
+    var list = p.releases, today = isoToday();
+    var [until, setUntil] = useState('');
+    var [note, setNote] = useState('');
+    function release(data) { Promise.resolve(p.onAdd?.(data)).catch(function () {}); }
+    return h('fieldset', { className: 'ck-pc__allow', disabled: p.saving },
+      h('legend', { className: 'ck-sr' }, 'Alunos liberados no app'),
+      h('div', { className: 'ck-pc__allowhead' }, h('strong', null, 'Alunos liberados'),
+        list ? h('span', null, list.filter(function (r) { return !r.vencida; }).length + ' com liberação válida') : null),
+      p.error ? h(Callout, { tone: 'danger', action: h(Button, { size: 'sm', onClick: p.onRetry }, 'Tentar novamente') }, p.error) : null,
+      list == null ? (p.error ? null : h('p', { className: 'ck-field__hint', role: 'status' }, 'Carregando liberações…')) : h(React.Fragment, null,
+        h(PcPeople, { label: 'Liberar aluno', students: p.students, exclude: list.map(function (r) { return r.aluno_id; }), value: [], placeholder: 'Nome, CPF ou e-mail',
+          onAdd: function (student) { release({ aluno_id: student.id, valida_ate: until || null, observacao: note.trim() || null }); } }),
         h('div', { className: 'ck-al-grid' },
-          h(TextField, { label: 'Válido até', labelAside: 'opcional', type: 'date', min: isoToday(), value: f.until, onChange: function (e) { set('until', e.target.value); } }),
-          h(TextField, { label: 'Observação', labelAside: 'opcional', value: f.note, placeholder: 'Ex.: negociado em 26/10', onChange: function (e) { set('note', e.target.value); } })),
-        h('div', null, h(Button, { variant: 'primary', icon: 'user-check', disabled: !f.student, loading: p.saving, onClick: add }, 'Liberar')))));
+          h(TextField, { label: 'Liberar até', labelAside: 'opcional', type: 'date', min: today, value: until, onChange: function (e) { setUntil(e.target.value); } }),
+          h(TextField, { label: 'Observação', labelAside: 'opcional', value: note, maxLength: 255, onChange: function (e) { setNote(e.target.value); } })),
+        list.length ? h('ul', { className: 'ck-pc__sel ck-pc__allowlist', 'aria-label': 'Alunos liberados' }, list.map(function (r) {
+          var name = titleCase(r.nome);
+          return h('li', { key: r.aluno_id, className: r.vencida ? 'is-gone' : undefined },
+            h(Avatar, { name: name, size: 'sm' }),
+            h('span', null, h('strong', null, name), h('small', null, r.vencida ? 'Venceu em ' + fdate(r.valida_ate) + '. Não vê mais o pacote.' : 'Liberado em ' + fdate(r.created_at)), r.observacao ? h('small', null, r.observacao) : null),
+            h(ReleaseUntil, { key: String(r.valida_ate), release: r, onSave: p.onAdd, today: today }),
+            h(IconButton, { icon: 'x', label: 'Tirar ' + name + ' da lista', size: 'sm', onClick: function () { Promise.resolve(p.onRemove?.(r.aluno_id)).catch(function () {}); } }));
+        })) : h('div', { className: 'ck-pc__allowempty' }, h(Icon, { name: 'user-plus', size: 18 }), h('div', null, h('strong', null, 'Ninguém liberado ainda'), h('span', null, 'Enquanto a lista estiver vazia, o pacote não aparece no app para ninguém.'))),
+        h('span', { className: 'ck-field__hint' }, 'Liberações são salvas imediatamente, inclusive ao cancelar a edição do pacote. Sem data, valem até você remover.')));
+  }
+
+  function ReleaseUntil(p) {
+    var r = p.release, [value, setValue] = useState(r.valida_ate || '');
+    return h('label', { className: 'ck-pc__until' }, h('span', null, 'Até'), h('input', { type: 'date', value: value, min: p.today,
+      'aria-label': 'Liberado até, ' + titleCase(r.nome), onChange: function (e) { setValue(e.target.value); },
+      onBlur: function () {
+        if (value === (r.valida_ate || '')) return;
+        Promise.resolve(p.onSave?.({ aluno_id: r.aluno_id, valida_ate: value || null, observacao: r.observacao }))
+          .catch(function () { setValue(r.valida_ate || ''); });
+      } }));
+  }
+
+  function PacoteLiberacoesModal(p) {
+    return h(Modal, { open: p.open, onClose: p.onCancel, size: 'lg', dialogClassName: 'ck-pc__releases-dlg', title: 'Alunos liberados no app',
+      description: p.package?.name + '. Quem está aqui pode contratar e pagar pelo app quando a venda é “Só liberados”.',
+      footer: h(Button, { onClick: p.onCancel }, 'Fechar') },
+      p.package?.sale !== 'liberados' ? h(Callout, { tone: 'warning' }, 'A lista fica guardada, mas só vale quando a venda está em “Só liberados”.') : null,
+      h(PacoteLiberacoesEditor, p));
   }
 
 export { PacotesLista, PacoteModal, ContratarPacoteModal, PacoteBeneficiariosModal, ConfirmarPagamentoPacoteModal, PacoteLiberacoesModal, pcCycleLabel };

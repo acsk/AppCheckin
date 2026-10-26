@@ -136,7 +136,7 @@ export default function PacotesScreen() {
     load();
     // Listas de apoio dos modais: falhas aqui não impedem ver os pacotes.
     planoService.listar(true).then(r => mounted.current && setPlans((r?.planos || []).map(toPlan))).catch(e => console.error('Erro ao carregar planos:', e));
-    alunoService.listarBasico().then(r => mounted.current && setStudents((r?.alunos || []).map(a => ({ id: a.id, name: a.nome, email: a.email, usuarioId: a.usuario_id }))))
+    alunoService.listarBasico().then(r => mounted.current && setStudents((r?.alunos || []).map(a => ({ id: a.id, name: a.nome, email: a.email, cpf: a.cpf, usuarioId: a.usuario_id }))))
       .catch(e => console.error('Erro ao carregar alunos:', e));
     api.get('/formas-pagamento').then(({ data }) => mounted.current && setMethods(data?.formas || [])).catch(e => console.error('Erro ao carregar formas de pagamento:', e));
   }, [load]);
@@ -176,17 +176,22 @@ export default function PacotesScreen() {
   const withPlanOf = k => (!k?.plan || plans.some(p => String(p.id) === String(k.plan.id)) ? plans
     : [...plans, { ...k.plan, cycles: k.cycle ? [k.cycle] : [] }]);
 
-  // Alunos liberados no app: a lista é carregada ao abrir e atualizada a cada mudança
-  const openReleases = k => {
-    setModal({ type: 'releases', pkg: k, releases: null });
-    pacoteService.liberacoes(k.id).then(r => mounted.current && setModal(m => (m?.type === 'releases' ? { ...m, releases: r?.liberacoes || [] } : m)))
-      .catch(err => { showError(msg(err, 'Não foi possível carregar os liberados.')); setModal(null); });
+  // A mesma lista de liberações alimenta a edição do pacote e o acesso direto da tabela.
+  const loadReleases = (k, type = 'package', initialSection) => {
+    setModal({ type, pkg: k, releases: null, initialSection });
+    pacoteService.liberacoes(k.id).then(r => mounted.current && setModal(m => (
+      m?.type === type && m?.pkg?.id === k.id ? { ...m, releases: r?.liberacoes || [], releasesError: '' } : m
+    ))).catch(err => {
+      if (mounted.current) setModal(m => m?.type === type && m?.pkg?.id === k.id
+        ? { ...m, releasesError: msg(err, 'Não foi possível carregar os liberados.') } : m);
+    });
   };
+  const openReleases = k => loadReleases(k, 'package', 'app');
   const changeReleases = async (action, success) => {
     setBusy(true);
     try {
       const r = await action();
-      if (mounted.current) setModal(m => (m?.type === 'releases' ? { ...m, releases: r?.liberacoes || [] } : m));
+      if (mounted.current) setModal(m => (['package', 'releases'].includes(m?.type) ? { ...m, releases: r?.liberacoes || [] } : m));
       showSuccess(success);
     } catch (err) {
       showError(msg(err, 'Não foi possível salvar.'));
@@ -202,7 +207,7 @@ export default function PacotesScreen() {
     {error ? <Callout tone="danger" title="Não foi possível carregar" action={<Button size="sm" onClick={load}>Tentar novamente</Button>}>{error}</Callout> : null}
     <PacotesLista packages={packages} contracts={contracts} loading={loading && !packages.length} tab={tab} onTabChange={setTab}
       onNew={() => setModal({ type: 'package', pkg: null })}
-      onEdit={k => setModal({ type: 'package', pkg: k })}
+      onEdit={k => loadReleases(k)}
       onDuplicate={duplicate}
       onReleases={openReleases}
       onToggleActive={toggleActive}
@@ -212,7 +217,11 @@ export default function PacotesScreen() {
       onGenerateEnrollments={c => quiet(run(() => pacoteService.gerarMatriculas(c.id), 'Matrículas geradas.'))}
       onCancelContract={c => setModal({ type: 'cancel', contract: c })} />
 
-    {modal?.type === 'package' ? <PacoteModal open package={modal.pkg} plans={withPlanOf(modal.pkg)} saving={busy} onCancel={close} onSave={savePackage} /> : null}
+    {modal?.type === 'package' ? <PacoteModal open package={modal.pkg} plans={withPlanOf(modal.pkg)} saving={busy}
+      students={students} releases={modal.releases} releasesError={modal.releasesError} initialSection={modal.initialSection}
+      onRetryReleases={() => loadReleases(modal.pkg, 'package', modal.initialSection)}
+      onRelease={d => changeReleases(() => pacoteService.liberar(modal.pkg.id, d), 'Liberação salva.')}
+      onRevoke={id => changeReleases(() => pacoteService.revogar(modal.pkg.id, id), 'Liberação removida.')} onCancel={close} onSave={savePackage} /> : null}
 
     {modal?.type === 'releases' ? <PacoteLiberacoesModal open package={modal.pkg} releases={modal.releases} students={students} saving={busy} onCancel={close}
       onAdd={d => changeReleases(() => pacoteService.liberar(modal.pkg.id, d), 'Aluno liberado no app.')}

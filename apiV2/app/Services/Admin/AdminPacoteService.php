@@ -100,8 +100,26 @@ class AdminPacoteService
                 return $this->erro('id inválido', 400);
             }
 
-            if (! $this->pacotes->pacoteExiste($pacoteId, $tenantId)) {
+            $atual = $this->pacotes->findPacoteComPlano($pacoteId, $tenantId, false);
+            if (! $atual) {
                 return $this->erro('Pacote não encontrado', 404);
+            }
+
+            // Com contrato em vigor, plano/ciclo e vagas valem para o grupo já formado: mudar só num
+            // pedaço dele mistura planos nas matrículas e renovações. Nome, valor (novos contratos e
+            // renovações), ativo e venda pelo app continuam livres.
+            $vigor = $this->pacotes->contratosEmVigor($pacoteId, $tenantId);
+            if ($vigor['contratos'] > 0) {
+                $novoCiclo = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
+                $cicloAtual = ! empty($atual['plano_ciclo_id']) ? (int) $atual['plano_ciclo_id'] : null;
+                $qtd = $vigor['contratos'] === 1 ? '1 contrato em vigor' : $vigor['contratos'].' contratos em vigor';
+                if ((int) ($data['plano_id'] ?? 0) !== (int) $atual['plano_id'] || $novoCiclo !== $cicloAtual) {
+                    return $this->erro("Este pacote tem {$qtd}. Para mudar o plano ou o ciclo, duplique o pacote e desative este.", 409);
+                }
+                $vagas = (int) ($data['qtd_beneficiarios'] ?? 1) + 1;
+                if ($vagas < $vigor['maior_grupo']) {
+                    return $this->erro("Este pacote tem {$qtd}, um deles com {$vigor['maior_grupo']} pessoas. Não dá para reduzir para {$vagas} vagas.", 409);
+                }
             }
 
             $this->pacotes->atualizarPacote($pacoteId, $tenantId, [

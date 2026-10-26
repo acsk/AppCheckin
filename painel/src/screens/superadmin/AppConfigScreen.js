@@ -49,12 +49,19 @@ function ValorField({ def, valor, onSalvar, disabled, label }) {
 }
 
 function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefinir, onExcecoes, onBloqueio }) {
+  const [filtro, setFiltro] = useState('todas');
   const funcs = defs.filter((d) => d.grupo === 'funcionalidade' && d.chave.startsWith('funcionalidade.'));
   const normalizar = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const termo = normalizar(busca.trim());
-  const visiveis = funcs.filter((d) => !termo || normalizar(`${d.nome} ${d.descricao} ${d.modulo} ${d.chave}`).includes(termo));
-  const modulos = [...new Set(visiveis.map((d) => d.modulo))];
   const pendente = (d) => estado.pendencias.some((p) => p.chave === d.chave || p.chave === `rollout.${d.item}`);
+  const comExcecao = (d) => Object.values(estado.rascunho.tenants || {}).some((valores) => valores[d.chave] !== undefined || valores[`rollout.${d.item}`] !== undefined);
+  const desligadaOuParcial = (d) => estado.bloqueios.includes(`bloqueio.${d.item}`)
+    || !(estado.rascunho.global[d.chave] ?? d.padrao)
+    || (estado.rascunho.global[`rollout.${d.item}`] ?? 100) < 100;
+  const filtros = { todas: () => true, alteradas: pendente, excecoes: comExcecao, desligadas: desligadaOuParcial };
+  const visiveis = funcs.filter((d) => filtros[filtro](d)
+    && (!termo || normalizar(`${d.nome} ${d.descricao} ${d.modulo} ${d.chave}`).includes(termo)));
+  const modulos = [...new Set(visiveis.map((d) => d.modulo))];
   const salvar = (chave, valor) => onDefinir(chave, valor).catch((e) => showError(e.message));
   const copiar = async (chave) => {
     try { await navigator.clipboard.writeText(chave); showSuccess('Chave copiada'); }
@@ -68,6 +75,13 @@ function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefini
         <input type="search" className="ck-control__input" aria-label="Buscar funcionalidade" value={busca}
           onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome, módulo, descrição ou chave" />
       </div>
+      <SegmentedControl label="Mostrar funcionalidades" value={filtro} onChange={setFiltro} className="ck-cf-flt"
+        options={[
+          { value: 'todas', label: `Todas ${funcs.length}` },
+          { value: 'alteradas', label: `Alteradas ${funcs.filter(pendente).length}` },
+          { value: 'excecoes', label: `Com exceção ${funcs.filter(comExcecao).length}` },
+          { value: 'desligadas', label: `Desligadas ou parciais ${funcs.filter(desligadaOuParcial).length}` },
+        ]} />
       {modulos.map((m) => (
         <ConfigSection key={m} title={m}>
           <ul className="ck-pm-list">
@@ -79,21 +93,23 @@ function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefini
               const parcial = ligada && rollout < 100;
               return (
                 <React.Fragment key={d.chave}>
-                  <li className={`ck-pm-row${pendente(d) ? ' ck-cf-changed' : ''}`}>
+                  <li className={`ck-pm-row${pendente(d) ? ' ck-cf-changed' : ''}${bloqueada ? ' ck-cf-killed' : ''}`}>
                     <div className="ck-pm-row__txt">
-                      <span className="ck-pm-row__label">{d.nome}{pendente(d) ? <em className="ck-cf-dot">alterado</em> : null}</span>
+                      <span className="ck-pm-row__label">{d.nome}{pendente(d) ? <em className="ck-cf-dot">alterado</em> : null}{bloqueada ? <Badge tone="danger" icon="power" className="ck-cf-killb">Desligada em emergência</Badge> : null}</span>
                       <span className="ck-pm-row__desc">{d.descricao}</span>
                       <ExcecoesNote def={d} estado={estado} academias={academias} />
                       <code className="ck-pm-key">{d.item}</code>
                       {d.versao_minima?.android || d.versao_minima?.ios ? <span className="ck-pm-row__desc">
                         {[d.versao_minima.android && `Android ${d.versao_minima.android}+`, d.versao_minima.ios && `iOS ${d.versao_minima.ios}+`].filter(Boolean).join(' · ')}
                       </span> : null}
-                      {bloqueada ? <span className="ck-pm-warn"><Icon name="alert-triangle" size={14} />Bloqueio emergencial ativo. O rascunho só passa a valer ao religar.</span> : null}
+                      {bloqueada ? <span className="ck-cf-killnote">Desligada em todas as academias até religar, mesmo que o rascunho diga outra coisa.</span> : null}
                     </div>
                     <div className="ck-pm-row__ctl">
-                      {bloqueada ? <Badge tone="danger">Bloqueada</Badge> : parcial ? <Badge tone="warning">{`${rollout}%`}</Badge> : null}
-                      <ExcecoesButton def={d} estado={estado} onClick={() => onExcecoes(d)} />
-                      <Switch ariaLabel={`${d.nome}: ligada para todas`} checked={ligada} onChange={(v) => salvar(d.chave, v)} />
+                      {bloqueada ? <Button size="sm" icon="refresh-cw" onClick={() => onBloqueio(d, false)}>Religar</Button> : <>
+                        {parcial ? <Badge tone="warning">{`${rollout}%`}</Badge> : null}
+                        <ExcecoesButton def={d} estado={estado} onClick={() => onExcecoes(d)} />
+                        <Switch ariaLabel={`${d.nome}: ligada para todas`} checked={ligada} onChange={(v) => salvar(d.chave, v)} />
+                      </>}
                       <ActionMenu label={`Mais ações para ${d.nome}`} items={[
                         ligada && !parcial && rolloutDef ? { label: 'Liberar aos poucos', icon: 'users', onClick: () => salvar(rolloutDef.chave, 50) } : null,
                         parcial && rolloutDef ? { label: 'Liberar para todos', icon: 'check', onClick: () => salvar(rolloutDef.chave, 100) } : null,
@@ -105,7 +121,7 @@ function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefini
                       ].filter(Boolean)} />
                     </div>
                   </li>
-                  {parcial && rolloutDef ? <li className="ck-pm-row is-child">
+                  {parcial && !bloqueada && rolloutDef ? <li className="ck-pm-row is-child">
                     <div className="ck-pm-row__txt">
                       <span className="ck-pm-row__label">Liberada para parte dos usuários</span>
                       <span className="ck-pm-row__desc">Cada usuário cai sempre no mesmo grupo. Suba aos poucos e acompanhe antes de liberar para todos.</span>
@@ -122,7 +138,8 @@ function FuncionalidadesTab({ estado, defs, academias, busca, setBusca, onDefini
       ))}
       {!visiveis.length ? <div className="ck-card ck-pm-empty">
         <Icon name="search" size={24} /><strong>Nenhuma funcionalidade encontrada{busca ? ` para “${busca}”` : ''}.</strong>
-        <p>Busque pelo nome, módulo, descrição ou chave.</p>
+        <p>Busque pelo nome, módulo, descrição ou chave, ou altere o filtro.</p>
+        <Button size="sm" onClick={() => { setBusca(''); setFiltro('todas'); }}>Mostrar todas</Button>
       </div> : null}
     </>
   );

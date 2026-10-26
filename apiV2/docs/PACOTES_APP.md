@@ -35,6 +35,14 @@ painel, o pacote pode ser vendido e renovado pelo app.
 
 As rotas exigem as funcionalidades `matriculas`/`pagamentos` ligadas (configuração remota do app).
 
+## Editar pacote com contratos em vigor
+
+Com contrato `pendente` ou `ativo`, a API recusa (409) mudar **plano**, **ciclo** ou **reduzir as vagas**
+abaixo do maior grupo: esses campos são lidos ao vivo pelo contrato (matrículas novas, renovação, limite
+de participantes). Para mudar, duplique o pacote e desative o antigo. Nome, descrição, ativo, venda pelo
+app e **valor** continuam livres; o valor novo vale para novos contratos e renovações (o contrato guarda o
+próprio `valor_total`). Pacote não é excluído, só desativado.
+
 ## Regras importantes
 
 - **Só a cobrança do pacote quita o grupo.** Uma baixa comum na parcela do pagante (cada um pagando a
@@ -57,3 +65,13 @@ As rotas exigem as funcionalidades `matriculas`/`pagamentos` ligadas (configura�
 - App: `src/components/PacotesVitrine.tsx`, `src/hooks/usePacotePagamento.tsx`
 - Painel: `src/components/ck/pacotes.js` (`PacoteModal`, `PacoteLiberacoesModal`), `src/screens/pacotes/PacotesScreen.js`
 - Testes: `tests/Feature/PacoteVendaAppTest.php`
+
+### Edição no painel
+
+O editor segue o layout `Pacote-editar.html`: seções Pacote, Preço e Venda,
+comparação com o plano avulso e resumo de visibilidade no app. A lista de alunos
+liberados fica na seção Venda dos pacotes já criados. O atalho “Alunos liberados
+no app” abre essa seção, inclusive quando a lista ainda não está em uso.
+Adicionar/remover alunos e alterar a validade salva imediatamente, pelos endpoints
+existentes, independentemente de salvar ou cancelar os demais campos do pacote.
+Pacotes novos devem ser criados antes de configurar as liberações.

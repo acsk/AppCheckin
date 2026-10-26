@@ -89,7 +89,14 @@ class PacoteVendaAppTest extends TestCase
             $t->date('data_fim')->nullable();
             $t->timestamps();
         });
-        Schema::create('status_matricula', fn (Blueprint $t) => [$t->increments('id'), $t->string('codigo')]);
+        Schema::create('pacote_beneficiarios', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->integer('pacote_contrato_id');
+            $t->integer('aluno_id');
+            $t->integer('matricula_id')->nullable();
+        });
+                Schema::create('status_matricula', fn (Blueprint $t) => [$t->increments('id'), $t->string('codigo')]);
         Schema::create('matriculas', function (Blueprint $t) {
             $t->increments('id');
             $t->integer('tenant_id');
@@ -289,6 +296,28 @@ class PacoteVendaAppTest extends TestCase
 
         $de_novo = $this->venda(null, $descontos)->renovar(self::T, self::PAGANTE[0], $c);
         $this->assertTrue($de_novo['body']['data']['ja_gerada']);
+    }
+
+    public function test_pacote_com_contrato_em_vigor_trava_plano_ciclo_e_reducao_de_vagas(): void
+    {
+        DB::table('planos')->insert(['id' => 8, 'tenant_id' => self::T, 'nome' => 'Outro', 'valor' => 150]);
+        [$c] = $this->contrato('ativo');
+        DB::table('pacote_beneficiarios')->insert([
+            ['tenant_id' => self::T, 'pacote_contrato_id' => $c, 'aluno_id' => self::PAGANTE[1]],
+            ['tenant_id' => self::T, 'pacote_contrato_id' => $c, 'aluno_id' => self::FILHO[1]],
+            ['tenant_id' => self::T, 'pacote_contrato_id' => $c, 'aluno_id' => self::OUTRO[1]],
+        ]);
+        $svc = app(\App\Services\Admin\AdminPacoteService::class);
+        $base = ['nome' => 'Família', 'valor_total' => 300, 'qtd_beneficiarios' => 2, 'plano_id' => 7, 'ativo' => 1];
+
+        $this->assertSame(409, $svc->atualizar(self::T, 1, ['plano_id' => 8] + $base)['status']);
+        $this->assertSame(409, $svc->atualizar(self::T, 1, ['qtd_beneficiarios' => 1] + $base)['status'], '3 pessoas no grupo, 2 vagas não cabem');
+        $this->assertSame(200, $svc->atualizar(self::T, 1, ['valor_total' => 330, 'nome' => 'Família+', 'qtd_beneficiarios' => 3] + $base)['status']);
+        $this->assertSame(330.0, (float) DB::table('pacotes')->where('id', 1)->value('valor_total'));
+        $this->assertSame(300.0, (float) DB::table('pacote_contratos')->where('id', $c)->value('valor_total'), 'o contrato guarda o próprio valor');
+
+        DB::table('pacote_contratos')->update(['status' => 'expirado']);
+        $this->assertSame(200, $svc->atualizar(self::T, 1, ['plano_id' => 8] + $base)['status'], 'sem contrato em vigor, edita livre');
     }
 
     public function test_cobranca_soma_o_periodo_e_registra_a_parcela_do_pagante(): void

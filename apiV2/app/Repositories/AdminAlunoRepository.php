@@ -44,7 +44,7 @@ class AdminAlunoRepository
             ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->where('a.ativo', 1)
             ->orderBy('a.nome')
-            ->get(['a.id', 'a.nome', 'u.email', 'a.usuario_id'])
+            ->get(['a.id', 'a.nome', 'u.email', 'a.usuario_id', ...Pessoa::selects(['cpf'])])
             ->map(fn ($r) => (array) $r)
             ->all();
     }

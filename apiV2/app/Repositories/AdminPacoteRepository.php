@@ -67,6 +67,29 @@ class AdminPacoteRepository
     /**
      * @param  array<string, mixed>  $data
      */
+    /**
+     * Contratos em vigor (pendente/ativo) do pacote e o maior grupo entre eles (pagante incluso).
+     *
+     * @return array{contratos: int, maior_grupo: int}
+     */
+    public function contratosEmVigor(int $pacoteId, int $tenantId): array
+    {
+        $contratos = DB::table('pacote_contratos as pc')
+            ->where('pc.pacote_id', $pacoteId)->where('pc.tenant_id', $tenantId)->whereIn('pc.status', ['pendente', 'ativo'])
+            ->get(['pc.id', 'pc.pagante_usuario_id']);
+        $maior = 0;
+        foreach ($contratos as $c) {
+            $alunos = DB::table('pacote_beneficiarios')->where('pacote_contrato_id', $c->id)->where('tenant_id', $tenantId)->pluck('aluno_id')->map(fn ($a) => (int) $a)->all();
+            $pagante = (int) (DB::table('alunos')->where('usuario_id', $c->pagante_usuario_id)->value('id') ?? 0);
+            if ($pagante > 0) {
+                $alunos[] = $pagante;
+            }
+            $maior = max($maior, count(array_unique($alunos)));
+        }
+
+        return ['contratos' => $contratos->count(), 'maior_grupo' => $maior];
+    }
+
     public function atualizarPacote(int $pacoteId, int $tenantId, array $data): void
     {
         DB::update('
@@ -346,7 +369,7 @@ class AdminPacoteRepository
     public function findContratoParaConfirmar(int $contratoId, int $tenantId): ?array
     {
         $row = DB::selectOne('
-            SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total, p.qtd_beneficiarios, p.nome as pacote_nome
+            SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.qtd_beneficiarios, p.nome as pacote_nome
             FROM pacote_contratos pc
             INNER JOIN pacotes p ON p.id = pc.pacote_id
             WHERE pc.id = ? AND pc.tenant_id = ?
@@ -581,7 +604,7 @@ class AdminPacoteRepository
     public function findContratoParaGerarMatriculas(int $contratoId, int $tenantId): ?array
     {
         $row = DB::selectOne('
-            SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
+            SELECT pc.*, p.plano_id, p.plano_ciclo_id,
                    COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia
             FROM pacote_contratos pc
             INNER JOIN pacotes p ON p.id = pc.pacote_id
