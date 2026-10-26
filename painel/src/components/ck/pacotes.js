@@ -48,59 +48,81 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
   };
   var PC_CT = { pendente: ['warning', 'Aguardando pagamento'], ativo: ['success', 'Ativo'], expirado: ['outline', 'Encerrado'], cancelado: ['outline', 'Cancelado'] };
 
+  function pcSpec(k) {
+    return (k.plan ? k.plan.name : '—') + ' · ' + (k.cycle ? pcCycleLabel(k.cycle.months) : 'Sem ciclo') + ' · ' + k.people + (k.people === 1 ? ' pessoa' : ' pessoas');
+  }
+  function pcSaleLabel(k) {
+    if (k.active === false) return null;
+    return k.sale === 'todos' ? 'Todos os alunos no app' : k.sale === 'liberados' ? 'App: só alunos liberados' : null;
+  }
+  function pcRowClick(fn) {
+    return { tabIndex: fn ? 0 : undefined, className: fn ? 'is-click' : undefined,
+      onClick: fn ? function (e) { if (e.target.closest('button, a, input, select, textarea, [role="menu"]')) return; fn(); } : undefined,
+      onKeyDown: fn ? function (e) { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); fn(); } } : undefined };
+  }
   function PacotesLista(p) {
     var pk = p.packages || [], cts = p.contracts || [];
     var tab = useControlled(p.tab, 'pacotes', p.onTabChange);
-    var qs = useState(''), q = qs[0].trim().toLowerCase();
+    var qs = useState(''), q = pcNorm(qs[0].trim()), flt = useState('ativos');
     var pend = cts.filter(function (c) { return c.status === 'pendente'; }), act = cts.filter(function (c) { return c.status === 'ativo'; });
     function tl(label, n, warn) { return h(React.Fragment, null, label, h('span', { className: cx('ck-pc__tabn', warn && n && 'is-warn') }, n)); }
     var tabs = [{ value: 'pacotes', label: tl('Pacotes', pk.length) }, { value: 'pendentes', label: tl('Aguardando pagamento', pend.length, true) }, { value: 'ativos', label: tl('Contratos ativos', act.length) }];
-    var body;
+    function usage(k) {
+      var mine = cts.filter(function (c) { return c.pkg && String(c.pkg.id) === String(k.id); });
+      if (!mine.length) return { a: 0, w: 0, n: k.contracts || 0 };
+      return { a: mine.filter(function (c) { return c.status === 'ativo'; }).length, w: mine.filter(function (c) { return c.status === 'pendente'; }).length, n: mine.length };
+    }
+    var body, nOn = pk.filter(function (k) { return k.active !== false; }).length;
     if (p.loading) {
-      body = h('div', { className: 'ck-ml__empty' }, h('p', null, 'Carregando…'));
+      body = h('div', { className: 'ck-ml__empty', role: 'status' }, h('p', null, 'Carregando…'));
     } else if (tab[0] === 'pacotes') {
-      var list = pk.filter(function (k) { return !q || (k.name + ' ' + (k.description || '') + ' ' + (k.plan ? k.plan.name : '')).toLowerCase().indexOf(q) >= 0; });
-      body = list.length ? h('div', { className: 'ck-pc__wrap' }, h('table', { className: 'ck-pc__table is-fixed' },
-        h('colgroup', null, [30, 15, 8, 15, 18, 14].map(function (w, i) { return h('col', { key: i, style: { width: w + '%' } }); })),
+      var list = pk.filter(function (k) { var off = k.active === false; return (flt[0] === 'todos' || (flt[0] === 'ativos') !== off) && (!q || pcNorm(k.name + ' ' + (k.description || '') + ' ' + (k.plan ? k.plan.name + ' ' + (k.plan.modality || '') : '') + ' ' + pcCycleLabel(k.cycle?.months || 1)).indexOf(q) >= 0); });
+      body = list.length ? h('div', { className: 'ck-pc__wrap' }, h('table', { className: 'ck-pc__table is-fixed ck-pc__table--pk' },
+        h('colgroup', null, [33, 18, 20, 13, 16].map(function (w, i) { return h('col', { key: i, style: { width: w + '%' } }); })),
         h('thead', null, h('tr', null,
-          h('th', { scope: 'col' }, 'Pacote'), h('th', { scope: 'col' }, 'Plano e ciclo'), h('th', { scope: 'col', className: 'is-num' }, 'Pessoas'),
-          h('th', { scope: 'col', className: 'is-num' }, 'Valor do pacote'), h('th', { scope: 'col' }, 'Comparado ao plano avulso'),
-          h('th', { scope: 'col' }, h('span', { className: 'ck-sr' }, 'Ações')))),
+          h('th', { scope: 'col' }, 'Pacote'), h('th', { scope: 'col', className: 'is-num' }, 'Valor'), h('th', { scope: 'col' }, 'Desconto'),
+          h('th', { scope: 'col' }, 'Contratos'), h('th', { scope: 'col' }, h('span', { className: 'ck-sr' }, 'Ações')))),
         h('tbody', null, list.map(function (k) {
-          var c = pcCalc(k), off = k.active === false;
-          return h('tr', { key: k.id, className: off ? 'is-off' : undefined },
+          var c = pcCalc(k), off = k.active === false, u = usage(k), sl = pcSaleLabel(k);
+          var rc = pcRowClick(p.onEdit ? function () { p.onEdit(k); } : null);
+          return h('tr', Object.assign({ key: k.id, 'aria-label': 'Editar ' + k.name }, rc, { className: cx(rc.className, off && 'is-off') }),
             h('th', { scope: 'row' }, h('div', { className: 'ck-pc__name' },
               h('span', { className: 'ck-pc__icon', 'aria-hidden': true }, h(Icon, { name: 'package', size: 18 })),
               h('div', { style: { minWidth: 0 } },
-                h('strong', null, k.name, off ? h(Badge, { tone: 'outline' }, 'Inativo') : null,
-                  k.sale === 'todos' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'Vende no app') : k.sale === 'liberados' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'App: só liberados') : null),
-                k.description ? h('span', { title: k.description }, k.description) : null,
-                k.contracts ? h('span', null, k.contracts + (k.contracts === 1 ? ' contrato em aberto' : ' contratos em aberto')) : null))),
-            h('td', null, h('span', { className: 'ck-pc__main' }, k.plan ? k.plan.name : '—'), h('span', { className: 'ck-pc__sub' }, k.cycle ? pcCycleLabel(c.months) + ', ' + pcMonthsTxt(c.months) : 'Sem ciclo')),
-            h('td', { className: 'is-num' }, h('span', { className: 'ck-pc__main' }, c.people)),
+                h('strong', null, k.name, off ? h(Badge, { tone: 'outline' }, 'Inativo') : null),
+                h('span', { className: 'ck-pc__spec' }, pcSpec(k)),
+                h('span', { className: 'ck-pc__chan' }, sl ? h('b', { className: 'ck-pc__app' }, h(Icon, { name: 'smartphone', size: 13 }), sl) : h('em', null, h(Icon, { name: 'monitor', size: 13 }), 'Só no painel'))))),
             h('td', { className: 'is-num' }, h('span', { className: 'ck-pc__main' }, money(c.total)), h('span', { className: 'ck-pc__sub' }, money(c.perPersonMonth) + ' por pessoa/mês')),
-            h('td', null, h(PcSaving, { calc: c }), c.normal ? h('span', { className: 'ck-pc__sub' }, 'Avulso: ' + money(c.normal) + (c.save > 0.004 ? ', economia de ' + money(c.save) : c.save < -0.004 ? ', ' + money(-c.save) + ' a menos' : '')) : null),
+            h('td', null, c.normal && c.total ? (c.save > 0.004 ? h(Badge, { tone: 'success' }, pcPct(c.pct) + ' de desconto') : c.save < -0.004 ? h(Badge, { tone: 'warning', icon: 'alert-triangle' }, pcPct(c.pct) + ' mais caro') : h(Badge, { tone: 'outline' }, 'Sem desconto')) : h('span', { className: 'ck-pc__dash' }, '—'),
+              c.normal && Math.abs(c.save) > 0.004 ? h('span', { className: 'ck-pc__sub' }, (c.save > 0 ? 'Economia de ' : 'Custa ') + money(Math.abs(c.save)) + (c.save > 0 ? '' : ' a mais')) : null),
+            h('td', null, u.n ? h(React.Fragment, null,
+                u.a ? h('span', { className: 'ck-pc__main' }, u.a + (u.a === 1 ? ' ativo' : ' ativos')) : null,
+                u.w ? h('span', { className: cx(u.a ? 'ck-pc__sub' : 'ck-pc__main', 'ck-pc__waiting') }, u.w + ' aguardando') : null,
+                !u.a && !u.w ? h('span', { className: 'ck-pc__main' }, u.n + (u.n === 1 ? ' contrato' : ' contratos')) : null)
+              : h('span', { className: 'ck-pc__dash' }, 'Nenhum')),
             h('td', null, h('div', { className: 'ck-pc__acts' },
-              !off && p.onContract ? h(Button, { size: 'sm', onClick: function () { p.onContract(k); } }, 'Contratar') : null,
+              !off && p.onContract ? h(Button, { size: 'sm', icon: 'file-text', onClick: function () { p.onContract(k); } }, 'Contratar') : off && p.onToggleActive ? h(Button, { size: 'sm', variant: 'ghost', icon: 'power', onClick: function () { p.onToggleActive(k); } }, 'Ativar') : null,
               h(ActionMenu, { label: 'Mais ações para ' + k.name, items: [
-                p.onEdit ? { label: 'Editar pacote', icon: 'pencil', onClick: function () { p.onEdit(k); } } : null,
+                p.onEdit ? { label: 'Editar', icon: 'pencil', onClick: function () { p.onEdit(k); } } : null,
                 p.onDuplicate ? { label: 'Duplicar', icon: 'copy', onClick: function () { p.onDuplicate(k); } } : null,
                 p.onReleases ? { label: 'Alunos liberados no app', icon: 'user-check', onClick: function () { p.onReleases(k); } } : null,
-                p.onToggleActive ? { label: off ? 'Ativar' : 'Desativar', icon: 'power', onClick: function () { p.onToggleActive(k); } } : null].filter(Boolean) }))));
+                p.onToggleActive && !off ? { label: 'Desativar', icon: 'power', onClick: function () { p.onToggleActive(k); } } : null,
+                p.onDelete ? '-' : null,
+                p.onDelete ? { label: u.n ? 'Excluir (tem contratos)' : 'Excluir', icon: 'trash', danger: !u.n, disabled: !!u.n, onClick: function () { p.onDelete(k); } } : null].filter(Boolean) }))));
         })))) : h('div', { className: 'ck-ml__empty' },
           h('span', { className: 'ck-mt-empty__icon', 'aria-hidden': true }, h(Icon, { name: q ? 'search' : 'package', size: 20 })),
-          h('strong', null, q ? 'Nenhum pacote com "' + qs[0] + '"' : 'Nenhum pacote criado'),
-          h('p', null, q ? 'Busque pelo nome, descrição ou plano.' : 'Um pacote junta várias pessoas num só pagamento, como um plano família.'),
-          q || !p.onNew ? null : h(Button, { size: 'sm', variant: 'primary', icon: 'plus', onClick: p.onNew }, 'Novo pacote'));
+          h('strong', null, q ? 'Nenhum pacote com "' + qs[0] + '"' : !pk.length ? 'Nenhum pacote criado' : flt[0] === 'inativos' ? 'Nenhum pacote inativo' : 'Nenhum pacote ativo'),
+          h('p', null, q ? 'Busque pelo nome, plano ou ciclo.' : 'Um pacote junta várias pessoas num só pagamento, como um plano família.'),
+          !q && !pk.length && p.onNew ? h(Button, { size: 'sm', variant: 'primary', icon: 'plus', onClick: p.onNew }, 'Novo pacote') : null);
     } else {
-      var cl = (tab[0] === 'pendentes' ? pend : act).filter(function (c) { return !q || (('#' + c.id) + ' ' + c.pkg.name + ' ' + c.payer.name + ' ' + (c.members || []).map(function (m) { return m.name; }).join(' ')).toLowerCase().indexOf(q) >= 0; });
+      var cl = (tab[0] === 'pendentes' ? pend : act).filter(function (c) { return !q || pcNorm(('#' + c.id) + ' ' + c.pkg.name + ' ' + c.payer.name + ' ' + (c.members || []).map(function (m) { return m.name; }).join(' ')).indexOf(q) >= 0; });
       body = cl.length ? h('div', { className: 'ck-pc__wrap' }, h('table', { className: 'ck-pc__table' },
         h('thead', null, h('tr', null,
           h('th', { scope: 'col' }, 'Contrato'), h('th', { scope: 'col' }, 'Pagante'), h('th', { scope: 'col' }, 'Beneficiários'),
           h('th', { scope: 'col', className: 'is-num' }, 'Valor'), h('th', { scope: 'col' }, tab[0] === 'pendentes' ? 'Situação' : 'Vigência'), h('th', { scope: 'col' }, h('span', { className: 'ck-sr' }, 'Ações')))),
         h('tbody', null, cl.map(function (c) {
           var mem = c.members || [], slots = c.people || mem.length, miss = slots - mem.length, st = PC_CT[c.status] || PC_CT.pendente;
-          return h('tr', { key: c.id },
+          return h('tr', Object.assign({ key: c.id, 'aria-label': 'Abrir contrato #' + c.id }, pcRowClick(p.onBeneficiaries ? function () { p.onBeneficiaries(c); } : null)),
             h('th', { scope: 'row' }, h('div', { className: 'ck-pc__name' },
               h('span', { className: 'ck-pc__icon', 'aria-hidden': true }, h(Icon, { name: 'file-text', size: 18 })),
               h('div', { style: { minWidth: 0 } }, h('strong', null, c.pkg.name, c.origin === 'app' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'Pelo app') : null),
@@ -112,7 +134,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
               h('span', null, mem.length + ' de ' + slots, miss > 0 ? h('em', null, miss === 1 ? 'falta 1' : 'faltam ' + miss) : c.missingEnrollments > 0 ? h('em', null, c.missingEnrollments === 1 ? '1 sem matrícula' : c.missingEnrollments + ' sem matrícula') : null))),
             h('td', { className: 'is-num' }, h('span', { className: 'ck-pc__main' }, money(c.total))),
             h('td', null, tab[0] === 'pendentes' ? h(React.Fragment, null, h(Badge, { tone: st[0], dot: true }, st[1]), c.createdAt ? h('span', { className: 'ck-pc__sub' }, 'desde ' + fdate(c.createdAt)) : null)
-              : h(React.Fragment, null, h('span', { className: 'ck-pc__main' }, fdate(c.start) + ' a ' + fdate(c.end)))),
+              : h(React.Fragment, null, h('span', { className: 'ck-pc__main' }, fdate(c.start) + ' a ' + fdate(c.end)), c.paidAt ? h('span', { className: 'ck-pc__sub' }, 'Pago em ' + fdate(c.paidAt)) : null)),
             h('td', null, h('div', { className: 'ck-pc__acts' },
               c.status === 'pendente' && p.onConfirmPayment ? h(Button, { size: 'sm', variant: 'primary', icon: 'check', onClick: function () { p.onConfirmPayment(c); } }, 'Confirmar pagamento') : null,
               c.status !== 'pendente' && miss > 0 && p.onBeneficiaries ? h(Button, { size: 'sm', icon: 'user-plus', onClick: function () { p.onBeneficiaries(c); } }, 'Completar') : null,
@@ -128,7 +150,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
           h('p', null, q ? 'Busque pelo número, pacote, pagante ou beneficiário.' : 'Contratos aparecem aqui depois de "Contratar" um pacote.'));
     }
     return h('div', { className: 'ck-pc' },
-      h(PageHeader, { title: 'Pacotes', description: 'Um pagamento para várias pessoas, como planos família. Crie o pacote, contrate para um pagante e confirme o pagamento.',
+      h(PageHeader, { title: 'Pacotes', description: 'Um pagamento para várias pessoas, como planos família. Clique num pacote para editar.',
         actions: h(React.Fragment, null,
           p.onContract ? h(Button, { icon: 'file-text', onClick: function () { p.onContract(null); } }, 'Contratar pacote') : null,
           p.onNew ? h(Button, { variant: 'primary', icon: 'plus', onClick: p.onNew }, 'Novo pacote') : null) }),
@@ -136,7 +158,9 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
         h('div', { className: 'ck-pc__top' },
           h(Tabs, { label: 'Pacotes e contratos', value: tab[0], onChange: function (v) { tab[1](v); qs[1](''); }, tabs: tabs }),
           h('div', { className: 'ck-control ck-ml__search ck-pc__search' }, h(Icon, { name: 'search', size: 16, className: 'ck-control__icon' }),
-            h('input', { type: 'search', className: 'ck-control__input', value: qs[0], placeholder: tab[0] === 'pacotes' ? 'Buscar pacote ou plano' : 'Contrato, pagante ou beneficiário', 'aria-label': 'Buscar', onChange: function (e) { qs[1](e.target.value); } }))),
+            h('input', { type: 'search', className: 'ck-control__input', value: qs[0], placeholder: tab[0] === 'pacotes' ? 'Buscar pacote, plano ou ciclo' : 'Contrato, pagante ou beneficiário', 'aria-label': 'Buscar', onChange: function (e) { qs[1](e.target.value); } }))),
+        tab[0] === 'pacotes' && pk.length ? h('div', { className: 'ck-pc__filters' },
+          h(SegmentedControl, { label: 'Mostrar', value: flt[0], onChange: flt[1], options: [{ value: 'ativos', label: 'Ativos ' + nOn }, { value: 'inativos', label: 'Inativos ' + (pk.length - nOn) }, { value: 'todos', label: 'Todos ' + pk.length }] })) : null,
         body));
   }
 
@@ -268,6 +292,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
   /* O pagante sempre usa o pacote (ocupa 1 vaga): a API inclui o aluno dele no contrato. */
   function ContratarPacoteModal(p) {
     var pk = (p.packages || []).filter(function (k) { return k.active !== false; });
+    var pickOpen = useState(!p.package), pq = useState('');
     var ks = useState(p.package ? String(p.package.id) : ''), payer = useState([]), mem = useState([]), tried = useState(false), busy = useState(false);
     var k = pk.filter(function (x) { return String(x.id) === ks[0]; })[0];
     var c = k ? pcCalc(k) : null;
@@ -285,22 +310,41 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
       busy[1](true);
       Promise.resolve(p.onConfirm && p.onConfirm({ packageId: k.id, payerUsuarioId: payerS.usuarioId, beneficiaryIds: mem[0].map(function (x) { return x.id; }) })).then(function () { busy[1](false); }, function () { busy[1](false); });
     }
-    return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, size: 'md', autoFocus: false, dialogClassName: 'ck-pc__mdl',
+    var plist = pk.filter(function (x) { return !pq[0].trim() || pcNorm(pcSpec(x) + ' ' + x.name).includes(pcNorm(pq[0].trim())); });
+    function step(n, title, done, kids) {
+      return h('section', { className: cx('ck-pc__step', done && 'is-done') },
+        h('header', null, h('span', { className: 'ck-pc__secn', 'aria-hidden': true }, done ? h(Icon, { name: 'check', size: 13, strokeWidth: 3 }) : n), h('h3', null, title)), kids);
+    }
+    var pkgBlock = k && !pickOpen[0] ? h('div', { className: 'ck-pc__chosen' },
+      h('span', { className: 'ck-pc__icon', 'aria-hidden': true }, h(Icon, { name: 'package', size: 18 })),
+      h('div', null, h('strong', null, k.name), h('span', null, pcSpec(k)), h('span', null, money(c.perPersonMonth) + ' por pessoa/mês')),
+      h('b', null, money(k.total)), h(Button, { size: 'sm', variant: 'ghost', onClick: function () { pickOpen[1](true); } }, 'Trocar'))
+      : h('div', { className: 'ck-pc__pkpick' },
+        h(TextField, { label: 'Buscar pacote', icon: 'search', value: pq[0], placeholder: 'Pacote, plano ou ciclo', onChange: function (e) { pq[1](e.target.value); } }),
+        h('div', { className: 'ck-pc__pklist', role: 'radiogroup', 'aria-label': 'Pacote' }, plist.length ? plist.map(function (x) {
+          var calc = pcCalc(x);
+          return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': String(x.id) === ks[0], className: 'ck-pc__pkopt', onClick: function () { ks[1](String(x.id)); pickOpen[1](false); pq[1](''); } },
+            h('span', null, h('strong', null, x.name), h('small', null, pcSpec(x))),
+            h('span', { className: 'ck-pc__pkprice' }, h('strong', null, money(x.total)), calc.save > 0.004 ? h('small', null, pcPct(calc.pct) + ' de desconto') : null));
+        }) : h('p', { className: 'ck-pc__resempty' }, 'Nenhum pacote ativo encontrado.')),
+        show.pkg ? h('span', { className: 'ck-field__error' }, show.pkg) : null);
+    return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, dismissable: !busy[0], size: 'md', autoFocus: false, dialogClassName: 'ck-pc__cdlg',
       leading: h('span', { className: 'ck-adm__icon', 'aria-hidden': true }, h(Icon, { name: 'file-text', size: 20 })),
-      title: 'Contratar pacote', description: 'O contrato fica aguardando pagamento até você confirmar.',
-      footer: h('div', { className: 'ck-adm__foot' },
-        h(Button, { variant: 'ghost', onClick: p.onCancel }, 'Cancelar'),
-        h(Button, { variant: 'primary', icon: 'check', loading: busy[0], onClick: go }, k ? 'Contratar por ' + money(k.total) : 'Contratar')) },
-      h('div', { className: 'ck-adm' },
-        h(SelectField, { label: '1. Pacote', value: ks[0], placeholder: 'Escolha o pacote', error: show.pkg, options: pk.map(function (x) { return { value: String(x.id), label: x.name + ' — ' + money(x.total) + ', ' + x.people + (x.people === 1 ? ' pessoa' : ' pessoas') }; }), onChange: function (e) { ks[1](e.target.value); } }),
-        k ? h('div', { className: 'ck-pc__mini' },
-          h('span', null, h(Icon, { name: 'layers', size: 15 }), (k.plan ? k.plan.name : '—') + (k.cycle ? ', ' + pcCycleLabel(c.months).toLowerCase() : '')),
-          h('span', null, h(Icon, { name: 'users', size: 15 }), c.people + (c.people === 1 ? ' pessoa' : ' pessoas')),
-          h('span', null, h(Icon, { name: 'wallet', size: 15 }), money(c.perPersonMonth) + ' por pessoa/mês')) : null,
-        h(PcPeople, { label: '2. Quem paga', single: true, students: payers, value: payer[0], error: show.payer, onAdd: function (s) { payer[1]([s]); mem[1](mem[0].filter(function (x) { return x.id !== s.id; })); }, onRemove: function () { payer[1]([]); } }),
-        k ? h(PcPeople, { label: '3. Beneficiários', labelAside: people.length + ' de ' + slots, students: p.students, value: people, max: slots, error: show.mem,
-          onAdd: function (s) { mem[1](mem[0].concat([s])); }, onRemove: function (s) { mem[1](mem[0].filter(function (x) { return x.id !== s.id; })); } }) : null,
-        k && payerS ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), firstName(payerS.name) + ' paga e também usa o pacote, ocupando 1 vaga.' + (left > 0 ? (left === 1 ? ' Sobra 1 vaga, dá para completar depois.' : ' Sobram ' + left + ' vagas, dá para completar depois.') : '')) : null));
+      title: 'Contratar pacote', description: 'Escolha o pacote, quem paga e quem usa. As matrículas ativam quando o pagamento é confirmado.',
+      footer: h('div', { className: 'ck-adm__foot ck-pc__foot' },
+        k ? h('span', { className: 'ck-pc__footnote' }, h('b', null, money(k.total)), ' · ' + people.length + ' de ' + slots + ' vagas') : null,
+        h(Button, { variant: 'ghost', disabled: busy[0], onClick: p.onCancel }, 'Cancelar'),
+        h(Button, { variant: 'primary', icon: 'check', loading: busy[0], onClick: go }, 'Contratar')) },
+      h('div', { className: 'ck-adm ck-pc__steps' },
+        step(1, 'Pacote', !!k && !pickOpen[0], pkgBlock),
+        step(2, 'Quem paga', !!payerS, h(React.Fragment, null,
+          h(PcPeople, { label: 'Pagante', single: true, students: payers, value: payer[0], error: show.payer, onAdd: function (student) { payer[1]([student]); mem[1](mem[0].filter(function (x) { return x.id !== student.id; })); }, onRemove: function () { payer[1]([]); } }),
+          payerS ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'user-check', size: 15 }), firstName(payerS.name) + ' também usa o pacote e ocupa uma vaga.') : null)),
+        k ? step(3, 'Quem usa', left === 0, h(React.Fragment, null,
+          h(PcPeople, { label: 'Adicionar beneficiário', labelAside: people.length + ' de ' + slots + ' vagas', students: p.students, value: people, max: slots, error: show.mem,
+            onAdd: function (student) { mem[1](mem[0].concat([student])); }, onRemove: function (student) { mem[1](mem[0].filter(function (x) { return x.id !== student.id; })); } }),
+          left > 0 ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'Pode deixar vaga livre e completar depois, em Beneficiários do contrato.') : null)) : null,
+        k ? step(4, 'Pagamento', false, h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'clock', size: 15 }), 'O contrato fica em Aguardando pagamento. Depois de contratar, use Confirmar pagamento para informar a forma e a data do recebimento.')) : null));
   }
 
   function PcContractCard(p) {
