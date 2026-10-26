@@ -8,6 +8,8 @@ use App\Repositories\AdminPacoteRepository;
 use App\Repositories\MobilePacoteRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\MercadoPagoService;
+use App\Services\Pacote\PacoteConciliacaoService;
+use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Support\Facades\DB;
 
 class MobilePacoteService
@@ -16,6 +18,8 @@ class MobilePacoteService
         private readonly MobilePacoteRepository $pacotes,
         private readonly AdminPacoteRepository $adminPacotes,
         private readonly UsuarioRepository $usuarios,
+        private readonly PacoteConciliacaoService $conciliacao,
+        private readonly PaymentGatewayFactory $gateways,
     ) {}
 
     /**
@@ -27,6 +31,9 @@ class MobilePacoteService
             return $this->failMessage('Nenhum tenant selecionado', 400);
         }
 
+        // Pagamento do pacote que chegou por fora (Mercado Pago na API Slim, baixa manual) vale para o grupo
+        $this->conciliacao->conciliarAbertos($tenantId);
+
         $alunoId = $this->pacotes->findAlunoIdUsuario($userId, $tenantId);
         $contratosRaw = $this->pacotes->listarContratosUsuario($tenantId, $userId, $alunoId, $statusFiltro);
 
@@ -36,6 +43,11 @@ class MobilePacoteService
             $contrato['valor_total'] = (float) ($contrato['valor_total'] ?? 0);
             $contrato['sou_pagante'] = (bool) $contrato['sou_pagante'];
             $contrato['qtd_beneficiarios'] = (int) ($contrato['qtd_beneficiarios'] ?? 0);
+            // Renovação pelo pagante: liberada a partir de N dias antes do fim da vigência
+            $liberadaEm = MobilePacoteVendaService::renovacaoLiberadaEm($contrato['data_fim'] ?? null);
+            $contrato['renovacao_liberada_em'] = $contrato['status'] === 'ativo' ? $liberadaEm : null;
+            $contrato['pode_renovar'] = $contrato['sou_pagante'] && $contrato['status'] === 'ativo'
+                && ($liberadaEm === null || $liberadaEm <= now()->toDateString());
             $contrato['beneficiarios'] = $this->pacotes->listarBeneficiariosContrato($cId, $tenantId);
             $contrato['pagamentos'] = $this->pacotes->listarPagamentosContrato($cId, $tenantId);
 
@@ -61,6 +73,7 @@ class MobilePacoteService
             return $this->failMessage('Nenhum tenant selecionado', 400);
         }
 
+        $this->conciliacao->conciliarAbertos($tenantId);
         $rows = $this->pacotes->listarPendentesPagante($tenantId, $userId);
 
         return [
@@ -85,6 +98,25 @@ class MobilePacoteService
 
         if ($contratoId <= 0) {
             return $this->failMessage('contratoId inválido', 400);
+        }
+
+        // Academia no Asaas: o fluxo antigo só sabia gerar preferência do Mercado Pago (e o webhook do
+        // Asaas não baixava pacote). Vai pela cobrança nova, no checkout, com o mesmo formato de resposta.
+        if (empty($body['gateway']) && $this->gateways->providerForTenant($tenantId) === 'asaas') {
+            $body['gateway'] = 'asaas';
+        }
+        if (($body['gateway'] ?? null) === 'asaas') {
+            $venda = app(MobilePacoteVendaService::class);
+            $r = $venda->cobrar($tenantId, $userId, $contratoId, ['metodo_pagamento' => 'checkout'] + $body);
+            if (($r['body']['code'] ?? '') === 'SEM_GATEWAY') {
+                // Sem cartão/boleto: a fatura do PIX no Asaas também é uma página de pagamento
+                $r = $venda->cobrar($tenantId, $userId, $contratoId, ['metodo_pagamento' => 'pix'] + $body);
+            }
+            if (($r['body']['success'] ?? false) && isset($r['body']['data'])) {
+                $r['body']['payment_url'] = $r['body']['data']['payment_url'] ?? null;
+            }
+
+            return $r;
         }
 
         $forceNew = ! empty($body['force_new']) || ! empty($forceNewQuery);

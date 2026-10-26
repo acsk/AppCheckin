@@ -28,7 +28,7 @@ class AppConfigService
     public function publicada(): array
     {
         try {
-            return Cache::rememberForever(self::CACHE_KEY, fn () => $this->repo->ultimaPublicacao() ?? self::vazia());
+            return Cache::rememberForever(self::cacheKey(), fn () => $this->repo->ultimaPublicacao() ?? self::vazia());
         } catch (\Throwable $e) {
             // Sem as tabelas (migration pendente) o app segue com os padrões do catálogo
             error_log('[AppConfigService::publicada] '.$e->getMessage());
@@ -288,7 +288,9 @@ class AppConfigService
     /** Papéis do usuário na academia (para funcionalidades restritas por papel). */
     private function comPapeis(array $ctx): array
     {
-        if (! isset($ctx['papeis']) && ! empty($ctx['usuario_id']) && ! empty($ctx['tenant_id'])) {
+        // Só consulta quando alguma funcionalidade do catálogo é restrita por papel
+        $restritas = array_filter(AppConfigCatalogo::definicoes(), fn ($d) => ! empty($d['papeis']));
+        if ($restritas !== [] && ! isset($ctx['papeis']) && ! empty($ctx['usuario_id']) && ! empty($ctx['tenant_id'])) {
             $ctx['papeis'] = $this->repo->papeisDoUsuario((int) $ctx['usuario_id'], (int) $ctx['tenant_id']);
         }
 
@@ -297,7 +299,15 @@ class AppConfigService
 
     private function limparCache(): void
     {
-        Cache::forget(self::CACHE_KEY);
+        Cache::forget(self::cacheKey());
+    }
+
+    /** Por banco: o cache (arquivo) é compartilhado entre ambientes que usam bancos diferentes (ex.: testes). */
+    private static function cacheKey(): string
+    {
+        $conexao = (string) config('database.default');
+
+        return self::CACHE_KEY.':'.$conexao.':'.md5((string) config("database.connections.{$conexao}.database"));
     }
 
     private function nota(?string $nota): ?string

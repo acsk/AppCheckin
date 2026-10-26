@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\MobileAtualizacaoCadastralController;
+use App\Http\Controllers\Api\V2\MobilePacoteVendaController;
 use App\Http\Controllers\Api\V2\MobileCheckinAcessoController;
 use App\Http\Controllers\Api\V2\MobileRecordeController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
@@ -123,6 +124,11 @@ Route::prefix('v2')->group(function () {
             Route::get('/pacotes/contratos', [MobileController::class, 'listarPacotesContratos']);
             Route::get('/pacotes/pendentes', [MobileController::class, 'listarPacotesPendentes']);
             Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato'])->middleware('funcionalidade:pagamentos');
+            // Pacote pelo app: vitrine, contratação pelo pagante, cobrança e renovação
+            Route::get('/pacotes/disponiveis', [MobilePacoteVendaController::class, 'disponiveis']);
+            Route::post('/pacotes/{pacoteId}/contratar', [MobilePacoteVendaController::class, 'contratar'])->whereNumber('pacoteId')->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
+            Route::post('/pacotes/contratos/{contratoId}/cobranca', [MobilePacoteVendaController::class, 'cobrar'])->whereNumber('contratoId')->middleware('funcionalidade:pagamentos');
+            Route::post('/pacotes/contratos/{contratoId}/renovar', [MobilePacoteVendaController::class, 'renovar'])->whereNumber('contratoId')->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
             Route::get('/atualizacao-cadastral', [MobileAtualizacaoCadastralController::class, 'pendente']);
             Route::post('/atualizacao-cadastral/email/codigo', [MobileAtualizacaoCadastralController::class, 'enviarCodigo']);
             Route::post('/atualizacao-cadastral/email/validar', [MobileAtualizacaoCadastralController::class, 'validarCodigo']);

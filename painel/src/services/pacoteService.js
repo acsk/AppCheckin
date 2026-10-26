@@ -113,6 +113,31 @@ const pacoteService = {
   /**
    * Listar contratos de pacote por status
    */
+  /** Alunos liberados para contratar o pacote pelo app (venda "Só liberados"). */
+  async liberacoes(pacoteId) {
+    try {
+      return (await api.get(`/admin/pacotes/${pacoteId}/liberacoes`)).data;
+    } catch (error) {
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async liberar(pacoteId, dados) {
+    try {
+      return (await api.post(`/admin/pacotes/${pacoteId}/liberacoes`, dados)).data;
+    } catch (error) {
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async revogar(pacoteId, alunoId) {
+    try {
+      return (await api.delete(`/admin/pacotes/${pacoteId}/liberacoes/${alunoId}`)).data;
+    } catch (error) {
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async listarContratos(status = 'pendente') {
     try {
       const response = await api.get('/admin/pacote-contratos', { params: { status } });

@@ -52,6 +52,7 @@ class AdminPacoteRepository
             'plano_id' => $data['plano_id'],
             'plano_ciclo_id' => $data['plano_ciclo_id'],
             'ativo' => 1,
+            'venda_app' => $data['venda_app'] ?? 'nao',
         ]);
     }
 
@@ -77,6 +78,7 @@ class AdminPacoteRepository
                 plano_id = ?,
                 plano_ciclo_id = ?,
                 ativo = ?,
+                venda_app = COALESCE(?, venda_app),
                 updated_at = NOW()
             WHERE id = ? AND tenant_id = ?
         ', [
@@ -87,6 +89,7 @@ class AdminPacoteRepository
             $data['plano_id'],
             $data['plano_ciclo_id'],
             $data['ativo'],
+            $data['venda_app'] ?? null,
             $pacoteId,
             $tenantId,
         ]);
@@ -454,6 +457,7 @@ class AdminPacoteRepository
                 pc.data_inicio,
                 pc.data_fim,
                 pc.created_at,
+                pc.origem,
                 pc.updated_at,
                 p.id as pacote_id,
                 p.nome as pacote_nome,
@@ -490,6 +494,7 @@ class AdminPacoteRepository
                 pc.data_inicio,
                 pc.data_fim,
                 pc.created_at,
+                pc.origem,
                 pc.updated_at,
                 p.id as pacote_id,
                 p.nome as pacote_nome,
@@ -824,27 +829,6 @@ class AdminPacoteRepository
                 SELECT id FROM status_matricula WHERE codigo IN (\'pendente\', \'vencida\')
             )
         ', [$matriculaId]);
-    }
-
-    public function inserirProximaParcela(
-        int $tenantId,
-        int $alunoId,
-        int $matriculaId,
-        ?int $planoId,
-        float $valor,
-        string $dataVencimento,
-        ?int $adminId
-    ): int {
-        DB::insert('
-            INSERT INTO pagamentos_plano (
-                tenant_id, aluno_id, matricula_id, plano_id,
-                valor, valor_original, desconto, motivo_desconto,
-                data_vencimento, status_pagamento_id, pacote_contrato_id,
-                observacoes, criado_por, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 1, NULL, \'Parcela gerada automaticamente\', ?, NOW(), NOW())
-        ', [$tenantId, $alunoId, $matriculaId, $planoId, $valor, $valor, $dataVencimento, $adminId]);
-
-        return (int) DB::getPdo()->lastInsertId();
     }
 
     public function atualizarVencimentosMatricula(int $matriculaId, string $acessoAte, string $proximoVencimento): void

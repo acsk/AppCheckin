@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Repositories\AdminPacoteRepository;
+use App\Services\Pacote\PacoteConciliacaoService;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -11,10 +12,24 @@ use Throwable;
  */
 class AdminPacoteService
 {
+    /** Venda pelo app: não vende, só alunos liberados (pacote_liberacoes) ou todos os alunos. */
+    public const VENDA_APP = ['nao', 'liberados', 'todos'];
+
     public function __construct(
         private readonly AdminPacoteRepository $pacotes,
         private readonly PacoteDescontoService $descontos,
+        private ?PacoteConciliacaoService $conciliacao = null,
     ) {}
+
+    private function conciliacao(): PacoteConciliacaoService
+    {
+        return $this->conciliacao ??= app(PacoteConciliacaoService::class);
+    }
+
+    private static function vendaApp(mixed $valor): ?string
+    {
+        return in_array($valor, self::VENDA_APP, true) ? $valor : null;
+    }
 
     /**
      * @return array{status: int, body: array<string, mixed>}
@@ -60,6 +75,7 @@ class AdminPacoteService
                 'qtd_beneficiarios' => (int) $data['qtd_beneficiarios'],
                 'plano_id' => (int) $data['plano_id'],
                 'plano_ciclo_id' => ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null,
+                'venda_app' => self::vendaApp($data['venda_app'] ?? null) ?? 'nao',
             ]);
 
             return [
@@ -96,6 +112,8 @@ class AdminPacoteService
                 'plano_id' => (int) ($data['plano_id'] ?? 0),
                 'plano_ciclo_id' => ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null,
                 'ativo' => isset($data['ativo']) ? (int) $data['ativo'] : 1,
+                // Ausente = mantém (telas antigas não mandam o campo)
+                'venda_app' => self::vendaApp($data['venda_app'] ?? null),
             ]);
 
             return [
@@ -539,6 +557,9 @@ class AdminPacoteService
                 return $this->erro('Status inválido. Use: '.implode(', ', $statusValidos), 400);
             }
 
+            // Pacote pago pelo app (ou por fora da apiV2): reflete no grupo antes de listar
+            $this->conciliacao()->conciliarAbertos($tenantId);
+
             if (in_array($status, ['pendente', 'cancelado', 'expirado'], true)) {
                 $contratos = $this->pacotes->listarContratosBasico($tenantId, $status);
                 foreach ($contratos as &$contrato) {
@@ -581,6 +602,8 @@ class AdminPacoteService
                     'matriculas_geradas' => $matriculas,
                     'qtd_pessoas' => count($pessoas),
                     'qtd_matriculas_faltando' => count(array_diff($pessoas, $comMatricula)),
+                    // Vendido pelo app: o pagante pagou e o admin ainda associa os demais
+                    'vagas_livres' => max(0, (int) ($contrato['qtd_beneficiarios'] ?? 0) + 1 - count($pessoas)),
                 ];
             }
 
@@ -1049,28 +1072,8 @@ class AdminPacoteService
                             $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
                         }
 
-                        $valorProxima = (float) ($pagamento['valor_original'] ?? $pagamento['matricula_valor'] ?? 0);
-                        if ($valorProxima < 0.01) {
-                            $valorProxima = (float) ($pagamento['valor'] ?? 0) + (float) ($pagamento['desconto'] ?? 0);
-                        }
-
-                        $proximaId = $this->pacotes->inserirProximaParcela(
-                            $tenantId,
-                            (int) $pagamento['aluno_id'],
-                            (int) $pagamento['matricula_id'],
-                            (int) ($pagamento['plano_id'] ?? 0) ?: null,
-                            $valorProxima,
-                            $proximoVencimento->format('Y-m-d'),
-                            $adminId
-                        );
-
-                        $proximasParcelas[] = [
-                            'id' => $proximaId,
-                            'aluno_nome' => $pagamento['aluno_nome'],
-                            'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                            'valor' => $valorProxima,
-                        ];
-
+                        // Pacote não gera mais a "próxima parcela" por pessoa (era o valor cheio do plano
+                        // para cada um): a renovação é do pacote inteiro, pelo pagante (MobilePacoteVendaService).
                         $this->pacotes->atualizarVencimentosMatricula(
                             (int) $pagamento['matricula_id'],
                             $dataVencimentoAtual->format('Y-m-d'),

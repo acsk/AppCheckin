@@ -13,6 +13,7 @@ import {
 } from "@/src/utils/assinaturaFinanceiro";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
+import { usePacotePagamento } from "@/src/hooks/usePacotePagamento";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -121,6 +122,9 @@ interface PacoteContrato {
   pacote_nome?: string | null;
   pacote_descricao?: string | null;
   beneficiarios?: PacoteBeneficiario[];
+  pode_renovar?: boolean;
+  renovacao_liberada_em?: string | null;
+  valor_renovacao?: number | null;
 }
 
 interface ApiResponse {
@@ -159,7 +163,6 @@ export default function MinhasAssinaturasScreen() {
   const [apiUrl, setApiUrl] = useState("");
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [cancelando, setCancelando] = useState<number | null>(null);
-  const [pagandoPacoteId, setPagandoPacoteId] = useState<number | null>(null);
   const [atualizandoPagamentoId, setAtualizandoPagamentoId] = useState<
     number | null
   >(null);
@@ -645,92 +648,6 @@ export default function MinhasAssinaturasScreen() {
     [confirmarCancelamento],
   );
 
-  const handlePagarPacote = useCallback(
-    async (pacote: PacoteContrato) => {
-      try {
-        const contratoId = pacote.contrato_id ?? pacote.id;
-        if (!contratoId) {
-          showErrorModal(
-            "⚠️ Contrato inválido",
-            "Não foi possível identificar o contrato do pacote.",
-            "warning",
-          );
-          return;
-        }
-
-        setPagandoPacoteId(contratoId);
-
-        const token = await AsyncStorage.getItem("@appcheckin:token");
-        if (!token) throw new Error("Token não encontrado");
-
-        const url = `${apiUrl}/mobile/pacotes/contratos/${contratoId}/pagar`;
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        const text = await response.text();
-        let json: any = {};
-        try {
-          json = text ? JSON.parse(text) : {};
-        } catch {
-          json = {};
-        }
-
-        if (!response.ok || json?.success === false) {
-          const msg =
-            json?.message || json?.error || text || "Erro ao gerar pagamento";
-          showErrorModal("⚠️ Erro ao gerar pagamento", msg, "warning");
-          return;
-        }
-
-        const paymentUrl =
-          json?.payment_url || json?.data?.payment_url || pacote.payment_url;
-        if (!paymentUrl) {
-          showErrorModal(
-            "⚠️ Pagamento indisponível",
-            "Não foi possível gerar o link de pagamento.",
-            "warning",
-          );
-          return;
-        }
-
-        setPacotes((prev) =>
-          prev.map((item) => {
-            const itemId = item.contrato_id ?? item.id;
-            if (itemId !== contratoId) return item;
-            return {
-              ...item,
-              payment_url: paymentUrl,
-            };
-          }),
-        );
-
-        const supported = await Linking.canOpenURL(paymentUrl);
-        if (!supported) {
-          showErrorModal(
-            "⚠️ Não foi possível abrir o link",
-            "Tente novamente em instantes.",
-            "error",
-          );
-          return;
-        }
-
-        await Linking.openURL(paymentUrl);
-      } catch (err) {
-        const errorMsg =
-          err instanceof Error ? err.message : "Erro ao gerar pagamento";
-        showErrorModal("❌ Erro", errorMsg, "error");
-      } finally {
-        setPagandoPacoteId(null);
-      }
-    },
-    [apiUrl],
-  );
-
   const assinaturaCards = useMemo<AssinaturaCardItem[]>(() => {
     // Mesmo fuso do backend (America/Sao_Paulo) — evita divergência perto da meia-noite.
     const hojeIso = new Intl.DateTimeFormat("en-CA", {
@@ -972,6 +889,14 @@ export default function MinhasAssinaturasScreen() {
     );
   };
 
+  // Pagar o pacote pendente ou renovar (PIX ou cartão, no gateway da academia)
+  const pagamentoPacote = usePacotePagamento({
+    onPago: () => {
+      if (apiUrl) void fetchAssinaturasCallback(apiUrl, { silent: true });
+    },
+    onErro: (m) => showErrorModal("⚠️ Pacote", m, "warning"),
+  });
+
   const renderPacoteItem = (item: PacoteContrato) => {
     const contratoId = item.contrato_id ?? item.id;
     const statusCodigo =
@@ -993,7 +918,8 @@ export default function MinhasAssinaturasScreen() {
     const rateio = qtd > 0 ? total / qtd : null;
     const dataInicio = formatDate(item.data_inicio);
     const dataFim = formatDate(item.data_fim);
-    const buttonLabel = item.payment_url ? "Pagar pacote" : "Gerar pagamento";
+    const buttonLabel = "Pagar pacote";
+    const renovacaoEm = item.renovacao_liberada_em ? formatDate(item.renovacao_liberada_em) : null;
 
     return (
       <View
@@ -1063,20 +989,33 @@ export default function MinhasAssinaturasScreen() {
         {isPendente && contratoId && (
           <TouchableOpacity
             style={styles.pacotePagarButton}
-            onPress={() => handlePagarPacote(item)}
-            disabled={pagandoPacoteId === contratoId}
+            onPress={() => pagamentoPacote.iniciar({ titulo: pacoteNome, valor: total, contratoId })}
             activeOpacity={0.8}
           >
-            {pagandoPacoteId === contratoId ? (
-              <ActivityIndicator size="small" color={ds.onBrand} />
-            ) : (
-              <>
-                <Feather name="credit-card" size={16} color={ds.onBrand} />
-                <Text style={styles.pacotePagarButtonText}>{buttonLabel}</Text>
-              </>
-            )}
+            <Feather name="credit-card" size={16} color={ds.onBrand} />
+            <Text style={styles.pacotePagarButtonText}>{buttonLabel}</Text>
           </TouchableOpacity>
         )}
+
+        {!isPendente && contratoId && item.pode_renovar ? (
+          <TouchableOpacity
+            style={styles.pacotePagarButton}
+            onPress={() =>
+              pagamentoPacote.iniciar({
+                titulo: pacoteNome,
+                valor: Number(item.valor_renovacao || total),
+                contratoId,
+                renovar: true,
+              })
+            }
+            activeOpacity={0.8}
+          >
+            <Feather name="refresh-cw" size={16} color={ds.onBrand} />
+            <Text style={styles.pacotePagarButtonText}>Renovar pacote</Text>
+          </TouchableOpacity>
+        ) : !isPendente && renovacaoEm ? (
+          <Text style={styles.pacoteDateText}>Renovação pelo app a partir de {renovacaoEm}</Text>
+        ) : null}
       </View>
     );
   };
@@ -1322,6 +1261,7 @@ export default function MinhasAssinaturasScreen() {
           </View>
         </View>
       </Modal>
+      {pagamentoPacote.elemento}
     </SafeAreaView>
   );
 }

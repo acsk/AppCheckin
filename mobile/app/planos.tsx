@@ -30,6 +30,7 @@ import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import PlanCard from "@/src/components/ds/PlanCard";
+import PacotesVitrine from "@/src/components/PacotesVitrine";
 import Section from "@/src/components/ds/Section";
 import Stepper from "@/src/components/ds/Stepper";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
@@ -1436,7 +1437,11 @@ export default function PlanosScreen() {
   };
 
   // Atualiza sozinho ao voltar para a tela e ao reabrir o app/aba.
-  useRefreshOnFocus(() => (apiUrl ? fetchPlanos(apiUrl, { silent: true }) : undefined), { onScreenFocus: true });
+  const [vitrineVersao, setVitrineVersao] = useState(0);
+  useRefreshOnFocus(() => {
+    setVitrineVersao((v) => v + 1);
+    return apiUrl ? fetchPlanos(apiUrl, { silent: true }) : undefined;
+  }, { onScreenFocus: true });
 
   // ---- Lista de planos no modelo "TelasPlanos" (PlanCard do design system) ----
   const fmtPreco = (v: number) => {
@@ -1690,6 +1695,12 @@ export default function PlanosScreen() {
               <View style={styles.planStack}>{planosAvulsos.map(renderPlanCardDs)}</View>
             </Section>
           ) : null}
+          {/* Pacotes vendidos pelo app (para todos ou liberados para o aluno) */}
+          <PacotesVitrine
+            recarregar={vitrineVersao}
+            onPago={() => fetchPlanos(apiUrl, { silent: true })}
+            onErro={(m) => showErrorModal("⚠️ Pacote", m, "warning")}
+          />
           <View style={styles.note}>
             <Feather name="info" size={18} color={ds.info} />
             <Text style={styles.noteText}>

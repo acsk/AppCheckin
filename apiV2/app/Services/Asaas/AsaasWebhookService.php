@@ -3,6 +3,7 @@
 namespace App\Services\Asaas;
 
 use App\Services\EncryptionService;
+use App\Services\Pacote\PacoteConciliacaoService;
 use App\Services\PagamentoPlanoService;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Support\AsaasPagamentoStatus;
@@ -162,6 +163,9 @@ class AsaasWebhookService
         $this->ativarMatriculaPendente($tenantId, $matriculaId);
         $this->registrarFimDoPeriodo($tenantId, $matriculaId);
 
+        // Pacote pago pelo pagante: a baixa vale para o grupo (parcelas dos demais, contrato ativo/estendido)
+        $this->conciliarPacote($tenantId, $matriculaId);
+
         return [
             'status' => 200,
             'body' => [
@@ -173,6 +177,19 @@ class AsaasWebhookService
                 'matricula_id' => $matriculaId,
             ],
         ];
+    }
+
+    private function conciliarPacote(int $tenantId, int $matriculaId): void
+    {
+        try {
+            $conciliacao = app(PacoteConciliacaoService::class);
+            $contratoId = $conciliacao->contratoSeForDoPagante($tenantId, $matriculaId);
+            if ($contratoId) {
+                $conciliacao->conciliar($tenantId, $contratoId);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Asaas webhook: falha ao conciliar pacote', ['tenant_id' => $tenantId, 'matricula_id' => $matriculaId, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

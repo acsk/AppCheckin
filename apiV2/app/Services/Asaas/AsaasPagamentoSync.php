@@ -3,12 +3,16 @@
 namespace App\Services\Asaas;
 
 use App\Support\AsaasPagamentoStatus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AsaasPagamentoSync
 {
+    /** Cobranças que não existem mais no Asaas (puladas pela conferência agendada). */
+    private const CACHE_REMOVIDA = 'asaas:cobranca_removida:';
+
     public function paymentIdDaMatricula(int $tenantId, int $matriculaId): string
     {
         $ids = $this->paymentIdsDaMatricula($tenantId, $matriculaId);
@@ -120,7 +124,7 @@ class AsaasPagamentoSync
      * para uma cobrança antiga já paga não dar baixa na parcela nova.
      *
      * @param  (callable(int, string): array<string, mixed>)|null  $obter  consulta da cobrança (testes)
-     * @return array{conferidas: int, pagas: int, erros: int}
+     * @return array{conferidas: int, pagas: int, removidas: int, erros: int, mensagens: list<string>}
      */
     public function sincronizarPendentes(?int $tenantId = null, int $limite = 200, int $dias = 60, ?callable $obter = null): array
     {
@@ -163,14 +167,19 @@ class AsaasPagamentoSync
 
         $alvos = [];
         foreach ($assinaturas->concat($pix) as $row) {
-            $alvos[$row->payment_id] ??= [(int) $row->tenant_id, (int) $row->matricula_id];
+            if (! Cache::has(self::CACHE_REMOVIDA.$row->payment_id)) {
+                $alvos[$row->payment_id] ??= [(int) $row->tenant_id, (int) $row->matricula_id];
+            }
         }
 
-        $res = ['conferidas' => 0, 'pagas' => 0, 'erros' => 0];
+        $res = ['conferidas' => 0, 'pagas' => 0, 'removidas' => 0, 'erros' => 0, 'mensagens' => []];
         foreach (array_slice($alvos, 0, $limite, true) as $paymentId => [$tenant, $matriculaId]) {
             $res['conferidas']++;
             try {
                 $payment = $obter($tenant, (string) $paymentId);
+                if (($payment['deleted'] ?? false) === true) {
+                    throw new AsaasNaoEncontradoException('Cobrança removida no Asaas');
+                }
                 if ($payment === [] || ! AsaasPagamentoStatus::pago((string) ($payment['status'] ?? ''))) {
                     continue;
                 }
@@ -183,8 +192,17 @@ class AsaasPagamentoSync
                     $res['pagas']++;
                     Log::info('Asaas schedule: pagamento aplicado', ['tenant_id' => $tenant, 'matricula_id' => $matriculaId, 'payment_id' => $paymentId]);
                 }
+            } catch (AsaasNaoEncontradoException $e) {
+                // Cobrança apagada no Asaas (ex.: PIX substituído por outro): não há o que baixar.
+                // Sai da conferência até ficar fora da janela, sem mexer nos registros locais.
+                $res['removidas']++;
+                Cache::put(self::CACHE_REMOVIDA.$paymentId, true, now()->addDays(max(1, $dias)));
+                Log::info('Asaas schedule: cobrança não existe mais no Asaas', ['tenant_id' => $tenant, 'matricula_id' => $matriculaId, 'payment_id' => $paymentId]);
             } catch (\Throwable $e) {
                 $res['erros']++;
+                if (count($res['mensagens']) < 5 && ! in_array($e->getMessage(), $res['mensagens'], true)) {
+                    $res['mensagens'][] = $e->getMessage();
+                }
                 Log::warning('Asaas schedule: falha ao conferir cobrança', [
                     'tenant_id' => $tenant,
                     'matricula_id' => $matriculaId,

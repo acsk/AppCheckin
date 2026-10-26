@@ -97,3 +97,9 @@
 .ck-pc__name strong .ck-badge { margin-left: 8px; vertical-align: 1px; }
 .ck-pc__table td .ck-pc__sub { white-space: normal; }
 .ck-pc__mdl .ck-adm { display: grid; gap: var(--space-4); }
+
+/* Alunos liberados no app */
+.ck-pc__rel { list-style: none; margin: 0; padding: 0; display: grid; }
+.ck-pc__rel li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ck-pc__rel li:last-child { border-bottom: 0; }
+.ck-pc__rel strong { display: block; font-size: 14px; }

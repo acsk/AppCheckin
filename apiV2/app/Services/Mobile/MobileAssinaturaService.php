@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Services\Asaas\AsaasPagamentoSync;
 use App\Services\MercadoPagoService;
+use App\Services\Pacote\PacoteConciliacaoService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
@@ -378,13 +379,17 @@ class MobileAssinaturaService
 
         $assinaturas = $this->sanitizarAssinaturasFinanceiroMobile($assinaturas);
 
+        // Pagamento do pacote que chegou por fora (Mercado Pago na API Slim, baixa manual) vale para o grupo
+        app(PacoteConciliacaoService::class)->conciliarAbertos($tenantId);
+        $hoje = now()->toDateString();
+
         $pacotes = DB::table('pacote_contratos as pc')
             ->join('pacotes as p', 'p.id', '=', 'pc.pacote_id')
             ->where('pc.tenant_id', $tenantId)
             ->where('pc.pagante_usuario_id', $userId)
             ->orderByDesc('pc.created_at')
-            ->get(['pc.id as contrato_id', 'pc.status', 'pc.valor_total', 'pc.data_inicio', 'pc.data_fim', 'p.nome as pacote_nome'])
-            ->map(function ($pc) use ($tenantId) {
+            ->get(['pc.id as contrato_id', 'pc.status', 'pc.valor_total', 'pc.data_inicio', 'pc.data_fim', 'p.nome as pacote_nome', 'p.valor_total as pacote_valor', 'p.ativo as pacote_ativo'])
+            ->map(function ($pc) use ($tenantId, $hoje) {
                 $pc = (array) $pc;
                 $beneficiarios = DB::table('pacote_beneficiarios as pb')
                     ->join('alunos as a', 'a.id', '=', 'pb.aluno_id')
@@ -399,6 +404,11 @@ class MobileAssinaturaService
                     'data_inicio' => $pc['data_inicio'],
                     'data_fim' => $pc['data_fim'],
                     'pacote_nome' => $pc['pacote_nome'],
+                    // Renovação pelo pagante, a partir de N dias antes do fim (valor atual do pacote)
+                    'renovacao_liberada_em' => $pc['status'] === 'ativo' ? MobilePacoteVendaService::renovacaoLiberadaEm($pc['data_fim']) : null,
+                    'pode_renovar' => $pc['status'] === 'ativo' && (int) $pc['pacote_ativo'] === 1
+                        && (($l = MobilePacoteVendaService::renovacaoLiberadaEm($pc['data_fim'])) === null || $l <= $hoje),
+                    'valor_renovacao' => (float) $pc['pacote_valor'],
                     'beneficiarios' => $beneficiarios->map(fn ($b) => [
                         'aluno_id' => (int) $b->aluno_id,
                         'nome' => $b->aluno_nome,

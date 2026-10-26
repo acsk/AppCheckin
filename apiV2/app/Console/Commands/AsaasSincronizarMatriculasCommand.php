@@ -23,8 +23,18 @@ class AsaasSincronizarMatriculasCommand extends Command
             max(1, (int) $this->option('dias')),
         );
 
-        $this->info(sprintf('%d conferidas, %d pagas, %d com erro', $res['conferidas'], $res['pagas'], $res['erros']));
+        $this->info(sprintf('%d conferidas, %d pagas, %d removidas no Asaas, %d com erro', $res['conferidas'], $res['pagas'], $res['removidas'], $res['erros']));
+        foreach ($res['mensagens'] as $mensagem) {
+            $this->error($mensagem);
+        }
 
-        return $res['erros'] > 0 && $res['conferidas'] === $res['erros'] ? self::FAILURE : self::SUCCESS;
+        if ($res['erros'] > 0 && $res['conferidas'] === $res['erros']) {
+            // O alerta do schedule só diz "exit code 1": registra o motivo para aparecer no monitor de erros
+            report(new \RuntimeException(sprintf('asaas:sincronizar-matriculas: as %d cobranças conferidas falharam. %s', $res['erros'], implode(' | ', $res['mensagens']))));
+
+            return self::FAILURE;
+        }
+
+        return self::SUCCESS;
     }
 }

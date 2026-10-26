@@ -946,6 +946,9 @@ class AsaasService
                 'path' => $path,
                 'errors' => $json['errors'] ?? $errors,
             ]);
+            if ($response->status() === 404) {
+                throw new AsaasNaoEncontradoException('Asaas: '.$errors);
+            }
             throw new \RuntimeException('Asaas: '.$errors);
         }
 

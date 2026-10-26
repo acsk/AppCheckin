@@ -1,6 +1,6 @@
 /* Pacotes portados do layout HTML fornecido (Pacotes.html). */
 import React from 'react';
-import { ActionMenu, Avatar, Badge, Button, Icon, IconButton, Modal, PageHeader, SelectField, Switch, Tabs, TextAreaField, TextField } from './index';
+import { ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch, Tabs, TextAreaField, TextField } from './index';
 const h = React.createElement;
 const { useState } = React;
 const cx = (...values) => values.filter(Boolean).join(' ');
@@ -39,6 +39,13 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
     if (c.save < -0.004) return h(Badge, { tone: 'warning', icon: 'alert-triangle' }, pcPct(c.pct) + ' mais caro');
     return h(Badge, { tone: 'outline' }, 'Mesmo preço');
   }
+  // Venda pelo app (pacotes.venda_app)
+  var PC_SALE = [{ value: 'nao', label: 'Não vende' }, { value: 'liberados', label: 'Só liberados' }, { value: 'todos', label: 'Todos os alunos' }];
+  var PC_SALE_HINT = {
+    nao: 'Só o admin contrata, pelo painel.',
+    liberados: 'Aparece no app só para os alunos que você liberar (ex.: depois de uma negociação).',
+    todos: 'Qualquer aluno vê o pacote no app e pode contratar e pagar.',
+  };
   var PC_CT = { pendente: ['warning', 'Aguardando pagamento'], ativo: ['success', 'Ativo'], expirado: ['outline', 'Encerrado'], cancelado: ['outline', 'Cancelado'] };
 
   function PacotesLista(p) {
@@ -65,7 +72,8 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
             h('th', { scope: 'row' }, h('div', { className: 'ck-pc__name' },
               h('span', { className: 'ck-pc__icon', 'aria-hidden': true }, h(Icon, { name: 'package', size: 18 })),
               h('div', { style: { minWidth: 0 } },
-                h('strong', null, k.name, off ? h(Badge, { tone: 'outline' }, 'Inativo') : null),
+                h('strong', null, k.name, off ? h(Badge, { tone: 'outline' }, 'Inativo') : null,
+                  k.sale === 'todos' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'Vende no app') : k.sale === 'liberados' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'App: só liberados') : null),
                 k.description ? h('span', { title: k.description }, k.description) : null,
                 k.contracts ? h('span', null, k.contracts + (k.contracts === 1 ? ' contrato em aberto' : ' contratos em aberto')) : null))),
             h('td', null, h('span', { className: 'ck-pc__main' }, k.plan ? k.plan.name : '—'), h('span', { className: 'ck-pc__sub' }, k.cycle ? pcCycleLabel(c.months) + ', ' + pcMonthsTxt(c.months) : 'Sem ciclo')),
@@ -77,6 +85,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
               h(ActionMenu, { label: 'Mais ações para ' + k.name, items: [
                 p.onEdit ? { label: 'Editar pacote', icon: 'pencil', onClick: function () { p.onEdit(k); } } : null,
                 p.onDuplicate ? { label: 'Duplicar', icon: 'copy', onClick: function () { p.onDuplicate(k); } } : null,
+                p.onReleases ? { label: 'Alunos liberados no app', icon: 'user-check', onClick: function () { p.onReleases(k); } } : null,
                 p.onToggleActive ? { label: off ? 'Ativar' : 'Desativar', icon: 'power', onClick: function () { p.onToggleActive(k); } } : null].filter(Boolean) }))));
         })))) : h('div', { className: 'ck-ml__empty' },
           h('span', { className: 'ck-mt-empty__icon', 'aria-hidden': true }, h(Icon, { name: q ? 'search' : 'package', size: 20 })),
@@ -94,7 +103,9 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
           return h('tr', { key: c.id },
             h('th', { scope: 'row' }, h('div', { className: 'ck-pc__name' },
               h('span', { className: 'ck-pc__icon', 'aria-hidden': true }, h(Icon, { name: 'file-text', size: 18 })),
-              h('div', { style: { minWidth: 0 } }, h('strong', null, c.pkg.name), h('span', null, 'Contrato #' + c.id + (c.createdAt ? ', criado em ' + fdate(c.createdAt) : ''))))),
+              h('div', { style: { minWidth: 0 } }, h('strong', null, c.pkg.name, c.origin === 'app' ? h(Badge, { tone: 'info', icon: 'cellphone' }, 'Pelo app') : null),
+                h('span', null, 'Contrato #' + c.id + (c.createdAt ? ', criado em ' + fdate(c.createdAt) : '')),
+                c.origin === 'app' && c.status === 'ativo' && miss > 0 ? h('span', null, 'Pago pelo aluno: associe os demais participantes') : null))),
             h('td', null, h('div', { className: 'ck-pc__person' }, h(Avatar, { name: titleCase(c.payer.name), size: 'sm' }), h('span', null, titleCase(c.payer.name)))),
             h('td', null, h('div', { className: 'ck-pc__members' },
               h('div', { className: 'ck-pc__faces', 'aria-hidden': true }, mem.slice(0, 4).map(function (m, i) { return h(Avatar, { key: i, name: titleCase(m.name), size: 'sm' }); })),
@@ -134,7 +145,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
 
   function PacoteModal(p) {
     var k = p.package || {}, edit = k.id != null, plans = p.plans || [];
-    var init = useState(function () { return { name: k.name || '', description: k.description || '', plan: k.plan ? String(k.plan.id) : '', cycle: k.cycle ? String(k.cycle.id) : '', people: k.people ? String(k.people) : '2', total: pcMoneyIn(k.total), active: k.active !== false }; })[0];
+    var init = useState(function () { return { name: k.name || '', description: k.description || '', plan: k.plan ? String(k.plan.id) : '', cycle: k.cycle ? String(k.cycle.id) : '', people: k.people ? String(k.people) : '2', total: pcMoneyIn(k.total), active: k.active !== false, sale: k.sale || 'nao' }; })[0];
     var fm = useState(init), f = fm[0], tried = useState(false);
     function set(key, v) { var n = Object.assign({}, f); n[key] = v; fm[1](n); }
     var plan = plans.filter(function (x) { return String(x.id) === String(f.plan); })[0];
@@ -158,7 +169,7 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
     function save() {
       tried[1](true);
       if (Object.keys(err).length) return;
-      p.onSave && p.onSave({ id: k.id, name: f.name.trim(), description: f.description.trim() || null, planId: plan.id, cycleId: cycle.id, people: +f.people, total: total, active: f.active });
+      p.onSave && p.onSave({ id: k.id, name: f.name.trim(), description: f.description.trim() || null, planId: plan.id, cycleId: cycle.id, people: +f.people, total: total, active: f.active, sale: f.sale });
     }
     function suggest(pct) { set('total', (Math.round(c.normal * (1 - pct) * 100) / 100).toFixed(2).replace('.', ',')); }
     return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, size: 'lg', dialogClassName: 'ck-pc__dlg',
@@ -188,6 +199,9 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
                 h(IconButton, { icon: 'plus', label: 'Mais uma pessoa', variant: 'secondary', onClick: function () { set('people', String((+f.people || 0) + 1)); } })),
               show.people ? h('span', { className: 'ck-field__error' }, show.people) : h('span', { className: 'ck-field__hint' }, 'Contando quem paga.')),
             h(TextField, { label: 'Valor do pacote', prefix: 'R$', inputMode: 'decimal', value: f.total, error: show.total, placeholder: '0,00', hint: !show.total ? 'Total pago pelo ciclo inteiro' : null, onChange: function (e) { set('total', e.target.value.replace(/[^\d,.]/g, '')); } })),
+          h('div', { className: 'ck-field' },
+            h(SegmentedControl, { label: 'Venda pelo app', options: PC_SALE, value: f.sale, onChange: function (v) { set('sale', v); } }),
+            h('span', { className: 'ck-field__hint' }, PC_SALE_HINT[f.sale] + (f.sale !== 'nao' ? ' Quem compra vira o pagante; depois do pagamento você associa os demais. O pagante renova pelo app.' : ''))),
           h('div', { className: 'ck-al-active' }, h(Switch, { label: 'Pacote ativo', description: f.active ? 'Pode ser contratado.' : 'Não aparece para novos contratos.', checked: f.active, onChange: function (v) { set('active', v); } }))),
         h('aside', { className: 'ck-pc__calc', 'aria-live': 'polite' },
           h('span', { className: 'ck-pc__calctitle' }, 'Comparação com o plano avulso'),
@@ -343,4 +357,40 @@ function firstName(value) { return titleCase(value).split(' ')[0]; }
         mem.length < slots ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'Quem entrar depois em Beneficiários ganha matrícula até o fim da mesma vigência.') : null));
   }
 
-export { PacotesLista, PacoteModal, ContratarPacoteModal, PacoteBeneficiariosModal, ConfirmarPagamentoPacoteModal, pcCycleLabel };
+  /* Alunos liberados para contratar o pacote pelo app (venda "Só liberados"). */
+  function PacoteLiberacoesModal(p) {
+    var k = p.package || {}, list = p.releases, students = p.students || [];
+    var fs = useState({ student: '', until: '', note: '' }), f = fs[0];
+    function set(key, v) { var n = Object.assign({}, f); n[key] = v; fs[1](n); }
+    var taken = (list || []).map(function (r) { return String(r.aluno_id); });
+    var options = students.filter(function (s) { return taken.indexOf(String(s.id)) < 0; })
+      .map(function (s) { return { value: String(s.id), label: titleCase(s.name) + (s.email ? ' — ' + s.email : '') }; });
+    function add() {
+      if (!f.student || !p.onAdd) return;
+      p.onAdd({ aluno_id: +f.student, valida_ate: f.until || null, observacao: f.note.trim() || null }).then(function () { fs[1]({ student: '', until: '', note: '' }); }).catch(function () {});
+    }
+    return h(Modal, { open: p.open, onClose: p.onCancel, size: 'md', title: 'Alunos liberados no app',
+      description: k.name + '. Quem está aqui vê o pacote no app e pode contratar e pagar.',
+      footer: h('div', { className: 'ck-adm__foot' }, h(Button, { onClick: p.onCancel }, 'Fechar')) },
+      h('div', { className: 'ck-pc__form' }, h('div', { className: 'ck-pc__fields' },
+        k.sale !== 'liberados' ? h(Callout, { tone: 'warning' }, k.sale === 'todos'
+          ? 'Este pacote já vende para todos os alunos: a lista só vale se você mudar para "Só liberados".'
+          : 'Este pacote não vende pelo app. Edite o pacote e escolha "Só liberados" para a lista valer.') : null,
+        list == null ? h('p', { className: 'ck-field__hint' }, 'Carregando…')
+          : list.length ? h('ul', { className: 'ck-pc__rel' }, list.map(function (r) {
+            return h('li', { key: r.aluno_id, className: 'ck-pc__person' },
+              h(Avatar, { name: titleCase(r.nome), size: 'sm' }),
+              h('div', { style: { flex: 1, minWidth: 0 } },
+                h('strong', null, titleCase(r.nome)),
+                h('span', { className: 'ck-pc__sub' }, (r.valida_ate ? (r.vencida ? 'Venceu em ' : 'Até ') + fdate(r.valida_ate) : 'Sem prazo') + (r.observacao ? ' · ' + r.observacao : ''))),
+              r.vencida ? h(Badge, { tone: 'outline' }, 'Vencida') : null,
+              h(IconButton, { icon: 'x', label: 'Remover ' + titleCase(r.nome), onClick: function () { p.onRemove && p.onRemove(r.aluno_id); } }));
+          })) : h('p', { className: 'ck-field__hint' }, 'Nenhum aluno liberado ainda.'),
+        h(SelectField, { label: 'Liberar para', value: f.student, placeholder: 'Escolha o aluno', options: options, onChange: function (e) { set('student', e.target.value); } }),
+        h('div', { className: 'ck-al-grid' },
+          h(TextField, { label: 'Válido até', labelAside: 'opcional', type: 'date', min: isoToday(), value: f.until, onChange: function (e) { set('until', e.target.value); } }),
+          h(TextField, { label: 'Observação', labelAside: 'opcional', value: f.note, placeholder: 'Ex.: negociado em 26/10', onChange: function (e) { set('note', e.target.value); } })),
+        h('div', null, h(Button, { variant: 'primary', icon: 'user-check', disabled: !f.student, loading: p.saving, onClick: add }, 'Liberar')))));
+  }
+
+export { PacotesLista, PacoteModal, ContratarPacoteModal, PacoteBeneficiariosModal, ConfirmarPagamentoPacoteModal, PacoteLiberacoesModal, pcCycleLabel };

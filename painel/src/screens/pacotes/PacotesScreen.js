@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import LayoutBase from '../../components/LayoutBase';
-import { PacotesLista, PacoteModal, ContratarPacoteModal, PacoteBeneficiariosModal, ConfirmarPagamentoPacoteModal } from '../../components/ck/pacotes';
+import { PacotesLista, PacoteModal, ContratarPacoteModal, PacoteBeneficiariosModal, ConfirmarPagamentoPacoteModal, PacoteLiberacoesModal } from '../../components/ck/pacotes';
 import { Button, Callout, Modal } from '../../components/ck';
 import api from '../../services/api';
 import pacoteService from '../../services/pacoteService';
@@ -22,6 +22,7 @@ function toPackage(p) {
     cycle: p.plano_ciclo_id ? { id: p.plano_ciclo_id, months: +p.ciclo_meses || 1, value: +p.ciclo_valor || 0 } : null,
     contracts: +p.contratos_abertos || 0,
     active: !!+p.ativo,
+    sale: p.venda_app || 'nao',
   };
 }
 
@@ -46,6 +47,7 @@ function toPending(c, byId) {
   return {
     id: c.contrato_id,
     status: c.status || 'pendente',
+    origin: c.origem || 'admin',
     pkg: { id: c.pacote_id, name: c.pacote_nome, months: pkg?.cycle?.months },
     total: +c.valor_total || 0,
     people: (+c.qtd_beneficiarios || 0) + 1,
@@ -66,6 +68,7 @@ function toActive(item) {
   return {
     id: c.contrato_id,
     status: c.status || 'ativo',
+    origin: c.origem || 'admin',
     pkg: { id: c.pacote_id, name: c.pacote_nome },
     total: +c.valor_total || 0,
     people: (+c.qtd_beneficiarios || 0) + 1,
@@ -87,6 +90,7 @@ function toPayload(d) {
     plano_id: d.planId,
     plano_ciclo_id: d.cycleId,
     ativo: d.active ? 1 : 0,
+    venda_app: d.sale || 'nao',
   };
 }
 
@@ -172,6 +176,26 @@ export default function PacotesScreen() {
   const withPlanOf = k => (!k?.plan || plans.some(p => String(p.id) === String(k.plan.id)) ? plans
     : [...plans, { ...k.plan, cycles: k.cycle ? [k.cycle] : [] }]);
 
+  // Alunos liberados no app: a lista é carregada ao abrir e atualizada a cada mudança
+  const openReleases = k => {
+    setModal({ type: 'releases', pkg: k, releases: null });
+    pacoteService.liberacoes(k.id).then(r => mounted.current && setModal(m => (m?.type === 'releases' ? { ...m, releases: r?.liberacoes || [] } : m)))
+      .catch(err => { showError(msg(err, 'Não foi possível carregar os liberados.')); setModal(null); });
+  };
+  const changeReleases = async (action, success) => {
+    setBusy(true);
+    try {
+      const r = await action();
+      if (mounted.current) setModal(m => (m?.type === 'releases' ? { ...m, releases: r?.liberacoes || [] } : m));
+      showSuccess(success);
+    } catch (err) {
+      showError(msg(err, 'Não foi possível salvar.'));
+      throw err;
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  };
+
   const duplicate = k => setModal({ type: 'package', pkg: { ...k, id: undefined, name: k.name + ' (cópia)', contracts: 0 } });
 
   return <LayoutBase title="Pacotes" pageHeader={false}>
@@ -180,6 +204,7 @@ export default function PacotesScreen() {
       onNew={() => setModal({ type: 'package', pkg: null })}
       onEdit={k => setModal({ type: 'package', pkg: k })}
       onDuplicate={duplicate}
+      onReleases={openReleases}
       onToggleActive={toggleActive}
       onContract={k => setModal({ type: 'contract', pkg: k })}
       onConfirmPayment={c => setModal({ type: 'pay', contract: c })}
@@ -188,6 +213,10 @@ export default function PacotesScreen() {
       onCancelContract={c => setModal({ type: 'cancel', contract: c })} />
 
     {modal?.type === 'package' ? <PacoteModal open package={modal.pkg} plans={withPlanOf(modal.pkg)} saving={busy} onCancel={close} onSave={savePackage} /> : null}
+
+    {modal?.type === 'releases' ? <PacoteLiberacoesModal open package={modal.pkg} releases={modal.releases} students={students} saving={busy} onCancel={close}
+      onAdd={d => changeReleases(() => pacoteService.liberar(modal.pkg.id, d), 'Aluno liberado no app.')}
+      onRemove={alunoId => quiet(changeReleases(() => pacoteService.revogar(modal.pkg.id, alunoId), 'Liberação removida.'))} /> : null}
 
     {modal?.type === 'contract' ? <ContratarPacoteModal open package={modal.pkg} packages={packages} students={students} onCancel={close}
       onConfirm={d => run(
