@@ -460,6 +460,12 @@ class MobileCompraPlanoService
                 if ($n > 0) {
                     Log::info("comprarPlano v2: {$n} parcela(s) cancelada(s) na matrícula {$matriculaId}");
                 }
+
+                // Linha sem pagamento reaproveitada (pendente/órfã): continua o último ciclo pago, se houver
+                $anteriorPagaId = $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, (int) $modalidadeId, $planoId, $valorCompra);
+                if ($anteriorPagaId) {
+                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorPagaId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
+                }
             } else {
                 $matriculaId = (int) DB::table('matriculas')->insertGetId([
                     'tenant_id' => $tenantId,
@@ -488,6 +494,8 @@ class MobileCompraPlanoService
                     // Mesmo efeito do reaproveitamento: parcelas em aberto do ciclo anterior não ficam cobrando
                     $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
                     Log::info("comprarPlano v2: matrícula #{$matriculaId} criada como continuação da #{$anteriorId} (tinha pagamento confirmado)");
+                } elseif ($anteriorPagaId = $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, (int) $modalidadeId, $planoId, $valorCompra)) {
+                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorPagaId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
                 }
             }
 

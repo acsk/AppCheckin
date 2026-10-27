@@ -242,6 +242,38 @@ class MatriculaEncadeamentoTest extends TestCase
         $this->assertSame(1, DB::table('pagamentos_plano')->count());
     }
 
+    // ------------------------------------------------------------------ caso da Aline (#427 → #463)
+
+    public function test_compra_que_reaproveita_linha_sem_pagamento_continua_o_ultimo_ciclo_pago(): void
+    {
+        $paga = $this->matricula($this->plano3x, 'vencida', '2026-09-25 10:00:00');
+        $this->pagar($paga, 2, null);
+        $orfa = $this->matricula($this->planoLivre, 'pendente', '2026-10-27 09:00:00'); // reaproveitada pela compra
+
+        $this->assertSame($paga, $this->servico()->encadearAoUltimoCicloPago($orfa, self::T, 134, $this->natacao, $this->planoLivre, 220));
+
+        $linha = DB::table('matriculas')->find($orfa);
+        $this->assertSame($paga, (int) $linha->matricula_anterior_id);
+        $this->assertSame(3, (int) $linha->motivo_id, 'upgrade');
+        $this->assertSame('finalizada', $this->statusDe($paga));
+        $this->assertNull($this->servico()->encadearAoUltimoCicloPago($orfa, self::T, 134, $this->natacao, $this->planoLivre, 220), 'idempotente');
+    }
+
+    public function test_sem_ciclo_pago_livre_nao_encadeia(): void
+    {
+        $semPagamento = $this->matricula($this->plano3x, 'vencida', '2026-09-01 10:00:00');
+        $jaContinuada = $this->matricula($this->plano3x, 'vencida', '2026-09-10 10:00:00');
+        $this->pagar($jaContinuada, 2, null);
+        $this->matricula($this->plano3x, 'ativa', '2026-10-10 10:00:00', 134, $jaContinuada);
+        $musc = $this->matricula($this->planoMusc, 'vencida', '2026-09-20 10:00:00');
+        $this->pagar($musc, 2, null);
+        $nova = $this->matricula($this->plano3x, 'pendente', '2026-10-27 10:00:00');
+
+        $this->assertNull($this->servico()->encadearAoUltimoCicloPago($nova, self::T, 134, $this->natacao, $this->plano3x, 150));
+        $this->assertSame('vencida', $this->statusDe($semPagamento));
+        $this->assertSame('vencida', $this->statusDe($musc), 'outra modalidade');
+    }
+
     public function test_encerrar_anterior_finaliza_vencida_e_preserva_cancelada(): void
     {
         $vencida = $this->matricula($this->plano3x, 'vencida', '2026-03-03 10:00:00');

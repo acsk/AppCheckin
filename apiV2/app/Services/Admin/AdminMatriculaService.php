@@ -844,6 +844,11 @@ class AdminMatriculaService
             ]);
         }
 
+        // Reaproveitou/criou sem vínculo: continua o último ciclo pago da modalidade, se houver
+        if ($matriculaAnteriorId === null && $modalidadeAtual !== null) {
+            $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, $modalidadeAtual, $planoId, (float) $valorMatricula);
+        }
+
         $this->matriculas->inserirHistoricoPlanos([
             'usuario_id' => $usuarioId,
             'plano_anterior_id' => $planoAnteriorId,
