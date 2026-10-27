@@ -34,7 +34,6 @@ import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import FidelidadeSheet from "@/src/components/FidelidadeSheet";
-import Segmented from "@/src/components/ds/Segmented";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
@@ -127,7 +126,7 @@ export default function PlanoDetalhesScreen() {
   const [selectedCicloId, setSelectedCicloId] = useState<number | null>(null);
   const [fidelidadeAberta, setFidelidadeAberta] = useState(false);
   // Ciclo com fidelização oferece as duas formas: o período de uma vez ou a assinatura mensal
-  const [modoCiclo, setModoCiclo] = useState<"avista" | "assinatura">("assinatura");
+  const [modoCiclo, setModoCiclo] = useState<"avista" | "assinatura">("avista");
   const [comprando, setComprando] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
@@ -1264,9 +1263,10 @@ export default function PlanoDetalhesScreen() {
               {ciclos.map((ciclo) => {
                 const mensal = Number(ciclo.valor_mensal) || (ciclo.meses ? Number(ciclo.valor) / ciclo.meses : Number(ciclo.valor));
                 const desconto = Number(ciclo.desconto_percentual) || 0;
+                // A API manda "R$ 40,00 de economia": prefixar "Economize" duplicava a palavra
                 const economiaValor = ciclo.economia_valor
-                  ? /^econom/i.test(ciclo.economia_valor)
-                    ? ciclo.economia_valor
+                  ? /econom/i.test(ciclo.economia_valor)
+                    ? ciclo.economia_valor.replace(/^r\$/i, "R$")
                     : `Economize ${ciclo.economia_valor}`
                   : null;
                 return (
@@ -1300,16 +1300,30 @@ export default function PlanoDetalhesScreen() {
         {/* Ciclo com fidelização: escolher entre pagar o período de uma vez ou assinar por mês */}
         {selectedCiclo?.cobranca_mensal && !bloquearCompraPorAtivo ? (
           <Section title={`Como pagar o ${selectedCiclo.nome}?`} bare>
-            <Segmented
-              label="Forma de contratação"
-              options={[{ id: "avista", label: "À vista", icon: "check-circle" }, { id: "assinatura", label: "Assinatura", icon: "repeat" }]}
-              value={modoCiclo}
-              onChange={(id) => setModoCiclo(id as "avista" | "assinatura")}
-            />
+            <View style={styles.modos} accessibilityRole="radiogroup" accessibilityLabel="Forma de contratação">
+              {([
+                ["avista", "À vista", selectedCiclo.valor_formatado, `${selectedCiclo.meses} meses de acesso, pagamento único`],
+                ["assinatura", "Assinatura", `${selectedCiclo.valor_mensal_formatado}/mês`, `Fidelidade de ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses, cobrança mensal`],
+              ] as const).map(([id, titulo, preco, sub]) => {
+                const on = modoCiclo === id;
+                return (
+                  <TouchableOpacity key={id} style={[styles.modo, on && styles.modoOn]} activeOpacity={0.8}
+                    accessibilityRole="radio" accessibilityState={{ checked: on }} accessibilityLabel={`${titulo}: ${preco}. ${sub}`}
+                    onPress={() => setModoCiclo(id)}>
+                    <View style={styles.modoTopo}>
+                      <View style={[styles.modoRadio, on && styles.modoRadioOn]}>{on ? <Feather name="check" size={12} color={ds.onBrand} /> : null}</View>
+                      <Text style={styles.modoTitulo}>{titulo}</Text>
+                    </View>
+                    <Text style={[styles.modoPreco, on && { color: ds.brandInk }]}>{preco}</Text>
+                    <Text style={styles.modoSub}>{sub}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
             <Text style={styles.modoTexto}>
               {modoCiclo === "avista"
-                ? `Você paga ${selectedCiclo.valor_formatado} agora e tem ${selectedCiclo.meses} meses de acesso.`
-                : `Você paga ${selectedCiclo.valor_mensal_formatado} por mês, em cobranças separadas (não é parcelamento), com fidelidade de ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses.`}
+                ? "Paga o ciclo inteiro agora, por PIX, cartão ou boleto."
+                : "Cada mês é uma cobrança separada (não é parcelamento); o total não fica preso no limite do cartão."}
             </Text>
           </Section>
         ) : null}
@@ -1625,6 +1639,15 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   modoTexto: { marginTop: 8, fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
+  modos: { flexDirection: "row", gap: 10 },
+  modo: { flex: 1, gap: 4, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: ds.line, backgroundColor: ds.surface },
+  modoOn: { borderWidth: 2, borderColor: ds.brand, backgroundColor: ds.brandSoft },
+  modoTopo: { flexDirection: "row", alignItems: "center", gap: 8 },
+  modoRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: ds.lineStrong, alignItems: "center", justifyContent: "center" },
+  modoRadioOn: { borderColor: ds.brand, backgroundColor: ds.brand },
+  modoTitulo: { fontSize: 15, fontWeight: "800", color: ds.ink },
+  modoPreco: { fontSize: 20, lineHeight: 24, fontWeight: "900", color: ds.ink, fontVariant: ["tabular-nums"] },
+  modoSub: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ds.inkMuted },
   footerAtivoText: {
     fontSize: 16,
     fontWeight: "800",
