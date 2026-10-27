@@ -57,6 +57,8 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
   const [oferta, setOferta] = useState<Oferta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aceite, setAceite] = useState(false);
+  // Passo 1: resumo, termos e aceite · passo 2: forma de pagamento
+  const [passo, setPasso] = useState<1 | 2>(1);
   const [metodo, setMetodo] = useState<MetodoPagamentoOpcao | null>("cartao");
   const [enviando, setEnviando] = useState(false);
   const [pix, setPix] = useState<{ contratoId: number; pagamento: NonNullable<Pagamento> } | null>(null);
@@ -65,7 +67,7 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
 
   useEffect(() => {
     if (!visible) return;
-    setOferta(null); setErro(null); setAceite(false); setMetodo("cartao");
+    setOferta(null); setErro(null); setAceite(false); setMetodo("cartao"); setPasso(1);
     chamarRecorrencia("GET", `/ofertas?plano_id=${planoId}`).then(({ ok, json }) => {
       const o = (json?.data?.ofertas || []).find((x: Oferta) => Number(x.plano_ciclo_id) === Number(cicloId));
       if (!ok || !o) setErro(json?.message || "Esta opção não está mais disponível.");
@@ -84,7 +86,7 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
       const { ok, json } = await chamarRecorrencia("POST", "/contratar", { plano_ciclo_id: oferta.plano_ciclo_id, metodo, termos_hash: oferta.termos_hash });
       if (!ok) {
         if (json?.code === "TERMOS_DESATUALIZADOS" && json?.oferta) {
-          setOferta(json.oferta); setAceite(false);
+          setOferta(json.oferta); setAceite(false); setPasso(1);
         }
         setErro(json?.message || json?.error || "Não foi possível assinar agora.");
         return;
@@ -102,6 +104,15 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
     } finally {
       setEnviando(false);
     }
+  }
+
+  function continuar() {
+    if (!aceite) {
+      setErro("Marque que leu e aceita os termos para continuar.");
+      return;
+    }
+    setErro(null);
+    setPasso(2);
   }
 
   async function conferir() {
@@ -127,13 +138,15 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
         visible={visible && !pix}
         variant="sheet"
         icon="repeat"
-        eyebrow="Assinatura com fidelidade"
-        title={oferta ? `${oferta.plano_nome} · ${oferta.ciclo_nome}` : "Assinatura"}
-        primary={{ label: aceite ? "Aceitar e assinar" : "Leia e aceite os termos", icon: "check", onPress: () => void assinar(), loading: enviando }}
+        eyebrow={`Assinatura com fidelidade · passo ${passo} de 2`}
+        title={oferta ? (passo === 1 ? `${oferta.plano_nome} · ${oferta.ciclo_nome}` : "Como você quer pagar?") : "Assinatura"}
+        primary={passo === 1
+          ? { label: "Continuar", icon: "arrow-right", onPress: continuar }
+          : { label: `Assinar por ${oferta ? brl(oferta.valor_mensal) : ""}/mês`, icon: "check", onPress: () => void assinar(), loading: enviando }}
         onClose={onClose}
       >
         {!oferta && !erro ? <ActivityIndicator color={ds.brand} /> : null}
-        {oferta ? (
+        {oferta && passo === 1 ? (
           <>
             <View style={styles.preco}>
               <Text style={styles.valor}>{brl(oferta.valor_mensal)}<Text style={styles.porMes}>/mês</Text></Text>
@@ -152,9 +165,22 @@ export default function FidelidadeSheet({ visible, planoId, cicloId, onClose, on
               <Feather name={aceite ? "check-square" : "square"} size={22} color={aceite ? ds.brandInk : ds.inkMuted} />
               <Text style={styles.aceiteTexto}>Li e aceito os termos desta assinatura</Text>
             </Pressable>
-            <Text style={styles.label}>Forma de pagamento</Text>
-            <PaymentMethodOptions opcoes={["cartao", "pix"]} value={metodo} onChange={setMetodo} compact />
-            <Text style={styles.meta}>{metodo === "cartao" ? "Pague a 1ª pela fatura; as próximas são debitadas no mesmo cartão." : "Todo mês você recebe um PIX para pagar a mensalidade."}</Text>
+          </>
+        ) : null}
+        {oferta && passo === 2 ? (
+          <>
+            <View style={styles.resumo}>
+              <Text style={styles.resumoTitulo}>{oferta.plano_nome} · {oferta.ciclo_nome}</Text>
+              <Text style={styles.meta}>{brl(oferta.valor_mensal)}/mês · fidelidade de {oferta.fidelizacao_meses} meses · termos aceitos</Text>
+            </View>
+            <PaymentMethodOptions opcoes={["cartao", "pix"]} value={metodo} onChange={setMetodo} />
+            <Text style={styles.meta}>{metodo === "cartao"
+              ? "Você paga a 1ª mensalidade na próxima tela; as seguintes são debitadas no mesmo cartão, uma por mês."
+              : "Todo mês você recebe um PIX para pagar a mensalidade. A 1ª aparece em seguida."}</Text>
+            <Pressable style={styles.voltar} onPress={() => { setPasso(1); setErro(null); }} accessibilityRole="button">
+              <Feather name="arrow-left" size={16} color={ds.inkMuted} />
+              <Text style={styles.voltarTexto}>Voltar aos termos</Text>
+            </Pressable>
           </>
         ) : null}
         {erro ? <Text style={styles.erro}>{erro}</Text> : null}
@@ -201,4 +227,8 @@ const styles = StyleSheet.create({
   aceite: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 44 },
   aceiteTexto: { flex: 1, ...type.body, color: ds.ink },
   erro: { ...type.caption, color: ds.danger },
+  resumo: { gap: 2, padding: space[3], borderRadius: radius.md, backgroundColor: ds.brandSoft },
+  resumoTitulo: { ...type.heading, fontSize: 15, color: ds.ink },
+  voltar: { flexDirection: "row", alignItems: "center", gap: space[2], minHeight: 44, alignSelf: "flex-start" },
+  voltarTexto: { ...type.caption, color: ds.inkMuted },
 });

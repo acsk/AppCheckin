@@ -718,14 +718,7 @@ export default function PlanosScreen() {
           return;
         }
 
-        // Fidelidade não é compra à vista: termos, aceite e assinatura ficam nos detalhes do plano
-        if (selectedCiclo.cobranca_mensal) {
-          setComprando(false);
-          setPlanoComprando(null);
-          router.push({ pathname: "/plano-detalhes", params: { id: String(plano.id) } });
-          return;
-        }
-
+        // Ciclo com fidelização: daqui segue a compra à vista; a assinatura mensal fica nos detalhes do plano
         if (plano.pode_migrar) {
           await abrirConfirmacaoMigracao(plano, selectedCiclo.id, metodo);
           return;

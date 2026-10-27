@@ -559,10 +559,10 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
 
         {!daily && months >= 2 ? (
           <div className="ck-cm__fid">
-            <Switch label="Fidelização com cobrança mensal" checked={fid.mensal} onChange={(v) => setF({ mensal: v })}
+            <Switch label="Também oferecer como assinatura mensal com fidelidade" checked={fid.mensal} onChange={(v) => setF({ mensal: v })}
               description={fid.mensal
-                ? `O aluno paga ${perMonth > 0 ? money(perMonth) : 'o valor ÷ meses'} por mês, em cobranças separadas, e se compromete a ficar ${months} meses. Não é parcelamento.`
-                : 'Desligado: o ciclo é pago à vista, de uma vez, como hoje.'} />
+                ? `O aluno escolhe no app: pagar ${value > 0 ? money(value) : 'o ciclo'} de uma vez, ou assinar por ${perMonth > 0 ? money(perMonth) : 'o valor ÷ meses'} por mês (cobranças separadas, não é parcelamento) com fidelidade de ${months} meses.`
+                : 'Desligado: o ciclo só é vendido à vista, de uma vez.'} />
             {fid.mensal ? (
               <div className="ck-cm__fidgrid">
                 <SelectField label="Ao fim da fidelização" value={fid.renovacao} onChange={(e) => setF({ renovacao: e.target.value })} options={FID_RENOVACAO} />

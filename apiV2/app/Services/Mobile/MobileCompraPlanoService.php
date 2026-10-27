@@ -148,10 +148,8 @@ class MobileCompraPlanoService
             }
 
             $ciclo = (array) $ciclo;
-            // Fidelização é assinatura mensal (POST /mobile/recorrencia/contratar), nunca o período à vista
-            if (! empty($ciclo['cobranca_mensal'])) {
-                return $this->erro(409, 'USAR_ASSINATURA_FIDELIDADE', 'Este ciclo é uma assinatura mensal com fidelidade. Atualize o app para assinar.');
-            }
+            // Ciclo com fidelização continua vendável à vista por aqui; a assinatura mensal é outra
+            // opção do mesmo ciclo (POST /mobile/recorrencia/contratar)
             $valorCompra = (float) $ciclo['valor'];
             $duracaoMeses = (int) $ciclo['meses'];
             $cicloNome = $ciclo['ciclo_nome'];

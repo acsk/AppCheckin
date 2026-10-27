@@ -34,6 +34,7 @@ import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import FidelidadeSheet from "@/src/components/FidelidadeSheet";
+import Segmented from "@/src/components/ds/Segmented";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
@@ -125,6 +126,8 @@ export default function PlanoDetalhesScreen() {
   const [apiUrl, setApiUrl] = useState("");
   const [selectedCicloId, setSelectedCicloId] = useState<number | null>(null);
   const [fidelidadeAberta, setFidelidadeAberta] = useState(false);
+  // Ciclo com fidelização oferece as duas formas: o período de uma vez ou a assinatura mensal
+  const [modoCiclo, setModoCiclo] = useState<"avista" | "assinatura">("assinatura");
   const [comprando, setComprando] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
@@ -1272,7 +1275,7 @@ export default function PlanoDetalhesScreen() {
                     label={ciclo.nome}
                     detail={
                       ciclo.cobranca_mensal
-                        ? `Fidelidade de ${ciclo.fidelizacao_meses || ciclo.meses} meses · cobrança mensal`
+                        ? `${ciclo.valor_formatado} de uma vez ou por mês com fidelidade`
                         : ciclo.permite_recorrencia
                         ? `Cobrança automática a cada ${ciclo.meses} ${ciclo.meses === 1 ? "mês" : "meses"}`
                         : ciclo.meses > 1
@@ -1281,7 +1284,7 @@ export default function PlanoDetalhesScreen() {
                     }
                     monthly={ciclo.valor_mensal_formatado || formatCurrency(mensal)}
                     fullMonthly={maiorMensal && mensal < maiorMensal - 0.009 ? formatCurrency(maiorMensal) : null}
-                    total={ciclo.cobranca_mensal ? `${ciclo.valor_mensal_formatado}/mês` : ciclo.valor_formatado}
+                    total={ciclo.valor_formatado}
                     saving={desconto > 0 ? `−${Math.round(desconto)}%` : null}
                     savingAmount={economiaValor}
                     tag={ciclos.length > 1 && cicloMelhorPrecoId === ciclo.id ? "Melhor preço" : null}
@@ -1293,6 +1296,23 @@ export default function PlanoDetalhesScreen() {
             </View>
           </Section>
         )}
+
+        {/* Ciclo com fidelização: escolher entre pagar o período de uma vez ou assinar por mês */}
+        {selectedCiclo?.cobranca_mensal && !bloquearCompraPorAtivo ? (
+          <Section title={`Como pagar o ${selectedCiclo.nome}?`} bare>
+            <Segmented
+              label="Forma de contratação"
+              options={[{ id: "avista", label: "À vista", icon: "check-circle" }, { id: "assinatura", label: "Assinatura", icon: "repeat" }]}
+              value={modoCiclo}
+              onChange={(id) => setModoCiclo(id as "avista" | "assinatura")}
+            />
+            <Text style={styles.modoTexto}>
+              {modoCiclo === "avista"
+                ? `Você paga ${selectedCiclo.valor_formatado} agora e tem ${selectedCiclo.meses} meses de acesso.`
+                : `Você paga ${selectedCiclo.valor_mensal_formatado} por mês, em cobranças separadas (não é parcelamento), com fidelidade de ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses.`}
+            </Text>
+          </Section>
+        ) : null}
 
         {/* Sem ciclo escolhido o painel de pagamento não aparece */}
         {!bloquearCompraPorAtivo && ciclos.length > 0 && !selectedCiclo ? (
@@ -1318,7 +1338,7 @@ export default function PlanoDetalhesScreen() {
             <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
           </View>
         </View>
-      ) : selectedCiclo?.cobranca_mensal ? (
+      ) : selectedCiclo?.cobranca_mensal && modoCiclo === "assinatura" ? (
         // Fidelidade: assinatura mensal (termos + aceite na próxima tela), não a compra do período
         <View style={styles.dock} accessibilityLabel="Assinatura">
           <View style={styles.dockFoot}>
@@ -1409,7 +1429,7 @@ export default function PlanoDetalhesScreen() {
         </View>
       ) : null}
 
-      {plano && selectedCiclo?.cobranca_mensal ? (
+      {plano && selectedCiclo?.cobranca_mensal && modoCiclo === "assinatura" ? (
         <FidelidadeSheet
           visible={fidelidadeAberta}
           planoId={plano.id}
@@ -1604,6 +1624,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  modoTexto: { marginTop: 8, fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
   footerAtivoText: {
     fontSize: 16,
     fontWeight: "800",

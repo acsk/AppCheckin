@@ -6,10 +6,12 @@ nunca é cobrado nem reservado no limite do cartão.
 
 ## Cadastro (Planos → ciclo)
 
-Um ciclo de 2 meses ou mais escolhe o modo:
+Todo ciclo continua vendável **à vista** (o ciclo inteiro numa cobrança, como sempre foi). Num ciclo de 2
+meses ou mais, a academia pode **também** oferecer a assinatura mensal com fidelidade
+(`plano_ciclos.cobranca_mensal = 1`). No app, o aluno escolhe entre "À vista" e "Assinatura" nos detalhes
+do plano. A lista de planos segue com a compra à vista.
 
-- **À vista** (padrão, como sempre foi): o ciclo inteiro numa cobrança.
-- **Fidelização com cobrança mensal** (`plano_ciclos.cobranca_mensal = 1`):
+Campos da assinatura:
   - mensalidade = `valor ÷ meses` (o mesmo `valor_mensal_equivalente` já calculado);
   - referência = `planos.valor` (o mensal sem desconto);
   - `fidelizacao_meses` (padrão = meses do ciclo) e `politica_renovacao`;
@@ -41,8 +43,12 @@ O plano mensal (1 mês) e todo o fluxo à vista seguem iguais.
 5. **Gateway:** assinatura Asaas `MONTHLY`. Na política "encerrar", `maxPayments` = meses de fidelização.
 6. **Pagamento:** o app mostra a 1ª cobrança (fatura do cartão ou QR do PIX).
 
-O fluxo à vista (`/mobile/comprar-plano`) recusa ciclos de fidelização (`409 USAR_ASSINATURA_FIDELIDADE`),
-e a migração de plano recusa matrícula com contrato vivo (`409 ASSINATURA_FIDELIDADE_ATIVA`).
+A compra à vista (`/mobile/comprar-plano`) aceita o mesmo ciclo normalmente. A migração de plano recusa
+matrícula com contrato vivo (`409 ASSINATURA_FIDELIDADE_ATIVA`).
+
+A tela de assinatura tem dois passos:
+1. resumo, termos e aceite;
+2. forma de pagamento (cartão ou PIX).
 
 ## Cobrança mensal e baixa
 
@@ -162,7 +168,7 @@ A memória de cálculo completa fica em `cancelamentos_recorrencia.memoria_calcu
   de novo.
 - **Cobrança da regularização:** a parcela é lançada, mas não é gerada uma cobrança no Asaas
   automaticamente. O admin cobra pelo fluxo de parcelas existente.
-- **Builds antigos do app:** veem o ciclo de fidelidade, mas a compra responde pedindo para atualizar.
+- **Builds antigos do app:** compram o ciclo à vista normalmente; a opção de assinatura só aparece no app novo.
 
 ## Arquivos
 
