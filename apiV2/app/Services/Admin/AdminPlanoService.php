@@ -6,6 +6,14 @@ use App\Repositories\AdminPlanoRepository;
 
 class AdminPlanoService
 {
+    /** Campos que mudam a regra de quem já está no plano: travados enquanto houver matrículas. */
+    public const CAMPOS_TRAVADOS = [
+        'valor' => 'o valor',
+        'duracao_dias' => 'a duração',
+        'checkins_semanais' => 'o número de aulas por semana',
+        'modalidade_id' => 'a modalidade',
+    ];
+
     public function __construct(
         private readonly AdminPlanoRepository $planos,
     ) {}
@@ -42,7 +50,13 @@ class AdminPlanoService
                 return ['status' => 404, 'body' => ['error' => 'Plano não encontrado']];
             }
 
-            return ['status' => 200, 'body' => $plano];
+            // Com matrículas, o painel trava os campos que mudam a regra de quem já está no plano
+            $comMatriculas = $this->planos->possuiContratos($id, $tenantId);
+
+            return ['status' => 200, 'body' => $plano + [
+                'possui_contratos' => $comMatriculas,
+                'campos_travados' => $comMatriculas ? array_keys(self::CAMPOS_TRAVADOS) : [],
+            ]];
         } catch (\Throwable $e) {
             return [
                 'status' => 500,
@@ -111,11 +125,28 @@ class AdminPlanoService
             return ['status' => 404, 'body' => ['error' => 'Plano não encontrado']];
         }
 
-        if ($this->planos->possuiContratos($id, $tenantId)) {
+        // Com matrículas (não canceladas) só travam valor, duração, aulas por semana e modalidade, e só se
+        // mudarem: nome, descrição, ativo e "aceita novas matrículas" continuam editáveis.
+        $mudaram = [];
+        foreach (array_keys(self::CAMPOS_TRAVADOS) as $k) {
+            if (! array_key_exists($k, $data)) {
+                continue;
+            }
+            $novo = $k === 'valor' ? round((float) $data[$k], 2) : (int) $data[$k];
+            $atual = $k === 'valor' ? round((float) $plano[$k], 2) : (int) $plano[$k];
+            if ($novo !== $atual) {
+                $mudaram[] = $k;
+            }
+        }
+        if ($mudaram !== [] && $this->planos->possuiContratos($id, $tenantId)) {
+            $nomes = implode(', ', array_map(fn ($k) => self::CAMPOS_TRAVADOS[$k], $mudaram));
+
             return [
-                'status' => 400,
+                'status' => 409,
                 'body' => [
-                    'error' => 'Não é possível modificar este plano pois existem contratos vinculados a ele. Crie um novo plano ou marque este como histórico.',
+                    'error' => "Este plano tem matrículas, então {$nomes} não pode mudar (mudaria a regra de quem já está nele). Para mudar, crie um novo plano e desmarque \"Aceita novas matrículas\" neste.",
+                    'code' => 'PLANO_COM_MATRICULAS',
+                    'campos_travados' => $mudaram,
                 ],
             ];
         }

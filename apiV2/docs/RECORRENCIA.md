@@ -15,7 +15,13 @@ Um ciclo de 2 meses ou mais escolhe o modo:
   - `fidelizacao_meses` (padrão = meses do ciclo) e `politica_renovacao`;
   - `regularizacao_ativa`, desligada por padrão: o sistema só calcula e mostra;
   - `regularizacao_proporcional`, `arrependimento_dias` (mínimo 7, CDC art. 49);
-  - `termos`: texto livre somado aos termos gerados.
+  - `termos`: texto livre somado aos termos gerados. O botão "Usar termo modelo" preenche os 7 itens
+    padrão (fidelização, cobrança recorrente, cancelamento, arrependimento, reposição, renovação, ciência),
+    editáveis antes de salvar.
+
+A flag antiga "Cobrança recorrente" (`permite_recorrencia`) agora se chama "Renovação automática no cartão
+(Mercado Pago)". Ela só tem efeito com Mercado Pago e cartão (preapproval que cobra o ciclo inteiro a cada
+período); no Asaas não muda nada.
 
 Mudar o que o aluno aceita (valor, prazo, políticas, texto) sobe `termos_versao`. **Contratos já
 assinados não mudam**: `contratos_recorrencia` congela valores, prazo, políticas e o texto aceito.

@@ -247,7 +247,7 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, onToggleBlock, read
         {pct > 0 ? <Badge tone="success">{pct}% de desconto</Badge> : null}
         {cycle.fidelity?.mensal
           ? <Badge tone="brand" icon="repeat">Fidelidade · {money(perMonth)}/mês</Badge>
-          : <Badge tone={cycle.recurring ? 'info' : 'neutral'} icon={cycle.recurring ? 'repeat' : undefined}>{cycle.recurring ? 'Recorrente' : 'Avulso'}</Badge>}
+          : <Badge tone={cycle.recurring ? 'info' : 'neutral'} icon={cycle.recurring ? 'repeat' : undefined}>{cycle.recurring ? 'Renova no cartão (MP)' : 'À vista'}</Badge>}
         {cycle.makeup ? <Badge tone="outline">Reposição</Badge> : null}
         {cycle.active ? null : <Badge tone="danger" icon="lock">Bloqueado</Badge>}
       </span>
@@ -270,7 +270,7 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, onToggleBlock, read
 }
 
 export function PlanoForm({
-  values, onChange, errors = {}, modalities = [], isEdit, readOnly, saving, onSave, onCancel, onBack,
+  values, onChange, errors = {}, modalities = [], isEdit, readOnly, lockedRules, saving, onSave, onCancel, onBack,
   cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onToggleCycleBlock, blockingCycleId, onGenerateCycles, generating, missingCount = 0,
 }) {
   const set = (k) => (v) => onChange({ ...values, [k]: v });
@@ -299,11 +299,16 @@ export function PlanoForm({
       <div className="ck-nm__grid ck-pf__grid">
         <fieldset className="ck-card ck-nm__form ck-enrollment-fields" disabled={saving || readOnly}>
           <FormSection n={1} title="Dados do plano">
+            {lockedRules ? (
+              <Callout tone="info" icon="lock" title="Plano com matrículas">
+                Modalidade, check-ins por semana e duração ficam fixos para não mudar a regra de quem já está no plano. Nome, descrição e situação continuam editáveis. Para outra regra, crie um novo plano e desmarque "Aceita novas matrículas" neste.
+              </Callout>
+            ) : null}
             <div className="ck-field">
               <span className="ck-field__label">Modalidade</span>
               <div className="ck-nm__mods" role="radiogroup" aria-label="Modalidade">
                 {modalities.map((m) => (
-                  <button key={m.id} type="button" role="radio" aria-checked={String(m.id) === String(values.modalidade_id)} className="ck-nm__mod" onClick={() => set('modalidade_id')(String(m.id))}>
+                  <button key={m.id} type="button" role="radio" aria-checked={String(m.id) === String(values.modalidade_id)} disabled={lockedRules && String(m.id) !== String(values.modalidade_id)} className="ck-nm__mod" onClick={() => set('modalidade_id')(String(m.id))}>
                     <ModalityBadge icon={m.icone} color={m.cor} />{m.nome}
                   </button>
                 ))}
@@ -316,10 +321,10 @@ export function PlanoForm({
           </FormSection>
 
           <FormSection n={2} title="Acesso">
-            <Switch label="Plano diária" description={daily ? 'Vale 1 check-in no dia da compra. Cadastre o ciclo Diária com o valor.' : 'Plano por período: o valor e a duração vêm dos ciclos de cobrança.'} checked={daily} disabled={saving || readOnly} onChange={setDaily} />
+            <Switch label="Plano diária" description={daily ? 'Vale 1 check-in no dia da compra. Cadastre o ciclo Diária com o valor.' : 'Plano por período: o valor e a duração vêm dos ciclos de cobrança.'} checked={daily} disabled={saving || readOnly || lockedRules} onChange={setDaily} />
             {daily ? null : (
               <>
-                <OptionChips label="Check-ins por semana" options={freqOptions} value={checkins} onChange={(v) => set('checkins_semanais')(String(v))} />
+                <OptionChips label="Check-ins por semana" options={freqOptions} value={checkins} disabled={lockedRules} onChange={(v) => set('checkins_semanais')(String(v))} />
                 {errors.checkins_semanais ? <span className="ck-field__error"><Icon name="alert-triangle" size={13} />{errors.checkins_semanais}</span> : null}
               </>
             )}
@@ -405,6 +410,32 @@ export function PlanoForm({
   );
 }
 
+// Termo modelo para os "Termos adicionais" da fidelização (a academia pode editar antes de salvar)
+export const TERMO_MODELO_FIDELIZACAO = `TERMOS ADICIONAIS — PLANO COM FIDELIZAÇÃO
+
+1. Da fidelização e do benefício promocional
+Ao contratar este plano, o aluno concorda com o período mínimo de fidelização informado na contratação, recebendo, em contrapartida, um desconto promocional sobre o valor da mensalidade convencional.
+
+2. Da cobrança recorrente
+As mensalidades serão cobradas individualmente, conforme os vencimentos estabelecidos. A contratação não constitui parcelamento do valor total do plano, sendo cada mensalidade cobrada separadamente.
+
+3. Do cancelamento antecipado
+O aluno poderá solicitar o cancelamento a qualquer momento. Caso ocorra antes do término da fidelização, poderá ser exigida, quando legal e contratualmente cabível, a regularização proporcional dos descontos efetivamente usufruídos.
+A regularização corresponderá à diferença entre a mensalidade convencional e a promocional, considerando exclusivamente o período utilizado, sem cobrança de descontos referentes a meses futuros.
+
+4. Do direito de arrependimento
+Nas contratações realizadas fora do estabelecimento comercial, será respeitado o prazo legal de arrependimento de 7 dias, conforme o artigo 49 do Código de Defesa do Consumidor, com as restituições legalmente devidas.
+Eventual prazo adicional de desistência sem custo oferecido pelo estabelecimento observará as condições expressamente informadas na contratação, sem restringir os direitos legais do consumidor.
+
+5. Da reposição de aulas
+A reposição de aulas não realizadas estará sujeita à disponibilidade de horários, vagas e regras do estabelecimento. Aulas não utilizadas não serão automaticamente acumuladas para meses posteriores, salvo previsão expressa no plano contratado.
+
+6. Da renovação do plano
+Ao término da fidelização, a assinatura seguirá a modalidade de continuidade previamente informada e aceita pelo aluno. Não haverá imposição automática de novo período de fidelização sem consentimento expresso.
+
+7. Da ciência e aceitação
+Ao confirmar a contratação, o aluno declara ter recebido informações claras sobre valores, descontos, prazo de fidelização, cobrança recorrente, cancelamento e condições de utilização do serviço, concordando com os termos apresentados, sem prejuízo dos direitos assegurados pela legislação vigente.`;
+
 /* ---------- CicloModal ---------- */
 const FID_PADRAO = { mensal: false, renovacao: 'mensal', regularizacao: false, proporcional: false, arrependimento: 7, termos: '' };
 const FID_RENOVACAO = [
@@ -450,7 +481,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
 
   const errs = {};
   if (!type) errs.type = 'Escolha o período do ciclo.';
-  else if (taken(type)) errs.type = `Já existe um ciclo ${type.nome} ${fid.mensal ? 'com fidelização' : recurring ? 'recorrente' : 'avulso'} neste plano.`;
+  else if (taken(type)) errs.type = `Já existe um ciclo ${type.nome} ${fid.mensal ? 'com fidelização' : recurring ? 'com renovação no cartão' : 'à vista'} neste plano.`;
   if (fid.mensal && type && months < 2) errs.type = 'Fidelização mensal vale para ciclos de 2 meses ou mais.';
   if (fid.mensal && (Number(fid.arrependimento) < 7 || Number(fid.arrependimento) > 90)) errs.arrependimento = 'De 7 (mínimo legal) a 90 dias.';
   if (amount === '') errs.amount = 'Informe o valor do ciclo.';
@@ -543,15 +574,19 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
                     : 'Desligado: o sistema só calcula e mostra o valor; nada é cobrado.'} />
                 {fid.regularizacao ? <Switch label="Proporcional ao último mês" checked={fid.proporcional} onChange={(v) => setF({ proporcional: v })}
                   description="Se o cancelamento cortar o acesso no meio de um mês pago, conta só os dias usados." /> : null}
-                <TextAreaField label="Termos adicionais (opcional)" rows={3} maxLength={5000} value={fid.termos} onChange={(e) => setF({ termos: e.target.value })}
-                  hint="Aparecem no aceite, depois do texto gerado com valores, prazo e regras. Mudar algo gera uma nova versão; contratos já aceitos não mudam." />
+                <TextAreaField label="Termos adicionais" rows={fid.termos ? 8 : 3} maxLength={5000} value={fid.termos} onChange={(e) => setF({ termos: e.target.value })}
+                  labelAside={<Button size="sm" variant="ghost" icon="file-text" onClick={() => setF({ termos: TERMO_MODELO_FIDELIZACAO })}>{fid.termos ? 'Restaurar modelo' : 'Usar termo modelo'}</Button>}
+                  hint="Aparecem no aceite, depois do texto gerado com valores, prazo e regras deste ciclo. Mudar algo gera uma nova versão; contratos já aceitos não mudam." />
               </div>
             ) : null}
           </div>
         ) : null}
 
         <div className="ck-cm__switches">
-          {fid.mensal ? null : <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />}
+          {fid.mensal ? null : <Switch label="Renovação automática no cartão (Mercado Pago)" checked={recurring} onChange={setRecurring}
+            description={recurring
+              ? 'Só com Mercado Pago e cartão: o valor inteiro do ciclo é cobrado de novo a cada período. No Asaas não muda nada. Para cobrar mês a mês, use a Fidelização acima.'
+              : 'O aluno paga o ciclo uma vez e renova pelo app quando vencer.'} />}
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
           <Switch label="Bloquear ciclo" description={!active ? 'Ninguém contrata este ciclo, nem pelo app nem por nova matrícula. Quem já tem matrícula nele continua normalmente.' : 'O aluno pode escolher este ciclo no app e na nova matrícula.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>
@@ -689,9 +724,10 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
         <div className="ck-cm__switches">
           <p className="ck-gc__from">
             <Icon name="layers" size={15} />
-            {base ? <>Opções copiadas do ciclo <strong>{base.label}</strong>{base.recurring ? ' recorrente' : ''}. Ajuste se quiser.</> : 'Nenhum ciclo existente para copiar as opções. Ajuste abaixo.'}
+            {base ? <>Opções copiadas do ciclo <strong>{base.label}</strong>{base.recurring ? ' com renovação no cartão' : ''}. Ajuste se quiser.</> : 'Nenhum ciclo existente para copiar as opções. Ajuste abaixo.'}
           </p>
-          <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />
+          <Switch label="Renovação automática no cartão (Mercado Pago)" checked={recurring} onChange={setRecurring}
+            description={recurring ? 'Só com Mercado Pago e cartão: o valor inteiro do ciclo é cobrado de novo a cada período. No Asaas não muda nada.' : 'O aluno paga o ciclo uma vez e renova pelo app quando vencer.'} />
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
           <Switch label="Criar bloqueados" description={!active ? 'Os ciclos novos ficam bloqueados: ninguém contrata até você desbloquear.' : 'Os ciclos novos já ficam disponíveis para contratar.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>

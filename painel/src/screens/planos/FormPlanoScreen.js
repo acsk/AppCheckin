@@ -55,6 +55,8 @@ export default function FormPlanoScreen() {
 
   const [loading, setLoading] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
+  // Plano com matrículas: modalidade, aulas/semana e duração ficam fixas (a API também recusa)
+  const [travado, setTravado] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [modalidades, setModalidades] = useState([]);
@@ -107,6 +109,7 @@ export default function FormPlanoScreen() {
             ativo: bool(plano.ativo),
             atual: bool(plano.atual),
           });
+          setTravado(!!plano.possui_contratos);
           await loadCycles(tipos);
         }
       } catch {
@@ -261,6 +264,7 @@ export default function FormPlanoScreen() {
           modalities={modalidades}
           isEdit={isEdit}
           readOnly={readOnly}
+          lockedRules={travado}
           saving={saving}
           onSave={save}
           onCancel={() => router.push('/planos')}
