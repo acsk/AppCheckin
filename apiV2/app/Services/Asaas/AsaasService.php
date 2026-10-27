@@ -324,6 +324,103 @@ class AsaasService
     }
 
     /**
+     * Assinatura mensal (plano com fidelização): cada mês o Asaas gera uma cobrança independente do valor
+     * da mensalidade. Não é venda parcelada e não reserva o total no limite do cartão. No cartão, o aluno
+     * paga a 1ª pela fatura e as seguintes são debitadas no mesmo cartão (tokenizado pelo Asaas).
+     *
+     * @param  array{contrato_id: int, valor: string, billing_type: string, proximo_vencimento: string, descricao: string, max_pagamentos?: ?int,
+     *               cliente: array{name: string, cpfCnpj: string, email?: ?string, mobilePhone?: ?string}}  $data
+     * @return array{id: string, customer: string, external_reference: string}
+     */
+    public function criarAssinatura(array $data): array
+    {
+        $this->validarCredenciais();
+        $billingType = strtoupper((string) $data['billing_type']);
+        if (! in_array($billingType, $this->billingTypesHabilitados(), true)) {
+            throw new \RuntimeException('Forma de pagamento não habilitada na conta Asaas desta academia.');
+        }
+        $doc = preg_replace('/[^0-9]/', '', (string) ($data['cliente']['cpfCnpj'] ?? ''));
+        if (! in_array(strlen($doc), [11, 14], true)) {
+            throw new \RuntimeException('CPF válido é obrigatório para a assinatura');
+        }
+        $customerId = $this->encontrarOuCriarCliente([
+            'name' => trim((string) ($data['cliente']['name'] ?? '')),
+            'cpfCnpj' => $doc,
+            'email' => $data['cliente']['email'] ?? null,
+            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['cliente']['mobilePhone'] ?? '')) ?: null,
+        ]);
+        $externalReference = ReferenciaExterna::recorrencia((int) $data['contrato_id']);
+        $payload = [
+            'customer' => $customerId,
+            'billingType' => $billingType,
+            'value' => (float) $data['valor'],
+            'nextDueDate' => $data['proximo_vencimento'],
+            'cycle' => 'MONTHLY',
+            'description' => mb_substr($data['descricao'], 0, 500),
+            'externalReference' => $externalReference,
+        ];
+        if (! empty($data['max_pagamentos'])) {
+            $payload['maxPayments'] = (int) $data['max_pagamentos'];
+        }
+        $sub = $this->request('POST', '/subscriptions', $payload);
+        $id = (string) ($sub['id'] ?? '');
+        if ($id === '') {
+            throw new \RuntimeException('Asaas não retornou o ID da assinatura');
+        }
+        try {
+            $this->garantirWebhook();
+        } catch (\Throwable $e) {
+            Log::warning('Asaas: falha ao garantir webhook', ['error' => $e->getMessage()]);
+        }
+
+        return ['id' => $id, 'customer' => $customerId, 'external_reference' => $externalReference];
+    }
+
+    /** @return list<array<string, mixed>> cobranças geradas pela assinatura (mais recentes primeiro no Asaas) */
+    public function pagamentosDaAssinatura(string $subscriptionId): array
+    {
+        $this->validarCredenciais();
+
+        return array_values($this->request('GET', '/subscriptions/'.$subscriptionId.'/payments', null, ['limit' => 100])['data'] ?? []);
+    }
+
+    /** @return array<string, mixed> */
+    public function obterAssinatura(string $subscriptionId): array
+    {
+        $this->validarCredenciais();
+
+        return $this->request('GET', '/subscriptions/'.$subscriptionId);
+    }
+
+    /** Muda valor (ex.: fim da fidelização com política "mensal"); updatePendingPayments ajusta as já geradas. */
+    public function atualizarValorAssinatura(string $subscriptionId, string $valor): void
+    {
+        $this->validarCredenciais();
+        $this->request('PUT', '/subscriptions/'.$subscriptionId, ['value' => (float) $valor, 'updatePendingPayments' => true]);
+    }
+
+    /** Remove a assinatura: o Asaas para de gerar cobranças. Já removida conta como sucesso. */
+    public function cancelarAssinatura(string $subscriptionId): void
+    {
+        $this->validarCredenciais();
+        try {
+            $this->request('DELETE', '/subscriptions/'.$subscriptionId);
+        } catch (AsaasNaoEncontradoException) {
+            // já não existe
+        }
+    }
+
+    /** @return array{payload: ?string, qr_code: ?string} */
+    public function pixDaCobranca(string $paymentId): array
+    {
+        $this->validarCredenciais();
+        $qr = $this->request('GET', '/payments/'.$paymentId.'/pixQrCode');
+        $encoded = (string) ($qr['encodedImage'] ?? '');
+
+        return ['payload' => $qr['payload'] ?? null, 'qr_code' => $encoded === '' ? null : (str_starts_with($encoded, 'data:') ? $encoded : 'data:image/png;base64,'.$encoded)];
+    }
+
+    /**
      * Simula taxas Asaas (POST /payments/simulate) e devolve o valor a cobrar no cartão
      * para a academia receber o líquido do plano.
      *
@@ -688,6 +785,12 @@ class AsaasService
             'PAYMENT_OVERDUE',
             'PAYMENT_RESTORED',
             'PAYMENT_ANTICIPATED',
+            // Assinaturas mensais (planos com fidelização): cobrança gerada, recusa no cartão, estorno
+            'PAYMENT_CREATED',
+            'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED',
+            'PAYMENT_REFUNDED',
+            'PAYMENT_CHARGEBACK_REQUESTED',
+            'PAYMENT_CHARGEBACK_DISPUTE',
             'ANTICIPATION_PENDING',
             'ANTICIPATION_SCHEDULED',
             'ANTICIPATION_CREDITED',

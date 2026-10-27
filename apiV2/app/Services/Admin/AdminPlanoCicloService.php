@@ -95,8 +95,12 @@ class AdminPlanoCicloService
             $permiteRecorrencia = isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : 1;
             $permiteReposicao = isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : 1;
 
-            if ($this->ciclos->existeMesmaFrequenciaRecorrencia($planoId, (int) $frequenciaId, $permiteRecorrencia)) {
-                $tipoCobranca = $permiteRecorrencia ? 'com recorrência' : 'sem recorrência (avulso)';
+            $fid = $this->camposFidelizacao($data, null, (int) $tipo['meses']);
+            if (is_string($fid)) {
+                return ['status' => 422, 'body' => ['error' => $fid]];
+            }
+            if ($this->ciclos->existeMesmaFrequenciaRecorrencia($planoId, (int) $frequenciaId, $permiteRecorrencia, (int) $fid['cobranca_mensal'])) {
+                $tipoCobranca = $fid['cobranca_mensal'] ? 'com fidelização mensal' : ($permiteRecorrencia ? 'com recorrência' : 'sem recorrência (avulso)');
 
                 return [
                     'status' => 400,
@@ -125,7 +129,7 @@ class AdminPlanoCicloService
                 'permite_recorrencia' => $permiteRecorrencia,
                 'permite_reposicao' => $permiteReposicao,
                 'ativo' => isset($data['ativo']) ? (int) $data['ativo'] : 1,
-            ]);
+            ] + $fid);
 
             if ($valorMensalBase !== (float) $plano['valor']) {
                 $this->sincronizarValorBase($planoId, $tenantId, $valorMensalBase);
@@ -172,7 +176,12 @@ class AdminPlanoCicloService
                 : 0;
             $descontoPercentual = max(-999.99, min(999.99, $descontoPercentual));
 
-            $this->ciclos->update($cicloId, $tenantId, [
+            $fid = $this->camposFidelizacao($data, $ciclo, $meses, $valor);
+            if (is_string($fid)) {
+                return ['status' => 422, 'body' => ['error' => $fid]];
+            }
+
+            $this->ciclos->update($cicloId, $tenantId, $fid + [
                 'valor' => $valor,
                 'desconto_percentual' => $descontoPercentual,
                 'permite_recorrencia' => isset($data['permite_recorrencia'])
@@ -202,6 +211,71 @@ class AdminPlanoCicloService
                 'body' => ['error' => 'Erro ao atualizar ciclo: '.$e->getMessage()],
             ];
         }
+    }
+
+    /**
+     * Campos de fidelização do ciclo (só entram os enviados; na edição o resto fica como está).
+     * Mudança no que o aluno aceita (valor, prazo, políticas, texto) sobe a versão dos termos.
+     * Contratos já assinados não mudam: guardam os próprios valores e termos.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>|null  $atual
+     * @return array<string, mixed>|string  campos ou mensagem de erro
+     */
+    private function camposFidelizacao(array $data, ?array $atual, int $meses, ?float $valorNovo = null): array|string
+    {
+        $out = [];
+        $bool = fn ($v) => filter_var($v, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+        if (array_key_exists('cobranca_mensal', $data)) {
+            $out['cobranca_mensal'] = $bool($data['cobranca_mensal']);
+        }
+        if (array_key_exists('fidelizacao_meses', $data)) {
+            $f = $data['fidelizacao_meses'] === null || $data['fidelizacao_meses'] === '' ? null : (int) $data['fidelizacao_meses'];
+            if ($f !== null && ($f < 1 || $f > 36)) {
+                return 'Fidelização entre 1 e 36 meses.';
+            }
+            $out['fidelizacao_meses'] = $f;
+        }
+        if (array_key_exists('politica_renovacao', $data)) {
+            if (! in_array($data['politica_renovacao'], ['encerrar', 'mensal', 'promocional', 'nova_fidelizacao'], true)) {
+                return 'Política de renovação inválida.';
+            }
+            $out['politica_renovacao'] = $data['politica_renovacao'];
+        }
+        foreach (['regularizacao_ativa', 'regularizacao_proporcional'] as $k) {
+            if (array_key_exists($k, $data)) {
+                $out[$k] = $bool($data[$k]);
+            }
+        }
+        if (array_key_exists('arrependimento_dias', $data)) {
+            $d = (int) $data['arrependimento_dias'];
+            if ($d < 7 || $d > 90) {
+                return 'O prazo de arrependimento vai de 7 (mínimo legal) a 90 dias.';
+            }
+            $out['arrependimento_dias'] = $d;
+        }
+        if (array_key_exists('termos', $data)) {
+            $t = trim((string) $data['termos']);
+            if (mb_strlen($t) > 5000) {
+                return 'O texto dos termos aceita até 5.000 caracteres.';
+            }
+            $out['termos'] = $t !== '' ? $t : null;
+        }
+        $mensal = ($out['cobranca_mensal'] ?? (int) ($atual['cobranca_mensal'] ?? 0)) === 1;
+        if ($mensal && $meses < 2 && ($out['fidelizacao_meses'] ?? $atual['fidelizacao_meses'] ?? null) === null) {
+            return 'Fidelização mensal precisa de um ciclo de 2 meses ou mais (ou de um prazo de fidelização).';
+        }
+        if ($atual !== null) {
+            $mudouTermos = $valorNovo !== null && round($valorNovo, 2) !== round((float) $atual['valor'], 2);
+            foreach ($out as $k => $v) {
+                $mudouTermos = $mudouTermos || (string) ($atual[$k] ?? '') !== (string) $v;
+            }
+            if ($mudouTermos && $mensal) {
+                $out['termos_versao'] = (int) ($atual['termos_versao'] ?? 1) + 1;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -423,6 +497,15 @@ class AdminPlanoCicloService
                 'ordem' => $ciclo['ordem'] ?? null,
                 'valor_formatado' => 'R$ '.number_format((float) $ciclo['valor'], 2, ',', '.'),
                 'valor_mensal_formatado' => 'R$ '.number_format((float) $ciclo['valor_mensal_equivalente'], 2, ',', '.'),
+                // Fidelização (assinatura mensal com preço promocional)
+                'cobranca_mensal' => (bool) ($ciclo['cobranca_mensal'] ?? false),
+                'fidelizacao_meses' => isset($ciclo['fidelizacao_meses']) ? (int) $ciclo['fidelizacao_meses'] : null,
+                'politica_renovacao' => $ciclo['politica_renovacao'] ?? 'mensal',
+                'regularizacao_ativa' => (bool) ($ciclo['regularizacao_ativa'] ?? false),
+                'regularizacao_proporcional' => (bool) ($ciclo['regularizacao_proporcional'] ?? false),
+                'arrependimento_dias' => (int) ($ciclo['arrependimento_dias'] ?? 7),
+                'termos' => $ciclo['termos'] ?? null,
+                'termos_versao' => (int) ($ciclo['termos_versao'] ?? 1),
             ];
 
             $economiaPercentual = 0.0;

@@ -103,3 +103,6 @@
 .ck-gc__from svg { flex: none; color: var(--ink-subtle); }
 .ck-gc__from strong { color: var(--ink); }
 @media (max-width: 520px) { .ck-gc__row { grid-template-columns: minmax(0, 1fr) auto auto; } .ck-gc__row > span:nth-child(4) { display: none; } }
+/* Fidelização com cobrança mensal (CicloModal) */
+.ck-cm__fid { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-muted); }
+.ck-cm__fidgrid { display: grid; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--line); }

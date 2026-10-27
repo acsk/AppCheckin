@@ -30,6 +30,18 @@ final class ReferenciaExterna
         return self::gerar('PAC', $contratoId);
     }
 
+    /** Contrato de recorrência (plano com fidelização): assinatura mensal no gateway. */
+    public static function recorrencia(int|string $contratoId): string
+    {
+        return self::gerar('REC', $contratoId);
+    }
+
+    /** Id do contrato de recorrência numa referência REC, ou null. */
+    public static function contratoRecorrencia(string $ref): ?int
+    {
+        return preg_match('/^REC-(\d+)-/', $ref, $m) === 1 ? (int) $m[1] : null;
+    }
+
     /** Pagamento de contrato do SaaS (pagamentos_contrato.id), cobrado na conta do sistema. */
     public static function contrato(int|string $pagamentoId): string
     {

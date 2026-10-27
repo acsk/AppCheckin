@@ -21,6 +21,7 @@ import './src/theme/ck-recordes.css';
 import './src/theme/ck-aulas.css';
 import './src/theme/ck-pacotes.css';
 import './src/theme/ck-comunicacao.css';
+import './src/theme/ck-recorrencias.css';
 import './src/theme/ck-whatsapp.css';
 import './src/theme/ck-prospeccao.css';
 import './src/theme/ck-minha-conta.css';

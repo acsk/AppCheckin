@@ -759,6 +759,15 @@ class MatriculaMigracaoService
             return ['erro' => $this->erro(404, 'PLANO_NAO_ENCONTRADO', 'Plano não encontrado ou inativo')];
         }
 
+        // Assinatura com fidelização em curso nesta modalidade: trocar de plano = cancelar (com a
+        // regularização do contrato) e contratar de novo. A migração com crédito não se aplica.
+        if (\Illuminate\Support\Facades\Schema::hasTable('contratos_recorrencia')
+            && \Illuminate\Support\Facades\DB::table('contratos_recorrencia as c')->join('planos as p', 'p.id', '=', 'c.plano_id')
+                ->where('c.tenant_id', $tenantId)->where('c.aluno_id', $alunoId)->where('p.modalidade_id', $novoPlano['modalidade_id'])
+                ->whereIn('c.status', \App\Services\Recorrencia\RecorrenciaService::ATIVOS)->exists()) {
+            return ['erro' => $this->erro(409, 'ASSINATURA_FIDELIDADE_ATIVA', 'Você tem uma assinatura com fidelidade nesta modalidade. Para trocar de plano, cancele a assinatura em Minhas assinaturas e contrate o novo plano.')];
+        }
+
         $novoCiclo = null;
         $valorNovo = (float) $novoPlano['valor'];
         $duracaoMeses = 1;

@@ -5,6 +5,7 @@ namespace App\Services\Asaas;
 use App\Services\EncryptionService;
 use App\Services\Pacote\PacoteConciliacaoService;
 use App\Services\PagamentoPlanoService;
+use App\Services\Recorrencia\RecorrenciaService;
 use App\Services\SuperAdmin\CobrancaContratoService;
 use App\Support\AsaasPagamentoStatus;
 use App\Support\ReferenciaExterna;
@@ -58,6 +59,17 @@ class AsaasWebhookService
             }
 
             return app(AsaasContratoWebhook::class)->processar($event, $payment, $pagamentoContratoId, $this->pagamentoEstaPago($event, $payment));
+        }
+
+        // Mensalidade de plano com fidelização (assinatura Asaas): fluxo próprio, idempotente por cobrança
+        $contratoRecorrencia = $this->contratoRecorrencia($payment);
+        if ($contratoRecorrencia) {
+            if (! $this->tokenWebhookValido((int) $contratoRecorrencia->tenant_id, $accessTokenHeader)) {
+                return ['status' => 401, 'body' => ['success' => false, 'error' => 'Webhook token inválido']];
+            }
+            $r = app(RecorrenciaService::class)->processarPagamento((int) $contratoRecorrencia->tenant_id, (int) $contratoRecorrencia->id, $payment, $event);
+
+            return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'id' => $eventId, 'event' => $event, 'recorrencia' => $r, 'contrato_id' => (int) $contratoRecorrencia->id]];
         }
 
         $pix = DB::table('pagamentos_pix')->where('payment_id', $paymentId)->first();
@@ -177,6 +189,27 @@ class AsaasWebhookService
                 'matricula_id' => $matriculaId,
             ],
         ];
+    }
+
+    /** Contrato de recorrência da cobrança: pela assinatura do Asaas ou pela referência REC-. */
+    private function contratoRecorrencia(array $payment): ?object
+    {
+        if (! Schema::hasTable('contratos_recorrencia')) {
+            return null;
+        }
+        $assinatura = (string) ($payment['subscription'] ?? '');
+        if ($assinatura !== '') {
+            $c = DB::table('contratos_recorrencia')->where('assinatura_gateway_id', $assinatura)->first(['id', 'tenant_id']);
+            if ($c) {
+                return $c;
+            }
+        }
+        $id = ReferenciaExterna::contratoRecorrencia((string) ($payment['externalReference'] ?? ''));
+        if ($id === null && $paymentId = (string) ($payment['id'] ?? '')) {
+            $id = DB::table('recorrencia_cobrancas')->where('gateway_payment_id', $paymentId)->value('contrato_id');
+        }
+
+        return $id ? DB::table('contratos_recorrencia')->where('id', $id)->first(['id', 'tenant_id']) : null;
     }
 
     private function conciliarPacote(int $tenantId, int $matriculaId): void

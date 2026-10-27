@@ -24,6 +24,7 @@ import {
   Linking,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -36,6 +37,7 @@ import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
+import MinhaAssinaturaFidelidade from "@/src/components/MinhaAssinaturaFidelidade";
 interface StatusAssinatura {
   id: number;
   codigo: string;
@@ -159,6 +161,8 @@ export default function MinhasAssinaturasScreen() {
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
   const [loading, setLoading] = useState(true);
+  const [versaoFidelidade, setVersaoFidelidade] = useState(0);
+  const [qtdFidelidade, setQtdFidelidade] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [isUserAdmin, setIsUserAdmin] = useState(false);
@@ -1078,6 +1082,9 @@ export default function MinhasAssinaturasScreen() {
     </View>
   );
 
+  // Planos com fidelidade (assinatura mensal) ficam em "Minha assinatura", fora da lista de assinaturas
+  const fidelidade = <MinhaAssinaturaFidelidade versao={versaoFidelidade} onQuantidade={setQtdFidelidade} />;
+
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       {/* Cabeçalho no degradê da logo */}
@@ -1085,7 +1092,7 @@ export default function MinhasAssinaturasScreen() {
         title="Minhas assinaturas"
         onBack={() => router.replace("/(tabs)/checkin")}
         actions={[
-          { icon: "refresh-cw", label: "Atualizar", onPress: () => fetchAssinaturasCallback(apiUrl), loading },
+          { icon: "refresh-cw", label: "Atualizar", onPress: () => { setVersaoFidelidade((v) => v + 1); fetchAssinaturasCallback(apiUrl); }, loading },
         ]}
       />
 
@@ -1097,7 +1104,10 @@ export default function MinhasAssinaturasScreen() {
       ) : error ? (
         renderErrorState()
       ) : assinaturas.length === 0 && pacotes.length === 0 ? (
-        renderEmptyState()
+        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
+          {fidelidade}
+          {qtdFidelidade ? null : renderEmptyState()}
+        </ScrollView>
       ) : (
         <FlatList
           data={assinaturaCards}
@@ -1105,6 +1115,7 @@ export default function MinhasAssinaturasScreen() {
           renderItem={renderAssinaturaCard}
           ListHeaderComponent={
             <View style={styles.sectionsWrapper}>
+              {fidelidade}
               {pacotes.length > 0 && (
                 <View style={styles.pacotesSection}>
                   <View style={styles.sectionHeader}>

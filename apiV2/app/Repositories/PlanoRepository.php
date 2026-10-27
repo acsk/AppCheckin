@@ -114,6 +114,8 @@ class PlanoRepository
                 'pc.permite_recorrencia',
                 'pc.permite_reposicao',
                 'af.ordem',
+                'pc.cobranca_mensal',
+                'pc.fidelizacao_meses',
             ])
             ->map(fn ($row) => (array) $row)
             ->all();
@@ -162,6 +164,8 @@ class PlanoRepository
                 'pc.permite_recorrencia',
                 'pc.permite_reposicao',
                 'af.ordem',
+                'pc.cobranca_mensal',
+                'pc.fidelizacao_meses',
             ])
             ->map(fn ($row) => (array) $row)
             ->all();

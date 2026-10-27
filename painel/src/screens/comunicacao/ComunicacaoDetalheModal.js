@@ -78,8 +78,8 @@ export default function ComunicacaoDetalheModal({ open, comunicacao: c, canRepor
 
   return <Modal open={open} size="lg" title={c.titulo} description={`${TIPO[c.tipo]?.label || c.tipo} · ${publicoResumo(c.publico)}`} onClose={onClose}
     footer={<Button onClick={onClose}>Fechar</Button>}>
-    <div className="ck-cm__det">
-      <div className="ck-cm__badges">
+    <div className="ck-com__det">
+      <div className="ck-com__badges">
         <Badge tone={tone} dot>{label}</Badge>
         {c.obrigatoria ? <Badge tone="warning" icon="lock">Obrigatória: trava o check-in</Badge> : null}
         <span>{fdatetime(c.inicio_em || c.publicada_em)} → {fdatetime(c.termino_em)}</span>
@@ -92,20 +92,20 @@ export default function ComunicacaoDetalheModal({ open, comunicacao: c, canRepor
           { label: acao, value: c.leituras, tone: 'success' },
           { label: 'Pendentes', value: c.pendentes, tone: c.obrigatoria ? 'danger' : 'muted' },
         ]} /> : <Callout tone="info">Rascunho: ainda não foi enviado aos alunos.</Callout>}
-        {c.descricao ? <p className="ck-cm__pdesc">{c.descricao}</p> : null}
-        {c.conteudo ? <div className="ck-cm__texto">{c.conteudo}</div> : null}
-        {(c.configuracoes?.links || []).map((l, i) => <a key={i} className="ck-cm__plink" href={l.url} target="_blank" rel="noreferrer">{l.rotulo}</a>)}
-        {(c.configuracoes?.anexos || []).map((a, i) => <a key={i} className="ck-cm__plink" href={a.url} target="_blank" rel="noreferrer">{a.nome}</a>)}
+        {c.descricao ? <p className="ck-com__pdesc">{c.descricao}</p> : null}
+        {c.conteudo ? <div className="ck-com__texto">{c.conteudo}</div> : null}
+        {(c.configuracoes?.links || []).map((l, i) => <a key={i} className="ck-com__plink" href={l.url} target="_blank" rel="noreferrer">{l.rotulo}</a>)}
+        {(c.configuracoes?.anexos || []).map((a, i) => <a key={i} className="ck-com__plink" href={a.url} target="_blank" rel="noreferrer">{a.nome}</a>)}
       </> : null}
 
       {tab === 'destinatarios' ? <>
-        <div className="ck-cm__bar">
+        <div className="ck-com__bar">
           <SegmentedControl label="Situação" value={situacao} onChange={setSituacao}
             options={[{ value: 'todos', label: 'Todos' }, { value: 'concluidos', label: acao }, { value: 'pendentes', label: 'Pendentes' }]} />
           <TextField icon="search" placeholder="Buscar aluno" value={busca} onChange={e => setBusca(e.target.value)} />
           <Button icon="download" loading={exportando} onClick={exportarDestinatarios}>CSV</Button>
         </div>
-        {!dest ? <p className="ck-cm__hint" role="status">Carregando…</p> : dest.destinatarios.length ? <div className="ck-pc__wrap"><table className="ck-cm__tbl">
+        {!dest ? <p className="ck-com__hint" role="status">Carregando…</p> : dest.destinatarios.length ? <div className="ck-pc__wrap"><table className="ck-com__tbl">
           <thead><tr><th scope="col">Aluno</th><th scope="col">Situação</th><th scope="col">{enquete ? 'Respondeu' : 'Confirmou'}</th><th scope="col">Visualizou</th></tr></thead>
           <tbody>{dest.destinatarios.map(d => <tr key={d.aluno_id}>
             <th scope="row"><strong>{d.nome}</strong><small>{d.email}</small></th>
@@ -113,22 +113,22 @@ export default function ComunicacaoDetalheModal({ open, comunicacao: c, canRepor
             <td>{fdatetime(d.concluida_em)}</td>
             <td>{fdatetime(d.visualizada_em)}</td>
           </tr>)}</tbody>
-        </table>{dest.paginacao.total > dest.destinatarios.length ? <p className="ck-cm__hint">Mostrando {dest.destinatarios.length} de {dest.paginacao.total}. Exporte o CSV para ver todos.</p> : null}</div>
-          : <p className="ck-cm__hint">Ninguém nesta situação.</p>}
+        </table>{dest.paginacao.total > dest.destinatarios.length ? <p className="ck-com__hint">Mostrando {dest.destinatarios.length} de {dest.paginacao.total}. Exporte o CSV para ver todos.</p> : null}</div>
+          : <p className="ck-com__hint">Ninguém nesta situação.</p>}
       </> : null}
 
-      {tab === 'resultados' ? (!res ? <p className="ck-cm__hint" role="status">Carregando…</p> : <>
-        <div className="ck-cm__bar">
-          <span className="ck-cm__hint">{res.participantes} de {res.destinatarios} responderam{res.anonima ? ' · anônima' : ''}</span>
+      {tab === 'resultados' ? (!res ? <p className="ck-com__hint" role="status">Carregando…</p> : <>
+        <div className="ck-com__bar">
+          <span className="ck-com__hint">{res.participantes} de {res.destinatarios} responderam{res.anonima ? ' · anônima' : ''}</span>
           <Button icon="download" loading={exportando} onClick={exportarRespostas}>{res.anonima || !canAnswers ? 'CSV dos resultados' : 'CSV das respostas'}</Button>
         </div>
-        {res.perguntas.map(p => <section key={p.id} className="ck-cm__res">
+        {res.perguntas.map(p => <section key={p.id} className="ck-com__res">
           <h3>{p.pergunta}</h3>
           {p.opcoes ? <ChartBarList showShare={false} format={v => String(v)}
             items={p.opcoes.map(o => ({ label: o.rotulo, value: o.total, note: p.respondentes ? `${Math.round((o.total / p.respondentes) * 100)}% de ${p.respondentes}` : undefined }))} /> : null}
-          {p.media != null ? <p className="ck-cm__hint">Média {String(p.media).replace('.', ',')}</p> : null}
-          {p.textos ? (p.textos.length ? <ul className="ck-cm__textos">{p.textos.map((t, i) => <li key={i}>{t.texto}{t.aluno ? <small>{t.aluno}</small> : null}</li>)}</ul>
-            : <p className="ck-cm__hint">Sem respostas.</p>) : null}
+          {p.media != null ? <p className="ck-com__hint">Média {String(p.media).replace('.', ',')}</p> : null}
+          {p.textos ? (p.textos.length ? <ul className="ck-com__textos">{p.textos.map((t, i) => <li key={i}>{t.texto}{t.aluno ? <small>{t.aluno}</small> : null}</li>)}</ul>
+            : <p className="ck-com__hint">Sem respostas.</p>) : null}
         </section>)}
       </>) : null}
     </div>

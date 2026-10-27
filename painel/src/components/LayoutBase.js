@@ -56,6 +56,7 @@ const SECTIONS = [
           { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3], perm: 'financeiro.ver' },
           { id: 'conciliacao-bancaria', label: 'Conciliação bancária', path: '/financeiro/conciliacao', roles: [3], perm: 'financeiro.baixar' },
           { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3], perm: 'financeiro.ver' },
+          { id: 'recorrencias', label: 'Recorrências', path: '/financeiro/recorrencias', roles: [3], perm: 'financeiro.ver' },
           { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3], perm: 'configuracoes.editar' },
         ],
       },

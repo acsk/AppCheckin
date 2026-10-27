@@ -57,6 +57,8 @@ interface Ciclo {
   pix_disponivel?: boolean;
   metodos_pagamento?: string[];
   economia?: string | null;
+  /** Fidelização: assinatura mensal (aceite dos termos nos detalhes do plano) */
+  cobranca_mensal?: boolean;
 }
 
 interface Plan {
@@ -713,6 +715,14 @@ export default function PlanosScreen() {
           );
           setComprando(false);
           setPlanoComprando(null);
+          return;
+        }
+
+        // Fidelidade não é compra à vista: termos, aceite e assinatura ficam nos detalhes do plano
+        if (selectedCiclo.cobranca_mensal) {
+          setComprando(false);
+          setPlanoComprando(null);
+          router.push({ pathname: "/plano-detalhes", params: { id: String(plano.id) } });
           return;
         }
 

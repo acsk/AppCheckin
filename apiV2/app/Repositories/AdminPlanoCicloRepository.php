@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\DB;
 
 class AdminPlanoCicloRepository
 {
+    /** Plano com fidelização (assinatura mensal): ver migration 2026_10_28_120000_recorrencia_fidelizacao. */
+    public const COLUNAS_FIDELIZACAO = ['cobranca_mensal', 'fidelizacao_meses', 'politica_renovacao', 'regularizacao_ativa',
+        'regularizacao_proporcional', 'arrependimento_dias', 'termos', 'termos_versao'];
+
     public function listarFrequencias(): array
     {
         return DB::table('assinatura_frequencias')
@@ -62,6 +66,7 @@ class AdminPlanoCicloRepository
                 'pc.ativo',
                 'af.ordem',
                 'pc.assinatura_frequencia_id',
+                ...self::COLUNAS_FIDELIZACAO,
             ]);
 
         if ($filtroAtivo !== null) {
@@ -89,11 +94,13 @@ class AdminPlanoCicloRepository
         int $planoId,
         int $frequenciaId,
         int $permiteRecorrencia,
+        int $cobrancaMensal = 0,
     ): bool {
         return DB::table('plano_ciclos')
             ->where('plano_id', $planoId)
             ->where('assinatura_frequencia_id', $frequenciaId)
             ->where('permite_recorrencia', $permiteRecorrencia)
+            ->where('cobranca_mensal', $cobrancaMensal)
             ->exists();
     }
 
@@ -109,7 +116,7 @@ class AdminPlanoCicloRepository
             'permite_recorrencia' => $data['permite_recorrencia'],
             'permite_reposicao' => $data['permite_reposicao'],
             'ativo' => $data['ativo'],
-        ]);
+        ] + array_intersect_key($data, array_flip(self::COLUNAS_FIDELIZACAO)));
     }
 
     public function update(int $cicloId, int $tenantId, array $data): void
@@ -124,7 +131,7 @@ class AdminPlanoCicloRepository
                 'permite_reposicao' => $data['permite_reposicao'],
                 'ativo' => $data['ativo'],
                 'updated_at' => now(),
-            ]);
+            ] + array_intersect_key($data, array_flip(self::COLUNAS_FIDELIZACAO)));
     }
 
     public function updateDesconto(int $cicloId, float $desconto): void

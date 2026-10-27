@@ -141,7 +141,7 @@ export default function ComunicacaoScreen() {
   const pag = dados.paginacao || {};
 
   return <LayoutBase title="Central de Comunicação" pageHeader={false}>
-    <div className="ck-cm">
+    <div className="ck-com">
       <PageHeader title="Central de Comunicação" description="Avisos, comunicados e enquetes para os alunos no app. As obrigatórias travam o check-in até o aluno concluir."
         actions={pode('comunicacoes.criar') ? <Button variant="primary" icon="plus" onClick={() => setModal({ tipo: 'form', valor: { ...vazia(), tipo: TIPO[aba] ? aba : 'comunicado' } })}>Nova comunicação</Button> : null} />
       {error ? <Callout tone="danger" title="Não foi possível carregar" action={<Button size="sm" onClick={carregar}>Tentar novamente</Button>}>{error}</Callout> : null}
@@ -151,17 +151,17 @@ export default function ComunicacaoScreen() {
           <Tabs label="Tipo" tabs={ABAS.filter(a => a.value !== 'relatorios' || pode('comunicacoes.relatorios'))} value={aba} onChange={setAba} />
         </div>
         {aba === 'relatorios' ? <Relatorios dados={indicadores} /> : <>
-          <div className="ck-cm__filtros">
+          <div className="ck-com__filtros">
             <TextField icon="search" placeholder="Buscar pelo título" aria-label="Buscar" value={filtros.busca} onChange={e => setFiltros({ ...filtros, busca: e.target.value })} />
             <SelectField aria-label="Status" value={filtros.status} options={FILTRO_STATUS} onChange={e => setFiltros({ ...filtros, status: e.target.value })} />
             <SelectField aria-label="Obrigatoriedade" value={filtros.obrigatoria} options={FILTRO_OBRIG} onChange={e => setFiltros({ ...filtros, obrigatoria: e.target.value })} />
           </div>
           {loading && !lista.length ? <div className="ck-ml__empty" role="status"><p>Carregando…</p></div>
-            : lista.length ? <div className="ck-pc__wrap"><table className="ck-pc__table ck-cm__table">
+            : lista.length ? <div className="ck-pc__wrap"><table className="ck-pc__table ck-com__table">
               <thead><tr>
                 {COLUNAS.map(([campo, rotulo, num]) => <th key={rotulo} scope="col" className={num ? 'is-num' : undefined}
                   aria-sort={campo && ordem.campo === campo ? (ordem.direcao === 'asc' ? 'ascending' : 'descending') : undefined}>
-                  {campo ? <button type="button" className="ck-cm__sort" onClick={() => ordenar(campo)}>{rotulo}
+                  {campo ? <button type="button" className="ck-com__sort" onClick={() => ordenar(campo)}>{rotulo}
                     {ordem.campo === campo ? <Icon name={ordem.direcao === 'asc' ? 'arrow-up' : 'arrow-down'} size={12} /> : null}</button> : rotulo}
                 </th>)}
                 <th scope="col"><span className="ck-sr">Ações</span></th>
@@ -172,7 +172,7 @@ export default function ComunicacaoScreen() {
                   onClick={e => { if (!e.target.closest('button, a, [role="menu"]')) setModal({ tipo: 'detalhe', c }); }}
                   onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) setModal({ tipo: 'detalhe', c }); }}>
                   <th scope="row"><div className="ck-pc__name">
-                    <span className={'ck-pc__icon ck-cm__cls is-' + c.classificacao} aria-hidden><Icon name={c.icone || TIPO[c.tipo]?.icon || 'bell'} size={18} glyph /></span>
+                    <span className={'ck-pc__icon ck-com__cls is-' + c.classificacao} aria-hidden><Icon name={c.icone || TIPO[c.tipo]?.icon || 'bell'} size={18} glyph /></span>
                     <div style={{ minWidth: 0 }}><strong>{c.titulo}</strong>{c.descricao ? <span>{c.descricao}</span> : null}</div>
                   </div></th>
                   <td>{TIPO[c.tipo]?.label || c.tipo}</td>
@@ -182,7 +182,7 @@ export default function ComunicacaoScreen() {
                   <td>{fdatetime(c.inicio_em || c.publicada_em)}</td>
                   <td>{fdatetime(c.termino_em)}</td>
                   <td className="is-num">{c.status === 'rascunho' ? '—' : c.leituras}</td>
-                  <td className="is-num">{c.status === 'rascunho' ? '—' : <span className={c.obrigatoria && c.pendentes && c.status === 'ativa' ? 'ck-cm__warn' : undefined}>{c.pendentes}</span>}</td>
+                  <td className="is-num">{c.status === 'rascunho' ? '—' : <span className={c.obrigatoria && c.pendentes && c.status === 'ativa' ? 'ck-com__warn' : undefined}>{c.pendentes}</span>}</td>
                   <td><div className="ck-pc__acts"><ActionMenu label={`Ações para ${c.titulo}`} items={menu(c)} /></div></td>
                 </tr>;
               })}</tbody>
@@ -192,7 +192,7 @@ export default function ComunicacaoScreen() {
               <strong>{filtros.busca || filtros.status || filtros.obrigatoria ? 'Nada com esses filtros' : 'Nenhuma comunicação ainda'}</strong>
               <p>Avise sobre horários, feriados e regras, ou colete a opinião dos alunos com uma enquete.</p>
             </div>}
-          {pag.paginas > 1 ? <div className="ck-cm__pag">
+          {pag.paginas > 1 ? <div className="ck-com__pag">
             <span>{pag.total} comunicações · página {pagina} de {pag.paginas}</span>
             <Button size="sm" icon="chevron-left" disabled={pagina <= 1} onClick={() => setPagina(pagina - 1)}>Anterior</Button>
             <Button size="sm" iconRight="chevron-right" disabled={pagina >= pag.paginas} onClick={() => setPagina(pagina + 1)}>Próxima</Button>
@@ -226,10 +226,10 @@ function Relatorios({ dados: d }) {
     ['Enquetes respondidas', d.enquetes_respondidas, `Participação ${pct(d.taxa_participacao)}`],
     ['Pendências obrigatórias', d.pendencias_obrigatorias, d.alunos_bloqueados === 1 ? '1 aluno sem check-in agora' : `${d.alunos_bloqueados} alunos sem check-in agora`, d.pendencias_obrigatorias > 0],
   ];
-  return <div className="ck-cm__kpis">
-    {cards.map(([rotulo, valor, sub, alerta]) => <div key={rotulo} className={'ck-cm__kpi' + (alerta ? ' is-warn' : '')}>
+  return <div className="ck-com__kpis">
+    {cards.map(([rotulo, valor, sub, alerta]) => <div key={rotulo} className={'ck-com__kpi' + (alerta ? ' is-warn' : '')}>
       <span>{rotulo}</span><strong>{valor}</strong><small>{sub}</small>
     </div>)}
-    <p className="ck-cm__hint">Para ver quem confirmou ou está pendente, abra a comunicação na lista. O CSV abre no Excel.</p>
+    <p className="ck-com__hint">Para ver quem confirmou ou está pendente, abra a comunicação na lista. O CSV abre no Excel.</p>
   </div>;
 }

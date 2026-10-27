@@ -157,44 +157,44 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
             </div>
             <div className="ck-field"><span className="ck-field__label">Prioridade</span><SegmentedControl label="Prioridade" options={PRIORIDADES} value={f.prioridade} onChange={v => set({ prioridade: v })} /></div>
           </div>
-          {f.tipo !== 'notificacao' ? <div className="ck-cm__anexos">
-            <div className="ck-cm__anexoshead">
+          {f.tipo !== 'notificacao' ? <div className="ck-com__anexos">
+            <div className="ck-com__anexoshead">
               <strong>Imagem, anexos e links</strong>
-              <div className="ck-cm__acts">
+              <div className="ck-com__acts">
                 <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf" hidden onChange={anexar} />
                 <Button size="sm" icon="paperclip" loading={enviando} onClick={() => arquivoRef.current?.click()}>Anexar</Button>
                 <Button size="sm" icon="link" onClick={() => setCfg({ links: [...f.configuracoes.links, { rotulo: '', url: '' }] })}>Link</Button>
               </div>
             </div>
-            {f.configuracoes.imagem_url ? <div className="ck-cm__img"><img src={f.configuracoes.imagem_url} alt="" />
+            {f.configuracoes.imagem_url ? <div className="ck-com__img"><img src={f.configuracoes.imagem_url} alt="" />
               <IconButton icon="x" label="Remover imagem" size="sm" onClick={() => setCfg({ imagem_url: '' })} /></div> : null}
-            {f.configuracoes.anexos.map((a, i) => <div key={a.url} className="ck-cm__anexo"><Icon name="file-text" size={16} /><span>{a.nome}</span>
+            {f.configuracoes.anexos.map((a, i) => <div key={a.url} className="ck-com__anexo"><Icon name="file-text" size={16} /><span>{a.nome}</span>
               <IconButton icon="x" label={`Remover ${a.nome}`} size="sm" onClick={() => setCfg({ anexos: f.configuracoes.anexos.filter((_, j) => j !== i) })} /></div>)}
-            {f.configuracoes.links.map((l, i) => <div key={i} className="ck-cm__link">
+            {f.configuracoes.links.map((l, i) => <div key={i} className="ck-com__link">
               <TextField label={i ? undefined : 'Texto do link'} placeholder="Ex.: Regulamento" value={l.rotulo} onChange={e => setCfg({ links: f.configuracoes.links.map((x, j) => (j === i ? { ...x, rotulo: e.target.value } : x)) })} />
               <TextField label={i ? undefined : 'Endereço'} placeholder="https://" value={l.url} onChange={e => setCfg({ links: f.configuracoes.links.map((x, j) => (j === i ? { ...x, url: e.target.value } : x)) })} />
               <IconButton icon="trash" label="Remover link" size="sm" onClick={() => setCfg({ links: f.configuracoes.links.filter((_, j) => j !== i) })} />
             </div>)}
           </div> : null}
 
-          {f.tipo === 'enquete' ? <div className="ck-cm__fields"><h3 className="ck-field__label">Perguntas</h3>
-          {perguntas.map((p, i) => <div key={i} className="ck-cm__perg">
-            <div className="ck-cm__perghead">
+          {f.tipo === 'enquete' ? <div className="ck-com__fields"><h3 className="ck-field__label">Perguntas</h3>
+          {perguntas.map((p, i) => <div key={i} className="ck-com__perg">
+            <div className="ck-com__perghead">
               <strong>Pergunta {i + 1}</strong>
-              {rascunho ? <div className="ck-cm__acts">
+              {rascunho ? <div className="ck-com__acts">
                 <IconButton icon="arrow-up" label="Subir" size="sm" disabled={!i} onClick={() => mover(i, -1)} />
                 <IconButton icon="arrow-down" label="Descer" size="sm" disabled={i === perguntas.length - 1} onClick={() => mover(i, 1)} />
                 <IconButton icon="trash" label="Remover pergunta" size="sm" onClick={() => set({ perguntas: perguntas.filter((_, j) => j !== i) })} />
               </div> : null}
             </div>
             <TextField label="Pergunta" value={p.pergunta} disabled={!rascunho} maxLength={300} onChange={e => setPergunta(i, { pergunta: e.target.value })} />
-            <div className="ck-cm__row">
+            <div className="ck-com__row">
               <SelectField label="Tipo de resposta" value={p.tipo_resposta} disabled={!rascunho} options={TIPOS_RESPOSTA}
                 onChange={e => setPergunta(i, { tipo_resposta: e.target.value, alternativas: p.alternativas.length >= 2 ? p.alternativas : ['', ''] })} />
               <Switch label="Obrigatória" checked={p.obrigatoria !== false} disabled={!rascunho} onChange={v => setPergunta(i, { obrigatoria: v })} />
             </div>
-            {['unica', 'multipla'].includes(p.tipo_resposta) ? <div className="ck-cm__alts">
-              {p.alternativas.map((a, k) => <div key={k} className="ck-cm__alt">
+            {['unica', 'multipla'].includes(p.tipo_resposta) ? <div className="ck-com__alts">
+              {p.alternativas.map((a, k) => <div key={k} className="ck-com__alt">
                 <TextField placeholder={`Alternativa ${k + 1}`} value={a} disabled={!rascunho} maxLength={200}
                   onChange={e => setPergunta(i, { alternativas: p.alternativas.map((x, j) => (j === k ? e.target.value : x)) })} />
                 {rascunho && p.alternativas.length > 2 ? <IconButton icon="x" label="Remover alternativa" size="sm" onClick={() => setPergunta(i, { alternativas: p.alternativas.filter((_, j) => j !== k) })} /> : null}
@@ -210,23 +210,23 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
           <div className="ck-cx-modes" role="radiogroup" aria-label="Público">{PUBLICOS.map(a => <button key={a.value} type="button" role="radio" disabled={!rascunho} aria-checked={f.publico.tipo === a.value} className="ck-cx-mode" onClick={() => setPub({ tipo: a.value })}>
             <span className="ck-choice__radio" aria-hidden="true" /><span><strong>{a.label}</strong><small>{PUBLICO_DESCRICAO[a.value]}</small></span>
           </button>)}</div>
-          {f.publico.tipo === 'segmento' ? <div className="ck-cm__seg">
-            <p className="ck-cm__hint">Dentro de cada grupo vale qualquer opção marcada. Entre grupos, o aluno precisa atender a todos.</p>
-            <div className="ck-cm__chips" aria-label="Modalidades">
+          {f.publico.tipo === 'segmento' ? <div className="ck-com__seg">
+            <p className="ck-com__hint">Dentro de cada grupo vale qualquer opção marcada. Entre grupos, o aluno precisa atender a todos.</p>
+            <div className="ck-com__chips" aria-label="Modalidades">
               <span>Modalidades</span>
               {(options.modalidades || []).map(m => <button key={m.id} type="button" disabled={!rascunho} aria-pressed={f.publico.modalidades.includes(m.id)}
-                className={'ck-cm__chip' + (f.publico.modalidades.includes(m.id) ? ' is-on' : '')} onClick={() => toggleLista('modalidades', m.id)}>{m.nome}</button>)}
+                className={'ck-com__chip' + (f.publico.modalidades.includes(m.id) ? ' is-on' : '')} onClick={() => toggleLista('modalidades', m.id)}>{m.nome}</button>)}
             </div>
-            <div className="ck-cm__chips" aria-label="Planos">
+            <div className="ck-com__chips" aria-label="Planos">
               <span>Planos</span>
               {(options.planos || []).map(p => <button key={p.id} type="button" disabled={!rascunho} aria-pressed={f.publico.planos.includes(p.id)}
-                className={'ck-cm__chip' + (f.publico.planos.includes(p.id) ? ' is-on' : '')} onClick={() => toggleLista('planos', p.id)}>{p.nome}{p.modalidade_nome ? ` · ${p.modalidade_nome}` : ''}</button>)}
+                className={'ck-com__chip' + (f.publico.planos.includes(p.id) ? ' is-on' : '')} onClick={() => toggleLista('planos', p.id)}>{p.nome}{p.modalidade_nome ? ` · ${p.modalidade_nome}` : ''}</button>)}
             </div>
-            <div className="ck-cm__chips" aria-label="Turmas">
+            <div className="ck-com__chips" aria-label="Turmas">
               <span>Turmas (modalidade e horário)</span>
               {(options.horarios || []).map(h => {
                 const k = horarioKey(h); const on = horariosEscolhidos.has(k);
-                return <button key={k} type="button" disabled={!rascunho} aria-pressed={on} className={'ck-cm__chip' + (on ? ' is-on' : '')}
+                return <button key={k} type="button" disabled={!rascunho} aria-pressed={on} className={'ck-com__chip' + (on ? ' is-on' : '')}
                   onClick={() => setPub({ horarios: on ? f.publico.horarios.filter(x => horarioKey(x) !== k) : [...f.publico.horarios, { modalidade_id: h.modalidade_id, horario: h.horario }] })}>{h.modalidade_nome} {h.horario}</button>;
               })}
             </div>
@@ -234,16 +234,16 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
               onChange={e => setPub({ dias_checkin: Math.max(1, Math.min(365, +e.target.value || 30)) })} hint="Turma é a aula do dia: entra quem fez check-in nela nesse período." /> : null}
             <Switch label="Só inadimplentes" description="Com parcela vencida em aberto." checked={!!f.publico.inadimplentes} disabled={!rascunho} onChange={v => setPub({ inadimplentes: v })} />
           </div> : null}
-          {f.publico.tipo === 'alunos' ? <div className="ck-cm__seg">
+          {f.publico.tipo === 'alunos' ? <div className="ck-com__seg">
             <TextField icon="search" label="Buscar aluno" placeholder="Nome ou e-mail" value={busca} disabled={!rascunho} onChange={e => setBusca(e.target.value)} />
-            {alunosFiltrados.length ? <ul className="ck-cm__busca">{alunosFiltrados.map(s => <li key={s.id}>
+            {alunosFiltrados.length ? <ul className="ck-com__busca">{alunosFiltrados.map(s => <li key={s.id}>
               <button type="button" onClick={() => { toggleLista('alunos', Number(s.id)); setBusca(''); }}>
                 <Icon name={alunosEscolhidos.has(Number(s.id)) ? 'check-circle' : 'plus'} size={16} /><span>{s.name}</span><em>{s.email}</em>
               </button></li>)}</ul> : null}
-            <div className="ck-cm__chips">
+            <div className="ck-com__chips">
               {[...alunosEscolhidos].map(id => {
                 const s = students.find(x => Number(x.id) === id);
-                return <span key={id} className="ck-cm__chip is-on">{s?.name || `Aluno #${id}`}
+                return <span key={id} className="ck-com__chip is-on">{s?.name || `Aluno #${id}`}
                   {rascunho ? <button type="button" aria-label="Remover" onClick={() => toggleLista('alunos', id)}><Icon name="x" size={12} /></button> : null}</span>;
               })}
             </div>
@@ -255,10 +255,10 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
               <div className="ck-cx-reach__top"><div><strong>{alcance ? `${alcance.total} ${alcance.total === 1 ? 'aluno recebe' : 'alunos recebem'}` : 'Calculando o público…'}</strong><span>{PUBLICO_DESCRICAO[f.publico.tipo]}</span></div></div>
               {alcance?.amostra.length ? <button type="button" className="ck-cx-clear" aria-expanded={verAmostra} onClick={() => setVerAmostra(!verAmostra)}>{verAmostra ? 'Esconder amostra' : 'Ver amostra de quem recebe'}</button> : null}
               {verAmostra && alcance?.amostra.length ? <ul className="ck-cx-reach__list">{alcance.amostra.map((nome, i) => <li key={i}>{nome}</li>)}</ul> : null}
-              {alcance?.total === 0 ? <span className="ck-cm__hint">Ninguém corresponde a este público agora.</span> : null}
+              {alcance?.total === 0 ? <span className="ck-com__hint">Ninguém corresponde a este público agora.</span> : null}
             </>}
           </div> : null}
-          <p className="ck-cm__hint">O público é fixado na publicação. Depois, o detalhe da comunicação permite incluir novos alunos que se encaixem.</p>
+          <p className="ck-com__hint">O público é fixado na publicação. Depois, o detalhe da comunicação permite incluir novos alunos que se encaixem.</p>
         </div> : <div className="ck-cx-step">
 
           <div className="ck-cx-row2">
@@ -268,7 +268,7 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
             </div>
             <div className="ck-field"><span className="ck-field__label">Termina</span>
               <fieldset className="ck-cx-segctl" disabled={f.obrigatoria}><SegmentedControl label="Termina" block options={[{ value: 'nunca', label: 'Sem data', disabled: f.obrigatoria }, { value: 'data', label: 'Em uma data' }]} value={comTermino ? 'data' : 'nunca'} onChange={v => { if (v === 'nunca' && f.obrigatoria) return; setComTermino(v === 'data'); if (v === 'nunca') set({ termino_em: '' }); }} /></fieldset>
-              {f.obrigatoria ? <span className="ck-cm__hint">Comunicações obrigatórias precisam de término.</span> : null}
+              {f.obrigatoria ? <span className="ck-com__hint">Comunicações obrigatórias precisam de término.</span> : null}
               {comTermino ? <TextField label="Término" type="datetime-local" value={f.termino_em} min={f.inicio_em || undefined} error={err('termino_em')} onChange={e => set({ termino_em: e.target.value })} /> : null}
             </div>
           </div>
@@ -279,7 +279,7 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
             checked={f.obrigatoria || f.exibir_modal} disabled={f.obrigatoria} onChange={v => set({ exibir_modal: v })} />
           <Switch label="Manter no histórico depois de encerrar" checked={f.manter_historico} onChange={v => set({ manter_historico: v })} />
           {f.obrigatoria ? <Callout tone="warning" title="Trava o check-in">Enquanto estiver ativa, quem não {f.tipo === 'enquete' ? 'responder' : 'confirmar'} não consegue fazer check-in. O aluno continua usando o resto do app.</Callout> : null}
-          {f.tipo === 'enquete' ? <div className="ck-cx-seggrp"><h3 className="ck-field__label">Respostas</h3>          <div className="ck-cm__grid2">
+          {f.tipo === 'enquete' ? <div className="ck-cx-seggrp"><h3 className="ck-field__label">Respostas</h3>          <div className="ck-com__grid2">
             <Switch label="Respostas anônimas" description="Os relatórios mostram só a participação, nunca quem respondeu o quê." checked={f.configuracoes.enquete.anonima} disabled={!rascunho}
               onChange={v => setEnq({ anonima: v, permitir_alterar: v ? false : f.configuracoes.enquete.permitir_alterar })} />
             <Switch label="Permitir alterar a resposta" description={f.configuracoes.enquete.anonima ? 'Indisponível em enquete anônima.' : 'Enquanto estiver ativa.'}
@@ -296,38 +296,38 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
           </ul></div>
         </div>}
       </div>
-      <aside className="ck-cm__prev ck-cx-side" aria-label="Pré-visualização">
-        <div className="ck-cm__prevbar ck-cx-side__top"><span>Prévia no app</span>
+      <aside className="ck-com__prev ck-cx-side" aria-label="Pré-visualização">
+        <div className="ck-com__prevbar ck-cx-side__top"><span>Prévia no app</span>
           <SegmentedControl label="Pré-visualização" options={[{ value: 'mobile', label: 'Celular', icon: 'smartphone' }, { value: 'desktop', label: 'Tablet', icon: 'monitor' }]} value={preview} onChange={setPreview} />
         </div>
         {f.obrigatoria ? <Switch label="Simular obrigatória" description="Como o aluno vê ao abrir o app." checked={simular} onChange={setSimular} /> : null}
-        <div className={'ck-cm__device is-' + preview}>
-          <div className="ck-cm__screen">
-            {simular && f.obrigatoria ? <div className="ck-cm__pmodal">
-              <span className="ck-cm__pcount">Comunicado importante</span>
+        <div className={'ck-com__device is-' + preview}>
+          <div className="ck-com__screen">
+            {simular && f.obrigatoria ? <div className="ck-com__pmodal">
+              <span className="ck-com__pcount">Comunicado importante</span>
               <strong>{f.titulo || 'Título da comunicação'}</strong>
               <p>{f.descricao || f.conteudo.slice(0, 180) || 'Conteúdo…'}</p>
               {f.termino_em ? <small>Vigência: {f.inicio_em ? fdatetime(fromInput(f.inicio_em)).slice(0, 5) : 'agora'} a {fdatetime(fromInput(f.termino_em)).slice(0, 5)}</small> : null}
-              <span className="ck-cm__pbtn">{f.tipo === 'enquete' ? 'Enviar respostas' : 'Li e estou ciente'}</span>
-              <span className="ck-cm__pnote"><Icon name="lock" size={12} /> Check-in indisponível até concluir</span>
-            </div> : <div className={'ck-cm__pcard is-' + f.classificacao}>
-              <div className="ck-cm__pcardhead">
-                <span className="ck-cm__picon"><Icon name={f.icone || tipoAtual?.icon || 'bell'} size={18} glyph /></span>
+              <span className="ck-com__pbtn">{f.tipo === 'enquete' ? 'Enviar respostas' : 'Li e estou ciente'}</span>
+              <span className="ck-com__pnote"><Icon name="lock" size={12} /> Check-in indisponível até concluir</span>
+            </div> : <div className={'ck-com__pcard is-' + f.classificacao}>
+              <div className="ck-com__pcardhead">
+                <span className="ck-com__picon"><Icon name={f.icone || tipoAtual?.icon || 'bell'} size={18} glyph /></span>
                 <div><strong>{f.titulo || 'Título da comunicação'}</strong><small>{tipoAtual?.label}{f.obrigatoria ? ' · Obrigatória' : ''}</small></div>
               </div>
               {f.configuracoes.imagem_url ? <img src={f.configuracoes.imagem_url} alt="" /> : null}
-              {f.descricao ? <p className="ck-cm__pdesc">{f.descricao}</p> : null}
+              {f.descricao ? <p className="ck-com__pdesc">{f.descricao}</p> : null}
               {f.conteudo ? <p>{f.conteudo}</p> : null}
-              {f.tipo === 'enquete' ? <ol className="ck-cm__pperg">{perguntas.slice(0, 3).map((p, i) => <li key={i}>
+              {f.tipo === 'enquete' ? <ol className="ck-com__pperg">{perguntas.slice(0, 3).map((p, i) => <li key={i}>
                 <span>{p.pergunta || 'Pergunta'}</span>
-                {['unica', 'multipla'].includes(p.tipo_resposta) ? <ul className="ck-cm__popts">{p.alternativas.map((a, k) => <li key={k}>
-                  <span className={'ck-cm__pmark' + (p.tipo_resposta === 'multipla' ? ' is-box' : '')} aria-hidden />{a || `Alternativa ${k + 1}`}</li>)}</ul>
-                  : p.tipo_resposta === 'sim_nao' ? <div className="ck-cm__pyn"><span>Sim</span><span>Não</span></div>
-                    : p.tipo_resposta === 'avaliacao' ? <div className="ck-cm__pstars" aria-hidden>★★★★★</div>
-                      : <div className="ck-cm__ptext">Resposta do aluno…</div>}
+                {['unica', 'multipla'].includes(p.tipo_resposta) ? <ul className="ck-com__popts">{p.alternativas.map((a, k) => <li key={k}>
+                  <span className={'ck-com__pmark' + (p.tipo_resposta === 'multipla' ? ' is-box' : '')} aria-hidden />{a || `Alternativa ${k + 1}`}</li>)}</ul>
+                  : p.tipo_resposta === 'sim_nao' ? <div className="ck-com__pyn"><span>Sim</span><span>Não</span></div>
+                    : p.tipo_resposta === 'avaliacao' ? <div className="ck-com__pstars" aria-hidden>★★★★★</div>
+                      : <div className="ck-com__ptext">Resposta do aluno…</div>}
               </li>)}</ol> : null}
-              {f.configuracoes.links.filter(l => l.url).map((l, i) => <span key={i} className="ck-cm__plink"><Icon name="link" size={13} /> {l.rotulo || l.url}</span>)}
-              {f.tipo !== 'notificacao' || f.obrigatoria ? <span className="ck-cm__pbtn">{f.tipo === 'enquete' ? 'Enviar respostas' : 'Li e estou ciente'}</span> : null}
+              {f.configuracoes.links.filter(l => l.url).map((l, i) => <span key={i} className="ck-com__plink"><Icon name="link" size={13} /> {l.rotulo || l.url}</span>)}
+              {f.tipo !== 'notificacao' || f.obrigatoria ? <span className="ck-com__pbtn">{f.tipo === 'enquete' ? 'Enviar respostas' : 'Li e estou ciente'}</span> : null}
             </div>}
           </div>
         </div>

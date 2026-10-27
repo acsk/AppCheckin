@@ -33,6 +33,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
+import FidelidadeSheet from "@/src/components/FidelidadeSheet";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
@@ -56,6 +57,9 @@ interface Ciclo {
   metodos_pagamento?: string[];
   economia: string | null;
   economia_valor: string | null;
+  /** Fidelização: assinatura mensal com o preço do ciclo dividido por mês */
+  cobranca_mensal?: boolean;
+  fidelizacao_meses?: number | null;
 }
 
 interface PlanoDetalhes {
@@ -120,6 +124,7 @@ export default function PlanoDetalhesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [selectedCicloId, setSelectedCicloId] = useState<number | null>(null);
+  const [fidelidadeAberta, setFidelidadeAberta] = useState(false);
   const [comprando, setComprando] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
@@ -1266,7 +1271,9 @@ export default function PlanoDetalhesScreen() {
                     key={ciclo.id}
                     label={ciclo.nome}
                     detail={
-                      ciclo.permite_recorrencia
+                      ciclo.cobranca_mensal
+                        ? `Fidelidade de ${ciclo.fidelizacao_meses || ciclo.meses} meses · cobrança mensal`
+                        : ciclo.permite_recorrencia
                         ? `Cobrança automática a cada ${ciclo.meses} ${ciclo.meses === 1 ? "mês" : "meses"}`
                         : ciclo.meses > 1
                           ? `${ciclo.meses} meses, à vista`
@@ -1274,7 +1281,7 @@ export default function PlanoDetalhesScreen() {
                     }
                     monthly={ciclo.valor_mensal_formatado || formatCurrency(mensal)}
                     fullMonthly={maiorMensal && mensal < maiorMensal - 0.009 ? formatCurrency(maiorMensal) : null}
-                    total={ciclo.valor_formatado}
+                    total={ciclo.cobranca_mensal ? `${ciclo.valor_mensal_formatado}/mês` : ciclo.valor_formatado}
                     saving={desconto > 0 ? `−${Math.round(desconto)}%` : null}
                     savingAmount={economiaValor}
                     tag={ciclos.length > 1 && cicloMelhorPrecoId === ciclo.id ? "Melhor preço" : null}
@@ -1309,6 +1316,19 @@ export default function PlanoDetalhesScreen() {
           <View style={styles.footerAtivo}>
             <Feather name="check-circle" size={20} color={ds.success} />
             <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
+          </View>
+        </View>
+      ) : selectedCiclo?.cobranca_mensal ? (
+        // Fidelidade: assinatura mensal (termos + aceite na próxima tela), não a compra do período
+        <View style={styles.dock} accessibilityLabel="Assinatura">
+          <View style={styles.dockFoot}>
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryLabel} numberOfLines={1}>
+                {`${selectedCiclo.nome} · fidelidade ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses`}
+              </Text>
+              <Text style={styles.summaryTotal} numberOfLines={1}>{`${selectedCiclo.valor_mensal_formatado}/mês`}</Text>
+            </View>
+            <Button size="lg" icon="repeat" onPress={() => setFidelidadeAberta(true)}>Assinar</Button>
           </View>
         </View>
       ) : selectedCiclo || ciclos.length === 0 ? (
@@ -1387,6 +1407,19 @@ export default function PlanoDetalhesScreen() {
           </Button>
           </View>
         </View>
+      ) : null}
+
+      {plano && selectedCiclo?.cobranca_mensal ? (
+        <FidelidadeSheet
+          visible={fidelidadeAberta}
+          planoId={plano.id}
+          cicloId={selectedCiclo.id}
+          onClose={() => setFidelidadeAberta(false)}
+          onAssinado={() => {
+            setFidelidadeAberta(false);
+            router.replace("/minhas-assinaturas");
+          }}
+        />
       ) : null}
 
       {/* Confirmação da troca de plano (design system · TelasPagamento) */}

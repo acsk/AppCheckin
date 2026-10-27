@@ -26,8 +26,26 @@ const toCycle = (c, types) => {
     recurring: bool(c.permite_recorrencia),
     makeup: bool(c.permite_reposicao),
     active: bool(c.ativo),
+    fidelity: {
+      mensal: bool(c.cobranca_mensal),
+      renovacao: c.politica_renovacao || 'mensal',
+      regularizacao: bool(c.regularizacao_ativa),
+      proporcional: bool(c.regularizacao_proporcional),
+      arrependimento: Number(c.arrependimento_dias) || 7,
+      termos: c.termos || '',
+    },
   };
 };
+
+// Campos de fidelização do ciclo (assinatura mensal)
+const fidelidadeParaApi = (f = {}) => ({
+  cobranca_mensal: f.mensal ? 1 : 0,
+  politica_renovacao: f.renovacao || 'mensal',
+  regularizacao_ativa: f.regularizacao ? 1 : 0,
+  regularizacao_proporcional: f.proporcional ? 1 : 0,
+  arrependimento_dias: Number(f.arrependimento) || 7,
+  termos: f.termos || '',
+});
 
 export default function FormPlanoScreen() {
   const router = useRouter();
@@ -156,6 +174,7 @@ export default function FormPlanoScreen() {
         permite_recorrencia: data.recurring ? 1 : 0,
         permite_reposicao: data.makeup ? 1 : 0,
         ativo: data.active ? 1 : 0,
+        ...fidelidadeParaApi(data.fidelity),
       };
       if (data.id) {
         await planoService.atualizarCiclo(planoId, data.id, payload);

@@ -49,6 +49,10 @@ final class PermissaoRotas
         [self::LEITURA, '#^(admin/alunos|admin/usuarios|tenant/usuarios)(/|$)#', Permissao::ALUNOS_VER],
         [null, '#^(admin/alunos|tenant/usuarios)(/|$)#', Permissao::ALUNOS_EDITAR],
 
+        // Recorrências (planos com fidelização): ver com o financeiro; cancelar/sincronizar com a baixa
+        [self::LEITURA, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_VER],
+        [null, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_BAIXAR],
+
         // Financeiro
         [self::LEITURA, '#^admin/(dashboard|pagamentos-plano|contas-receber|creditos|financeiro|assinaturas|relatorios)(/|$)#', Permissao::FINANCEIRO_VER],
         [null, '#^admin/(pagamentos-plano|contas-receber|creditos|financeiro|assinaturas)(/|$)#', Permissao::FINANCEIRO_BAIXAR],

@@ -159,6 +159,11 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        // Plano com fidelização: cada mensalidade paga libera um mês (regra própria, não a do ciclo à vista)
+        if (app(\App\Services\Recorrencia\RecorrenciaAcesso::class)->atualizar($tenantId, $matriculaId)) {
+            return;
+        }
+
         app(MatriculaMigracaoService::class)->confirmarSeHouverSimulacaoPaga($tenantId, $matriculaId);
 
         $matriculaMeta = DB::table('matriculas as m')

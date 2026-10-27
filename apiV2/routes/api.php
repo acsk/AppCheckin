@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V2\MobilePacoteVendaController;
 use App\Http\Controllers\Api\V2\MobileCheckinAcessoController;
 use App\Http\Controllers\Api\V2\MobileComunicacaoController;
 use App\Http\Controllers\Api\V2\MobileRecordeController;
+use App\Http\Controllers\Api\V2\MobileRecorrenciaController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
@@ -91,6 +92,14 @@ Route::prefix('v2')->group(function () {
             Route::get('/tenants', [MobileController::class, 'tenants']);
             Route::get('/checkins', [MobileController::class, 'historicoCheckins']);
             Route::get('/checkin/acesso', MobileCheckinAcessoController::class);
+            // Planos com fidelização (assinatura mensal) e "Minha assinatura"
+            Route::get('/recorrencia/ofertas', [MobileRecorrenciaController::class, 'ofertas']);
+            Route::post('/recorrencia/contratar', [MobileRecorrenciaController::class, 'contratar'])->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
+            Route::get('/recorrencia/contratos', [MobileRecorrenciaController::class, 'contratos']);
+            Route::get('/recorrencia/contratos/{id}/simular-cancelamento', [MobileRecorrenciaController::class, 'simular'])->whereNumber('id');
+            Route::post('/recorrencia/contratos/{id}/cancelar', [MobileRecorrenciaController::class, 'cancelar'])->whereNumber('id');
+            Route::get('/recorrencia/contratos/{id}/pagamento', [MobileRecorrenciaController::class, 'pagamento'])->whereNumber('id')->middleware('funcionalidade:pagamentos');
+            Route::post('/recorrencia/contratos/{id}/aceitar-renovacao', [MobileRecorrenciaController::class, 'aceitarRenovacao'])->whereNumber('id');
             // Central de Comunicação do aluno
             Route::get('/comunicacoes/resumo', [MobileComunicacaoController::class, 'resumo'])->middleware('funcionalidade:comunicacao');
             Route::get('/comunicacoes', [MobileComunicacaoController::class, 'index'])->middleware('funcionalidade:comunicacao');
