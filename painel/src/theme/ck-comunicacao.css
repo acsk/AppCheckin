@@ -124,3 +124,90 @@
 .ck-cm__pyn span { padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); text-align: center; font-size: 12px; }
 .ck-cm__pstars { color: var(--ink-subtle); letter-spacing: 4px; font-size: 16px; }
 .ck-cm__ptext { padding: 8px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); font-size: 12px; color: var(--ink-subtle); }
+
+/* ---------- ComunicacaoModal (ck-cx) ---------- */
+.ck-cx.ck-modal__dialog--lg { max-width: 1120px; }
+.ck-cx-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6); align-items: start; }
+.ck-cx-main { min-width: 0; }
+.ck-cx-steps { display: flex; gap: 4px; list-style: none; margin: 0 0 var(--space-5); box-shadow: 0 -2px 0 2px var(--surface), 0 10px 0 2px var(--surface); padding: 4px; border-radius: var(--radius-lg); background: var(--surface-muted); position: sticky; top: 0; z-index: 3; }
+.ck-cx-steps li { flex: 1; }
+.ck-cx-stepbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 40px; border: 0; border-radius: var(--radius-md); background: transparent; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink-muted); cursor: pointer; }
+.ck-cx-stepbtn:hover { color: var(--ink); }
+.ck-cx-stepbtn.is-on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-xs); }
+.ck-cx-stepbtn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-cx-stepn { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--line); color: var(--ink-muted); font-size: 12px; font-weight: 700; }
+.ck-cx-stepbtn.is-on .ck-cx-stepn { background: var(--primary); color: var(--on-primary); }
+.ck-cx-stepbtn.is-done .ck-cx-stepn { background: var(--success-soft); color: var(--success); }
+.ck-cx-stepbtn.is-err .ck-cx-stepn { background: var(--danger); color: #fff; }
+.ck-cx-step { display: grid; gap: var(--space-5); }
+.ck-cx-types { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.ck-cx-type { display: grid; gap: 2px; justify-items: start; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; transition: border-color .15s, background-color .15s; }
+.ck-cx-type:hover { border-color: var(--ink-subtle); }
+.ck-cx-type[aria-checked="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary); }
+.ck-cx-type:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-cx-type__icon { display: grid; place-items: center; width: 32px; height: 32px; margin-bottom: 6px; border-radius: var(--radius-md); background: var(--surface-muted); color: var(--ink-muted); }
+.ck-cx-type[aria-checked="true"] .ck-cx-type__icon { background: var(--surface); color: var(--primary); }
+.ck-cx-type strong { font-size: 14px; }
+.ck-cx-type small { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.ck-cx-row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.ck-cx-row2 > .ck-field { display: grid; gap: 8px; margin: 0; }
+.ck-cx-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ck-cx-chips .ck-ml__chip { height: 32px; font-size: 13px; padding: 0 12px; }
+.ck-cx-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.ck-cx-mode { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.ck-cx-mode:hover { border-color: var(--ink-subtle); }
+.ck-cx-mode[aria-checked="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary); }
+.ck-cx-mode:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-cx-mode > span:nth-child(2) { flex: 1; min-width: 0; }
+.ck-cx-mode strong { display: block; font-size: 14px; }
+.ck-cx-mode small { display: block; font-size: 12.5px; line-height: 17px; color: var(--ink-muted); }
+.ck-cx-mode > b { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink-muted); padding: 1px 8px; border-radius: var(--radius-full); background: var(--surface-muted); }
+.ck-cx-mode .ck-choice__radio { margin-top: 2px; }
+.ck-cx-mode[aria-checked="true"] .ck-choice__radio { border-color: var(--primary); box-shadow: inset 0 0 0 4px var(--primary); }
+.ck-cx-seggrp { display: grid; gap: 8px; }
+.ck-cx-seggrp + .ck-cx-seggrp { padding-top: var(--space-4); border-top: 1px solid var(--line); }
+.ck-cx-clear { justify-self: start; height: 26px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; font: inherit; font-size: 13px; font-weight: 600; color: var(--primary); cursor: pointer; }
+.ck-cx-clear:hover { background: var(--primary-soft); }
+.ck-cx-reach { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--info-soft); }
+.ck-cx-reach.is-zero { background: var(--warning-soft); }
+.ck-cx-reach.is-err { box-shadow: inset 0 0 0 1px var(--danger); }
+.ck-cx-reach__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ck-cx-reach strong { display: block; font-family: var(--font-display); font-size: 18px; line-height: 24px; color: var(--ink); }
+.ck-cx-reach__top span { display: block; font-size: 13px; color: var(--ink-muted); }
+.ck-cx-reach__list { list-style: none; margin: 0; padding: 8px 10px; max-height: 180px; overflow: auto; columns: 2; column-gap: 16px; font-size: 13px; line-height: 22px; border-radius: var(--radius-md); background: var(--surface); }
+.ck-cx-summary { padding: 14px 16px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--line); }
+.ck-cx-summary__t { font-size: 12px; font-weight: 700; letter-spacing: .02em; color: var(--ink-subtle); }
+.ck-cx-summary ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.ck-cx-summary li { display: flex; gap: 8px; align-items: flex-start; }
+.ck-cx-summary .ck-icon { flex: none; margin-top: 2px; color: var(--ink-muted); }
+.ck-cx-side { position: sticky; top: 0; display: grid; gap: var(--space-3); }
+.ck-cx-side__top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ck-cx-side__top > span { font-size: 13px; font-weight: 600; color: var(--ink-muted); }
+.ck-cx-side__top .ck-seg__opt { height: 30px; font-size: 13px; padding: 0 10px; }
+.ck-cx-foot { align-items: center; }
+@media (max-width: 980px) { .ck-cx-grid { grid-template-columns: 1fr; } .ck-cx-side { position: static; order: -1; display: none; } .ck-cx-types { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .ck-cx-row2, .ck-cx-modes, .ck-cx-link { grid-template-columns: 1fr; } }
+.ck-cx-row2 .ck-seg:not(.ck-seg--block) { justify-self: start; }
+
+
+/* Integração do formulário real com a navegação por etapas. */
+.ck-cx-grid > * { min-width: 0; }
+.ck-cx-foot { width: 100%; flex-wrap: wrap; }
+.ck-cx-spacer { flex: 1; }
+.ck-cx .ck-cm__prevbar { flex-wrap: wrap; }
+.ck-cx .ck-cm__seg { display: grid; gap: var(--space-4); }
+.ck-cx .ck-cm__grid2 { grid-template-columns: 1fr; }
+.ck-cx .ck-cm__perg { padding: var(--space-4); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg); }
+.ck-cx .ck-cm__device { width: 100%; min-width: 0; }
+.ck-cx .ck-cm__screen { overflow-wrap: anywhere; }
+.ck-cx-type:disabled, .ck-cx-mode:disabled { cursor: not-allowed; opacity: .65; }
+.ck-cx-step > .ck-switchfield { border-bottom: 1px solid var(--line); padding-bottom: var(--space-3); }
+.ck-cx .ck-cx-row2 .ck-seg { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .ck-cx-stepbtn { font-size: 12px; gap: 4px; height: auto; min-height: 40px; padding: 6px 4px; }
+  .ck-cx-stepn { width: 18px; height: 18px; flex: none; }
+  .ck-cx-foot > .ck-btn:first-child { margin-right: auto; }
+}
+
+.ck-cx-segctl { min-width: 0; border: 0; padding: 0; margin: 0; }
+.ck-cx-segctl:disabled { opacity: .6; }

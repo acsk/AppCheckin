@@ -122,3 +122,14 @@ encerrada, cancelada, excluida, leitura_confirmada e enquete_respondida.
   `src/services/comunicacoes.ts`
 - Testes: `tests/Feature/CentralComunicacaoTest.php` (os 16 cenários obrigatórios e mais as regras de
   anonimato, relatórios, kill switch e edição após publicar)
+
+## Editor no painel
+
+A modal de cadastro/edição segue `Nova-comunicacao.html`, com as etapas
+**Conteúdo**, **Para quem** e **Quando e como**, prévia ao lado em telas largas e
+resumo antes de publicar. Os campos são validados antes de continuar e, ao salvar,
+a modal abre a etapa do primeiro erro. O alcance e a amostra de destinatários
+continuam sendo calculados pela API; a amostra não representa a lista completa.
+Os limites, os cinco tipos de resposta de enquete e as restrições de edição após
+publicar permanecem os mesmos. Comunicações obrigatórias exigem término e
+continuam forçando a exibição em destaque no aplicativo.
