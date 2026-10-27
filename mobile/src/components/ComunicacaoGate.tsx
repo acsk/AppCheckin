@@ -1,4 +1,5 @@
 import ComunicacaoTexto from "@/src/components/ComunicacaoTexto";
+import EnquetePerguntas, { corpoRespostas, perguntasFaltando, respostasIniciais, type Pergunta, type Resposta, type Respostas } from "@/src/components/EnquetePerguntas";
 import Modal from "@/src/components/ds/Modal";
 import { ds, radius, space, type } from "@/src/components/ds/tokens";
 import { useFuncionalidade } from "@/src/hooks/useConfigRemota";
@@ -16,11 +17,15 @@ import { AppState, StyleSheet, Text, View } from "react-native";
 
 /**
  * Comunicação em destaque ao abrir o app (e depois de um check-in recusado por pendência). Obrigatória:
- * contador, conteúdo e "Li e estou ciente" (enquete abre a tela de resposta). Fechar só adia: a pendência
+ * contador, conteúdo e "Li e estou ciente"; enquete mostra as perguntas com as escolhas e "Enviar respostas".
+ * Fechar só adia: a pendência
  * continua e o check-in segue travado pela API. O aluno navega normalmente pelo resto do app.
  */
 
-type Detalhe = { id: number; tipo: string; titulo: string; descricao: string | null; conteudo: string | null; obrigatoria: boolean; concluida: boolean; inicio_em: string | null; termino_em: string | null };
+type Detalhe = {
+  id: number; tipo: string; titulo: string; descricao: string | null; conteudo: string | null; obrigatoria: boolean; concluida: boolean;
+  inicio_em: string | null; termino_em: string | null; perguntas?: Pergunta[]; minhas_respostas?: Record<string, Resposta>; pode_responder?: boolean;
+};
 
 const dataCurta = (v: string | null) => (v ? v.slice(5, 10).split("-").reverse().join("/") : "agora");
 
@@ -35,6 +40,7 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [, redesenhar] = useState(0);
+  const [respostas, setRespostas] = useState<Respostas>({});
 
   // Carrega ao entrar e ao voltar para o app
   useEffect(() => {
@@ -62,7 +68,11 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
     if (!proximo || atual?.id === proximo) return;
     let vivo = true;
     chamarComunicacoes("GET", `/${proximo}`)
-      .then((d) => vivo && setAtual(d.comunicacao))
+      .then((d) => {
+        if (!vivo) return;
+        setAtual(d.comunicacao);
+        setRespostas(respostasIniciais(d.comunicacao?.minhas_respostas));
+      })
       .catch(() => {
         adiadas.current.add(proximo);
         redesenhar((n) => n + 1);
@@ -83,11 +93,19 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
 
   async function primaria() {
     if (!atual) return;
-    if (enquete) {
+    if (enquete && !atual.pode_responder) {
+      // Já respondida (ou sem perguntas carregadas): abre a tela completa
       const id = atual.id;
       fechar();
       router.push(`/comunicacao/${id}`);
       return;
+    }
+    if (enquete) {
+      const faltam = perguntasFaltando(atual.perguntas || [], respostas);
+      if (faltam.length) {
+        setErro(`Responda a${faltam.length > 1 ? "s perguntas" : " pergunta"} ${faltam.join(", ")} para enviar.`);
+        return;
+      }
     }
     if (!atual.obrigatoria && atual.concluida) {
       fechar();
@@ -96,7 +114,8 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
     setEnviando(true);
     setErro(null);
     try {
-      await chamarComunicacoes("POST", `/${atual.id}/confirmar`);
+      if (enquete) await chamarComunicacoes("POST", `/${atual.id}/responder`, corpoRespostas(atual.perguntas || [], respostas));
+      else await chamarComunicacoes("POST", `/${atual.id}/confirmar`);
       adiadas.current.add(atual.id);
       setAtual(null);
       await atualizarResumoComunicacoes();
@@ -113,12 +132,13 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
     <Modal
       visible
       variant="dialog"
+      avoidKeyboard={enquete}
       icon={enquete ? "bar-chart-2" : atual.obrigatoria ? "alert-octagon" : "bell"}
       eyebrow={atual.obrigatoria ? (total > 1 && posicao ? `Obrigatória ${posicao} de ${total}` : "Comunicado importante") : "Novidade da academia"}
       title={atual.titulo}
       primary={{
-        label: enquete ? "Responder enquete" : atual.obrigatoria || !atual.concluida ? "Li e estou ciente" : "Entendi",
-        icon: enquete ? "edit-3" : "check",
+        label: enquete ? (atual.pode_responder ? "Enviar respostas" : "Ver enquete") : atual.obrigatoria || !atual.concluida ? "Li e estou ciente" : "Entendi",
+        icon: enquete ? "send" : "check",
         onPress: () => void primaria(),
         loading: enviando,
       }}
@@ -127,6 +147,10 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
       {atual.obrigatoria && total > 1 ? <Text style={styles.contador}>{textoPendencias(total)}</Text> : null}
       {atual.descricao ? <Text style={styles.descricao}>{atual.descricao}</Text> : null}
       <ComunicacaoTexto>{atual.conteudo}</ComunicacaoTexto>
+      {enquete && atual.pode_responder && atual.perguntas?.length ? (
+        <EnquetePerguntas perguntas={atual.perguntas} respostas={respostas} disabled={enviando} cartoes={false}
+          onChange={(r) => { setRespostas(r); setErro(null); }} />
+      ) : null}
       {atual.termino_em ? <Text style={styles.meta}>Vigência: {dataCurta(atual.inicio_em)} a {dataCurta(atual.termino_em)}</Text> : null}
       {atual.obrigatoria ? (
         <View style={styles.trava}>

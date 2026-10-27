@@ -1,9 +1,9 @@
 import ComunicacaoTexto from "@/src/components/ComunicacaoTexto";
+import EnquetePerguntas, { corpoRespostas, perguntasFaltando, respostasIniciais, type Pergunta, type Resposta, type Respostas } from "@/src/components/EnquetePerguntas";
 import AppHeader from "@/src/components/ds/AppHeader";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
 import Section from "@/src/components/ds/Section";
-import TextField from "@/src/components/ds/TextField";
 import { ds, radius, space, type } from "@/src/components/ds/tokens";
 import { atualizarResumoComunicacoes, chamarComunicacoes, textoPendencias } from "@/src/services/comunicacoes";
 import { Feather } from "@expo/vector-icons";
@@ -17,8 +17,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
  * a confirmação e o envio é que liberam o check-in (quando obrigatória).
  */
 
-type Pergunta = { id: number; pergunta: string; tipo_resposta: "unica" | "multipla" | "sim_nao" | "avaliacao" | "aberta"; obrigatoria: boolean; alternativas: { id: number; texto: string }[] };
-type Resposta = { alternativas: number[]; valor: string | number | null };
 type Resultado = { id: number; pergunta: string; tipo_resposta: string; respondentes: number; opcoes?: { id: number | string; rotulo: string; total: number }[]; media?: number | null };
 type Comunicacao = {
   id: number;
@@ -53,7 +51,7 @@ export default function ComunicacaoDetalhe() {
   const router = useRouter();
   const [c, setC] = useState<Comunicacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [respostas, setRespostas] = useState<Record<number, Resposta>>({});
+  const [respostas, setRespostas] = useState<Respostas>({});
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null);
 
@@ -63,9 +61,7 @@ export default function ComunicacaoDetalhe() {
       const d = await chamarComunicacoes("GET", `/${id}`);
       const com: Comunicacao = d.comunicacao;
       setC(com);
-      const minhas: Record<number, Resposta> = {};
-      Object.entries(com.minhas_respostas || {}).forEach(([k, v]) => { minhas[Number(k)] = v; });
-      setRespostas(minhas);
+      setRespostas(respostasIniciais(com.minhas_respostas));
       void atualizarResumoComunicacoes();
     } catch (e: any) {
       setErro(e?.message || "Não foi possível abrir.");
@@ -91,16 +87,8 @@ export default function ComunicacaoDetalhe() {
     }
   }
 
-  const setResp = (p: Pergunta, r: Partial<Resposta>) => setRespostas((prev) => ({ ...prev, [p.id]: { alternativas: [], valor: null, ...prev[p.id], ...r } }));
-  const faltando = (c?.perguntas || []).filter((p) => {
-    if (!p.obrigatoria) return false;
-    const r = respostas[p.id];
-    return ["unica", "multipla"].includes(p.tipo_resposta) ? !r?.alternativas?.length : r?.valor == null || String(r.valor).trim() === "";
-  });
-  const enviar = () =>
-    concluir(`/${id}/responder`, {
-      respostas: (c?.perguntas || []).map((p) => ({ pergunta_id: p.id, alternativas: respostas[p.id]?.alternativas || [], valor: respostas[p.id]?.valor ?? null })),
-    });
+  const faltando = perguntasFaltando(c?.perguntas || [], respostas);
+  const enviar = () => concluir(`/${id}/responder`, corpoRespostas(c?.perguntas || [], respostas));
 
   const podeResponder = c?.tipo === "enquete" && c.pode_responder;
   const tom = TOM[c?.classificacao || "info"] || "info";
@@ -147,14 +135,7 @@ export default function ComunicacaoDetalhe() {
 
           {c.tipo === "enquete" ? (
             <Section title={c.configuracoes.enquete?.anonima ? "Perguntas · respostas anônimas" : "Perguntas"} bare>
-              <View style={{ gap: space[3] }}>
-                {(c.perguntas || []).map((p, i) => (
-                  <View key={p.id} style={styles.card}>
-                    <Text style={styles.pergunta}>{i + 1}. {p.pergunta}{p.obrigatoria ? " *" : ""}</Text>
-                    <PerguntaInput p={p} r={respostas[p.id]} disabled={!podeResponder || enviando} onChange={(r) => setResp(p, r)} />
-                  </View>
-                ))}
-              </View>
+              <EnquetePerguntas perguntas={c.perguntas || []} respostas={respostas} disabled={!podeResponder || enviando} onChange={setRespostas} />
             </Section>
           ) : null}
 
@@ -195,7 +176,7 @@ export default function ComunicacaoDetalhe() {
           ) : null}
           {podeResponder ? (
             <>
-              {faltando.length ? <Text style={styles.meta}>Falta responder: {faltando.map((p) => (c.perguntas || []).indexOf(p) + 1).join(", ")}</Text> : null}
+              {faltando.length ? <Text style={styles.meta}>Falta responder: {faltando.join(", ")}</Text> : null}
               <Button block size="lg" icon="send" loading={enviando} disabled={faltando.length > 0} onPress={() => void enviar()}>
                 {c.concluida ? "Alterar respostas" : "Enviar respostas"}
               </Button>
@@ -205,57 +186,6 @@ export default function ComunicacaoDetalhe() {
       ) : null}
     </SafeAreaView>
   );
-}
-
-function PerguntaInput({ p, r, disabled, onChange }: { p: Pergunta; r?: Resposta; disabled: boolean; onChange: (r: Partial<Resposta>) => void }) {
-  const marcadas = r?.alternativas || [];
-  if (p.tipo_resposta === "unica" || p.tipo_resposta === "multipla") {
-    const multipla = p.tipo_resposta === "multipla";
-    return (
-      <View style={{ gap: space[2] }} accessibilityRole={multipla ? undefined : "radiogroup"}>
-        {multipla ? <Text style={styles.meta}>Escolha uma ou mais</Text> : null}
-        {p.alternativas.map((a) => {
-          const on = marcadas.includes(a.id);
-          return (
-            <Pressable key={a.id} disabled={disabled} style={[styles.opcao, on && styles.opcaoOn]}
-              accessibilityRole={multipla ? "checkbox" : "radio"} accessibilityState={{ checked: on, disabled }}
-              onPress={() => onChange({ alternativas: multipla ? (on ? marcadas.filter((x) => x !== a.id) : [...marcadas, a.id]) : [a.id] })}>
-              <Feather name={multipla ? (on ? "check-square" : "square") : on ? "check-circle" : "circle"} size={20} color={on ? ds.brandInk : ds.inkMuted} />
-              <Text style={styles.opcaoTexto}>{a.texto}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  }
-  if (p.tipo_resposta === "sim_nao") {
-    return (
-      <View style={styles.linha} accessibilityRole="radiogroup">
-        {[["sim", "Sim"], ["nao", "Não"]].map(([v, l]) => (
-          <Pressable key={v} disabled={disabled} style={[styles.opcao, styles.opcaoMeia, r?.valor === v && styles.opcaoOn]}
-            accessibilityRole="radio" accessibilityState={{ checked: r?.valor === v, disabled }} onPress={() => onChange({ valor: v })}>
-            <Text style={[styles.opcaoTexto, { textAlign: "center" }]}>{l}</Text>
-          </Pressable>
-        ))}
-      </View>
-    );
-  }
-  if (p.tipo_resposta === "avaliacao") {
-    return (
-      <View style={styles.linha} accessibilityRole="radiogroup" accessibilityLabel="Nota de 1 a 5">
-        {[1, 2, 3, 4, 5].map((n) => {
-          const on = Number(r?.valor) >= n;
-          return (
-            <Pressable key={n} disabled={disabled} style={styles.estrela} accessibilityRole="radio" accessibilityLabel={`Nota ${n}`}
-              accessibilityState={{ checked: Number(r?.valor) === n, disabled }} onPress={() => onChange({ valor: n })}>
-              <Feather name="star" size={30} color={on ? ds.brand : ds.lineStrong} />
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  }
-  return <TextField multiline editable={!disabled} value={String(r?.valor ?? "")} onChangeText={(t) => onChange({ valor: t })} placeholder="Escreva sua resposta" maxLength={2000} style={{ minHeight: 88 }} />;
 }
 
 const styles = StyleSheet.create({
@@ -272,12 +202,6 @@ const styles = StyleSheet.create({
   trava: { flexDirection: "row", gap: space[2], padding: space[3], borderRadius: radius.md, backgroundColor: ds.warningSoft },
   travaTexto: { flex: 1, ...type.caption, color: ds.warning },
   pergunta: { ...type.heading, color: ds.ink },
-  opcao: { flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 48, paddingHorizontal: space[3], borderRadius: radius.md, borderWidth: 1, borderColor: ds.line, backgroundColor: ds.surface },
-  opcaoOn: { borderColor: ds.brand, backgroundColor: ds.brandSoft },
-  opcaoMeia: { flex: 1, justifyContent: "center" },
-  opcaoTexto: { flex: 1, ...type.body, color: ds.ink },
-  linha: { flexDirection: "row", gap: space[2] },
-  estrela: { width: 48, height: 48, alignItems: "center", justifyContent: "center" },
   resLinha: { flexDirection: "row", justifyContent: "space-between", gap: space[2] },
   resRotulo: { flex: 1, ...type.caption, color: ds.ink },
   resPct: { ...type.caption, color: ds.inkMuted, fontVariant: ["tabular-nums"] },

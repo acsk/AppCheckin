@@ -115,3 +115,12 @@
 .ck-cm__textos { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow: auto; }
 .ck-cm__textos li { padding: 8px 10px; border-radius: var(--radius-md); background: var(--surface-muted); font-size: 14px; white-space: pre-line; }
 .ck-cm__textos small { display: block; margin-top: 2px; font-size: 12px; color: var(--ink-subtle); }
+.ck-cm__pperg > li { display: grid; gap: 6px; }
+.ck-cm__popts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ck-cm__popts li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 12px; }
+.ck-cm__pmark { width: 12px; height: 12px; flex: none; border: 1.5px solid var(--ink-subtle); border-radius: 50%; }
+.ck-cm__pmark.is-box { border-radius: 3px; }
+.ck-cm__pyn { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ck-cm__pyn span { padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); text-align: center; font-size: 12px; }
+.ck-cm__pstars { color: var(--ink-subtle); letter-spacing: 4px; font-size: 16px; }
+.ck-cm__ptext { padding: 8px; border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); font-size: 12px; color: var(--ink-subtle); }

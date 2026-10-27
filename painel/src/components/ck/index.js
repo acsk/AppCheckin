@@ -382,17 +382,34 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
   function ActionMenu(p) {
     var o = useState(false), open = o[0];
-    var ref = useRef(null);
+    var pos = useState(null);
+    var ref = useRef(null), menuRef = useRef(null);
     useEffect(function () {
       if (!open) return;
       function off(e) { if (ref.current && !ref.current.contains(e.target)) o[1](false); }
       function esc(e) { if (e.key === 'Escape') o[1](false); }
+      // Posição fixa na tela: tabelas com overflow (rolagem horizontal, cantos arredondados) não cortam o menu
+      function place() {
+        if (!ref.current) return;
+        var r = ref.current.getBoundingClientRect(), mh = menuRef.current ? menuRef.current.offsetHeight : 0;
+        var up = mh && r.bottom + 4 + mh > window.innerHeight - 8 && r.top - 4 - mh > 8;
+        pos[1]({ position: 'fixed', right: Math.max(8, window.innerWidth - r.right), top: up ? 'auto' : r.bottom + 4, bottom: up ? window.innerHeight - r.top + 4 : 'auto', transformOrigin: up ? 'bottom right' : 'top right' });
+      }
+      function fechar() { o[1](false); }
+      place();
+      var raf = window.requestAnimationFrame(place);
       document.addEventListener('mousedown', off); document.addEventListener('keydown', esc);
-      return function () { document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc); };
+      window.addEventListener('scroll', fechar, true); window.addEventListener('resize', fechar);
+      return function () {
+        window.cancelAnimationFrame(raf);
+        document.removeEventListener('mousedown', off); document.removeEventListener('keydown', esc);
+        window.removeEventListener('scroll', fechar, true); window.removeEventListener('resize', fechar);
+        pos[1](null);
+      };
     }, [open]);
     return h('div', { className: 'ck-actionmenu', ref: ref },
       h(IconButton, { icon: p.icon || 'more-horizontal', label: p.label || 'Mais ações', size: p.size || 'sm', variant: p.variant, 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: function () { o[1](!open); } }),
-      open ? h('div', { className: 'ck-menu ck-menu--compact', role: 'menu' }, (p.items || []).map(function (it, i) {
+      open ? h('div', { className: 'ck-menu ck-menu--compact', role: 'menu', ref: menuRef, style: pos[0] || { visibility: 'hidden' } }, (p.items || []).map(function (it, i) {
         if (it === '-') return h('div', { key: i, className: 'ck-menu__sep', role: 'separator' });
         return h('button', { key: i, type: 'button', role: 'menuitem', className: cx('ck-menu__item', it.danger && 'ck-menu__item--danger'), disabled: it.disabled,
           onClick: function () { o[1](false); if (it.onClick) it.onClick(); } }, it.icon ? h(Icon, { name: it.icon, size: 16 }) : null, it.label);

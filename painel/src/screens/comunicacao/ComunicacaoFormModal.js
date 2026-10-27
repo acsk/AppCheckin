@@ -9,8 +9,12 @@ import { CLASSIFICACOES, PRIORIDADES, PUBLICOS, TIPO, TIPOS, TIPOS_RESPOSTA, fda
  * Props: open, value (estado de paraForm), options ({ modalidades, planos, horarios }), students, saving,
  * canPublish, onCancel, onSave(form, publicar).
  */
+// Pergunta nova já vem como escolha única com duas alternativas para preencher
+const perguntaNova = () => ({ pergunta: '', tipo_resposta: 'unica', obrigatoria: true, alternativas: ['', ''] });
+
 export default function ComunicacaoFormModal({ open, value, options, students = [], saving, canPublish, onCancel, onSave }) {
-  const [f, setF] = useState(value);
+  const comPergunta = v => (v.tipo === 'enquete' && !v.id && !v.perguntas.length ? { ...v, perguntas: [perguntaNova()] } : v);
+  const [f, setF] = useState(() => comPergunta(value));
   const [tried, setTried] = useState(false);
   const [preview, setPreview] = useState('mobile');
   const [simular, setSimular] = useState(false);
@@ -18,7 +22,7 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
   const [busca, setBusca] = useState('');
   const [enviando, setEnviando] = useState(false);
   const arquivoRef = useRef(null);
-  useEffect(() => { setF(value); setTried(false); setAlcance(null); }, [value]);
+  useEffect(() => { setF(comPergunta(value)); setTried(false); setAlcance(null); }, [value]);
 
   const rascunho = f.status === 'rascunho';
   const set = patch => setF(prev => ({ ...prev, ...patch }));
@@ -81,7 +85,7 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
 
   const perguntas = f.perguntas;
   const setPergunta = (i, patch) => set({ perguntas: perguntas.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
-  const novaPergunta = () => set({ perguntas: [...perguntas, { pergunta: '', tipo_resposta: 'unica', obrigatoria: true, alternativas: ['', ''] }] });
+  const novaPergunta = () => set({ perguntas: [...perguntas, perguntaNova()] });
   const mover = (i, d) => {
     const n = [...perguntas]; const j = i + d;
     if (j < 0 || j >= n.length) return;
@@ -114,7 +118,8 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
         <Fieldset title="Informações gerais">
           <div className="ck-cm__tipos" role="radiogroup" aria-label="Tipo">
             {TIPOS.map(t => <button key={t.value} type="button" role="radio" aria-checked={f.tipo === t.value} disabled={!rascunho}
-              className={'ck-cm__tipo' + (f.tipo === t.value ? ' is-on' : '')} onClick={() => set({ tipo: t.value })}>
+              className={'ck-cm__tipo' + (f.tipo === t.value ? ' is-on' : '')}
+              onClick={() => set({ tipo: t.value, ...(t.value === 'enquete' && !perguntas.length ? { perguntas: [perguntaNova()] } : {}) })}>
               <Icon name={t.icon} size={18} glyph /><span>{t.label}</span>
             </button>)}
           </div>
@@ -269,7 +274,14 @@ export default function ComunicacaoFormModal({ open, value, options, students = 
               {f.configuracoes.imagem_url ? <img src={f.configuracoes.imagem_url} alt="" /> : null}
               {f.descricao ? <p className="ck-cm__pdesc">{f.descricao}</p> : null}
               {f.conteudo ? <p>{f.conteudo}</p> : null}
-              {f.tipo === 'enquete' ? <ol className="ck-cm__pperg">{perguntas.slice(0, 3).map((p, i) => <li key={i}>{p.pergunta || 'Pergunta'}<em>{TIPOS_RESPOSTA.find(t => t.value === p.tipo_resposta)?.label}</em></li>)}</ol> : null}
+              {f.tipo === 'enquete' ? <ol className="ck-cm__pperg">{perguntas.slice(0, 3).map((p, i) => <li key={i}>
+                <span>{p.pergunta || 'Pergunta'}</span>
+                {['unica', 'multipla'].includes(p.tipo_resposta) ? <ul className="ck-cm__popts">{p.alternativas.map((a, k) => <li key={k}>
+                  <span className={'ck-cm__pmark' + (p.tipo_resposta === 'multipla' ? ' is-box' : '')} aria-hidden />{a || `Alternativa ${k + 1}`}</li>)}</ul>
+                  : p.tipo_resposta === 'sim_nao' ? <div className="ck-cm__pyn"><span>Sim</span><span>Não</span></div>
+                    : p.tipo_resposta === 'avaliacao' ? <div className="ck-cm__pstars" aria-hidden>★★★★★</div>
+                      : <div className="ck-cm__ptext">Resposta do aluno…</div>}
+              </li>)}</ol> : null}
               {f.configuracoes.links.filter(l => l.url).map((l, i) => <span key={i} className="ck-cm__plink"><Icon name="link" size={13} /> {l.rotulo || l.url}</span>)}
               {f.tipo !== 'notificacao' || f.obrigatoria ? <span className="ck-cm__pbtn">{f.tipo === 'enquete' ? 'Enviar respostas' : 'Li e estou ciente'}</span> : null}
             </div>}
