@@ -4,6 +4,23 @@ const usuarioService = {
   /**
    * Listar todos os usuários do tenant
    */
+  /**
+   * Página da tela Usuários (busca, tipo e situação no servidor).
+   * @param {{ pagina: number, porPagina: number, busca?: string, tipo?: string, status?: string }} params
+   * @param {boolean} suporte  todas as academias (super admin)
+   */
+  async listarPagina({ pagina, porPagina, busca, tipo, status }, suporte = false) {
+    try {
+      const response = await api.get(suporte ? '/superadmin/usuarios' : '/tenant/usuarios', {
+        params: { pagina, por_pagina: porPagina, busca: busca || undefined, tipo, status },
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar usuários:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao listar usuários' };
+    }
+  },
+
   async listar(apenasAtivos = false) {
     try {
       const params = apenasAtivos ? '?ativos=true' : '';

@@ -48,7 +48,7 @@ function isoToday() { var d = new Date(); return d.getFullYear() + '-' + String(
       if (!p.onQuery) return;
       var id = ++reqId.current; loading[1](true);
       Promise.resolve(p.onQuery({ q: dq[0], type: type[0], status: stt[0], page: page[0], size: size[0] })).then(function (r) { if (id === reqId.current) { srv[1](r); loading[1](false); } }, function () { if (id === reqId.current) loading[1](false); });
-    }, [dq[0], type[0], stt[0], page[0], size[0]]);
+    }, [dq[0], type[0], stt[0], page[0], size[0], p.version]);
     var data = local || srv[0] || { rows: [], total: 0, counts: {} };
     var pages = Math.max(1, Math.ceil(data.total / size[0])), cur = Math.min(page[0], pages);
     var from = data.total ? (cur - 1) * size[0] + 1 : 0, to = Math.min(cur * size[0], data.total);

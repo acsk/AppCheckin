@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import alunoService from '../../services/alunoService';
 import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout, Modal } from '../../components/ck';
-import { AlunosLista, digits, maskPhone, titleCase } from '../../components/ck/pessoas';
+import { AlunosLista, maskPhone, titleCase } from '../../components/ck/pessoas';
 import { showSuccess, showError } from '../../utils/toast';
 
 const PAGE_SIZE = 20;
@@ -27,38 +27,42 @@ export const toStudentRow = (a) => ({
   } : null,
 });
 
-const matches = (r, f) => {
-  if (f === 'ativos') return r.status !== 'inativo';
-  if (f === 'inativos') return r.status === 'inativo';
-  if (f === 'sem_plano') return !r.plan;
-  if (f === 'pendentes') return r.payment === 'pendente' || r.payment === 'atrasado';
-  return true;
-};
-
 export default function AlunosScreen() {
   const router = useRouter();
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  const [busca, setBusca] = useState('');
   const [filter, setFilter] = useState('todos');
   const [page, setPage] = useState(1);
+  const [liberado, setLiberado] = useState(false);
   const [confirm, setConfirm] = useState(null);
   const [toggling, setToggling] = useState(false);
+  const request = useRef(0);
 
-  const load = async () => {
+  // Busca, filtro, contagens e paginação no servidor: só a página atual vem da API
+  const load = useCallback(async () => {
+    const id = ++request.current;
     setLoading(true);
     setError('');
     try {
-      const response = await alunoService.listar();
-      const lista = Array.isArray(response) ? response : (response.alunos || []);
-      setRows(lista.map(toStudentRow));
+      const r = await alunoService.listar({ pagina: page, porPagina: PAGE_SIZE, busca, filtro: filter });
+      if (id !== request.current) return;
+      const lista = (r.alunos || []).map(toStudentRow);
+      // Última página esvaziou (ex.: aluno desativado com filtro "ativos"): volta uma
+      if (!lista.length && page > 1 && r.total > 0) { setPage(Math.max(1, Math.ceil(r.total / PAGE_SIZE))); return; }
+      setRows(lista);
+      setTotal(r.total || 0);
+      setCounts(r.contagens || {});
     } catch (err) {
-      setError(err?.message || err?.error || 'Não foi possível carregar os alunos.');
+      if (id === request.current) setError(err?.message || err?.error || 'Não foi possível carregar os alunos.');
     } finally {
-      setLoading(false);
+      if (id === request.current) setLoading(false);
     }
-  };
+  }, [page, busca, filter]);
 
   useEffect(() => {
     (async () => {
@@ -74,31 +78,15 @@ export default function AlunosScreen() {
         router.replace('/');
         return;
       }
-      load();
+      setLiberado(true);
     })();
   }, []);
 
-  // Busca e filtro rodam aqui para que a contagem das pílulas e a paginação reflitam a lista inteira
-  const searched = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    const dq = digits(q);
-    return rows.filter((r) => `${r.name} ${r.email}`.toLowerCase().includes(q)
-      || (dq.length >= 3 && `${digits(r.cpf)} ${digits(r.phone)}`.includes(dq)));
-  }, [rows, query]);
-
-  const counts = useMemo(() => ({
-    todos: searched.length,
-    ativos: searched.filter((r) => matches(r, 'ativos')).length,
-    pendentes: searched.filter((r) => matches(r, 'pendentes')).length,
-    sem_plano: searched.filter((r) => matches(r, 'sem_plano')).length,
-    inativos: searched.filter((r) => matches(r, 'inativos')).length,
-  }), [searched]);
-
-  const filtered = useMemo(() => searched.filter((r) => matches(r, filter)), [searched, filter]);
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const current = Math.min(page, pages);
-  const pageRows = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  useEffect(() => { if (liberado) load(); }, [liberado, load]);
+  useEffect(() => {
+    const t = setTimeout(() => { setBusca(query.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const toggleActive = async () => {
     if (!confirm) return;
@@ -106,9 +94,9 @@ export default function AlunosScreen() {
     setToggling(true);
     try {
       await alunoService.toggleStatus(confirm.id, ativar);
-      setRows((prev) => prev.map((r) => (r.id === confirm.id ? { ...r, status: ativar ? 'ativo' : 'inativo' } : r)));
       showSuccess(ativar ? 'Aluno reativado' : 'Aluno desativado');
       setConfirm(null);
+      load();
     } catch (err) {
       showError(err?.message || err?.error || 'Não foi possível alterar a situação do aluno');
     } finally {
@@ -124,16 +112,16 @@ export default function AlunosScreen() {
       {error ? (
         <Callout tone="danger" title="Não foi possível carregar os alunos" action={<Button size="sm" onClick={load}>Tentar de novo</Button>}>{error}</Callout>
       ) : null}
-      <div aria-busy={loading || undefined} style={loading ? { opacity: 0.6, pointerEvents: 'none' } : undefined}>
+      <div aria-busy={loading || undefined} style={loading && rows.length ? { opacity: 0.6, transition: 'opacity .15s' } : undefined}>
         <AlunosLista
-          rows={pageRows}
-          total={filtered.length}
+          rows={rows}
+          total={total}
           counts={counts}
-          page={current}
+          page={page}
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
           query={query}
-          onQueryChange={(v) => { setQuery(v); setPage(1); }}
+          onQueryChange={setQuery}
           filter={filter}
           onFilterChange={(v) => { setFilter(v); setPage(1); }}
           onNew={() => router.push('/alunos/novo')}

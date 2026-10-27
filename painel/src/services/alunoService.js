@@ -8,14 +8,16 @@ const alunoService = {
    * @param {string} params.busca
    * @param {number} params.pagina
    * @param {number} params.porPagina
+   * @param {string} params.filtro  todos | ativos | pendentes | sem_plano | inativos (com pagina)
    */
-  async listar({ apenasAtivos = false, busca = '', pagina, porPagina } = {}) {
+  async listar({ apenasAtivos = false, busca = '', pagina, porPagina, filtro } = {}) {
     try {
       const query = new URLSearchParams();
       if (apenasAtivos) query.append('apenas_ativos', 'true');
       if (busca) query.append('busca', busca);
       if (pagina) query.append('pagina', String(pagina));
       if (porPagina) query.append('por_pagina', String(porPagina));
+      if (filtro) query.append('filtro', filtro);
 
       const qs = query.toString();
       const response = await api.get(`/admin/alunos${qs ? `?${qs}` : ''}`);

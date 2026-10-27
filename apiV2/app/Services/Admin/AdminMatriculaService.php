@@ -55,6 +55,7 @@ class AdminMatriculaService
                     'pagina' => $meta['pagina'],
                     'por_pagina' => $meta['por_pagina'],
                     'total_paginas' => $meta['total_paginas'],
+                    'contagens' => $meta['contagens'] ?? null,
                 ],
             ];
         }

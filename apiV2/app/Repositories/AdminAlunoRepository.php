@@ -83,6 +83,102 @@ class AdminAlunoRepository
             ->all();
     }
 
+    /**
+     * Lista do painel paginada no banco: busca (nome, e-mail, CPF/telefone), filtro e contagens das pílulas.
+     * filtro: todos | ativos | pendentes (com plano e sem pagamento em dia) | sem_plano | inativos.
+     * "Pagamento em dia" segue temPagamentoAtivo (parcela paga com vencimento até 30 dias atrás).
+     *
+     * @return array{rows: list<array<string, mixed>>, total: int, contagens: array<string, int>}
+     */
+    public function listarPainel(int $tenantId, string $busca, string $filtro, int $pagina, int $porPagina): array
+    {
+        $temPlano = 'EXISTS (SELECT 1 FROM matriculas m JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.aluno_id = a.id AND m.tenant_id = ? AND sm.codigo = \'ativa\')';
+        $emDia = 'EXISTS (SELECT 1 FROM pagamentos_plano pp WHERE pp.aluno_id = a.id AND pp.tenant_id = ?
+            AND pp.status_pagamento_id = 2 AND DATE_ADD(pp.data_vencimento, INTERVAL 30 DAY) >= CURDATE())';
+
+        $base = DB::table('alunos as a')
+            ->join('tenant_usuario_papel as tup', function ($join) use ($tenantId) {
+                $join->on('tup.usuario_id', '=', 'a.usuario_id')
+                    ->where('tup.tenant_id', $tenantId)
+                    ->where('tup.papel_id', 1);
+            })
+            ->leftJoin('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->select([
+                'a.id', 'a.nome', 'a.ativo', 'a.usuario_id', 'u.email',
+                ...Pessoa::selects(['telefone', 'cpf', 'foto_caminho']),
+            ])
+            ->selectRaw("CASE WHEN {$temPlano} THEN 1 ELSE 0 END as tem_plano", [$tenantId])
+            ->selectRaw("CASE WHEN {$emDia} THEN 1 ELSE 0 END as em_dia", [$tenantId]);
+
+        $busca = trim($busca);
+        if ($busca !== '') {
+            $like = '%'.$busca.'%';
+            $digitos = preg_replace('/\D/', '', $busca);
+            $base->where(function ($q) use ($like, $digitos) {
+                $q->where('a.nome', 'like', $like)->orWhere('u.email', 'like', $like);
+                if (strlen($digitos) >= 3) {
+                    // CPF e telefone são gravados só com dígitos
+                    $q->orWhere(Pessoa::col('cpf'), 'like', '%'.$digitos.'%')->orWhere(Pessoa::col('telefone'), 'like', '%'.$digitos.'%');
+                }
+            });
+        }
+
+        // Mesma regra das pílulas da tela (status vem de alunos.ativo)
+        $cond = [
+            'todos' => '1 = 1',
+            'ativos' => 'x.ativo = 1',
+            'inativos' => '(x.ativo = 0 OR x.ativo IS NULL)',
+            'sem_plano' => 'x.tem_plano = 0',
+            'pendentes' => 'x.tem_plano = 1 AND x.em_dia = 0',
+        ];
+        $filtro = isset($cond[$filtro]) ? $filtro : 'todos';
+
+        $agg = DB::query()->fromSub($base, 'x')->selectRaw(implode(', ', array_map(
+            fn ($k, $c) => "SUM(CASE WHEN {$c} THEN 1 ELSE 0 END) as {$k}", array_keys($cond), $cond,
+        )))->first();
+        $contagens = [];
+        foreach (array_keys($cond) as $k) {
+            $contagens[$k] = (int) ($agg->{$k} ?? 0);
+        }
+
+        $rows = DB::query()->fromSub($base, 'x')->whereRaw($cond[$filtro])
+            ->orderBy('x.nome')->orderBy('x.id')
+            ->offset(($pagina - 1) * $porPagina)->limit($porPagina)
+            ->get()->map(fn ($r) => (array) $r)->all();
+
+        return ['rows' => $rows, 'total' => $contagens[$filtro], 'contagens' => $contagens];
+    }
+
+    /**
+     * Plano ativo, pagamento em dia e check-ins de vários alunos de uma vez (lista do painel).
+     *
+     * @param  list<int>  $alunoIds
+     * @return array{matriculas: array<int, array<string, mixed>>, checkins: array<int, array{total: int, ultimo: ?string}>}
+     */
+    public function resumoEmLote(array $alunoIds, int $tenantId): array
+    {
+        if ($alunoIds === []) {
+            return ['matriculas' => [], 'checkins' => []];
+        }
+        $matriculas = [];
+        // Mais recente primeiro: a primeira de cada aluno é a mesma que matriculaAtiva() devolveria
+        foreach (DB::table('matriculas as m')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
+            ->whereIn('m.aluno_id', $alunoIds)->where('m.tenant_id', $tenantId)->where('sm.codigo', 'ativa')
+            ->orderByDesc('m.created_at')
+            ->get(['m.*', 'p.nome as plano_nome', 'p.valor as plano_valor', 'mo.nome as modalidade_nome', 'mo.icone as modalidade_icone']) as $m) {
+            $matriculas[(int) $m->aluno_id] ??= (array) $m;
+        }
+        $checkins = DB::table('checkins')->whereIn('aluno_id', $alunoIds)->where('tenant_id', $tenantId)
+            ->groupBy('aluno_id')->selectRaw('aluno_id, COUNT(*) as total, MAX(created_at) as ultimo')->get()
+            ->mapWithKeys(fn ($r) => [(int) $r->aluno_id => ['total' => (int) $r->total, 'ultimo' => $r->ultimo]])->all();
+
+        return ['matriculas' => $matriculas, 'checkins' => $checkins];
+    }
+
     public function contarPorTenant(int $tenantId, bool $apenasAtivos = true): int
     {
         $query = DB::table('alunos as a')

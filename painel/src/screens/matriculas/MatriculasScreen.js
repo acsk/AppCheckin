@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { MatriculasLista, Button } from '../../components/ck';
@@ -17,6 +17,9 @@ const emptyPreview = { row: null, data: null, loading: false, error: '', pacoteI
 export default function MatriculasScreen() {
   const router = useRouter();
   const [matriculas, setMatriculas] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState(undefined);
+  const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -28,7 +31,6 @@ export default function MatriculasScreen() {
   const [podeExcluir, setPodeExcluir] = useState(false);
   const [preview, setPreview] = useState(emptyPreview);
   const [deleting, setDeleting] = useState(false);
-  const cache = useRef({});
   const deleteBusy = useRef(false);
   const previewRequest = useRef(0);
   const pageSize = 20;
@@ -44,36 +46,28 @@ export default function MatriculasScreen() {
     return () => { active = false; };
   }, []);
 
+  // Busca, status, contagens e paginação no servidor: só a página atual vem da API
   useEffect(() => {
     let active = true;
     const load = async () => {
       setLoading(true);
       setError('');
       try {
-        if (cache.current[status]) {
-          setMatriculas(cache.current[status]);
-          return;
-        }
-        const rows = [];
-        for (let pagina = 1; pagina <= 100; pagina += 1) {
-          const data = await matriculaService.listar({
-            pagina, por_pagina: 200,
-            status: status === 'todas' ? undefined : status === 'bloqueada' ? 'bloqueado' : status,
-            incluir_inativos: status === 'todas',
-          });
-          if (!active) return;
-          const list = listOf(data);
-          rows.push(...list);
-          const meta = data?.paginacao || data?.pagination || data?.meta || {};
-          const total = meta.total || data?.total || data?.total_registros || data?.total_itens;
-          const pages = Number(meta.total_paginas || meta.totalPages || meta.last_page || (total ? Math.ceil(total / 200) : 0));
-          if ((pages && pagina >= pages) || (!pages && list.length < 200)) break;
-          if (pagina === 100) throw new Error('A consulta excedeu 100 páginas. Refine o filtro para carregar as matrículas.');
-        }
-        if (active) {
-          cache.current[status] = rows;
-          setMatriculas(rows);
-        }
+        const data = await matriculaService.listar({
+          pagina: page, por_pagina: pageSize, busca: busca || undefined,
+          status: status === 'todas' ? undefined : status === 'bloqueada' ? 'bloqueado' : status,
+          incluir_inativos: true,
+        });
+        if (!active) return;
+        const lista = listOf(data);
+        const totalApi = Number(data?.total || 0);
+        // Página esvaziou (ex.: excluiu o último da página): volta para a última que existe
+        if (!lista.length && page > 1 && totalApi > 0) { setPage(Math.max(1, Math.ceil(totalApi / pageSize))); return; }
+        setMatriculas(lista);
+        setTotal(totalApi);
+        const c = data?.contagens || {};
+        // "bloqueado" na API é a pílula "bloqueada"; "todas" soma todos os status
+        setCounts({ ...c, bloqueada: c.bloqueado || 0, todas: Object.values(c).reduce((a, n) => a + Number(n || 0), 0) });
       } catch (err) {
         if (!active) return;
         console.error('Erro ao carregar matrículas:', err);
@@ -84,20 +78,14 @@ export default function MatriculasScreen() {
     };
     load();
     return () => { active = false; };
-  }, [status, reload]);
+  }, [status, busca, page, reload]);
 
-  const filtered = useMemo(() => matriculas.filter((row) => {
-    const term = normalize(query);
-    return (status === 'todas' || statusOf(row) === status) &&
-      (!term || normalize([row.usuario_nome, row.usuario_email, row.plano_nome, row.modalidade_nome, `#${row.id}`].join(' ')).includes(term));
-  }), [matriculas, query, status]);
-  const counts = status === 'todas' ? matriculas.reduce((result, row) => {
-    const key = statusOf(row);
-    result[key] = (result[key] || 0) + 1;
-    return result;
-  }, { todas: matriculas.length }) : undefined;
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
-  const rows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row) => ({
+  useEffect(() => {
+    const t = setTimeout(() => { setBusca(query.trim()); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const rows = matriculas.map((row) => ({
     // Sem pagamento: excluir. Paga e sem continuação: vincular à próxima. Paga e já vinculada: nada a fazer.
     deleteAction: !row.pagamento_confirmado ? undefined
       : !row.continuada_por && ['cancelada', 'vencida', 'finalizada'].includes(statusOf(row)) ? { label: 'Vincular à próxima matrícula', icon: 'repeat', danger: false }
@@ -111,7 +99,7 @@ export default function MatriculasScreen() {
     status: statusOf(row), href: `/matriculas/detalhe?id=${row.id}`,
     original: row,
   }));
-  const refresh = () => { cache.current = {}; setReload((v) => v + 1); };
+  const refresh = () => setReload((v) => v + 1);
   const closePreview = () => {
     if (deleteBusy.current) return;
     previewRequest.current += 1;
@@ -173,12 +161,12 @@ export default function MatriculasScreen() {
       <MatriculasLista
         rows={rows}
         query={query}
-        onQueryChange={(value) => { setQuery(value); setPage(1); }}
+        onQueryChange={setQuery}
         status={status}
         onStatusChange={(value) => { setStatus(value); setPage(1); }}
         counts={counts}
-        total={loading || error ? 0 : filtered.length}
-        page={currentPage}
+        total={error ? 0 : total}
+        page={page}
         pageSize={pageSize}
         onPageChange={setPage}
         today={todayISO}

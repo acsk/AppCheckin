@@ -57,19 +57,30 @@ class AdminMatriculaRepository
             $query->where('m.aluno_id', (int) $filters['aluno_id']);
         }
 
-        if (isset($filters['status'])) {
-            $query->whereRaw(
-                'm.status_id = (SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1)',
-                [(string) $filters['status']]
-            );
+        if (! empty($filters['busca'])) {
+            $busca = trim((string) $filters['busca']);
+            $like = '%'.$busca.'%';
+            $numero = preg_match('/^#?(\d+)$/', $busca, $m) ? (int) $m[1] : null;
+            $query->where(function ($q) use ($like, $numero) {
+                $q->where('a.nome', 'like', $like)
+                    ->orWhere('u.email', 'like', $like)
+                    ->orWhere('p.nome', 'like', $like)
+                    ->orWhere('modalidade.nome', 'like', $like);
+                if ($numero !== null) {
+                    $q->orWhere('m.id', $numero);
+                }
+            });
         }
 
-        if (! empty($filters['busca'])) {
-            $like = '%'.$filters['busca'].'%';
-            $query->where(function ($q) use ($like) {
-                $q->where('a.nome', 'like', $like)
-                    ->orWhere('u.email', 'like', $like);
-            });
+        // Pílulas da tela: total por status com a mesma busca, antes do filtro de status
+        $contagens = null;
+        if ($usarPaginacao) {
+            $contagens = (clone $query)->reorder()->groupBy('sm.codigo')->select('sm.codigo')->selectRaw('COUNT(*) as total')
+                ->pluck('total', 'codigo')->map(fn ($v) => (int) $v)->all();
+        }
+
+        if (isset($filters['status'])) {
+            $query->where('sm.codigo', (string) $filters['status']);
         }
 
         $meta = null;
@@ -88,6 +99,7 @@ class AdminMatriculaRepository
                 'pagina' => $paginaAtual,
                 'por_pagina' => $porPagina,
                 'total_paginas' => $porPagina > 0 ? (int) ceil($total / $porPagina) : 0,
+                'contagens' => $contagens,
             ];
         } else {
             $rows = $query->get()->map(fn ($r) => (array) $r)->all();

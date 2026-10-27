@@ -25,20 +25,29 @@ class AdminAlunoService
             $pagina = (int) ($query['pagina'] ?? 1);
             $porPagina = (int) ($query['por_pagina'] ?? 50);
 
-            if ($busca || isset($query['pagina'])) {
-                $lista = $this->alunos->listarPaginado($tenantId, $pagina, $porPagina, $busca);
-                $total = $this->alunos->contarPorTenant($tenantId, true);
+            // Lista do painel: paginada, filtrada e contada no banco (só a página é enriquecida)
+            if (isset($query['pagina'])) {
+                $pagina = max(1, $pagina);
+                $porPagina = max(5, min(100, $porPagina));
+                $r = $this->alunos->listarPainel($tenantId, (string) ($busca ?? ''), (string) ($query['filtro'] ?? 'todos'), $pagina, $porPagina);
 
                 return [
                     'status' => 200,
                     'body' => [
-                        'alunos' => $this->enriquecerAlunos($lista, $tenantId),
-                        'total' => $total,
+                        'alunos' => $this->enriquecerPagina($r['rows'], $tenantId),
+                        'total' => $r['total'],
+                        'contagens' => $r['contagens'],
                         'pagina' => $pagina,
                         'por_pagina' => $porPagina,
-                        'total_paginas' => (int) ceil($total / max(1, $porPagina)),
+                        'total_paginas' => (int) ceil($r['total'] / $porPagina),
                     ],
                 ];
+            }
+
+            if ($busca) {
+                $lista = $this->alunos->listarPaginado($tenantId, max(1, $pagina), $porPagina, $busca);
+
+                return ['status' => 200, 'body' => ['alunos' => $this->enriquecerAlunos($lista, $tenantId), 'total' => count($lista)]];
             }
 
             $lista = $this->alunos->listarPorTenant($tenantId, $apenasAtivos);
@@ -465,6 +474,35 @@ class AdminAlunoService
      * @param  list<array<string, mixed>>  $alunos
      * @return list<array<string, mixed>>
      */
+    /**
+     * Mesmo formato de enriquecerAluno, com três consultas para a página inteira.
+     *
+     * @param  list<array<string, mixed>>  $alunos  linhas de listarPainel (já trazem em_dia)
+     * @return list<array<string, mixed>>
+     */
+    private function enriquecerPagina(array $alunos, int $tenantId): array
+    {
+        $lote = $this->alunos->resumoEmLote(array_map(fn ($a) => (int) $a['id'], $alunos), $tenantId);
+
+        return array_map(function ($a) use ($lote) {
+            $id = (int) $a['id'];
+            $m = $lote['matriculas'][$id] ?? null;
+            $a['plano'] = $m ? [
+                'id' => $m['plano_id'], 'nome' => $m['plano_nome'], 'valor' => $m['plano_valor'],
+                'modalidade_nome' => $m['modalidade_nome'] ?? null, 'modalidade_icone' => $m['modalidade_icone'] ?? null,
+            ] : null;
+            $a['matricula_id'] = $m['id'] ?? null;
+            $a['matricula_valor'] = $m['valor'] ?? null;
+            $a['acesso_ate'] = $m ? ($m['proxima_data_vencimento'] ?? ($m['data_fim'] ?? null)) : null;
+            $a['pagamento_ativo'] = $m ? (bool) $a['em_dia'] : null;
+            $a['total_checkins'] = $lote['checkins'][$id]['total'] ?? 0;
+            $a['ultimo_checkin'] = $lote['checkins'][$id]['ultimo'] ?? null;
+            unset($a['em_dia'], $a['tem_plano']);
+
+            return $a;
+        }, $alunos);
+    }
+
     private function enriquecerAlunos(array $alunos, int $tenantId): array
     {
         return array_map(fn ($a) => $this->enriquecerAluno($a, $tenantId), $alunos);

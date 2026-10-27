@@ -25,6 +25,19 @@ class AdminUsuarioService
         $apenasAtivos = ($query['ativos'] ?? null) === 'true';
         $isSuperAdmin = $this->isSuperAdmin($usuarioLogado);
 
+        // Tela Usuários: paginada (admins da academia ficam de fora, como na lista completa), filtrada e contada no banco
+        if (isset($query['pagina'])) {
+            $pagina = max(1, (int) $query['pagina']);
+            $porPagina = max(5, min(100, (int) ($query['por_pagina'] ?? 20)));
+            $r = $this->usuarios->listarPainel($isSuperAdmin ? null : $tenantId, $isSuperAdmin ? null : [1, 2], (string) ($query['busca'] ?? ''), (string) ($query['tipo'] ?? 'todos'), (string) ($query['status'] ?? 'ativos'), $pagina, $porPagina);
+
+            return ['status' => 200, 'body' => [
+                'usuarios' => $r['rows'], 'total' => $r['total'], 'contagens' => $r['contagens'],
+                'pagina' => $pagina, 'por_pagina' => $porPagina, 'total_paginas' => (int) ceil($r['total'] / $porPagina),
+            ]];
+        }
+
+
         $usuarios = $isSuperAdmin
             ? $this->usuarios->listarTodos(true, null, $apenasAtivos)
             : $this->usuarios->listarPorTenant($tenantId, $apenasAtivos);

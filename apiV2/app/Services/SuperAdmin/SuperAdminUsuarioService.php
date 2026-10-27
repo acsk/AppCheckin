@@ -16,6 +16,18 @@ class SuperAdminUsuarioService
      */
     public function index(array $query): array
     {
+        // Tela Usuários: paginada, filtrada e contada no banco
+        if (isset($query['pagina'])) {
+            $pagina = max(1, (int) $query['pagina']);
+            $porPagina = max(5, min(100, (int) ($query['por_pagina'] ?? 20)));
+            $r = $this->usuarios->listarPainel(null, null, (string) ($query['busca'] ?? ''), (string) ($query['tipo'] ?? 'todos'), (string) ($query['status'] ?? 'ativos'), $pagina, $porPagina);
+
+            return ['status' => 200, 'body' => [
+                'usuarios' => $r['rows'], 'total' => $r['total'], 'contagens' => $r['contagens'],
+                'pagina' => $pagina, 'por_pagina' => $porPagina, 'total_paginas' => (int) ceil($r['total'] / $porPagina),
+            ]];
+        }
+
         $apenasAtivos = isset($query['ativos']) && $query['ativos'] === 'true';
         $usuarios = $this->usuarios->listarTodos(true, null, $apenasAtivos);
 

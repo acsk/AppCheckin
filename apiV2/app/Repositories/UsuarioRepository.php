@@ -530,6 +530,68 @@ class UsuarioRepository
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * Tela Usuários paginada no banco. Uma linha por usuário (vínculos agregados): ativo se algum vínculo
+     * no escopo está ativo; aluno/equipe pelos papéis. $tenantId null = todas as academias (suporte).
+     * tipo: todos | aluno | equipe · status: ativos | inativos | todos.
+     *
+     * @param  list<int>|null  $papeis  só estes papéis entram (null = todos)
+     * @return array{rows: list<array<string, mixed>>, total: int, contagens: array<string, int>}
+     */
+    public function listarPainel(?int $tenantId, ?array $papeis, string $busca, string $tipo, string $status, int $pagina, int $porPagina): array
+    {
+        $base = DB::table('usuarios as u')
+            ->join('tenant_usuario_papel as tup', 'tup.usuario_id', '=', 'u.id')
+            ->leftJoin('tenants as t', 't.id', '=', 'tup.tenant_id')
+            ->when($tenantId !== null, fn ($q) => $q->where('tup.tenant_id', $tenantId))
+            ->when($papeis !== null, fn ($q) => $q->whereIn('tup.papel_id', $papeis))
+            ->groupBy('u.id', 'u.nome', 'u.email', 'u.telefone', 'u.cpf', 'u.created_at', 'u.updated_at')
+            ->select('u.id', 'u.nome', 'u.email', 'u.telefone', 'u.cpf', 'u.created_at', 'u.updated_at')
+            ->selectRaw('MAX(tup.ativo) as ativo, GROUP_CONCAT(DISTINCT tup.papel_id) as papeis, MIN(tup.papel_id) as papel_id, MIN(t.nome) as tenant_nome')
+            ->selectRaw('SUM(CASE WHEN tup.papel_id = 1 THEN 1 ELSE 0 END) as vinculos_aluno, SUM(CASE WHEN tup.papel_id <> 1 THEN 1 ELSE 0 END) as vinculos_equipe');
+
+        $busca = trim($busca);
+        if ($busca !== '') {
+            $like = '%'.$busca.'%';
+            $digitos = preg_replace('/\D/', '', $busca);
+            $base->where(function ($q) use ($like, $digitos) {
+                $q->where('u.nome', 'like', $like)->orWhere('u.email', 'like', $like);
+                if (strlen($digitos) >= 3) {
+                    $q->orWhere('u.cpf', 'like', '%'.$digitos.'%')->orWhere('u.telefone', 'like', '%'.$digitos.'%');
+                }
+            });
+        }
+
+        $st = ['ativos' => 'x.ativo = 1', 'inativos' => 'x.ativo = 0', 'todos' => '1 = 1'][$status] ?? 'x.ativo = 1';
+        $tp = ['aluno' => 'x.vinculos_aluno > 0', 'equipe' => 'x.vinculos_equipe > 0', 'todos' => '1 = 1'][$tipo] ?? '1 = 1';
+
+        // Pílulas de tipo seguem a situação escolhida; a situação conta sobre a busca inteira
+        $agg = DB::query()->fromSub($base, 'x')->selectRaw("
+            SUM(CASE WHEN {$st} THEN 1 ELSE 0 END) as todos,
+            SUM(CASE WHEN {$st} AND x.vinculos_aluno > 0 THEN 1 ELSE 0 END) as aluno,
+            SUM(CASE WHEN {$st} AND x.vinculos_equipe > 0 THEN 1 ELSE 0 END) as equipe,
+            SUM(CASE WHEN x.ativo = 1 THEN 1 ELSE 0 END) as ativos,
+            SUM(CASE WHEN x.ativo = 0 THEN 1 ELSE 0 END) as inativos
+        ")->first();
+        $contagens = [];
+        foreach (['todos', 'aluno', 'equipe', 'ativos', 'inativos'] as $k) {
+            $contagens[$k] = (int) ($agg->{$k} ?? 0);
+        }
+
+        $filtrada = DB::query()->fromSub($base, 'x')->whereRaw($st)->whereRaw($tp);
+        $total = (int) (clone $filtrada)->count();
+        $rows = $filtrada->orderBy('x.nome')->orderBy('x.id')
+            ->offset(($pagina - 1) * $porPagina)->limit($porPagina)->get()
+            ->map(fn ($r) => [
+                'id' => (int) $r->id, 'nome' => $r->nome, 'email' => $r->email, 'telefone' => $r->telefone, 'cpf' => $r->cpf,
+                'papel_id' => (int) $r->papel_id, 'papeis' => array_map('intval', explode(',', (string) $r->papeis)),
+                'ativo' => (bool) $r->ativo, 'status' => null, 'tenant_nome' => $r->tenant_nome,
+                'created_at' => $r->created_at, 'updated_at' => $r->updated_at,
+            ])->all();
+
+        return ['rows' => $rows, 'total' => $total, 'contagens' => $contagens];
+    }
+
     public function listarTodos(bool $isSuperAdmin = false, ?int $tenantId = null, bool $apenasAtivos = false): array
     {
         $sql = '
