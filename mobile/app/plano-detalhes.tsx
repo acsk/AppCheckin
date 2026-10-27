@@ -1167,6 +1167,11 @@ export default function PlanoDetalhesScreen() {
   const podeRenovar = !!(plano.pode_renovar || plano.pode_pagar);
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente && !podeRenovar;
   const cicloAtualId = plano.matricula_ativa?.plano_ciclo_id ?? null;
+  // Plano atual ainda vigente: a assinatura com fidelidade só pode começar depois que ele vencer
+  const acessoAtual = plano.is_plano_atual && !isPendente ? (plano.matricula_ativa?.data_vencimento || "").slice(0, 10) : "";
+  const assinaturaDisponivelEm = acessoAtual && acessoAtual >= new Date().toISOString().slice(0, 10)
+    ? acessoAtual.split("-").reverse().join("/")
+    : null;
   const cicloDiferenteDoAtual =
     isPlanoAtivo &&
     !!selectedCiclo &&
@@ -1304,11 +1309,15 @@ export default function PlanoDetalhesScreen() {
               {([
                 ["avista", "À vista", selectedCiclo.valor_formatado, `${selectedCiclo.meses} meses de acesso, pagamento único`],
                 ["assinatura", "Assinatura", `${selectedCiclo.valor_mensal_formatado}/mês`, `Fidelidade de ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses, cobrança mensal`],
-              ] as const).map(([id, titulo, preco, sub]) => {
+              ] as const).map(([id, titulo, preco, subPadrao]) => {
                 const on = modoCiclo === id;
+                // A assinatura só começa depois do plano atual desta modalidade (a API também recusa)
+                const travada = id === "assinatura" && !!assinaturaDisponivelEm;
+                const sub = travada ? `Disponível quando seu plano atual vencer (${assinaturaDisponivelEm})` : subPadrao;
                 return (
-                  <TouchableOpacity key={id} style={[styles.modo, on && styles.modoOn]} activeOpacity={0.8}
-                    accessibilityRole="radio" accessibilityState={{ checked: on }} accessibilityLabel={`${titulo}: ${preco}. ${sub}`}
+                  <TouchableOpacity key={id} style={[styles.modo, on && styles.modoOn, travada && styles.modoOff]} activeOpacity={0.8}
+                    disabled={travada}
+                    accessibilityRole="radio" accessibilityState={{ checked: on, disabled: travada }} accessibilityLabel={`${titulo}: ${preco}. ${sub}`}
                     onPress={() => setModoCiclo(id)}>
                     <View style={styles.modoTopo}>
                       <View style={[styles.modoRadio, on && styles.modoRadioOn]}>{on ? <Feather name="check" size={12} color={ds.onBrand} /> : null}</View>
@@ -1642,6 +1651,7 @@ const styles = StyleSheet.create({
   modos: { flexDirection: "row", gap: 10 },
   modo: { flex: 1, gap: 4, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: ds.line, backgroundColor: ds.surface },
   modoOn: { borderWidth: 2, borderColor: ds.brand, backgroundColor: ds.brandSoft },
+  modoOff: { opacity: 0.55 },
   modoTopo: { flexDirection: "row", alignItems: "center", gap: 8 },
   modoRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: ds.lineStrong, alignItems: "center", justifyContent: "center" },
   modoRadioOn: { borderColor: ds.brand, backgroundColor: ds.brand },
