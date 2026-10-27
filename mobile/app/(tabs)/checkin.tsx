@@ -32,6 +32,7 @@ import Segmented from "@/src/components/ds/Segmented";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
+import { tratarBloqueioCheckin } from "@/src/services/comunicacoes";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
   return Array.isArray(value) ? value[0] : value;
@@ -733,6 +734,10 @@ function CheckinScreenContent() {
 
         const limiteDetalhes = extractLimiteDetalhes(data);
 
+        // Comunicação obrigatória pendente: abre o aviso para resolver (a trava é da API)
+        if (tratarBloqueioCheckin(data)) {
+          return;
+        }
         if (
           String(apiMessage).toLowerCase().includes("já realizou check-in") ||
           String(apiMessage).toLowerCase().includes("já fez check-in")

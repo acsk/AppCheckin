@@ -7,6 +7,7 @@ use App\Repositories\AlunoRepository;
 use App\Repositories\CheckinRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\TurmaRepository;
+use App\Services\Comunicacao\PendenciaComunicacaoService;
 use App\Support\AcademyDateTime;
 use App\Support\AniversarioUtil;
 use App\Support\Papel;
@@ -19,7 +20,13 @@ class MobileProfessorService
         private readonly MatriculaRepository $matriculas,
         private readonly TurmaRepository $turmas,
         private readonly CheckinRepository $checkins,
+        private readonly ?PendenciaComunicacaoService $comunicacoes = null,
     ) {}
+
+    private function comunicacoes(): PendenciaComunicacaoService
+    {
+        return $this->comunicacoes ?? app(PendenciaComunicacaoService::class);
+    }
 
     /**
      * @return array{status: int, body: array<string, mixed>}
@@ -250,6 +257,11 @@ class MobileProfessorService
             }
         }
 
+        // Pendência obrigatória do aluno também vale para o check-in registrado pela equipe
+        if (($pendente = $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, registradoPelaEquipe: true)) !== null) {
+            return $pendente;
+        }
+
         try {
             $checkinId = DB::transaction(function () use (
                 $alunoId,
@@ -258,7 +270,11 @@ class MobileProfessorService
                 $professorId,
                 $diaAula,
                 $limite,
+                $usuarioId,
             ): int {
+                if ($this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, bloquear: true) !== null) {
+                    throw new \RuntimeException('COMUNICACOES_PENDENTES');
+                }
                 if ($limite > 0) {
                     $ocupados = $this->checkins->contarCheckinsTurmaNoDiaComLock($turmaId, $tenantId, $diaAula);
                     if ($ocupados >= $limite) {
@@ -275,6 +291,10 @@ class MobileProfessorService
                 );
             });
         } catch (\RuntimeException $e) {
+            if ($e->getMessage() === 'COMUNICACOES_PENDENTES') {
+                return $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, registradoPelaEquipe: true)
+                    ?? $this->fail('Tente registrar o check-in de novo.', 409);
+            }
             if ($e->getMessage() === 'TURMA_LOTADA') {
                 return [
                     'status' => 400,

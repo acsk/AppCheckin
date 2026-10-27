@@ -24,6 +24,7 @@ export type Funcionalidade =
   | "cancelamento"
   | "ranking"
   | "recordes"
+  | "comunicacao"
   | "grupos_whatsapp";
 
 export type Parametros = {
@@ -62,6 +63,7 @@ export const PADROES: ConfigRemota = {
     cancelamento: true,
     ranking: true,
     recordes: true,
+    comunicacao: true,
     grupos_whatsapp: true,
   },
   parametros: { checkin_exigir_matricula_ativa: true, ranking_limite_home: 15, aviso_home: "" },

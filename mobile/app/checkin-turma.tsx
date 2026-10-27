@@ -35,6 +35,7 @@ import DesignModal from "@/src/components/ds/Modal";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
+import { tratarBloqueioCheckin } from "@/src/services/comunicacoes";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
   return Array.isArray(value) ? value[0] : value;
@@ -785,6 +786,10 @@ function CheckinTurmaScreenContent() {
           ),
           data?.data_vencimento,
         );
+        // Comunicação obrigatória pendente: abre o aviso para resolver (a trava é da API)
+        if (tratarBloqueioCheckin(data)) {
+          return;
+        }
         const limiteDetalhes =
           data?.detalhes &&
           typeof data.detalhes === "object" &&

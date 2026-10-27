@@ -20,6 +20,8 @@ export type HeaderAction = {
   onPress?: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /** Contador sobre o botão (ex.: comunicações não lidas). */
+  badge?: number;
 };
 
 type Props = {
@@ -58,7 +60,7 @@ export function BrandFacets() {
   );
 }
 
-export function HeaderButton({ icon, label, onPress, loading, disabled, surface }: HeaderAction & { surface?: boolean }) {
+export function HeaderButton({ icon, label, onPress, loading, disabled, badge, surface }: HeaderAction & { surface?: boolean }) {
   const iconColor = surface ? ds.ink : ds.onInverse;
   return (
     <TouchableOpacity
@@ -74,6 +76,11 @@ export function HeaderButton({ icon, label, onPress, loading, disabled, surface 
       ) : (
         <Feather name={icon} size={22} color={iconColor} />
       )}
+      {badge ? (
+        <View style={styles.badge} pointerEvents="none">
+          <Text style={styles.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -224,4 +231,19 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.55)",
   },
   btnSurface: { backgroundColor: "transparent" },
+  badge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: ds.danger,
+    borderWidth: 2,
+    borderColor: ds.onInverse,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: { fontSize: 11, lineHeight: 13, fontWeight: "900", color: ds.onDanger, fontVariant: ["tabular-nums"] },
 });

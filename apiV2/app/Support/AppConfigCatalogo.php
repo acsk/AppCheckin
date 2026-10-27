@@ -26,6 +26,7 @@ final class AppConfigCatalogo
         'cancelamento' => ['nome' => 'Cancelar pelo app', 'modulo' => 'Financeiro', 'descricao' => 'Cancelar assinatura ou diária pelo próprio app.'],
         'ranking' => ['nome' => 'Ranking de check-ins', 'modulo' => 'Início', 'descricao' => 'Pódio e ranking de check-ins na tela inicial.'],
         'recordes' => ['nome' => 'Recordes', 'modulo' => 'Treino', 'descricao' => 'Recordes pessoais, da escola e ranking por prova.'],
+        'comunicacao' => ['nome' => 'Central de Comunicação', 'modulo' => 'Início', 'descricao' => 'Sino, comunicados e enquetes. Desligada, as comunicações obrigatórias deixam de travar o check-in.'],
         'grupos_whatsapp' => ['nome' => 'Grupos do WhatsApp', 'modulo' => 'Menu', 'descricao' => 'Links dos grupos da academia no menu lateral.'],
     ];
 

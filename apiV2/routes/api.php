@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\MobileAtualizacaoCadastralController;
 use App\Http\Controllers\Api\V2\MobilePacoteVendaController;
 use App\Http\Controllers\Api\V2\MobileCheckinAcessoController;
+use App\Http\Controllers\Api\V2\MobileComunicacaoController;
 use App\Http\Controllers\Api\V2\MobileRecordeController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
@@ -37,6 +38,9 @@ Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
 Route::prefix('v2')->group(function () {
     Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
         ->where('filename', '[^/\\\\]+');
+    // Anexos da Central de Comunicação (nome aleatório)
+    Route::get('/uploads/comunicacoes/{tenantId}/{arquivo}', [MobileComunicacaoController::class, 'anexo'])
+        ->whereNumber('tenantId')->where('arquivo', '[A-Za-z0-9]{32}\\.[a-z]{3,4}');
     Route::get('/ping', [HealthController::class, 'ping']);
     Route::get('/health', [HealthController::class, 'health']);
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);
@@ -87,6 +91,12 @@ Route::prefix('v2')->group(function () {
             Route::get('/tenants', [MobileController::class, 'tenants']);
             Route::get('/checkins', [MobileController::class, 'historicoCheckins']);
             Route::get('/checkin/acesso', MobileCheckinAcessoController::class);
+            // Central de Comunicação do aluno
+            Route::get('/comunicacoes/resumo', [MobileComunicacaoController::class, 'resumo'])->middleware('funcionalidade:comunicacao');
+            Route::get('/comunicacoes', [MobileComunicacaoController::class, 'index'])->middleware('funcionalidade:comunicacao');
+            Route::get('/comunicacoes/{id}', [MobileComunicacaoController::class, 'show'])->whereNumber('id')->middleware('funcionalidade:comunicacao');
+            Route::post('/comunicacoes/{id}/confirmar', [MobileComunicacaoController::class, 'confirmar'])->whereNumber('id')->middleware('funcionalidade:comunicacao');
+            Route::post('/comunicacoes/{id}/responder', [MobileComunicacaoController::class, 'responder'])->whereNumber('id')->middleware('funcionalidade:comunicacao');
             Route::get('/checkins/por-modalidade', [MobileController::class, 'checkinsPorModalidade']);
             Route::get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
             Route::get('/ranking/anual', [MobileController::class, 'rankingAnual']);

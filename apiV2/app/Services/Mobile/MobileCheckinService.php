@@ -7,6 +7,7 @@ use App\Repositories\CheckinRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\Comunicacao\PendenciaComunicacaoService;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
 use App\Support\CheckinJanela;
@@ -23,7 +24,13 @@ class MobileCheckinService
         private readonly CheckinRepository $checkins,
         private readonly TurmaCheckinBloqueioService $bloqueios,
         private readonly CheckinToleranciaAntes $toleranciaAntes,
+        private readonly ?PendenciaComunicacaoService $comunicacoes = null,
     ) {}
+
+    private function comunicacoes(): PendenciaComunicacaoService
+    {
+        return $this->comunicacoes ?? app(PendenciaComunicacaoService::class);
+    }
 
     /**
      * @param  array<string, mixed>  $body
@@ -91,6 +98,11 @@ class MobileCheckinService
                     'data_vencimento' => $acessoAte,
                 ],
             ];
+        }
+
+        // Comunicação obrigatória pendente (comunicado não confirmado / enquete não enviada) trava o check-in
+        if ($alunoId > 0 && ($pendente = $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $userId)) !== null) {
+            return $pendente;
         }
 
         $turmaId = isset($body['turma_id']) ? (int) $body['turma_id'] : 0;
@@ -162,7 +174,17 @@ class MobileCheckinService
             return $this->fail('Aluno não encontrado para este tenant', 404);
         }
 
-        $checkinId = $this->checkins->createEmTurma($alunoId, $turmaId, $tenantId);
+        // Confere de novo na mesma transação do INSERT, com as linhas do aluno travadas: uma publicação
+        // simultânea espera o commit, e não há janela entre a verificação e a gravação
+        $pendente = null;
+        $checkinId = DB::transaction(function () use ($tenantId, $alunoId, $userId, $turmaId, &$pendente) {
+            $pendente = $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $userId, bloquear: true);
+
+            return $pendente === null ? $this->checkins->createEmTurma($alunoId, $turmaId, $tenantId) : null;
+        });
+        if ($pendente !== null) {
+            return $pendente;
+        }
         if (! $checkinId) {
             return $this->fail(
                 'Erro ao registrar check-in (Talvez já exista um check-in registrado)',

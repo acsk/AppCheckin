@@ -76,6 +76,13 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
+        // Comunicação obrigatória pendente trava o check-in (Central de Comunicação, API v2)
+        $bloqueio = $this->pendenciasComunicacao($db, (int) $tenantId, (int) $userId, false);
+        if ($bloqueio !== null) {
+            $response->getBody()->write(json_encode($bloqueio, JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(409);
+        }
+
         // Verificar se usuário já tem check-in nesta turma
         if ($this->checkinModel->usuarioTemCheckin($userId, $turmaId)) {
             $response->getBody()->write(json_encode([
@@ -347,6 +354,12 @@ class CheckinController
                 'error' => 'Usuário não é um aluno'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $bloqueio = $this->pendenciasComunicacao($db, (int) $tenantId, $usuarioId, true);
+        if ($bloqueio !== null) {
+            $response->getBody()->write(json_encode($bloqueio, JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(409);
         }
 
         // Verificar se aluno já tem check-in nesta turma
@@ -621,5 +634,14 @@ class CheckinController
             'vencida' => 'MATRICULA_VENCIDA',
             default => 'MATRICULA_INATIVA',
         };
+    }
+
+    /** Corpo 409 quando o aluno tem comunicação obrigatória pendente; null libera. */
+    private function pendenciasComunicacao(\PDO $db, int $tenantId, int $usuarioId, bool $pelaEquipe): ?array
+    {
+        $servico = new \App\Services\ComunicacaoPendenciaService($db);
+        $alunoId = $servico->alunoDoUsuario($usuarioId);
+
+        return $alunoId ? $servico->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, $pelaEquipe) : null;
     }
 }

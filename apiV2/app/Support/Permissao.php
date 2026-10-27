@@ -41,6 +41,21 @@ final class Permissao
     /** Plano do Check-in e dados do CNPJ */
     public const CONTA_GERENCIAR = 'conta.gerenciar';
 
+    public const COMUNICACOES_VER = 'comunicacoes.ver';
+
+    public const COMUNICACOES_CRIAR = 'comunicacoes.criar';
+
+    public const COMUNICACOES_EDITAR = 'comunicacoes.editar';
+
+    public const COMUNICACOES_PUBLICAR = 'comunicacoes.publicar';
+
+    public const COMUNICACOES_ENCERRAR = 'comunicacoes.encerrar';
+
+    public const COMUNICACOES_RELATORIOS = 'comunicacoes.relatorios';
+
+    /** Respostas identificadas das enquetes (nunca as anônimas) */
+    public const COMUNICACOES_RESPOSTAS = 'comunicacoes.respostas';
+
     /**
      * @var array<string, array{modulo: string, nome: string, descricao: string, sensivel?: bool}>
      */
@@ -58,6 +73,13 @@ final class Permissao
         self::EQUIPE_GERENCIAR => ['modulo' => 'Equipe', 'nome' => 'Gerenciar equipe', 'descricao' => 'Cadastrar usuários da equipe, papéis e permissões.'],
         self::CONFIGURACOES_EDITAR => ['modulo' => 'Configurações', 'nome' => 'Editar configurações', 'descricao' => 'Parâmetros, formas de pagamento e grupos.'],
         self::CONTA_GERENCIAR => ['modulo' => 'Conta', 'nome' => 'Gerenciar a conta', 'descricao' => 'Plano do Check-in e dados do CNPJ.'],
+        self::COMUNICACOES_VER => ['modulo' => 'Comunicação', 'nome' => 'Ver comunicações', 'descricao' => 'Central de Comunicação: lista e detalhes.'],
+        self::COMUNICACOES_CRIAR => ['modulo' => 'Comunicação', 'nome' => 'Criar comunicações', 'descricao' => 'Rascunhos, cópias e anexos.'],
+        self::COMUNICACOES_EDITAR => ['modulo' => 'Comunicação', 'nome' => 'Editar comunicações', 'descricao' => 'Alterar e excluir rascunhos; ajustar as publicadas.'],
+        self::COMUNICACOES_PUBLICAR => ['modulo' => 'Comunicação', 'nome' => 'Publicar comunicações', 'descricao' => 'Publicar para os alunos e incluir novos alunos no público.'],
+        self::COMUNICACOES_ENCERRAR => ['modulo' => 'Comunicação', 'nome' => 'Encerrar comunicações', 'descricao' => 'Encerrar antes do prazo ou cancelar (libera o check-in).'],
+        self::COMUNICACOES_RELATORIOS => ['modulo' => 'Comunicação', 'nome' => 'Ver relatórios de comunicação', 'descricao' => 'Leituras, pendências e resultados das enquetes.'],
+        self::COMUNICACOES_RESPOSTAS => ['modulo' => 'Comunicação', 'nome' => 'Ver respostas das enquetes', 'descricao' => 'Quem respondeu o quê (enquetes não anônimas).'],
     ];
 
     /**
@@ -71,6 +93,8 @@ final class Permissao
             self::ALUNOS_VER, self::ALUNOS_EDITAR, self::MATRICULAS_VER, self::MATRICULAS_GERENCIAR,
             self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR, self::PROSPECCAO_USAR, self::PROSPECCAO_GERENCIAR,
             self::AULAS_GERENCIAR, self::CONFIGURACOES_EDITAR,
+            self::COMUNICACOES_VER, self::COMUNICACOES_CRIAR, self::COMUNICACOES_EDITAR, self::COMUNICACOES_PUBLICAR,
+            self::COMUNICACOES_ENCERRAR, self::COMUNICACOES_RELATORIOS, self::COMUNICACOES_RESPOSTAS,
         ],
         Papel::FINANCEIRO => [self::ALUNOS_VER, self::MATRICULAS_VER, self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR],
         Papel::COMERCIAL => [self::PROSPECCAO_USAR],

@@ -53,6 +53,16 @@ final class PermissaoRotas
         [self::LEITURA, '#^admin/(dashboard|pagamentos-plano|contas-receber|creditos|financeiro|assinaturas|relatorios)(/|$)#', Permissao::FINANCEIRO_VER],
         [null, '#^admin/(pagamentos-plano|contas-receber|creditos|financeiro|assinaturas)(/|$)#', Permissao::FINANCEIRO_BAIXAR],
 
+        // Central de Comunicação (específicas antes da leitura geral)
+        [['GET'], '#^admin/comunicacoes/indicadores$#', Permissao::COMUNICACOES_RELATORIOS],
+        [['GET'], '#^admin/comunicacoes/\d+/(destinatarios|resultados)$#', Permissao::COMUNICACOES_RELATORIOS],
+        [['GET'], '#^admin/comunicacoes/\d+/respostas$#', Permissao::COMUNICACOES_RESPOSTAS],
+        [['POST'], '#^admin/comunicacoes/\d+/(publicar|incluir-destinatarios)$#', Permissao::COMUNICACOES_PUBLICAR],
+        [['POST'], '#^admin/comunicacoes/\d+/(encerrar|cancelar)$#', Permissao::COMUNICACOES_ENCERRAR],
+        [['POST'], '#^admin/comunicacoes(/\d+/duplicar|/previa-publico|/anexos)?$#', Permissao::COMUNICACOES_CRIAR],
+        [['PUT', 'DELETE'], '#^admin/comunicacoes/\d+$#', Permissao::COMUNICACOES_EDITAR],
+        [self::LEITURA, '#^admin/comunicacoes(/|$)#', Permissao::COMUNICACOES_VER],
+
         // Aulas
         [null, '#^admin/(turmas|dias|wods|recordes|professores)(/|$)#', Permissao::AULAS_GERENCIAR],
 

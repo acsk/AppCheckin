@@ -70,6 +70,14 @@ const SECTIONS = [
         ],
       },
       {
+        id: 'comunicacao',
+        label: 'Comunicação',
+        icon: 'bell',
+        children: [
+          { id: 'central-comunicacao', label: 'Central de Comunicação', path: '/comunicacao', roles: [3], perm: 'comunicacoes.ver' },
+        ],
+      },
+      {
         // Comercial (5) só vê esta seção. Novas funcionalidades comerciais entram como filhos aqui.
         id: 'prospeccao',
         label: 'Prospecção',

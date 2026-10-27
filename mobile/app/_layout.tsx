@@ -26,6 +26,7 @@ import {
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import AppSplash from "@/src/components/AppSplash";
 import AtualizacaoCadastralGate from "@/src/components/AtualizacaoCadastralGate";
+import ComunicacaoGate from "@/src/components/ComunicacaoGate";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "@/src/theme/colors";
@@ -87,6 +88,8 @@ const PROTECTED_ROUTES = [
   "checkin-turma",
   "recordes",
   "recorde-prova",
+  "comunicacoes",
+  "comunicacao",
 ];
 
 export default function RootLayout() {
@@ -289,8 +292,11 @@ function RootContent() {
                 name="checkin-detalhes"
                 options={{ headerShown: false }}
               />
+              <Stack.Screen name="comunicacoes" options={{ headerShown: false }} />
+              <Stack.Screen name="comunicacao/[id]" options={{ headerShown: false }} />
             </Stack>
             <AtualizacaoCadastralGate enabled={hasToken && segments[0] !== "(auth)" && !sessionExpiredVisible} />
+            <ComunicacaoGate enabled={hasToken && segments[0] !== "(auth)" && !sessionExpiredVisible} />
             <SessionExpiredModal
               visible={sessionExpiredVisible}
               message={sessionExpiredMessage}

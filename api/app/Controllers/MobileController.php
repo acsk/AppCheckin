@@ -1626,6 +1626,14 @@ class MobileController
             $alunoId = (int) $aluno['aluno_id'];
             $usuarioId = (int) $aluno['usuario_id'];
 
+            // Pendência obrigatória do aluno também vale para o check-in registrado pela equipe
+            $bloqueioComunicacao = (new \App\Services\ComunicacaoPendenciaService($this->db))
+                ->verificarPermissaoCheckin((int) $tenantId, $alunoId, $usuarioId, true);
+            if ($bloqueioComunicacao !== null) {
+                $response->getBody()->write(json_encode($bloqueioComunicacao, JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(409);
+            }
+
             // Atualizar status das matrículas vencidas do aluno
             $this->atualizarStatusMatriculasVencidas($usuarioId, $tenantId);
 
@@ -2032,6 +2040,14 @@ class MobileController
 
             // Check-in usa a matrícula elegível acima (permite_checkin), não a mais recente por created_at.
             // Uma matrícula cancelada/bloqueada mais nova não invalida outra elegível ainda vigente.
+
+            // Comunicação obrigatória pendente trava o check-in (Central de Comunicação, API v2)
+            $bloqueioComunicacao = (new \App\Services\ComunicacaoPendenciaService($this->db))
+                ->verificarPermissaoCheckin((int) $tenantId, (int) ($aluno['id'] ?? 0), (int) $userId);
+            if ($bloqueioComunicacao !== null) {
+                $response->getBody()->write(json_encode($bloqueioComunicacao, JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(409);
+            }
 
             // Validar turma_id
             $turmaId = $body['turma_id'] ?? null;

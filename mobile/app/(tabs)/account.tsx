@@ -10,6 +10,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 import { useConfigRemota } from "@/src/hooks/useConfigRemota";
+import { useResumoComunicacoes } from "@/src/services/comunicacoes";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
@@ -68,6 +69,7 @@ const withShadow = (
 
 export default function AccountScreen() {
   const router = useRouter();
+  const comunicacoes = useResumoComunicacoes();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [currentTenant, setCurrentTenant] = useState<any | null>(null);
   const [tenants, setTenants] = useState<any[]>([]);
@@ -1381,7 +1383,19 @@ export default function AccountScreen() {
           ) : null}
         </TouchableOpacity>
         }
-        actions={[{ icon: "menu", label: "Abrir menu", onPress: openSidebar }]}
+        actions={[
+          ...(configRemota.funcionalidades.comunicacao !== false
+            ? [{
+                icon: "bell" as const,
+                label: comunicacoes.nao_lidas || comunicacoes.total_pendencias
+                  ? `Comunicação: ${comunicacoes.nao_lidas} não lidas, ${comunicacoes.total_pendencias} obrigatórias pendentes`
+                  : "Comunicação",
+                badge: Math.max(comunicacoes.nao_lidas, comunicacoes.total_pendencias),
+                onPress: () => router.push("/comunicacoes"),
+              }]
+            : []),
+          { icon: "menu", label: "Abrir menu", onPress: openSidebar },
+        ]}
       />
 
       <ScrollView

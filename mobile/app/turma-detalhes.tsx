@@ -24,6 +24,7 @@ import { feedbackBloqueioCheckin } from "../src/utils/checkinFeedback";
 import AppHeader from "@/src/components/ds/AppHeader";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { ds } from "@/src/components/ds/tokens";
+import { tratarBloqueioCheckin } from "@/src/services/comunicacoes";
 
 function TurmaDetalhesScreenContent() {
   const router = useRouter();
@@ -616,6 +617,10 @@ function TurmaDetalhesScreenContent() {
           text ||
           "Não foi possível realizar o check-in.";
 
+        // Comunicação obrigatória pendente: abre o aviso para resolver (a trava é da API)
+        if (tratarBloqueioCheckin(responseData)) {
+          return;
+        }
         if (
           String(apiMessage).toLowerCase().includes("já realizou check-in") ||
           String(apiMessage).toLowerCase().includes("já fez check-in")
