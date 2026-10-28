@@ -9,7 +9,6 @@ use App\Models\Parametro;
 use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use PDO;
 
 /**
  * Serviço de Integração com Mercado Pago
@@ -35,7 +34,6 @@ class MercadoPagoService
     private bool $enableBoleto = true;
     private bool $enableCreditCard = true;
     private ?int $tenantId = null;
-    private ?PDO $db = null;
     private ?EncryptionService $encryption = null;
     
     /**
@@ -86,23 +84,16 @@ class MercadoPagoService
         
         // Carregar credenciais
         $this->carregarCredenciais();
-
-        $this->pdo();
     }
 
-    private function pdo(): ?PDO
+    /** Parâmetros do tenant; null quando não há conexão com o banco. */
+    private function parametro(): ?Parametro
     {
-        if ($this->db instanceof PDO) {
-            return $this->db;
-        }
-
         try {
-            $this->db = DB::connection()->getPdo();
+            return new Parametro(DB::connection()->getPdo());
         } catch (\Throwable) {
-            $this->db = null;
+            return null;
         }
-
-        return $this->db;
     }
     
     /**
@@ -142,7 +133,6 @@ class MercadoPagoService
                 return false;
             }
 
-            $this->pdo();
             $this->encryption = new EncryptionService();
             $this->productionMode = $credentials['environment'] === 'production';
 
@@ -261,14 +251,12 @@ class MercadoPagoService
         }
         
         try {
-            $pdo = $this->pdo();
-            if (! $pdo) {
-                error_log('[MercadoPagoService] ⚠️ Sem conexão PDO — permitindo todos os métodos de pagamento');
+            $parametro = $this->parametro();
+            if (! $parametro) {
+                error_log('[MercadoPagoService] ⚠️ Sem conexão com o banco — permitindo todos os métodos de pagamento');
 
                 return [];
             }
-
-            $parametro = new Parametro($pdo);
 
             $habilitarPix = $this->enablePix;
             $habilitarCartaoCredito = $this->enableCreditCard;
@@ -457,9 +445,8 @@ class MercadoPagoService
         // Verificar se PIX está habilitado nos parâmetros
         $tenantId = $data['tenant_id'] ?? null;
         if ($tenantId) {
-            $pdo = $this->pdo();
-            if ($pdo) {
-                $parametroModel = new Parametro($pdo);
+            $parametroModel = $this->parametro();
+            if ($parametroModel) {
                 if (! $parametroModel->isEnabled($tenantId, 'habilitar_pix')) {
                     error_log("[MercadoPagoService] criarPagamentoPix: PIX desabilitado para tenant {$tenantId}");
                     throw new Exception('Pagamento via PIX não está disponível no momento.');
@@ -830,7 +817,7 @@ class MercadoPagoService
      * @param array $data Dados do body (opcional)
      * @return array Resposta decodificada
      */
-    private function fazerRequisicao(string $method, string $endpoint, array $data = null): array
+    private function fazerRequisicao(string $method, string $endpoint, ?array $data = null): array
     {
         $url = $this->baseUrl . $endpoint;
         
@@ -938,12 +925,10 @@ class MercadoPagoService
         // Assinaturas recorrentes exigem cartão de crédito
         $tenantId = $data['tenant_id'] ?? null;
         if ($tenantId) {
-            $pdo = $this->pdo();
-            if (! $pdo) {
+            $parametroModel = $this->parametro();
+            if (! $parametroModel) {
                 throw new Exception('Não foi possível verificar parâmetros de pagamento.');
             }
-
-            $parametroModel = new Parametro($pdo);
             if (!$parametroModel->isEnabled($tenantId, 'habilitar_cartao_credito')) {
                 error_log("[MercadoPagoService] criarPreferenciaAssinatura: Cartão de crédito desabilitado para tenant {$tenantId}");
                 throw new Exception('Assinaturas recorrentes não estão disponíveis no momento (requer cartão de crédito habilitado).');
