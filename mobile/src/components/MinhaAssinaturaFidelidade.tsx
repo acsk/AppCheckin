@@ -1,4 +1,4 @@
-import { chamarRecorrencia, type Oferta } from "@/src/components/FidelidadeSheet";
+import { chamarRecorrencia, type Oferta } from "@/src/services/recorrencia";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
 import Modal from "@/src/components/ds/Modal";

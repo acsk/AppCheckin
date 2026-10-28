@@ -33,7 +33,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
-import FidelidadeSheet from "@/src/components/FidelidadeSheet";
+import ContratacaoCicloSheet from "@/src/components/ContratacaoCicloSheet";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
@@ -124,9 +124,8 @@ export default function PlanoDetalhesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [selectedCicloId, setSelectedCicloId] = useState<number | null>(null);
-  const [fidelidadeAberta, setFidelidadeAberta] = useState(false);
-  // Ciclo com fidelização oferece as duas formas: o período de uma vez ou a assinatura mensal
-  const [modoCiclo, setModoCiclo] = useState<"avista" | "assinatura">("avista");
+  // Ciclo com fidelização: o modal guiado escolhe entre o período de uma vez e a assinatura mensal
+  const [contratacaoAberta, setContratacaoAberta] = useState(false);
   const [comprando, setComprando] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
@@ -1302,41 +1301,6 @@ export default function PlanoDetalhesScreen() {
           </Section>
         )}
 
-        {/* Ciclo com fidelização: escolher entre pagar o período de uma vez ou assinar por mês */}
-        {selectedCiclo?.cobranca_mensal && !bloquearCompraPorAtivo ? (
-          <Section title={`Como pagar o ${selectedCiclo.nome}?`} bare>
-            <View style={styles.modos} accessibilityRole="radiogroup" accessibilityLabel="Forma de contratação">
-              {([
-                ["avista", "À vista", selectedCiclo.valor_formatado, `${selectedCiclo.meses} meses de acesso, pagamento único`],
-                ["assinatura", "Assinatura", `${selectedCiclo.valor_mensal_formatado}/mês`, `Fidelidade de ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses, cobrança mensal`],
-              ] as const).map(([id, titulo, preco, subPadrao]) => {
-                const on = modoCiclo === id;
-                // A assinatura só começa depois do plano atual desta modalidade (a API também recusa)
-                const travada = id === "assinatura" && !!assinaturaDisponivelEm;
-                const sub = travada ? `Disponível quando seu plano atual vencer (${assinaturaDisponivelEm})` : subPadrao;
-                return (
-                  <TouchableOpacity key={id} style={[styles.modo, on && styles.modoOn, travada && styles.modoOff]} activeOpacity={0.8}
-                    disabled={travada}
-                    accessibilityRole="radio" accessibilityState={{ checked: on, disabled: travada }} accessibilityLabel={`${titulo}: ${preco}. ${sub}`}
-                    onPress={() => setModoCiclo(id)}>
-                    <View style={styles.modoTopo}>
-                      <View style={[styles.modoRadio, on && styles.modoRadioOn]}>{on ? <Feather name="check" size={12} color={ds.onBrand} /> : null}</View>
-                      <Text style={styles.modoTitulo}>{titulo}</Text>
-                    </View>
-                    <Text style={[styles.modoPreco, on && { color: ds.brandInk }]}>{preco}</Text>
-                    <Text style={styles.modoSub}>{sub}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={styles.modoTexto}>
-              {modoCiclo === "avista"
-                ? "Paga o ciclo inteiro agora, por PIX, cartão ou boleto."
-                : "Cada mês é uma cobrança separada (não é parcelamento); o total não fica preso no limite do cartão."}
-            </Text>
-          </Section>
-        ) : null}
-
         {/* Sem ciclo escolhido o painel de pagamento não aparece */}
         {!bloquearCompraPorAtivo && ciclos.length > 0 && !selectedCiclo ? (
           <View style={styles.cicloNote}>
@@ -1361,17 +1325,15 @@ export default function PlanoDetalhesScreen() {
             <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
           </View>
         </View>
-      ) : selectedCiclo?.cobranca_mensal && modoCiclo === "assinatura" ? (
-        // Fidelidade: assinatura mensal (termos + aceite na próxima tela), não a compra do período
-        <View style={styles.dock} accessibilityLabel="Assinatura">
+      ) : selectedCiclo?.cobranca_mensal ? (
+        // À vista ou assinatura: valor, informações contratuais e pagamento no modal guiado
+        <View style={styles.dock} accessibilityLabel="Contratação">
           <View style={styles.dockFoot}>
             <View style={styles.summaryText}>
-              <Text style={styles.summaryLabel} numberOfLines={1}>
-                {`${selectedCiclo.nome} · fidelidade ${selectedCiclo.fidelizacao_meses || selectedCiclo.meses} meses`}
-              </Text>
-              <Text style={styles.summaryTotal} numberOfLines={1}>{`${selectedCiclo.valor_mensal_formatado}/mês`}</Text>
+              <Text style={styles.summaryLabel} numberOfLines={1}>{`${selectedCiclo.nome} · à vista ou assinatura`}</Text>
+              <Text style={styles.summaryTotal} numberOfLines={1}>{`${selectedCiclo.valor_formatado} ou ${selectedCiclo.valor_mensal_formatado}/mês`}</Text>
             </View>
-            <Button size="lg" icon="repeat" onPress={() => setFidelidadeAberta(true)}>Assinar</Button>
+            <Button size="lg" iconRight="arrow-right" loading={comprando || pixLoading} onPress={() => setContratacaoAberta(true)}>Continuar</Button>
           </View>
         </View>
       ) : selectedCiclo || ciclos.length === 0 ? (
@@ -1452,14 +1414,22 @@ export default function PlanoDetalhesScreen() {
         </View>
       ) : null}
 
-      {plano && selectedCiclo?.cobranca_mensal && modoCiclo === "assinatura" ? (
-        <FidelidadeSheet
-          visible={fidelidadeAberta}
+      {plano && selectedCiclo?.cobranca_mensal ? (
+        <ContratacaoCicloSheet
+          visible={contratacaoAberta}
           planoId={plano.id}
-          cicloId={selectedCiclo.id}
-          onClose={() => setFidelidadeAberta(false)}
+          ciclo={selectedCiclo}
+          assinaturaDisponivelEm={assinaturaDisponivelEm}
+          metodosAvista={opcoesMetodo}
+          rotuloAvista={(m) => rotuloPagarMetodo(m, podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar")}
+          onPagarAvista={(m) => {
+            setMetodoSelecionado(m);
+            if (m === "pix") void handlePagarPix();
+            else void handleContratar(m);
+          }}
+          onClose={() => setContratacaoAberta(false)}
           onAssinado={() => {
-            setFidelidadeAberta(false);
+            setContratacaoAberta(false);
             router.replace("/minhas-assinaturas");
           }}
         />
@@ -1647,17 +1617,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  modoTexto: { marginTop: 8, fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
-  modos: { flexDirection: "row", gap: 10 },
-  modo: { flex: 1, gap: 4, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: ds.line, backgroundColor: ds.surface },
-  modoOn: { borderWidth: 2, borderColor: ds.brand, backgroundColor: ds.brandSoft },
-  modoOff: { opacity: 0.55 },
-  modoTopo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  modoRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: ds.lineStrong, alignItems: "center", justifyContent: "center" },
-  modoRadioOn: { borderColor: ds.brand, backgroundColor: ds.brand },
-  modoTitulo: { fontSize: 15, fontWeight: "800", color: ds.ink },
-  modoPreco: { fontSize: 20, lineHeight: 24, fontWeight: "900", color: ds.ink, fontVariant: ["tabular-nums"] },
-  modoSub: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ds.inkMuted },
   footerAtivoText: {
     fontSize: 16,
     fontWeight: "800",
