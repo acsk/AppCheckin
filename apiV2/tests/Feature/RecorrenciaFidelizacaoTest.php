@@ -639,6 +639,24 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertStringContainsString('Nova redação', $texto(60));
     }
 
+    public function test_assinatura_nunca_paga_e_encerrada_e_paga_e_mantida(): void
+    {
+        $abandonada = $this->contratar(50);
+        $this->assertTrue($this->svc()->encerrarNaoAtivado(self::T, $abandonada));
+        $c = $this->contrato($abandonada);
+        $this->assertSame('cancelado', $c->status);
+        $this->assertContains(['cancelar', 'sub_1'], $this->asaas->chamadas);
+        $this->assertContains(['cancelar_cobranca', 'pay_sub_1_1'], $this->asaas->chamadas);
+        $this->assertSame('cancelada', DB::table('recorrencia_cobrancas')->where('contrato_id', $abandonada)->value('status'));
+        $this->assertSame(3, (int) DB::table('matriculas')->find($c->matricula_id)->status_id, 'matrícula cancelada');
+
+        $paga = $this->contratar(50, self::BIA);
+        $this->asaas->pagamentos['sub_2'][0]['status'] = 'RECEIVED';
+        $this->asaas->pagamentos['sub_2'][0]['paymentDate'] = AcademyDateTime::today();
+        $this->assertFalse($this->svc()->encerrarNaoAtivado(self::T, $paga), 'paga no Asaas (webhook perdido): sincroniza e mantém');
+        $this->assertSame('ativo', $this->contrato($paga)->status);
+    }
+
     public function test_calculo_em_centavos(): void
     {
         $this->assertSame(12345, Calc::centavos('123.45'));

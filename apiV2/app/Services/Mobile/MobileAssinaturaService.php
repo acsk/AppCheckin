@@ -488,6 +488,11 @@ class MobileAssinaturaService
             $temPago = $pagos !== [];
             $temAcessoMesmaModalidade = $modId > 0 && ! empty($modalidadesComAcesso[$modId]);
 
+            // Checkout encerrado pela limpeza (expirado/cancelado) sem nenhum pagamento: não há o que mostrar
+            if (! $temPago && in_array($codigo, ['expirada', 'cancelada'], true) && ($assinatura['cancelamento']['cancelado_por_codigo'] ?? null) === 'sistema') {
+                continue;
+            }
+
             if ($isPendente) {
                 if ($temPago) {
                     $assinatura['pagamentos'] = $pagos;

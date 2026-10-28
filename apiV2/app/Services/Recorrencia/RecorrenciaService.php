@@ -735,9 +735,10 @@ class RecorrenciaService
     }
 
     /** Mensalidades geradas depois da data efetiva e não pagas: canceladas no Asaas e aqui. */
-    private function cancelarFuturas(int $tenantId, int $contratoId, string $dataEfetiva): void
+    private function cancelarFuturas(int $tenantId, int $contratoId, string $dataEfetiva, bool $incluirVencidas = false): void
     {
-        $futuras = DB::table('recorrencia_cobrancas')->where('contrato_id', $contratoId)->where('status', 'pendente')->where('vencimento', '>=', $dataEfetiva)->get();
+        $futuras = DB::table('recorrencia_cobrancas')->where('contrato_id', $contratoId)
+            ->whereIn('status', $incluirVencidas ? ['pendente', 'vencida'] : ['pendente'])->where('vencimento', '>=', $dataEfetiva)->get();
         foreach ($futuras as $f) {
             try {
                 if ($f->gateway_payment_id) {
@@ -750,6 +751,38 @@ class RecorrenciaService
             DB::table('pagamentos_plano')->where('id', $f->pagamento_plano_id)->whereIn('status_pagamento_id', [1, 3])
                 ->update(['status_pagamento_id' => 4, 'observacoes' => "Mensalidade {$f->numero} cancelada (assinatura cancelada)", 'updated_at' => now()]);
         }
+    }
+
+    /**
+     * Contrato que nunca teve mensalidade paga (assinatura abandonada): remove a assinatura no Asaas,
+     * cancela as cobranças em aberto e encerra como cancelado. Mensalidade paga = não mexe.
+     */
+    public function encerrarNaoAtivado(int $tenantId, int $contratoId): bool
+    {
+        $c = DB::table('contratos_recorrencia')->where('id', $contratoId)->where('tenant_id', $tenantId)->first();
+        if (! $c || $c->status !== 'pendente_ativacao'
+            || DB::table('recorrencia_cobrancas')->where('contrato_id', $contratoId)->where('status', 'paga')->exists()) {
+            return false;
+        }
+        if ($c->assinatura_gateway_id) {
+            // Confere antes: pagamento que o webhook não trouxe vira baixa, e o contrato fica
+            $this->sincronizar($tenantId, $contratoId);
+            if (DB::table('recorrencia_cobrancas')->where('contrato_id', $contratoId)->where('status', 'paga')->exists()) {
+                return false;
+            }
+            try {
+                $this->asaas($tenantId)->cancelarAssinatura((string) $c->assinatura_gateway_id);
+            } catch (\Throwable $e) {
+                Log::warning('Recorrência: não deu para remover a assinatura abandonada', ['contrato_id' => $contratoId, 'error' => $e->getMessage()]);
+
+                return false;
+            }
+        }
+        $this->cancelarFuturas($tenantId, $contratoId, '0000-00-00', true);
+        $this->transicionar($tenantId, $contratoId, 'cancelado', 'nao_ativado', null, ['motivo' => 'Nenhuma mensalidade paga (limpeza automática)']);
+        $this->acesso->atualizar($tenantId, (int) $c->matricula_id);
+
+        return true;
     }
 
     /* ================================================================ rotina diária */

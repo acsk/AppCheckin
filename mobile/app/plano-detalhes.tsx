@@ -1362,22 +1362,14 @@ export default function PlanoDetalhesScreen() {
                 // A API manda "R$ 40,00 de economia": prefixar "Economize" duplicava a palavra
                 const economiaValor = ciclo.economia_valor
                   ? /econom/i.test(ciclo.economia_valor)
-                    ? ciclo.economia_valor.replace(/^r\$/i, "R$")
+                    ? ciclo.economia_valor.replace(/^r\$/i, "R$").replace(/\s+de economia\.?$/i, "").replace(/^(?!econom)/i, "economize ")
                     : `Economize ${ciclo.economia_valor}`
                   : null;
                 return (
                   <View key={ciclo.id}>
                   <PlanOption
                     label={ciclo.nome}
-                    detail={
-                      ciclo.cobranca_mensal
-                        ? `${ciclo.valor_formatado} de uma vez ou por mês com fidelidade`
-                        : ciclo.permite_recorrencia
-                        ? `Cobrança automática a cada ${ciclo.meses} ${ciclo.meses === 1 ? "mês" : "meses"}`
-                        : ciclo.meses > 1
-                          ? `${ciclo.meses} meses, à vista`
-                          : "Pagamento único"
-                    }
+                    detail={`${ciclo.meses} ${ciclo.meses === 1 ? "mês" : "meses"}`}
                     monthly={ciclo.valor_mensal_formatado || formatCurrency(mensal)}
                     fullMonthly={maiorMensal && mensal < maiorMensal - 0.009 ? formatCurrency(maiorMensal) : null}
                     total={ciclo.valor_formatado}
@@ -1386,12 +1378,14 @@ export default function PlanoDetalhesScreen() {
                     tag={ciclos.length > 1 && cicloMelhorPrecoId === ciclo.id ? "Melhor preço" : null}
                     selected={selectedCicloId === ciclo.id}
                     onSelect={() => setSelectedCicloId(ciclo.id)}
-                  />
+                  >
                   {selectedCicloId === ciclo.id && ciclo.cobranca_mensal && ciclo.meses > 1 ? <>
                     <CicloPaymentModes value={modoCobranca} onChange={setModoCobranca} total={ciclo.valor_formatado} mensal={ciclo.valor_mensal_formatado} meses={ciclo.meses}
-                      bloqueio={assinaturaDisponivelEm ? `Disponível quando seu plano atual vencer (${assinaturaDisponivelEm})` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
+                      fidelidadeMeses={ofertaSelecionada?.fidelizacao_meses || ciclo.fidelizacao_meses || ciclo.meses}
+                      bloqueio={assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
                     {!carregandoOfertas && !ofertaSelecionada ? <Button size="sm" variant="ghost" onPress={() => setTentativaOfertas(v => v + 1)}>Consultar assinatura novamente</Button> : null}
                   </> : null}
+                  </PlanOption>
                   </View>
                 );
               })}
