@@ -14,7 +14,7 @@ export default function ContratoFidelidadeScreen({ visible, oferta, onClose, onA
     <SafeAreaView style={styles.screen} edges={["left", "right", "bottom"]}>
       <AppHeader title="Contrato" eyebrow={[oferta?.ciclo_nome, oferta?.plano_nome].filter(Boolean).join(' · ')} onBack={onClose} />
       <ScrollView contentContainerStyle={styles.document}>
-        <Text accessibilityRole="header" style={styles.title}>Plano com fidelidade</Text>
+        <Text accessibilityRole="header" style={styles.title}>{oferta && !oferta.fidelizacao_meses ? 'Assinatura mensal' : 'Plano com fidelidade'}</Text>
         {oferta?.termos_versao ? <Text style={styles.meta}>Versão {oferta.termos_versao}</Text> : null}
         {(oferta?.termos || '').split(/\n\s*\n/).map((paragraph, index) => <Text key={index} selectable style={styles.paragraph}>{paragraph}</Text>)}
       </ScrollView>

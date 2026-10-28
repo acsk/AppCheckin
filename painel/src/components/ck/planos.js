@@ -247,7 +247,7 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, onToggleBlock, read
       <span className="ck-pf__cycletags">
         {pct > 0 ? <Badge tone="success">{pct}% de desconto</Badge> : null}
         {cycle.fidelity?.mensal
-          ? <Badge tone="brand" icon="repeat">Fidelidade · {money(perMonth)}/mês</Badge>
+          ? <Badge tone="brand" icon="repeat">{months === 1 ? 'Assinatura mensal' : `Fidelidade · ${money(perMonth)}/mês`}</Badge>
           : <Badge tone={cycle.recurring ? 'info' : 'neutral'} icon={cycle.recurring ? 'repeat' : undefined}>{cycle.recurring ? 'Renova no cartão (MP)' : 'À vista'}</Badge>}
         {cycle.makeup ? <Badge tone="outline">Reposição</Badge> : null}
         {cycle.active ? null : <Badge tone="danger" icon="lock">Bloqueado</Badge>}
@@ -465,7 +465,8 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
     setFid({ ...FID_PADRAO, ...(cycle?.fidelity || {}), proprios: !!(cycle?.fidelity?.termos || '').trim() });
     setTypeId(cycle?.typeId ? String(cycle.typeId) : '');
     setAmount(cycle?.amount != null ? maskMoney(Math.round(cycle.amount * 100)) : '');
-    setRecurring(cycle ? !!cycle.recurring : true);
+    // Recorrência antiga do Mercado Pago (sem tela): ciclo novo nasce sem; o existente mantém o que tinha
+    setRecurring(cycle ? !!cycle.recurring : false);
     setMakeup(cycle ? !!cycle.makeup : false);
     setActive(cycle ? cycle.active !== false : true);
     setTried(false);
@@ -476,6 +477,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
     && !!c.fidelity?.mensal === fid.mensal && c.id !== cycle?.id);
   const daily = isDaily(type);
   const months = Number(type?.meses) || 1;
+  const semFidelidade = months === 1;
   const value = parseMoney(amount);
   const base = daily || months === 1 ? 0 : monthly * months;
   const perMonth = daily ? null : value / months;
@@ -484,7 +486,6 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
   const errs = {};
   if (!type) errs.type = 'Escolha o período do ciclo.';
   else if (taken(type)) errs.type = `Já existe um ciclo ${type.nome} ${fid.mensal ? 'com fidelização' : recurring ? 'com renovação no cartão' : 'à vista'} neste plano.`;
-  if (fid.mensal && type && months < 2) errs.type = 'Fidelização mensal vale para ciclos de 2 meses ou mais.';
   if (fid.mensal && (Number(fid.arrependimento) < 7 || Number(fid.arrependimento) > 90)) errs.arrependimento = 'De 7 (mínimo legal) a 90 dias.';
   if (amount === '') errs.amount = 'Informe o valor do ciclo.';
   else if (value === 0 && recurring) errs.amount = 'Ciclo recorrente precisa ter valor maior que zero.';
@@ -494,7 +495,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
     setTried(true);
     if (!ok || saving) return;
     onSave?.({ id: cycle?.id, typeId: Number(typeId), amount: value, recurring: fid.mensal ? false : recurring, makeup, active,
-      fidelity: { ...fid, termos: fid.proprios ? fid.termos : '' } });
+      fidelity: { ...fid, termos: fid.proprios || semFidelidade ? fid.termos : '' } });
   };
 
   return (
@@ -560,13 +561,23 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
           </div>
         ) : null}
 
-        {!daily && months >= 2 ? (
+        {!daily ? (
           <div className="ck-cm__fid">
-            <Switch label="Também oferecer como assinatura mensal com fidelidade" checked={fid.mensal} onChange={(v) => setF({ mensal: v })}
-              description={fid.mensal
-                ? `O aluno escolhe no app: pagar ${value > 0 ? money(value) : 'o ciclo'} de uma vez, ou assinar por ${perMonth > 0 ? money(perMonth) : 'o valor ÷ meses'} por mês (cobranças separadas, não é parcelamento) com fidelidade de ${months} meses.`
-                : 'Desligado: o ciclo só é vendido à vista, de uma vez.'} />
-            {fid.mensal ? (
+            {/* Recorrência pelo provedor atual (Asaas). Ciclo de 1 mês = assinatura mensal sem fidelidade */}
+            <Switch label={semFidelidade ? 'Também oferecer como assinatura mensal' : 'Também oferecer como assinatura mensal com fidelidade'} checked={fid.mensal} onChange={(v) => setF({ mensal: v })}
+              description={!fid.mensal
+                ? `Desligado: o ciclo só é vendido ${semFidelidade ? 'avulso, mês a mês' : 'à vista, de uma vez'}.`
+                : semFidelidade
+                  ? `O aluno escolhe no app: pagar ${value > 0 ? money(value) : 'o mês'} avulso, ou assinar e ser cobrado ${value > 0 ? money(value) : 'o valor'} todo mês automaticamente, sem fidelidade (cancela quando quiser).`
+                  : `O aluno escolhe no app: pagar ${value > 0 ? money(value) : 'o ciclo'} de uma vez, ou assinar por ${perMonth > 0 ? money(perMonth) : 'o valor ÷ meses'} por mês (cobranças separadas, não é parcelamento) com fidelidade de ${months} meses.`} />
+            {fid.mensal && semFidelidade ? (
+              <div className="ck-cm__fidgrid">
+                <TextField label="Desistência sem custo (dias)" inputMode="numeric" value={String(fid.arrependimento)} error={tried ? errs.arrependimento : null}
+                  onChange={(e) => setF({ arrependimento: e.target.value.replace(/\D/g, '').slice(0, 2) })} hint="Mínimo legal: 7 dias após o aceite." />
+                <TextAreaField label="Termos adicionais (opcional)" rows={4} maxLength={5000} value={fid.termos} onChange={(e) => setF({ termos: e.target.value })}
+                  hint="Sem fidelidade, os termos da academia (que falam de fidelização) não entram. Escreva aqui se quiser algo além do texto gerado." />
+              </div>
+            ) : fid.mensal ? (
               <div className="ck-cm__fidgrid">
                 <SelectField label="Ao fim da fidelização" value={fid.renovacao} onChange={(e) => setF({ renovacao: e.target.value })} options={FID_RENOVACAO} />
                 <TextField label="Desistência sem custo (dias)" inputMode="numeric" value={String(fid.arrependimento)} error={tried ? errs.arrependimento : null}
@@ -603,10 +614,6 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
         ) : null}
 
         <div className="ck-cm__switches">
-          {fid.mensal ? null : <Switch label="Renovação automática no cartão (Mercado Pago)" checked={recurring} onChange={setRecurring}
-            description={recurring
-              ? 'Só com Mercado Pago e cartão: o valor inteiro do ciclo é cobrado de novo a cada período. No Asaas não muda nada. Para cobrar mês a mês, use a Fidelização acima.'
-              : 'O aluno paga o ciclo uma vez e renova pelo app quando vencer.'} />}
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
           <Switch label="Bloquear ciclo" description={!active ? 'Ninguém contrata este ciclo, nem pelo app nem por nova matrícula. Quem já tem matrícula nele continua normalmente.' : 'O aluno pode escolher este ciclo no app e na nova matrícula.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>
@@ -744,10 +751,8 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
         <div className="ck-cm__switches">
           <p className="ck-gc__from">
             <Icon name="layers" size={15} />
-            {base ? <>Opções copiadas do ciclo <strong>{base.label}</strong>{base.recurring ? ' com renovação no cartão' : ''}. Ajuste se quiser.</> : 'Nenhum ciclo existente para copiar as opções. Ajuste abaixo.'}
+            {base ? <>Opções copiadas do ciclo <strong>{base.label}</strong>. Ajuste se quiser.</> : 'Nenhum ciclo existente para copiar as opções. Ajuste abaixo.'}
           </p>
-          <Switch label="Renovação automática no cartão (Mercado Pago)" checked={recurring} onChange={setRecurring}
-            description={recurring ? 'Só com Mercado Pago e cartão: o valor inteiro do ciclo é cobrado de novo a cada período. No Asaas não muda nada.' : 'O aluno paga o ciclo uma vez e renova pelo app quando vencer.'} />
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
           <Switch label="Criar bloqueados" description={!active ? 'Os ciclos novos ficam bloqueados: ninguém contrata até você desbloquear.' : 'Os ciclos novos já ficam disponíveis para contratar.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>

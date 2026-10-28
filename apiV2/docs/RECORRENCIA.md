@@ -27,14 +27,18 @@ Campos da assinatura:
   - **Versão:** mudar o texto da academia sobe a versão dos termos dos ciclos que herdam. Quem já assinou
     continua com o texto que aceitou.
 
-A flag antiga "Cobrança recorrente" (`permite_recorrencia`) agora se chama "Renovação automática no cartão
-(Mercado Pago)". Ela só tem efeito com Mercado Pago e cartão (preapproval que cobra o ciclo inteiro a cada
-período); no Asaas não muda nada.
+**Ciclo mensal (1 mês):** também pode ser oferecido como assinatura ("Também oferecer como assinatura
+mensal"), **sem fidelidade**: `fidelizacao_meses = 0`, política promocional, sem regularização e só com os
+termos próprios do ciclo (opcionais). O aluno cancela quando quiser.
+
+A flag antiga "Cobrança recorrente" (`permite_recorrencia`, preapproval do Mercado Pago) saiu do painel:
+recorrência é sempre pela assinatura do provedor atual (Asaas). Ciclos novos nascem com ela desligada; os
+existentes mantêm o valor gravado.
 
 Mudar o que o aluno aceita (valor, prazo, políticas, texto) sobe `termos_versao`. **Contratos já
 assinados não mudam**: `contratos_recorrencia` congela valores, prazo, políticas e o texto aceito.
 
-O plano mensal (1 mês) e todo o fluxo à vista seguem iguais.
+Todo o fluxo à vista segue igual.
 
 ## Contratação (app)
 

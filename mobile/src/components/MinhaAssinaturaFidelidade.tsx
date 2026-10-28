@@ -186,7 +186,7 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
                 <View style={styles.trilho}><View style={[styles.barra, { width: `${Math.round((Math.min(pagas, c.fidelizacao_meses) / Math.max(1, c.fidelizacao_meses)) * 100)}%` }]} /></View>
                 <Text style={styles.meta}>Fidelidade: faltam {c.fidelizacao_restante} de {c.fidelizacao_meses} mensalidades (até {dataBr(c.fim_fidelizacao_em)})</Text>
               </View>
-            ) : <Text style={styles.meta}>Fidelidade cumprida: cancele quando quiser, sem custo.</Text>}
+            ) : <Text style={styles.meta}>{c.fidelizacao_meses ? "Fidelidade cumprida" : "Sem fidelidade"}: cancele quando quiser, sem custo.</Text>}
             {c.condicoes_renovacao ? <Text style={styles.meta}>{c.condicoes_renovacao}</Text> : null}
             {c.cancelamento && ["cancelamento_solicitado", "cancelamento_agendado", "cancelado"].includes(c.status) ? (
               <Text style={styles.meta}>

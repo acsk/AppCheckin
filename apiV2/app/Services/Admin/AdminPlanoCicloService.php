@@ -261,10 +261,8 @@ class AdminPlanoCicloService
             }
             $out['termos'] = $t !== '' ? $t : null;
         }
+        // Ciclo de 1 mês com assinatura = mensal sem fidelidade (o prazo e as políticas não se aplicam)
         $mensal = ($out['cobranca_mensal'] ?? (int) ($atual['cobranca_mensal'] ?? 0)) === 1;
-        if ($mensal && $meses < 2 && ($out['fidelizacao_meses'] ?? $atual['fidelizacao_meses'] ?? null) === null) {
-            return 'Fidelização mensal precisa de um ciclo de 2 meses ou mais (ou de um prazo de fidelização).';
-        }
         if ($atual !== null) {
             $mudouTermos = $valorNovo !== null && round($valorNovo, 2) !== round((float) $atual['valor'], 2);
             foreach ($out as $k => $v) {

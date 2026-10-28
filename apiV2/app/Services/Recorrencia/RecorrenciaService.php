@@ -78,7 +78,12 @@ class RecorrenciaService
         $meses = (int) $ciclo['meses'];
         $mensal = Calc::reais(intdiv(Calc::centavos((string) $ciclo['valor']), max(1, $meses)));
         $referencia = Calc::reais(Calc::centavos((string) $plano['valor']));
-        $fidelizacao = (int) ($ciclo['fidelizacao_meses'] ?: $meses);
+        // Ciclo de 1 mês: assinatura mensal sem fidelidade (sem prazo mínimo, sem regularização)
+        $fidelizacao = $meses <= 1 ? 0 : (int) ($ciclo['fidelizacao_meses'] ?: $meses);
+        if ($fidelizacao === 0) {
+            $ciclo['politica_renovacao'] = 'promocional';
+            $ciclo['regularizacao_ativa'] = 0;
+        }
         $termos = $this->termos($tenantId, $plano, $ciclo, $mensal, $referencia, $fidelizacao);
 
         return [
@@ -98,6 +103,16 @@ class RecorrenciaService
     {
         $academia = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'a academia';
         $brl = fn ($v) => Calc::brl(Calc::centavos($v));
+        if ($fidelizacao === 0) {
+            // Sem fidelidade: os termos da academia falam de fidelização, então só entram os próprios do ciclo
+            return implode("\n\n", array_filter([
+                "Assinatura mensal do plano {$plano['nome']} em {$academia}, sem fidelidade.",
+                "Você paga {$brl($mensal)} por mês, cobrados automaticamente. Cada mês é uma cobrança separada; não é uma compra parcelada.",
+                'Não há prazo mínimo: você pode cancelar a qualquer momento pelo app, sem multa. O acesso vai até o fim do período já pago.',
+                "Você pode desistir em até {$ciclo['arrependimento_dias']} dias após o aceite.",
+                trim((string) ($ciclo['termos'] ?? '')),
+            ]));
+        }
         $renovacao = [
             'encerrar' => 'Ao fim da fidelização o contrato se encerra e não há novas cobranças.',
             'mensal' => "Ao fim da fidelização a assinatura continua mensal pelo valor de referência ({$brl($referencia)}/mês), sem novo prazo mínimo. Você pode cancelar a qualquer momento.",
@@ -209,8 +224,8 @@ class RecorrenciaService
                     'valor_mensal_referencia' => $oferta['valor_mensal_referencia'], 'valor_mensal_contratado' => $oferta['valor_mensal'],
                     'valor_mensal_vigente' => $oferta['valor_mensal'], 'fidelizacao_meses' => $oferta['fidelizacao_meses'],
                     'inicio_em' => $hoje, 'fim_fidelizacao_em' => Calc::maisMeses($hoje, $oferta['fidelizacao_meses']), 'proxima_cobranca_em' => $hoje,
-                    'status' => 'pendente_ativacao', 'em_fidelizacao' => 1, 'politica_renovacao' => $oferta['politica_renovacao'],
-                    'politica_cancelamento' => json_encode(['regularizacao_ativa' => (bool) $ciclo['regularizacao_ativa'], 'proporcional' => (bool) $ciclo['regularizacao_proporcional'], 'arrependimento_dias' => (int) $ciclo['arrependimento_dias']]),
+                    'status' => 'pendente_ativacao', 'em_fidelizacao' => $oferta['fidelizacao_meses'] > 0 ? 1 : 0, 'politica_renovacao' => $oferta['politica_renovacao'],
+                    'politica_cancelamento' => json_encode(['regularizacao_ativa' => $oferta['regularizacao_ativa'], 'proporcional' => (bool) $ciclo['regularizacao_proporcional'], 'arrependimento_dias' => (int) $ciclo['arrependimento_dias']]),
                     'termos_versao' => $oferta['termos_versao'], 'termos_aceitos' => $oferta['termos'], 'termos_hash' => $oferta['termos_hash'],
                     'aceite_em' => AcademyDateTime::nowFormatted(), 'aceite_usuario_id' => $usuarioId,
                     'aceite_ip' => isset($origem['ip']) ? mb_substr((string) $origem['ip'], 0, 45) : null,
@@ -232,7 +247,7 @@ class RecorrenciaService
                 'contrato_id' => $contratoId, 'valor' => $oferta['valor_mensal'],
                 'billing_type' => ['cartao' => 'CREDIT_CARD', 'pix' => 'PIX'][$metodo],
                 'proximo_vencimento' => $hoje,
-                'descricao' => "{$plano->nome} · fidelização {$oferta['fidelizacao_meses']} meses · ".Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês',
+                'descricao' => "{$plano->nome} · ".($oferta['fidelizacao_meses'] > 0 ? "fidelização {$oferta['fidelizacao_meses']} meses" : 'assinatura mensal').' · '.Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês',
                 // Política "encerrar": o próprio Asaas para depois da última mensalidade da fidelização
                 'max_pagamentos' => $oferta['politica_renovacao'] === 'encerrar' ? $oferta['fidelizacao_meses'] : null,
                 'cliente' => ['name' => (string) $aluno->nome, 'cpfCnpj' => (string) $aluno->cpf, 'email' => $aluno->email, 'mobilePhone' => $aluno->telefone],

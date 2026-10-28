@@ -1379,9 +1379,9 @@ export default function PlanoDetalhesScreen() {
                     selected={selectedCicloId === ciclo.id}
                     onSelect={() => setSelectedCicloId(ciclo.id)}
                   >
-                  {selectedCicloId === ciclo.id && ciclo.cobranca_mensal && ciclo.meses > 1 ? <>
+                  {selectedCicloId === ciclo.id && ciclo.cobranca_mensal ? <>
                     <CicloPaymentModes value={modoCobranca} onChange={setModoCobranca} total={ciclo.valor_formatado} mensal={ciclo.valor_mensal_formatado} meses={ciclo.meses}
-                      fidelidadeMeses={ofertaSelecionada?.fidelizacao_meses || ciclo.fidelizacao_meses || ciclo.meses}
+                      fidelidadeMeses={ciclo.meses <= 1 ? 0 : ofertaSelecionada?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses}
                       bloqueio={assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
                     {!carregandoOfertas && !ofertaSelecionada ? <Button size="sm" variant="ghost" onPress={() => setTentativaOfertas(v => v + 1)}>Consultar assinatura novamente</Button> : null}
                   </> : null}

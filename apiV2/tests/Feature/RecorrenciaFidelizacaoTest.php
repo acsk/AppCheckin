@@ -657,6 +657,30 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertSame('ativo', $this->contrato($paga)->status);
     }
 
+    public function test_mensal_como_assinatura_sem_fidelidade(): void
+    {
+        (require database_path('migrations/2026_10_29_130000_termos_fidelizacao.php'))->up();
+        app(\App\Services\Recorrencia\TermosFidelizacaoService::class)->salvar(self::T, ['texto' => 'Texto sobre fidelização (academia)'], 1);
+        DB::table('plano_ciclos')->where('id', 40)->update(['cobranca_mensal' => 1, 'regularizacao_ativa' => 1, 'politica_renovacao' => 'encerrar']);
+
+        $oferta = collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', 40);
+        $this->assertSame([0, '120.00', 'promocional', false], [$oferta['fidelizacao_meses'], $oferta['valor_mensal'], $oferta['politica_renovacao'], $oferta['regularizacao_ativa']]);
+        $this->assertStringContainsString('sem fidelidade', $oferta['termos']);
+        $this->assertStringNotContainsString('(academia)', $oferta['termos'], 'termos de fidelização não entram');
+
+        $id = $this->contratar(40);
+        $this->assertNull($this->asaas->assinaturas['sub_1']['max_pagamentos'], 'mensal não para sozinho');
+        $this->assertSame(0, (int) $this->contrato($id)->em_fidelizacao);
+        $this->recuar($id, 40);
+        $this->webhook($id, 1);
+        $this->webhook($id, 2);
+
+        $this->assertSame('ativo', $this->contrato($id)->status);
+        $this->assertSame([], $this->asaas->chamadas, 'nenhuma política de fim de fidelização aplicada');
+        $sim = $this->svc()->simularCancelamento(self::T, $id);
+        $this->assertSame(['0.00', 'fim_prazo'], [$sim['valor_regularizacao'], $sim['tipo']]);
+    }
+
     public function test_calculo_em_centavos(): void
     {
         $this->assertSame(12345, Calc::centavos('123.45'));

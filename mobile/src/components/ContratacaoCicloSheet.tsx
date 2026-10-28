@@ -75,7 +75,10 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
       .catch(() => setOferta(null));
   }, [visible, planoId, ciclo.id, revisaoDireta, ofertaInicial, metodoInicial]);
 
-  const fidelidade = oferta?.fidelizacao_meses || ciclo.fidelizacao_meses || ciclo.meses;
+  const fidelidade = oferta?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses;
+  // Ciclo mensal vira assinatura sem fidelidade: cancela quando quiser
+  const semFidelidade = !fidelidade || ciclo.meses <= 1;
+  const acesso = ciclo.meses === 1 ? "1 mês de acesso" : `${ciclo.meses} meses de acesso`;
   // PIX na assinatura só quando a academia liga em Configurações de pagamento
   const metodosAssinatura: MetodoPagamentoOpcao[] = metodosAssinaturaDisponiveis(oferta?.metodos);
   const assinaturaTravada = !!assinaturaDisponivelEm;
@@ -184,7 +187,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
         visible={visible && !pix && !contratoAberto}
         variant="sheet"
         icon={etapa === "valor" ? "tag" : etapa === "termos" ? "file-text" : "credit-card"}
-        eyebrow={revisaoDireta ? `${ciclo.nome} · com fidelidade` : `${ciclo.nome} · passo ${passo} de ${total}`}
+        eyebrow={revisaoDireta ? `${ciclo.nome} · ${semFidelidade ? "sem fidelidade" : "com fidelidade"}` : `${ciclo.nome} · passo ${passo} de ${total}`}
         title={titulo}
         primary={{ label: rotulo, icon: etapa === "pagamento" ? "check" : "arrow-right", onPress: avancar, loading: enviando, disabled: revisaoDireta && (!aceite || !oferta || assinaturaTravada) }}
         onClose={onClose}
@@ -192,19 +195,19 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
         {etapa === "valor" ? (
           <View style={{ gap: space[3] }} accessibilityRole="radiogroup">
             <Opcao on={modo === "avista"} onPress={() => setModo("avista")} titulo="À vista" preco={ciclo.valor_formatado}
-              linhas={[`${ciclo.meses} meses de acesso`, "Pagamento único, por PIX, cartão ou boleto"]} />
+              linhas={[acesso, "Pagamento único, por PIX, cartão ou boleto"]} />
             <Opcao on={modo === "assinatura"} onPress={() => setModo("assinatura")} titulo="Assinatura mensal" preco={`${ciclo.valor_mensal_formatado}/mês`}
               desabilitada={assinaturaTravada}
               linhas={assinaturaTravada
                 ? [`Disponível quando seu plano atual vencer (${assinaturaDisponivelEm})`]
-                : [`Fidelidade de ${fidelidade} meses`, "Uma cobrança por mês, não é parcelamento"]} />
+                : semFidelidade ? ["Sem fidelidade: cancele quando quiser", "Cobrança automática todo mês"] : [`Fidelidade de ${fidelidade} meses`, "Uma cobrança por mês, não é parcelamento"]} />
           </View>
         ) : null}
 
         {etapa === "termos" && oferta ? (
           <>
             <View style={styles.fatos}>
-              <Fato icon="calendar" texto={`${brl(oferta.valor_mensal)} por mês durante ${oferta.fidelizacao_meses} meses (sem fidelidade: ${brl(oferta.valor_mensal_referencia)}/mês). O total não fica preso no limite do cartão.`} />
+              <Fato icon="calendar" texto={semFidelidade ? `${brl(oferta.valor_mensal)} por mês, cobrado automaticamente até você cancelar. Sem fidelidade.` : `${brl(oferta.valor_mensal)} por mês durante ${oferta.fidelizacao_meses} meses (sem fidelidade: ${brl(oferta.valor_mensal_referencia)}/mês). O total não fica preso no limite do cartão.`} />
               <Fato icon="lock" texto={`Desistência sem custo em até ${oferta.arrependimento_dias} dias após o aceite.`} />
               <Fato icon="x-circle" texto={oferta.regularizacao_ativa ? `Saindo antes do fim: paga só a diferença do desconto já recebido (${brl(oferta.desconto_mensal)} por mês pago), nunca de meses futuros.` : "Pode cancelar quando quiser, sem multa."} />
             </View>
@@ -227,7 +230,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
           <>
             <View style={styles.resumo}>
               <Text style={styles.resumoTitulo}>{modo === "avista" ? `${ciclo.nome} à vista · ${ciclo.valor_formatado}` : `${ciclo.nome} · ${ciclo.valor_mensal_formatado}/mês`}</Text>
-              <Text style={styles.meta}>{modo === "avista" ? `${ciclo.meses} meses de acesso, pagamento único` : `Fidelidade de ${fidelidade} meses · termos aceitos`}</Text>
+              <Text style={styles.meta}>{modo === "avista" ? `${acesso}, pagamento único` : `${semFidelidade ? "Sem fidelidade" : `Fidelidade de ${fidelidade} meses`} · termos aceitos`}</Text>
             </View>
             <PaymentMethodOptions opcoes={modo === "avista" ? metodosAvista : metodosAssinatura} value={metodo} onChange={setMetodo} />
             {modo === "assinatura" ? (

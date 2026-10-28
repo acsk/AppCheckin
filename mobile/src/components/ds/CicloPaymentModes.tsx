@@ -17,8 +17,8 @@ export default function CicloPaymentModes({ value, onChange, total, mensal, mese
   return (
     <View style={styles.group} accessibilityRole="radiogroup" accessibilityLabel="Como pagar este ciclo">
       {([
-        { id: "avista", title: "À vista", price: total, description: `${meses} meses de acesso, uma cobrança` },
-        { id: "assinatura", title: "Mensal", price: mensal, description: `${fidelidadeMeses} cobranças, com fidelidade` },
+        { id: "avista", title: "À vista", price: total, description: `${meses === 1 ? "1 mês" : `${meses} meses`} de acesso, uma cobrança` },
+        { id: "assinatura", title: "Mensal", price: mensal, description: fidelidadeMeses ? `${fidelidadeMeses} cobranças, com fidelidade` : "Todo mês, sem fidelidade" },
       ] as const).map(option => {
         const disabled = option.id === "assinatura" && !!bloqueio;
         const selected = value === option.id;

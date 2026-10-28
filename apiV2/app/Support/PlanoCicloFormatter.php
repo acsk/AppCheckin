@@ -56,7 +56,7 @@ final class PlanoCicloFormatter
                 'permite_reposicao' => (bool) $ciclo['permite_reposicao'],
                 // Fidelização: assinatura mensal (POST /mobile/recorrencia/contratar), não a compra à vista
                 'cobranca_mensal' => (bool) ($ciclo['cobranca_mensal'] ?? false),
-                'fidelizacao_meses' => ! empty($ciclo['cobranca_mensal']) ? (int) ($ciclo['fidelizacao_meses'] ?? 0 ?: $ciclo['meses']) : null,
+                'fidelizacao_meses' => ! empty($ciclo['cobranca_mensal']) ? ((int) $ciclo['meses'] <= 1 ? 0 : (int) ($ciclo['fidelizacao_meses'] ?? 0 ?: $ciclo['meses'])) : null,
                 'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto), true),
                 'metodos_pagamento' => self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
@@ -113,7 +113,7 @@ final class PlanoCicloFormatter
                 'permite_reposicao' => (bool) $c['permite_reposicao'],
                 // Fidelização: assinatura mensal (POST /mobile/recorrencia/contratar), não a compra à vista
                 'cobranca_mensal' => (bool) ($c['cobranca_mensal'] ?? false),
-                'fidelizacao_meses' => ! empty($c['cobranca_mensal']) ? (int) ($c['fidelizacao_meses'] ?? 0 ?: $c['meses']) : null,
+                'fidelizacao_meses' => ! empty($c['cobranca_mensal']) ? ((int) $c['meses'] <= 1 ? 0 : (int) ($c['fidelizacao_meses'] ?? 0 ?: $c['meses'])) : null,
                 'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto), true),
                 'metodos_pagamento' => self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
