@@ -878,6 +878,10 @@ class AdminMatriculaRepository
     public function atualizarMatriculaReuse(int $id, int $tenantId, array $payload): void
     {
         $payload['updated_at'] = now();
+        // Ciclo novo com o valor escolhido agora: reajuste pendente do ciclo anterior não vale mais
+        if (Schema::hasColumn('matriculas', 'valor_renovacao')) {
+            $payload['valor_renovacao'] = null;
+        }
         DB::table('matriculas')
             ->where('id', $id)
             ->where('tenant_id', $tenantId)

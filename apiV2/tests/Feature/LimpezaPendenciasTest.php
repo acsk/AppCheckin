@@ -63,7 +63,7 @@ class LimpezaPendenciasTest extends TestCase
         });
         Schema::create('contratos_recorrencia', fn (Blueprint $t) => [$t->increments('id'), $t->integer('tenant_id'), $t->integer('matricula_id'), $t->string('status'), $t->timestamps()]);
 
-        DB::table('status_matricula')->insert([['id' => 1, 'codigo' => 'ativa'], ['id' => 3, 'codigo' => 'cancelada'], ['id' => 5, 'codigo' => 'pendente']]);
+        DB::table('status_matricula')->insert([['id' => 1, 'codigo' => 'ativa'], ['id' => 2, 'codigo' => 'vencida'], ['id' => 3, 'codigo' => 'cancelada'], ['id' => 5, 'codigo' => 'pendente']]);
         DB::table('assinatura_status')->insert([['id' => 1, 'codigo' => 'pendente'], ['id' => 4, 'codigo' => 'cancelada'], ['id' => 5, 'codigo' => 'expirada']]);
         DB::table('assinatura_cancelamento_tipos')->insert(['id' => 4, 'codigo' => 'sistema']);
     }
@@ -194,6 +194,23 @@ class LimpezaPendenciasTest extends TestCase
         $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('matricula_id', 400)->value('status_pagamento_id'));
         $this->assertSame(5, (int) DB::table('matriculas')->find(401)->status_id, 'matrícula com pagamento não é mexida');
         $this->assertSame(5, (int) DB::table('assinaturas')->find($comPagamento)->status_id);
+    }
+
+    // Uma matrícula por modalidade: a renovação reaproveita a matrícula paga e o checkout fica sem pagar
+    public function test_renovacao_abandonada_na_mesma_matricula_volta_a_vencida(): void
+    {
+        $this->checkout('pay_ren', 402);
+        DB::table('pagamentos_plano')->insert([
+            ['tenant_id' => self::T, 'matricula_id' => 402, 'valor' => 120, 'status_pagamento_id' => 2, 'data_pagamento' => '2026-08-01', 'observacoes' => null, 'created_at' => date('Y-m-d H:i:s', strtotime('-60 days'))],
+            ['tenant_id' => self::T, 'matricula_id' => 402, 'valor' => 120, 'status_pagamento_id' => 1, 'data_pagamento' => null, 'observacoes' => 'Aguardando pagamento via Asaas', 'created_at' => date('Y-m-d H:i:s', strtotime('-10 days'))],
+        ]);
+
+        $r = $this->servico()->executar();
+
+        $this->assertSame(1, $r['matriculas']);
+        $this->assertSame(2, (int) DB::table('matriculas')->find(402)->status_id, 'vencida, não cancelada');
+        $this->assertSame(1, DB::table('pagamentos_plano')->where('matricula_id', 402)->where('status_pagamento_id', 2)->count(), 'ciclo pago intacto');
+        $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('matricula_id', 402)->whereNull('data_pagamento')->value('status_pagamento_id'));
     }
 
     public function test_mercado_pago_so_depois_de_30_dias_e_modo_simular_nao_altera(): void

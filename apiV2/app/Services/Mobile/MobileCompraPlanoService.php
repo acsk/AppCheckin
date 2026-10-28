@@ -6,7 +6,6 @@ use App\Support\ReferenciaExterna;
 use App\Repositories\AlunoRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
-use App\Services\MatriculaEncadeamentoService;
 use App\Services\Asaas\AsaasService;
 use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\CobrancaAnteriorService;
@@ -29,12 +28,7 @@ class MobileCompraPlanoService
         private readonly MobilePagamentoService $mobilePagamento,
         private readonly PaymentGatewayFactory $gateways,
         private readonly CobrancaAnteriorService $cobrancasAnteriores,
-        ?MatriculaEncadeamentoService $encadeamento = null,
-    ) {
-        $this->encadeamento = $encadeamento ?? app(MatriculaEncadeamentoService::class);
-    }
-
-    private MatriculaEncadeamentoService $encadeamento;
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -399,7 +393,9 @@ class MobileCompraPlanoService
                         }
                     }
 
-                    if (in_array($statusCodigo, ['vencida', 'cancelada', 'pendente'], true) || $vencidaPorData) {
+                    // Uma matrícula por aluno e modalidade: o novo ciclo entra nela, mesmo que a anterior
+                    // tenha sido paga (os pagamentos antigos continuam em pagamentos_plano). Ativa vigente já retornou acima.
+                    if ($statusCodigo !== 'ativa' || $vencidaPorData) {
                         $reutilizandoMatricula = true;
                         $planoAnteriorId = (int) $matriculaExistente['plano_id'];
                         $motivoCodigo = $planoAnteriorId === $planoId
@@ -407,13 +403,6 @@ class MobileCompraPlanoService
                             : ($valorCompra >= (float) $matriculaExistente['valor'] ? 'upgrade' : 'downgrade');
                     }
                 }
-            }
-
-            // Ciclo com dinheiro recebido não é sobrescrito: cria matrícula nova ligada a ele
-            $matriculaEncadear = null;
-            if ($reutilizandoMatricula && $matriculaExistente && ! $this->encadeamento->podeReaproveitar((int) $matriculaExistente['id'])) {
-                $reutilizandoMatricula = false;
-                $matriculaEncadear = $matriculaExistente;
             }
 
             $motivoId = (int) (DB::table('motivo_matricula')->where('codigo', $motivoCodigo)->value('id') ?? 1);
@@ -464,11 +453,6 @@ class MobileCompraPlanoService
                     Log::info("comprarPlano v2: {$n} parcela(s) cancelada(s) na matrícula {$matriculaId}");
                 }
 
-                // Linha sem pagamento reaproveitada (pendente/órfã): continua o último ciclo pago, se houver
-                $anteriorPagaId = $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, (int) $modalidadeId, $planoId, $valorCompra);
-                if ($anteriorPagaId) {
-                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorPagaId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
-                }
             } else {
                 $matriculaId = (int) DB::table('matriculas')->insertGetId([
                     'tenant_id' => $tenantId,
@@ -489,17 +473,6 @@ class MobileCompraPlanoService
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
-
-                if ($matriculaEncadear) {
-                    $anteriorId = (int) $matriculaEncadear['id'];
-                    $this->encadeamento->ligar($matriculaId, $matriculaEncadear, $planoId, $valorCompra);
-                    $this->encadeamento->encerrarAnterior($anteriorId);
-                    // Mesmo efeito do reaproveitamento: parcelas em aberto do ciclo anterior não ficam cobrando
-                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
-                    Log::info("comprarPlano v2: matrícula #{$matriculaId} criada como continuação da #{$anteriorId} (tinha pagamento confirmado)");
-                } elseif ($anteriorPagaId = $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, (int) $modalidadeId, $planoId, $valorCompra)) {
-                    $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anteriorPagaId, "Cancelado por renovação via app (matrícula #{$matriculaId})");
-                }
             }
 
             $this->pagamentosPlano->garantirParcelaPendenteUnica(

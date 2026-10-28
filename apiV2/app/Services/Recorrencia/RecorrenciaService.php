@@ -3,7 +3,6 @@
 namespace App\Services\Recorrencia;
 
 use App\Services\Asaas\AsaasService;
-use App\Services\MatriculaEncadeamentoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
@@ -39,7 +38,6 @@ class RecorrenciaService
     public function __construct(
         private readonly RecorrenciaAcesso $acesso,
         private readonly PagamentoPlanoService $pagamentosPlano,
-        private readonly MatriculaEncadeamentoService $encadeamento,
     ) {}
 
     protected function asaas(int $tenantId): AsaasService
@@ -306,8 +304,8 @@ class RecorrenciaService
     }
 
     /**
-     * Mesmas regras da compra pelo app: reaproveita matrícula pendente sem pagamento da modalidade;
-     * senão cria e liga ao último ciclo pago (encadeamento).
+     * Mesmas regras da compra pelo app: uma matrícula por aluno e modalidade. Reaproveita a da
+     * modalidade (pendente, vencida, cancelada…; ativa já foi recusada antes); só cria se não houver.
      */
     private function prepararMatricula(int $tenantId, int $alunoId, array $plano, array $ciclo, string $mensal, int $usuarioId, string $hoje, ?int $matriculaAnterior): int
     {
@@ -317,10 +315,10 @@ class RecorrenciaService
             'status_id' => $statusPendente, 'data_inicio' => $hoje, 'data_vencimento' => $hoje, 'proxima_data_vencimento' => $hoje,
             'dia_vencimento' => (int) substr($hoje, 8, 2), 'criado_por' => $usuarioId, 'updated_at' => now(),
         ];
-        $reaproveitar = $matriculaAnterior ?: DB::table('matriculas as m')->join('planos as p', 'p.id', '=', 'm.plano_id')->join('status_matricula as s', 's.id', '=', 'm.status_id')
-            ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $alunoId)->where('p.modalidade_id', $plano['modalidade_id'])->where('s.codigo', 'pendente')
-            ->orderByDesc('m.id')->value('m.id');
-        if ($reaproveitar && $this->encadeamento->podeReaproveitar((int) $reaproveitar)) {
+        $reaproveitar = $matriculaAnterior ?: DB::table('matriculas as m')->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $alunoId)->where('p.modalidade_id', $plano['modalidade_id'])
+            ->orderByDesc('m.updated_at')->orderByDesc('m.id')->value('m.id');
+        if ($reaproveitar) {
             DB::table('matriculas')->where('id', $reaproveitar)->where('tenant_id', $tenantId)->update($campos);
             $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, (int) $reaproveitar, 'Cancelado: assinatura com fidelização');
             $matriculaId = (int) $reaproveitar;
@@ -330,9 +328,6 @@ class RecorrenciaService
                 'motivo_id' => (int) (DB::table('motivo_matricula')->where('codigo', 'nova')->value('id') ?? 1),
                 'periodo_teste' => 0, 'created_at' => now(),
             ]);
-        }
-        if ($anterior = $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, (int) $plano['modalidade_id'], (int) $plano['id'], (float) $mensal)) {
-            $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $anterior, "Cancelado: assinatura com fidelização (matrícula #{$matriculaId})");
         }
 
         return $matriculaId;

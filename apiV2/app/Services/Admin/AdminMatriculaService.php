@@ -691,7 +691,6 @@ class AdminMatriculaService
             ? $this->matriculas->ultimaMatriculaNaModalidade($alunoId, $tenantId, $modalidadeAtual)
             : null;
         $reutilizandoMatricula = false;
-        $matriculaAnteriorEncadeada = null;
 
         if ($matriculaVencida) {
             $statusCodigo = $matriculaVencida['status_codigo'] ?? null;
@@ -707,13 +706,10 @@ class AdminMatriculaService
                 }
             }
 
-            if ($statusCodigo === 'vencida' || $statusCodigo === 'cancelada' || $vencidaPorData) {
-                // Ciclo com dinheiro recebido não é sobrescrito: a nova matrícula é criada e ligada a ele
-                if ($this->encadeamento->podeReaproveitar((int) $matriculaVencida['id'])) {
-                    $reutilizandoMatricula = true;
-                } elseif (! $matriculaMesmaModalidade) {
-                    $matriculaAnteriorEncadeada = $matriculaVencida;
-                }
+            // Uma matrícula por aluno e modalidade: o novo ciclo (renovação, volta, troca de plano) entra nela.
+            // Os pagamentos dos ciclos anteriores continuam em pagamentos_plano; as trocas, em historico_planos.
+            if ($statusCodigo !== 'ativa' || $vencidaPorData) {
+                $reutilizandoMatricula = true;
             }
         }
 
@@ -740,12 +736,10 @@ class AdminMatriculaService
         $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
         $valor = $valorMatricula;
         $motivo = $data['motivo'] ?? 'nova';
-        $matriculaAnteriorId = null;
         $planoAnteriorId = null;
 
         if ($matriculaMesmaModalidade) {
             $planoAnteriorId = (int) $matriculaMesmaModalidade['plano_id'];
-            $matriculaAnteriorId = (int) $matriculaMesmaModalidade['id'];
 
             $dataVencimentoAtual = AcademyDateTime::dateOnly(
                 $matriculaMesmaModalidade['proxima_data_vencimento'] ?? $matriculaMesmaModalidade['data_vencimento'] ?? null
@@ -784,8 +778,10 @@ class AdminMatriculaService
                 ];
             }
 
-            $this->matriculas->finalizarMatricula((int) $matriculaMesmaModalidade['id']);
             $this->matriculas->desativarDescontosSeTabelaExiste($tenantId, (int) $matriculaMesmaModalidade['id']);
+            // Vence hoje: o novo ciclo entra na mesma matrícula
+            $matriculaVencida = $matriculaMesmaModalidade;
+            $reutilizandoMatricula = true;
         }
 
         $codigoStatus = $periodoTeste === 1 ? 'ativa' : 'pendente';
@@ -793,17 +789,16 @@ class AdminMatriculaService
             ?? ($periodoTeste === 1 ? 1 : 5);
         $motivoId = $this->matriculas->motivoIdPorCodigo((string) $motivo);
 
-        if ($matriculaAnteriorEncadeada) {
-            $matriculaAnteriorId = (int) $matriculaAnteriorEncadeada['id'];
-            $planoAnteriorId = (int) $matriculaAnteriorEncadeada['plano_id'];
-            $motivo = $this->encadeamento->motivoCodigo($planoAnteriorId, $planoId, (float) ($matriculaAnteriorEncadeada['valor'] ?? 0), (float) $valorMatricula);
-            $motivoId = $this->matriculas->motivoIdPorCodigo($motivo);
-            $this->encadeamento->encerrarAnterior($matriculaAnteriorId);
-        }
-
         if ($reutilizandoMatricula && $matriculaVencida) {
             $matriculaId = (int) $matriculaVencida['id'];
             $planoAnteriorId = (int) $matriculaVencida['plano_id'];
+            $motivo = $this->encadeamento->motivoCodigo($planoAnteriorId, $planoId, (float) ($matriculaVencida['valor'] ?? 0), (float) $valorMatricula);
+            $motivoId = $this->matriculas->motivoIdPorCodigo($motivo);
+
+            // Compra que nunca foi paga não fica cobrando junto com o ciclo novo
+            if (($matriculaVencida['status_codigo'] ?? null) === 'pendente') {
+                $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $matriculaId, 'Cancelado: matrícula refeita pelo painel');
+            }
 
             $this->matriculas->atualizarMatriculaReuse($matriculaId, $tenantId, [
                 'plano_id' => $planoId,
@@ -834,7 +829,6 @@ class AdminMatriculaService
                 'valor' => $valorMatricula,
                 'status_id' => $statusId,
                 'motivo_id' => $motivoId,
-                'matricula_anterior_id' => $matriculaAnteriorId,
                 'plano_anterior_id' => $planoAnteriorId,
                 'observacoes' => $data['observacoes'] ?? null,
                 'criado_por' => $adminId,
@@ -843,11 +837,6 @@ class AdminMatriculaService
                 'data_inicio_cobranca' => $dataInicioCobranca,
                 'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
             ]);
-        }
-
-        // Reaproveitou/criou sem vínculo: continua o último ciclo pago da modalidade, se houver
-        if ($matriculaAnteriorId === null && $modalidadeAtual !== null) {
-            $this->encadeamento->encadearAoUltimoCicloPago($matriculaId, $tenantId, $alunoId, $modalidadeAtual, $planoId, (float) $valorMatricula);
         }
 
         $this->matriculas->inserirHistoricoPlanos([

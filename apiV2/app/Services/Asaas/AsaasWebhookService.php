@@ -3,6 +3,7 @@
 namespace App\Services\Asaas;
 
 use App\Services\EncryptionService;
+use App\Services\MatriculaUnificacaoService;
 use App\Services\Pacote\PacoteConciliacaoService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Recorrencia\RecorrenciaService;
@@ -563,7 +564,8 @@ class AsaasWebhookService
     private function matriculaIdDaReferencia(string $ref): int
     {
         if (preg_match('/^MAT-(\d+)-/', $ref, $m)) {
-            return (int) $m[1];
+            // Cobrança antiga de um ciclo que foi unificado na matrícula atual
+            return app(MatriculaUnificacaoService::class)->idAtual((int) $m[1]);
         }
 
         return 0;

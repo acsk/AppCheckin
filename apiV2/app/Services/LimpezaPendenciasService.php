@@ -91,7 +91,7 @@ class LimpezaPendenciasService
                     ]);
                 }
                 $r['checkouts']++;
-                if ($a->matricula_id && $this->encerrarMatriculaAbandonada((int) $a->tenant_id, (int) $a->matricula_id, $simular)) {
+                if ($a->matricula_id && $this->encerrarMatriculaAbandonada((int) $a->tenant_id, (int) $a->matricula_id, (string) ($a->atualizado_em ?? $a->criado_em), $simular)) {
                     $r['matriculas']++;
                     $r['itens'][] = "Matrícula #{$a->matricula_id} pendente sem pagamento: cancelada";
                 }
@@ -158,12 +158,21 @@ class LimpezaPendenciasService
         }
     }
 
-    /** Matrícula pendente que nunca recebeu pagamento (compra pelo app abandonada). */
-    private function encerrarMatriculaAbandonada(int $tenantId, int $matriculaId, bool $simular): bool
+    /**
+     * Matrícula pendente cuja compra pelo app foi abandonada. Sem nenhum pagamento: cancelada.
+     * Só com pagamentos de ciclos anteriores (renovação na mesma matrícula que não foi paga): vencida.
+     * Pagamento desde o checkout: o ciclo foi pago, não mexe.
+     */
+    private function encerrarMatriculaAbandonada(int $tenantId, int $matriculaId, string $checkoutEm, bool $simular): bool
     {
         $codigo = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
             ->where('m.id', $matriculaId)->where('m.tenant_id', $tenantId)->value('s.codigo');
-        if ($codigo !== 'pendente' || ! $this->encadeamento->podeReaproveitar($matriculaId)) {
+        if ($codigo !== 'pendente') {
+            return false;
+        }
+        $cicloAnteriorPago = $this->encadeamento->temPagamentoConfirmado($matriculaId);
+        if ($cicloAnteriorPago && DB::table('pagamentos_plano')->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', 2)->where('created_at', '>=', $checkoutEm)->exists()) {
             return false;
         }
         // Matrícula de assinatura com fidelidade é encerrada pelo próprio contrato
@@ -177,8 +186,9 @@ class LimpezaPendenciasService
             ->whereIn('status_pagamento_id', [1, 3])->whereNull('data_pagamento')
             ->update(['status_pagamento_id' => 4, 'updated_at' => now(),
                 'observacoes' => DB::raw("CONCAT(COALESCE(observacoes, ''), ' [Compra abandonada: cancelada automaticamente]')")]);
+        $status = $cicloAnteriorPago ? 'vencida' : 'cancelada';
         DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update([
-            'status_id' => DB::table('status_matricula')->where('codigo', 'cancelada')->value('id'),
+            'status_id' => DB::table('status_matricula')->where('codigo', $status)->value('id'),
             'updated_at' => now(),
         ]);
 

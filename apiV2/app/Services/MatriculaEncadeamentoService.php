@@ -7,15 +7,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Encadeamento de matrículas: um ciclo com dinheiro recebido nunca é apagado nem sobrescrito.
+ * Matrículas com dinheiro recebido: nunca são apagadas (o histórico financeiro depende delas).
  *
- * - Matrícula sem pagamento confirmado pode ser reaproveitada (ex.: compra abandonada) ou excluída.
- * - Com pagamento confirmado, a renovação cria uma matrícula nova ligada à anterior
- *   (matricula_anterior_id + motivo renovação/upgrade/downgrade) e a anterior vira "finalizada"
- *   (exceto se cancelada: o cancelamento é preservado, só o vínculo é criado).
- *
- * Usado na criação pelo painel (AdminMatriculaService), na compra pelo app (MobileCompraPlanoService)
- * e na ação manual "vincular à matrícula atual".
+ * Desde a regra "uma matrícula por aluno e modalidade" os fluxos de criação reaproveitam a matrícula
+ * existente (ver AdminMatriculaService, MobileCompraPlanoService, RecorrenciaService) e as cadeias
+ * antigas são juntadas por `matriculas:unificar` (MatriculaUnificacaoService). O que resta aqui:
+ * pagamento confirmado (bloqueio de exclusão), resumo da lista e o vínculo manual de cadeias antigas.
  */
 class MatriculaEncadeamentoService
 {
@@ -84,12 +81,6 @@ class MatriculaEncadeamentoService
         return $id ? (int) $id : null;
     }
 
-    /** Pode ser sobrescrita por uma nova compra/matrícula? Só se nenhum dinheiro passou por ela. */
-    public function podeReaproveitar(int $matriculaId): bool
-    {
-        return ! $this->temPagamentoConfirmado($matriculaId);
-    }
-
     public function motivoCodigo(int $planoAnteriorId, int $planoNovoId, float $valorAnterior, float $valorNovo): string
     {
         if ($planoAnteriorId === $planoNovoId) {
@@ -97,22 +88,6 @@ class MatriculaEncadeamentoService
         }
 
         return $valorNovo >= $valorAnterior ? 'upgrade' : 'downgrade';
-    }
-
-    /**
-     * Encerra a anterior ao ser substituída: vencida/ativa/pendente → finalizada; cancelada continua cancelada.
-     */
-    public function encerrarAnterior(int $anteriorId): void
-    {
-        $codigo = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
-            ->where('m.id', $anteriorId)->value('s.codigo');
-        if (in_array($codigo, ['cancelada', 'finalizada', 'concluida'], true)) {
-            return;
-        }
-        $finalizada = DB::table('status_matricula')->where('codigo', 'finalizada')->value('id');
-        if ($finalizada) {
-            DB::table('matriculas')->where('id', $anteriorId)->update(['status_id' => $finalizada, 'updated_at' => now()]);
-        }
     }
 
     /**
@@ -131,52 +106,6 @@ class MatriculaEncadeamentoService
         ]);
 
         return $motivo;
-    }
-
-    /**
-     * Liga a nova matrícula ao último ciclo pago da aluna na modalidade que ainda não foi continuado
-     * (vencido ou cancelado) e encerra esse ciclo. Cobre a compra que reaproveita outra linha sem
-     * pagamento (pendente abandonada, órfã cancelada) em vez do ciclo pago.
-     *
-     * @return int|null id da anterior ligada
-     */
-    public function encadearAoUltimoCicloPago(int $novaId, int $tenantId, int $alunoId, int $modalidadeId, int $planoNovoId, float $valorNovo): ?int
-    {
-        if (DB::table('matriculas')->where('id', $novaId)->value('matricula_anterior_id') !== null) {
-            return null;
-        }
-
-        $temProvedor = Schema::hasTable('pagamentos_mercadopago');
-        $row = DB::table('matriculas as m')
-            ->join('planos as p', 'p.id', '=', 'm.plano_id')
-            ->join('status_matricula as s', 's.id', '=', 'm.status_id')
-            ->where('m.tenant_id', $tenantId)
-            ->where('m.aluno_id', $alunoId)
-            ->where('p.modalidade_id', $modalidadeId)
-            ->where('m.id', '<>', $novaId)
-            ->whereIn('s.codigo', ['vencida', 'cancelada'])
-            ->where(fn ($q) => $q->whereNull('m.matricula_anterior_id')->orWhere('m.matricula_anterior_id', '<>', $novaId))
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('matriculas as c')->whereColumn('c.matricula_anterior_id', 'm.id'))
-            ->where(function ($q) use ($temProvedor) {
-                $q->whereExists(fn ($e) => $e->selectRaw('1')->from('pagamentos_plano as pp')
-                    ->whereColumn('pp.matricula_id', 'm.id')->where('pp.status_pagamento_id', self::PAGO));
-                if ($temProvedor) {
-                    $q->orWhereExists(fn ($e) => $e->selectRaw('1')->from('pagamentos_mercadopago as mp')
-                        ->whereColumn('mp.matricula_id', 'm.id')->where('mp.status', 'approved'));
-                }
-            })
-            ->orderByDesc('m.id')
-            ->first(['m.id', 'm.plano_id', 'm.valor']);
-        if (! $row) {
-            return null;
-        }
-
-        $anterior = (array) $row;
-        $motivo = $this->ligar($novaId, $anterior, $planoNovoId, $valorNovo);
-        $this->encerrarAnterior((int) $anterior['id']);
-        Log::info('matricula.encadeada_ao_ciclo_pago', ['tenant_id' => $tenantId, 'nova_id' => $novaId, 'anterior_id' => (int) $anterior['id'], 'motivo' => $motivo]);
-
-        return (int) $anterior['id'];
     }
 
     /**
