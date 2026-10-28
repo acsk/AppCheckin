@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\DB;
+use Tests\Concerns\UsuarioDoToken;
 use Tests\TestCase;
 
 class V2AuthRoutesTest extends TestCase
 {
+    use UsuarioDoToken;
+
     public function test_ping_returns_pong(): void
     {
         $this->getJson('/v2/ping')
@@ -24,6 +28,7 @@ class V2AuthRoutesTest extends TestCase
     public function test_select_tenant_validates_tenant_id_with_jwt(): void
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
+        $this->mockUsuarioDoToken();
 
         $jwt = app(\App\Services\JwtService::class);
         $token = $jwt->encode([
@@ -69,6 +74,10 @@ class V2AuthRoutesTest extends TestCase
 
     public function test_tenants_public_returns_success_shape(): void
     {
+        $tenants = \Mockery::mock(\App\Repositories\TenantRepository::class);
+        $tenants->shouldReceive('listPublicActive')->andReturn([]);
+        $this->app->instance(\App\Repositories\TenantRepository::class, $tenants);
+
         $this->getJson('/v2/auth/tenants-public')
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -80,6 +89,8 @@ class V2AuthRoutesTest extends TestCase
 
     public function test_register_mobile_validates_required_fields(): void
     {
+        DB::statement('CREATE TABLE IF NOT EXISTS rate_limits (id INTEGER PRIMARY KEY, ip TEXT, action TEXT, attempts INTEGER, expires_at TEXT, created_at TEXT, updated_at TEXT)');
+
         $this->postJson('/v2/auth/register-mobile', [])
             ->assertStatus(422)
             ->assertJsonPath('code', 'VALIDATION_ERROR')

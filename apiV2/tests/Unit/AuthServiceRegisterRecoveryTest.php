@@ -122,6 +122,7 @@ class AuthServiceRegisterRecoveryTest extends TestCase
 
     public function test_password_recovery_always_returns_generic_message(): void
     {
+        $this->criarTabelaRateLimits();
         $usuarios = Mockery::mock(UsuarioRepository::class);
         $usuarios->shouldReceive('findByEmailGlobal')->andReturn(null);
 
@@ -155,6 +156,7 @@ class AuthServiceRegisterRecoveryTest extends TestCase
 
     public function test_register_mobile_validates_required_fields(): void
     {
+        $this->criarTabelaRateLimits();
         $service = $this->authService(
             Mockery::mock(JwtService::class),
             Mockery::mock(UsuarioRepository::class),

@@ -40,7 +40,8 @@ class ApplicationErrorAlertMailBuilderTest extends TestCase
         $this->assertStringStartsWith('AppCheckin [ERRO]', $mail['subject']);
         $this->assertStringContainsString('Teste de alerta ops', $mail['subject']);
         $this->assertStringContainsString('Stack trace line 1', $mail['html']);
-        $this->assertStringContainsString('"foo": "bar"', $mail['html']);
+        $this->assertStringContainsString('&quot;foo&quot;: &quot;bar&quot;', $mail['html']);
+        $this->assertStringContainsString('"foo": "bar"', $mail['text']);
         $this->assertStringContainsString('09/09/2026 08:39:31 (BRT)', $mail['html']);
         $this->assertStringContainsString('09/09/2026 08:39:31 (BRT)', $mail['text']);
     }
