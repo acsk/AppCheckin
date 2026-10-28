@@ -581,6 +581,64 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertStringContainsString('não cobra regularização', implode(' ', $sim['memoria']));
     }
 
+    public function test_pix_na_assinatura_so_com_o_parametro_ligado(): void
+    {
+        Schema::create('tenant_payment_credentials', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->string('provider');
+            $t->boolean('is_active')->default(true);
+            $t->boolean('enable_pix')->default(true);
+            $t->boolean('enable_pix_recorrencia')->default(false);
+        });
+        DB::table('tenant_payment_credentials')->insert(['tenant_id' => self::T, 'provider' => 'asaas']);
+
+        $oferta = collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', 50);
+        $this->assertSame(['cartao'], $oferta['metodos'], 'padrão: só cartão');
+        $r = $this->svc()->contratar(self::T, self::ANA[0], ['plano_ciclo_id' => 50, 'metodo' => 'pix', 'termos_hash' => $oferta['termos_hash']]);
+        $this->assertSame(422, $r['status']);
+        $this->assertSame('PIX_RECORRENCIA_DESLIGADO', $r['body']['code']);
+        $this->assertSame([], $this->asaas->assinaturas, 'nada criado no gateway');
+
+        DB::table('tenant_payment_credentials')->update(['enable_pix_recorrencia' => 1]);
+        $oferta = collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', 50);
+        $this->assertSame(['cartao', 'pix'], $oferta['metodos']);
+        $id = $this->contratar(50, self::ANA, 'pix');
+        $this->assertSame('PIX', $this->asaas->assinaturas['sub_1']['billing_type']);
+        $this->assertSame('pix', $this->contrato($id)->metodo);
+
+        DB::table('tenant_payment_credentials')->update(['enable_pix' => 0]);
+        $this->assertSame(['cartao'], collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', 50)['metodos'], 'sem PIX na conta, sem PIX na assinatura');
+    }
+
+    public function test_ciclos_herdam_os_termos_da_academia_salvo_os_personalizados(): void
+    {
+        (require database_path('migrations/2026_10_29_130000_termos_fidelizacao.php'))->up();
+        $termos = app(\App\Services\Recorrencia\TermosFidelizacaoService::class);
+        $texto = fn (int $ciclo) => collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', $ciclo)['termos'];
+
+        $termos->salvar(self::T, ['texto' => '7. Da ciência e aceitação (academia)'], 1);
+        DB::table('plano_ciclos')->where('id', 60)->update(['termos' => 'Termo próprio do trimestral']);
+
+        $this->assertStringContainsString('(academia)', $texto(50), 'bimestral herda');
+        $this->assertStringContainsString('(academia)', $texto(70), 'semestral herda');
+        $this->assertStringContainsString('Termo próprio do trimestral', $texto(60));
+        $this->assertStringNotContainsString('(academia)', $texto(60));
+
+        // Mudar o texto herdado muda o que o aluno aceita: a oferta antiga deixa de valer
+        $antes = collect($this->svc()->ofertas(self::T, 7))->firstWhere('plano_ciclo_id', 50);
+        $termos->salvar(self::T, ['texto' => '7. Nova redação (academia)'], 1);
+        $r = $this->svc()->contratar(self::T, self::ANA[0], ['plano_ciclo_id' => 50, 'metodo' => 'cartao', 'termos_hash' => $antes['termos_hash']]);
+        $this->assertSame('TERMOS_DESATUALIZADOS', $r['body']['code']);
+        $this->assertGreaterThan((int) $antes['termos_versao'], (int) DB::table('plano_ciclos')->where('id', 50)->value('termos_versao'));
+        $this->assertSame('Termo próprio do trimestral', DB::table('plano_ciclos')->where('id', 60)->value('termos'), 'personalizado continua');
+
+        $obter = $termos->salvar(self::T, ['texto' => '7. Nova redação (academia)', 'aplicar_a_todos' => true], 1)['body'];
+        $this->assertNull(DB::table('plano_ciclos')->where('id', 60)->value('termos'));
+        $this->assertTrue(collect($obter['ciclos'])->every(fn ($c) => $c['herda']));
+        $this->assertStringContainsString('Nova redação', $texto(60));
+    }
+
     public function test_calculo_em_centavos(): void
     {
         $this->assertSame(12345, Calc::centavos('123.45'));

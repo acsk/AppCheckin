@@ -36,7 +36,7 @@ export function filtrarGatewaysPix(
 }
 
 type PixResult =
-  | { ok: true; json: any; gateway?: string }
+  | { ok: true; json: any; gateway?: string; status?: number; cancelled?: boolean }
   | { ok: false; status: number; json: any; cancelled?: boolean; gateway?: string };
 
 function gatewaysDaResposta(json: any): PixGateway[] {

@@ -33,6 +33,9 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
+import CicloPaymentModes from "@/src/components/ds/CicloPaymentModes";
+import { chamarRecorrencia, type Oferta } from "@/src/services/recorrencia";
+import { precisaRevisaoMigracao, metodosAssinaturaDisponiveis } from "@/src/utils/cicloPagamento";
 import ContratacaoCicloSheet from "@/src/components/ContratacaoCicloSheet";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
@@ -124,8 +127,44 @@ export default function PlanoDetalhesScreen() {
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [selectedCicloId, setSelectedCicloId] = useState<number | null>(null);
-  // Ciclo com fidelização: o modal guiado escolhe entre o período de uma vez e a assinatura mensal
+  // Modo e método ficam na tela; a folha de assinatura recebe somente a revisão e o aceite.
   const [contratacaoAberta, setContratacaoAberta] = useState(false);
+  const [modoCobranca, setModoCobranca] = useState<'avista' | 'assinatura'>('avista');
+  const [ofertas, setOfertas] = useState<Oferta[]>([]);
+  const [carregandoOfertas, setCarregandoOfertas] = useState(false);
+  const [tentativaOfertas, setTentativaOfertas] = useState(0);
+  const [creditoPrevia, setCreditoPrevia] = useState<MigracaoSimulacao | null>(null);
+  const [revisaoTipo, setRevisaoTipo] = useState<'migracao' | 'compra'>('migracao');
+  const [revisaoGateway, setRevisaoGateway] = useState<string | undefined>();
+
+  useEffect(() => { setModoCobranca('avista'); }, [selectedCicloId]);
+  useEffect(() => {
+    setOfertas([]);
+    if (!plano?.id || !plano.ciclos?.some(c => c.cobranca_mensal)) return;
+    let ativo = true;
+    setCarregandoOfertas(true);
+    chamarRecorrencia('GET', `/ofertas?plano_id=${plano.id}`)
+      .then(({ ok, json }) => { if (ativo) setOfertas(ok ? json?.data?.ofertas || [] : []); })
+      .catch(() => { if (ativo) setOfertas([]); })
+      .finally(() => { if (ativo) setCarregandoOfertas(false); });
+    return () => { ativo = false; };
+  }, [plano?.id, tentativaOfertas]);
+
+  useEffect(() => {
+    setCreditoPrevia(null);
+    if (!plano || !selectedCicloId || !precisaRevisaoMigracao(plano, selectedCicloId)) return;
+    let ativo = true;
+    const timer = setTimeout(async () => {
+      try {
+        const token = await AsyncStorage.getItem('@appcheckin:token');
+        if (!token || !ativo) return;
+        const response = await fetch(`${apiUrl}/mobile/simular-migracao`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plano_id: plano.id, plano_ciclo_id: selectedCicloId }) });
+        const json = await response.json();
+        if (ativo && response.ok && json.success) setCreditoPrevia(json.data);
+      } catch { /* A revisão busca novamente os valores oficiais antes de confirmar. */ }
+    }, 300);
+    return () => { ativo = false; clearTimeout(timer); };
+  }, [plano, selectedCicloId, apiUrl]);
   const [comprando, setComprando] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
@@ -167,20 +206,20 @@ export default function PlanoDetalhesScreen() {
   const [taxaCartaoConfirmando, setTaxaCartaoConfirmando] = useState(false);
   const [paymentTarifa, setPaymentTarifa] = useState<TaxaCartaoSimulacao | null>(null);
   const pixCheckRunning = useRef(false);
+  const confirmacaoPagamentoRef = useRef(false);
 
   useEffect(() => {
     const ciclo = plano?.ciclos?.find((item) => item.id === selectedCicloId);
-    const opcoes = opcoesPagamentoVisiveis(
-      ciclo?.metodos_pagamento,
-      ciclo?.pix_disponivel === true,
-    );
+    const opcoes = modoCobranca === 'assinatura'
+      ? metodosAssinaturaDisponiveis(ofertas.find(o => Number(o.plano_ciclo_id) === Number(selectedCicloId))?.metodos)
+      : opcoesPagamentoVisiveis(ciclo?.metodos_pagamento, ciclo?.pix_disponivel === true);
     setMetodoSelecionado((atual) => {
       if (atual && opcoes.includes(atual)) {
         return atual;
       }
       return opcoes[0] ?? null;
     });
-  }, [plano, selectedCicloId]);
+  }, [plano, selectedCicloId, modoCobranca, ofertas]);
 
   const handleBack = () => {
     router.replace("/planos");
@@ -370,11 +409,17 @@ export default function PlanoDetalhesScreen() {
     provider?: string | null,
     metodo?: string | null,
     tarifa?: TaxaCartaoSimulacao | null,
+    revisado = false,
   ) => {
     setPaymentUrlToOpen(url);
     setPaymentProvider(provider ?? null);
     setPaymentMetodo(metodo ?? null);
     setPaymentTarifa(tarifa ?? null);
+    if (revisado) {
+      setRedirectModalVisible(false);
+      void Linking.openURL(url).catch(() => setRedirectModalVisible(true));
+      return;
+    }
     setRedirectModalVisible(true);
   };
 
@@ -584,7 +629,7 @@ export default function PlanoDetalhesScreen() {
       throw new Error(
         data.message ||
           data.error ||
-          `Não foi possível migrar o plano (${data.code || response.status})`,
+          `Não foi possível migrar o plano (${data.code || "erro de integração"})`,
       );
     }
 
@@ -628,6 +673,7 @@ export default function PlanoDetalhesScreen() {
       data.data?.gateway || data.data?.provider || migrarResult.gateway,
       metodo,
       tarifaConfirmada || data.data?.tarifa_cartao || null,
+      true,
     );
   };
 
@@ -668,6 +714,7 @@ export default function PlanoDetalhesScreen() {
     }
 
     const simulacao = simData.data || null;
+    if (!simulacao) throw new Error("A API não retornou os valores da revisão.");
     if (
       metodo === "cartao" &&
       simulacao &&
@@ -684,11 +731,13 @@ export default function PlanoDetalhesScreen() {
       if (taxaRes.cancelled) {
         return;
       }
-      if (taxaRes.ok && taxaRes.json?.data) {
+      if (!taxaRes.ok || !taxaRes.json?.data) throw new Error(taxaRes.json?.message || taxaRes.json?.error || "Não foi possível calcular as taxas do cartão.");
+      if (taxaRes.json?.data) {
         simulacao.taxa_cartao = taxaRes.json.data;
       }
     }
 
+    setRevisaoTipo("migracao");
     setMigracaoSimulacao(simulacao);
     setMigracaoMetodoPendente(metodo);
     setMigracaoModalVisible(true);
@@ -729,6 +778,7 @@ export default function PlanoDetalhesScreen() {
     metodo: MetodoPagamentoOpcao = "cartao",
     opcoes?: {
       jaSimulouTaxa?: boolean;
+      revisado?: boolean;
       gateway?: string;
       installment_count?: number;
       tarifaConfirmada?: TaxaCartaoSimulacao | null;
@@ -900,6 +950,7 @@ export default function PlanoDetalhesScreen() {
         data.data?.gateway || data.data?.provider || compraResult.gateway,
         metodo,
         opcoes?.tarifaConfirmada || data.data?.tarifa_cartao || null,
+        opcoes?.revisado === true,
       );
     } catch (err) {
       const errorMsg =
@@ -1068,6 +1119,47 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
+  const revisarPagamento = async () => {
+    const ciclo = plano?.ciclos?.find(c => c.id === selectedCicloId);
+    if (!plano || !ciclo || !metodoSelecionado || comprando || pixLoading) return;
+    if (modoCobranca === 'assinatura') { setContratacaoAberta(true); return; }
+    setComprando(true);
+    try {
+      if (precisaRevisaoMigracao(plano, ciclo.id)) { await abrirConfirmacaoMigracao(metodoSelecionado); return; }
+      let taxa: TaxaCartaoSimulacao | null = null;
+      let gateway: string | undefined;
+      if (metodoSelecionado === 'cartao') {
+        const token = await AsyncStorage.getItem('@appcheckin:token');
+        if (!token) throw new Error('Sessão expirada. Entre novamente.');
+        const cotacao = await simularTaxaCartao({ apiUrl, token, valor: Number(ciclo.valor), escolherGateway, onEscolherGateway, podeSandbox: podeSandboxPix });
+        if ('cancelled' in cotacao && cotacao.cancelled) return;
+        if (!cotacao.ok || !cotacao.json?.data) throw new Error(cotacao.json?.message || cotacao.json?.error || 'Não foi possível revisar o pagamento.');
+        taxa = cotacao.json.data;
+        gateway = cotacao.gateway || taxa?.provider;
+      }
+      setRevisaoTipo('compra'); setRevisaoGateway(gateway);
+      setMigracaoSimulacao({ plano_novo: { nome: plano.nome, ciclo_nome: ciclo.nome, valor_formatado: ciclo.valor_formatado }, valor_parcela: Number(ciclo.valor), valor_parcela_formatado: ciclo.valor_formatado, taxa_cartao: taxa });
+      setMigracaoMetodoPendente(metodoSelecionado); setMigracaoModalVisible(true);
+    } catch (e) { showErrorModal('Não foi possível revisar', e instanceof Error ? e.message : 'Tente novamente.', 'warning'); }
+    finally { setComprando(false); }
+  };
+
+  const confirmarRevisao = async () => {
+    if (confirmacaoPagamentoRef.current) return;
+    confirmacaoPagamentoRef.current = true;
+    if (revisaoTipo === 'migracao') {
+      try { await executarMigracaoConfirmada(); } finally { confirmacaoPagamentoRef.current = false; }
+      return;
+    }
+    const metodo = migracaoMetodoPendente, taxa = migracaoSimulacao?.taxa_cartao;
+    if (!metodo || confirmandoMigracao) { confirmacaoPagamentoRef.current = false; return; }
+    setConfirmandoMigracao(true); setMigracaoModalVisible(false);
+    try {
+      if (metodo === 'pix') await handlePagarPix();
+      else await handleContratar(metodo, { jaSimulouTaxa: true, revisado: true, gateway: revisaoGateway, installment_count: taxa?.parcela_count ?? 1, tarifaConfirmada: taxa });
+    } finally { confirmacaoPagamentoRef.current = false; setConfirmandoMigracao(false); setMigracaoSimulacao(null); setMigracaoMetodoPendente(null); }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -1123,10 +1215,10 @@ export default function PlanoDetalhesScreen() {
 
   const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
   const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
-  const opcoesMetodo = opcoesPagamentoVisiveis(
-    selectedCiclo?.metodos_pagamento,
-    selectedCiclo?.pix_disponivel === true,
-  );
+  const ofertaSelecionada = ofertas.find(o => Number(o.plano_ciclo_id) === Number(selectedCicloId)) || null;
+  const opcoesMetodo = modoCobranca === 'assinatura'
+    ? metodosAssinaturaDisponiveis(ofertaSelecionada?.metodos)
+    : opcoesPagamentoVisiveis(selectedCiclo?.metodos_pagamento, selectedCiclo?.pix_disponivel === true);
   const canPix = opcoesMetodo.includes("pix");
   const canCheckout =
     opcoesMetodo.includes("cartao") || opcoesMetodo.includes("boleto");
@@ -1221,16 +1313,16 @@ export default function PlanoDetalhesScreen() {
             </Text>
           </View>
           <View style={[styles.fact, styles.factDivider]}>
-            <Text style={styles.factK}>DURAÇÃO</Text>
+            <Text style={styles.factK}>{assinaturaDisponivelEm ? "SEU PLANO" : "DURAÇÃO"}</Text>
             <Text style={styles.factV} numberOfLines={1}>
-              {plano.duracao_texto ||
+              {assinaturaDisponivelEm ? `Até ${assinaturaDisponivelEm.slice(0, 5)}` : plano.duracao_texto ||
                 `${plano.duracao_dias} ${plano.duracao_dias === 1 ? "dia" : "dias"}`}
             </Text>
           </View>
           <View style={[styles.fact, styles.factDivider]}>
-            <Text style={styles.factK}>MENSAL</Text>
+            <Text style={styles.factK}>{creditoPrevia?.credito?.valor_formatado ? "SEU CRÉDITO" : "MENSAL"}</Text>
             <Text style={styles.factV} numberOfLines={1}>
-              {plano.valor_formatado || `${formatCurrency(Number(plano.valor) || 0)}/mês`}
+              {creditoPrevia?.credito?.valor_formatado || plano.valor_formatado || `${formatCurrency(Number(plano.valor) || 0)}/mês`}
             </Text>
           </View>
         </View>
@@ -1274,8 +1366,8 @@ export default function PlanoDetalhesScreen() {
                     : `Economize ${ciclo.economia_valor}`
                   : null;
                 return (
+                  <View key={ciclo.id}>
                   <PlanOption
-                    key={ciclo.id}
                     label={ciclo.nome}
                     detail={
                       ciclo.cobranca_mensal
@@ -1295,6 +1387,12 @@ export default function PlanoDetalhesScreen() {
                     selected={selectedCicloId === ciclo.id}
                     onSelect={() => setSelectedCicloId(ciclo.id)}
                   />
+                  {selectedCicloId === ciclo.id && ciclo.cobranca_mensal && ciclo.meses > 1 ? <>
+                    <CicloPaymentModes value={modoCobranca} onChange={setModoCobranca} total={ciclo.valor_formatado} mensal={ciclo.valor_mensal_formatado} meses={ciclo.meses}
+                      bloqueio={assinaturaDisponivelEm ? `Disponível quando seu plano atual vencer (${assinaturaDisponivelEm})` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
+                    {!carregandoOfertas && !ofertaSelecionada ? <Button size="sm" variant="ghost" onPress={() => setTentativaOfertas(v => v + 1)}>Consultar assinatura novamente</Button> : null}
+                  </> : null}
+                  </View>
                 );
               })}
             </View>
@@ -1325,17 +1423,6 @@ export default function PlanoDetalhesScreen() {
             <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
           </View>
         </View>
-      ) : selectedCiclo?.cobranca_mensal ? (
-        // À vista ou assinatura: valor, informações contratuais e pagamento no modal guiado
-        <View style={styles.dock} accessibilityLabel="Contratação">
-          <View style={styles.dockFoot}>
-            <View style={styles.summaryText}>
-              <Text style={styles.summaryLabel} numberOfLines={1}>{`${selectedCiclo.nome} · à vista ou assinatura`}</Text>
-              <Text style={styles.summaryTotal} numberOfLines={1}>{`${selectedCiclo.valor_formatado} ou ${selectedCiclo.valor_mensal_formatado}/mês`}</Text>
-            </View>
-            <Button size="lg" iconRight="arrow-right" loading={comprando || pixLoading} onPress={() => setContratacaoAberta(true)}>Continuar</Button>
-          </View>
-        </View>
       ) : selectedCiclo || ciclos.length === 0 ? (
         <View style={styles.dock} accessibilityLabel="Pagamento">
           {opcoesMetodo.length > 0 ? (
@@ -1360,7 +1447,7 @@ export default function PlanoDetalhesScreen() {
               <Text style={styles.summaryLabel} numberOfLines={1}>
                 {selectedCiclo
                   ? [
-                      selectedCiclo.nome,
+                      `${selectedCiclo.nome} · ${modoCobranca === "assinatura" ? "mensal" : "à vista"}`,
                       metodoSelecionado === "pix"
                         ? "PIX"
                         : metodoSelecionado === "boleto"
@@ -1372,7 +1459,8 @@ export default function PlanoDetalhesScreen() {
                   : "Escolha um ciclo"}
               </Text>
               <Text style={styles.summaryTotal} numberOfLines={1}>
-                {selectedCiclo ? selectedCiclo.valor_formatado : "—"}
+                {modoCobranca === 'assinatura' ? `${ofertaSelecionada ? formatCurrency(Number(ofertaSelecionada.valor_mensal)) : selectedCiclo?.valor_mensal_formatado}/mês`
+                  : creditoPrevia?.valor_parcela_formatado || (selectedCiclo && precisaRevisaoMigracao(plano, selectedCiclo.id) ? "A calcular" : selectedCiclo ? selectedCiclo.valor_formatado : "—")}
               </Text>
             </View>
           <Button
@@ -1389,15 +1477,8 @@ export default function PlanoDetalhesScreen() {
                       : "credit-card"
             }
             loading={comprando || pixLoading}
-            disabled={!canBuy}
-            onPress={() => {
-              if (!metodoSelecionado) return;
-              if (metodoSelecionado === "pix") {
-                void handlePagarPix();
-                return;
-              }
-              void handleContratar(metodoSelecionado);
-            }}
+            disabled={!canBuy || (modoCobranca === "assinatura" && (!ofertaSelecionada || !!assinaturaDisponivelEm))}
+            onPress={() => void revisarPagamento()}
           >
             {comprando || pixLoading
               ? "Processando…"
@@ -1405,10 +1486,7 @@ export default function PlanoDetalhesScreen() {
                 ? "Escolha"
                 : !metodoSelecionado
                   ? "Indisponível"
-                  : rotuloPagarMetodo(
-                      metodoSelecionado,
-                      podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar",
-                    )}
+                  : modoCobranca === 'assinatura' ? 'Revisar e assinar' : 'Revisar e pagar'}
           </Button>
           </View>
         </View>
@@ -1417,6 +1495,7 @@ export default function PlanoDetalhesScreen() {
       {plano && selectedCiclo?.cobranca_mensal ? (
         <ContratacaoCicloSheet
           visible={contratacaoAberta}
+          revisaoDireta ofertaInicial={ofertaSelecionada} metodoInicial={metodoSelecionado}
           planoId={plano.id}
           ciclo={selectedCiclo}
           assinaturaDisponivelEm={assinaturaDisponivelEm}
@@ -1438,6 +1517,7 @@ export default function PlanoDetalhesScreen() {
       {/* Confirmação da troca de plano (design system · TelasPagamento) */}
       <MigracaoPlanoSheet
         visible={migracaoModalVisible}
+        tipo={revisaoTipo}
         simulacao={migracaoSimulacao}
         metodo={migracaoMetodoPendente}
         planoNovoNome={plano?.nome}
@@ -1447,7 +1527,7 @@ export default function PlanoDetalhesScreen() {
         onChangeTaxa={(next) =>
           setMigracaoSimulacao((prev) => (prev ? { ...prev, taxa_cartao: next } : prev))
         }
-        onConfirm={() => void executarMigracaoConfirmada()}
+        onConfirm={() => void confirmarRevisao()}
         onClose={() => {
           if (confirmandoMigracao) return;
           setMigracaoModalVisible(false);

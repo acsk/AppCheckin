@@ -49,6 +49,9 @@ final class PermissaoRotas
         [self::LEITURA, '#^(admin/alunos|admin/usuarios|tenant/usuarios)(/|$)#', Permissao::ALUNOS_VER],
         [null, '#^(admin/alunos|tenant/usuarios)(/|$)#', Permissao::ALUNOS_EDITAR],
 
+        // Termos da fidelização: parte do cadastro de planos
+        [null, '#^admin/termos-fidelizacao$#', Permissao::CONFIGURACOES_EDITAR],
+
         // Recorrências (planos com fidelização): ver com o financeiro; cancelar/sincronizar com a baixa
         [self::LEITURA, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_VER],
         [null, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_BAIXAR],

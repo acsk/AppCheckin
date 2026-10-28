@@ -32,6 +32,7 @@ export type MigracaoSimulacao = {
 
 type Props = {
   visible: boolean;
+  tipo?: "migracao" | "compra";
   simulacao: MigracaoSimulacao | null;
   metodo: string | null;
   /** Fallback do novo plano quando a simulação não traz nome/ciclo. */
@@ -48,6 +49,7 @@ type Props = {
 // cartão quando houver repasse de taxa, e a conta até "Você paga agora".
 export default function MigracaoPlanoSheet({
   visible,
+  tipo = "migracao",
   simulacao,
   metodo,
   planoNovoNome,
@@ -65,10 +67,10 @@ export default function MigracaoPlanoSheet({
   const m = String(metodo || "").toLowerCase();
   const cartao = m === "cartao";
   const semCobranca = Number(sim?.valor_parcela ?? 0) <= 0;
-  const provedor = taxa && idProvedorPagamento(taxa.provider) ? nomeProvedorPagamento(taxa.provider) : null;
+  const provider = sim?.taxa_cartao?.provider;
+  const provedor = provider && idProvedorPagamento(provider) ? nomeProvedorPagamento(provider) : null;
 
   const totalValor = taxa ? taxa.valor_cobrar_formatado : sim?.valor_parcela_formatado || "R$ 0,00";
-  const totalCurto = taxa && n > 1 ? taxa.rotulo_parcela : totalValor;
 
   const novoNome = sim?.plano_novo?.nome || planoNovoNome || "Novo plano";
   const novoCiclo = sim?.plano_novo?.ciclo_nome || sim?.ciclo?.novo || cicloNovoNome || null;
@@ -113,29 +115,30 @@ export default function MigracaoPlanoSheet({
             : null;
 
   const primary = semCobranca
-    ? { label: "Confirmar troca", icon: "check" as const }
+    ? { label: tipo === "compra" ? "Ativar plano" : "Confirmar troca", icon: "check" as const }
     : m === "pix"
       ? { label: `Gerar PIX de ${totalValor}`, icon: "zap" as const }
       : m === "boleto"
         ? { label: `Gerar boleto de ${totalValor}`, icon: "file-text" as const }
-        : { label: `Pagar ${totalCurto}`, iconRight: "external-link" as const };
+        : { label: `Pagar ${totalValor}${provedor ? ` no ${provedor}` : ""}`, iconRight: "external-link" as const };
 
   return (
     <PaySheet
       visible={visible && !!sim}
       icon="repeat"
-      eyebrow="Simulação"
-      title={semCobranca ? "Confirme a troca" : "Simular migração"}
+      eyebrow={[cicloNovoNome || novoCiclo, "à vista"].filter(Boolean).join(" · ")}
+      title={semCobranca && tipo === "migracao" ? "Confirme a troca" : "Revise e pague"}
       description={
         semCobranca
           ? "O crédito cobre o novo plano. Nada a pagar."
-          : "Seu plano atual continua ativo. A troca só acontece depois do pagamento. Se desistir, nada muda."
+          : tipo === "compra" ? "Confira o ciclo, a forma de pagamento e o valor antes de continuar." : "Seu plano atual continua ativo. A troca só acontece depois do pagamento. Se desistir, nada muda."
       }
       secureNote={
         cartao && !semCobranca
           ? `Você conclui no site seguro ${provedor ? `do ${provedor}` : "do provedor"}. A academia recebe o valor do plano.`
-          : null
+          : m === "pix" && !semCobranca ? "O código PIX e sua validade aparecem depois de gerar o pagamento." : null
       }
+      resumo={tipo === "compra" ? { titulo: novoNome, subtitulo: novoCiclo } : null}
       primary={{ ...primary, loading, onPress: onConfirm }}
       onClose={onClose}
     >

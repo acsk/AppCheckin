@@ -172,6 +172,7 @@ class AdminPaymentCredentialsService
                 'sobretaxa_antecipacao_parcelada_percentual' => $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'],
                 'enable_antecipacao_automatica' => $sobretaxa['enable_antecipacao_automatica'],
                 'conciliar_somente_vinculados' => $this->somenteVinculadosDoBody($provider, $body, $existente),
+                'enable_pix_recorrencia' => $this->pixRecorrenciaDoBody($provider, $body, $existente),
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -204,6 +205,7 @@ class AdminPaymentCredentialsService
                 $update['sobretaxa_antecipacao_parcelada_percentual'] = $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'];
                 $update['enable_antecipacao_automatica'] = $sobretaxa['enable_antecipacao_automatica'];
                 $update['conciliar_somente_vinculados'] = $dados['conciliar_somente_vinculados'];
+                $update['enable_pix_recorrencia'] = $dados['enable_pix_recorrencia'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -416,6 +418,7 @@ class AdminPaymentCredentialsService
         $row['enable_antecipacao_automatica'] = $this->boolish($row['enable_antecipacao_automatica'] ?? $row['enable_sobretaxa_antecipacao'] ?? false);
         $row['enable_sobretaxa_antecipacao'] = $this->boolish($row['enable_sobretaxa_antecipacao'] ?? false);
         $row['conciliar_somente_vinculados'] = $this->boolish($row['conciliar_somente_vinculados'] ?? $provider === 'mercadopago');
+        $row['enable_pix_recorrencia'] = $this->boolish($row['enable_pix_recorrencia'] ?? false);
         $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
@@ -442,6 +445,7 @@ class AdminPaymentCredentialsService
             'enable_credit_card' => true,
             'enable_antecipacao_automatica' => false,
             'conciliar_somente_vinculados' => $provider === 'mercadopago',
+            'enable_pix_recorrencia' => false,
             'enable_sobretaxa_antecipacao' => false,
             'sobretaxa_antecipacao_avista_percentual' => 1.15,
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
@@ -499,6 +503,17 @@ class AdminPaymentCredentialsService
         }
 
         return $v;
+    }
+
+    /** PIX na assinatura mensal: só no Asaas (único gateway da recorrência) e com PIX ligado. */
+    private function pixRecorrenciaDoBody(string $provider, array $body, ?array $existente): int
+    {
+        if ($provider !== 'asaas') {
+            return 0;
+        }
+        $pix = $this->boolish($body['enable_pix'] ?? $existente['enable_pix'] ?? true);
+
+        return $pix && $this->boolish($body['enable_pix_recorrencia'] ?? $existente['enable_pix_recorrencia'] ?? false) ? 1 : 0;
     }
 
     /**

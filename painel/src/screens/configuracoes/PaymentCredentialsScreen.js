@@ -45,6 +45,7 @@ function formDe(provider, row) {
     enable_credit_card: row ? row.enable_credit_card !== false && row.enable_credit_card !== 0 : true,
     enable_antecipacao_automatica: ligado(row?.enable_antecipacao_automatica),
     conciliar_somente_vinculados: row?.conciliar_somente_vinculados == null ? provider === 'mercadopago' : ligado(row.conciliar_somente_vinculados),
+    enable_pix_recorrencia: ligado(row?.enable_pix_recorrencia),
     enable_sobretaxa_antecipacao: ligado(row?.enable_sobretaxa_antecipacao),
     sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
@@ -156,6 +157,7 @@ export default function PaymentCredentialsScreen() {
       enable_credit_card: !!f.enable_credit_card,
       enable_antecipacao_automatica: !!f.enable_antecipacao_automatica,
       conciliar_somente_vinculados: !!f.conciliar_somente_vinculados,
+      enable_pix_recorrencia: provider === 'asaas' && !!f.enable_pix && !!f.enable_pix_recorrencia,
       enable_sobretaxa_antecipacao: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao,
       sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
       sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
@@ -371,6 +373,27 @@ export default function PaymentCredentialsScreen() {
                 ))}
               </div>
             </div>
+
+            {selecionado === 'asaas' ? (
+              <div className="ck-section">
+                <h3 className="ck-section__title">Assinatura mensal (planos com fidelidade)</h3>
+                <p className="ck-section__desc">
+                  No cartão a mensalidade é debitada sozinha todo mês. No PIX o Asaas gera um PIX novo a cada mês e o
+                  aluno precisa pagar (não há débito automático), o que aumenta o risco de atraso.
+                </p>
+                <Switch
+                  label="Usar PIX na assinatura recorrente"
+                  description={!form.enable_pix
+                    ? 'Ligue o PIX nas formas de pagamento acima para poder usar.'
+                    : form.enable_pix_recorrencia
+                      ? 'Sim: o aluno escolhe cartão ou PIX ao assinar.'
+                      : 'Não: a assinatura é só no cartão. Quem quiser PIX paga o ciclo à vista.'}
+                  checked={!!form.enable_pix && !!form.enable_pix_recorrencia}
+                  disabled={!form.enable_pix}
+                  onChange={(v) => atualizar(selecionado, { enable_pix_recorrencia: v })}
+                />
+              </div>
+            ) : null}
 
             <div className="ck-section">
               <h3 className="ck-section__title">Conciliação bancária</h3>

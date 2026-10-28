@@ -7,6 +7,8 @@ import { PlanosLista } from '../../components/ck/planos';
 import { gerarPdfPlanos } from '../../utils/relatorioPlanosPdf';
 import { showSuccess, showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
+import TermosFidelizacaoModal from '../../components/ck/termosFidelizacao';
+import useTermosFidelizacao from './useTermosFidelizacao';
 
 const bool = (v) => v === true || v === 1 || v === '1';
 
@@ -35,6 +37,7 @@ export default function PlanosScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const termos = useTermosFidelizacao(!isSuperAdmin);
   const [tenants, setTenants] = useState([]);
   const [tenant, setTenant] = useState(null);
   const [tenantQuery, setTenantQuery] = useState('');
@@ -166,7 +169,9 @@ export default function PlanosScreen() {
         onDeactivate={(p) => setConfirm(p)}
         onReport={gerarRelatorio}
         reportLoading={gerandoRelatorio}
+        onTermos={isSuperAdmin ? undefined : termos.abrir}
       />
+      <TermosFidelizacaoModal open={termos.aberto} dados={termos.dados} saving={termos.salvando} onCancel={termos.fechar} onSave={(payload) => termos.salvar(payload)} />
       <Modal
         open={!!confirm}
         size="sm"

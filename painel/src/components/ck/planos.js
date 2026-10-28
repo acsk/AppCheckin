@@ -2,7 +2,7 @@
    Estilos: src/theme/ck-planos.css. Primitivas de ./index. */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActionMenu, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SelectField, Switch, TextAreaField, TextField,
+  ActionMenu, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch, TextAreaField, TextField,
 } from './index';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -60,7 +60,7 @@ function CycleTags({ cycles, max = 3 }) {
 }
 
 export function PlanosLista({
-  plans = [], loading, error, readOnly, onNew, onOpen, onDeactivate, onReport, reportLoading, toolbarStart, emptyHint, showTenant,
+  plans = [], loading, error, readOnly, onNew, onOpen, onDeactivate, onReport, reportLoading, toolbarStart, emptyHint, showTenant, onTermos,
 }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('todos');
@@ -87,6 +87,7 @@ export function PlanosLista({
         description={readOnly ? 'Planos criados pelas academias, com os ciclos de cobrança de cada um.' : 'Defina quanto custa cada modalidade e em quais ciclos o aluno pode pagar.'}
         actions={readOnly ? null : (
           <>
+            {onTermos ? <Button icon="file-text" onClick={onTermos}>Termos da fidelidade</Button> : null}
             {onReport ? <Button icon="download" loading={reportLoading} onClick={onReport}>Relatório PDF</Button> : null}
             <Button variant="primary" icon="plus" onClick={onNew}>Novo plano</Button>
           </>
@@ -437,7 +438,7 @@ Ao término da fidelização, a assinatura seguirá a modalidade de continuidade
 Ao confirmar a contratação, o aluno declara ter recebido informações claras sobre valores, descontos, prazo de fidelização, cobrança recorrente, cancelamento e condições de utilização do serviço, concordando com os termos apresentados, sem prejuízo dos direitos assegurados pela legislação vigente.`;
 
 /* ---------- CicloModal ---------- */
-const FID_PADRAO = { mensal: false, renovacao: 'mensal', regularizacao: false, proporcional: false, arrependimento: 7, termos: '' };
+const FID_PADRAO = { mensal: false, renovacao: 'mensal', regularizacao: false, proporcional: false, arrependimento: 7, termos: '', proprios: false };
 const FID_RENOVACAO = [
   { value: 'mensal', label: 'Continua mensal, pelo valor sem desconto' },
   { value: 'promocional', label: 'Continua pelo mesmo valor, sem prazo' },
@@ -446,7 +447,7 @@ const FID_RENOVACAO = [
 ];
 const QUICK_DISCOUNTS = [0, 5, 10, 15, 20];
 
-export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, saving, onSave, onCancel }) {
+export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, saving, onSave, onCancel, termosAcademia = '', onEditarTermos }) {
   const editing = !!cycle?.id;
   const [typeId, setTypeId] = useState('');
   const [amount, setAmount] = useState('');
@@ -460,7 +461,8 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
 
   useEffect(() => {
     if (!open) return;
-    setFid({ ...FID_PADRAO, ...(cycle?.fidelity || {}) });
+    // Sem texto próprio, o ciclo herda os termos da academia
+    setFid({ ...FID_PADRAO, ...(cycle?.fidelity || {}), proprios: !!(cycle?.fidelity?.termos || '').trim() });
     setTypeId(cycle?.typeId ? String(cycle.typeId) : '');
     setAmount(cycle?.amount != null ? maskMoney(Math.round(cycle.amount * 100)) : '');
     setRecurring(cycle ? !!cycle.recurring : true);
@@ -491,7 +493,8 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
   const save = () => {
     setTried(true);
     if (!ok || saving) return;
-    onSave?.({ id: cycle?.id, typeId: Number(typeId), amount: value, recurring: fid.mensal ? false : recurring, makeup, active, fidelity: fid });
+    onSave?.({ id: cycle?.id, typeId: Number(typeId), amount: value, recurring: fid.mensal ? false : recurring, makeup, active,
+      fidelity: { ...fid, termos: fid.proprios ? fid.termos : '' } });
   };
 
   return (
@@ -574,9 +577,26 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
                     : 'Desligado: o sistema só calcula e mostra o valor; nada é cobrado.'} />
                 {fid.regularizacao ? <Switch label="Proporcional ao último mês" checked={fid.proporcional} onChange={(v) => setF({ proporcional: v })}
                   description="Se o cancelamento cortar o acesso no meio de um mês pago, conta só os dias usados." /> : null}
-                <TextAreaField label="Termos adicionais" rows={fid.termos ? 8 : 3} maxLength={5000} value={fid.termos} onChange={(e) => setF({ termos: e.target.value })}
-                  labelAside={<Button size="sm" variant="ghost" icon="file-text" onClick={() => setF({ termos: TERMO_MODELO_FIDELIZACAO })}>{fid.termos ? 'Restaurar modelo' : 'Usar termo modelo'}</Button>}
-                  hint="Aparecem no aceite, depois do texto gerado com valores, prazo e regras deste ciclo. Mudar algo gera uma nova versão; contratos já aceitos não mudam." />
+                <div className="ck-cm__termos">
+                  <SegmentedControl label="Termos adicionais" block value={fid.proprios ? 'proprios' : 'academia'}
+                    onChange={(v) => setF({ proprios: v === 'proprios', termos: v === 'proprios' && !fid.termos.trim() ? termosAcademia : fid.termos })}
+                    options={[{ value: 'academia', label: 'Termos da academia' }, { value: 'proprios', label: 'Próprios deste ciclo' }]} />
+                  {fid.proprios ? (
+                    <TextAreaField label="Termos deste ciclo" rows={8} maxLength={5000} value={fid.termos} onChange={(e) => setF({ termos: e.target.value })}
+                      labelAside={<span className="ck-cm__acts">
+                        {termosAcademia ? <Button size="sm" variant="ghost" icon="copy" onClick={() => setF({ termos: termosAcademia })}>Copiar da academia</Button> : null}
+                        <Button size="sm" variant="ghost" icon="file-text" onClick={() => setF({ termos: TERMO_MODELO_FIDELIZACAO })}>Termo modelo</Button>
+                      </span>}
+                      hint="Só este ciclo usa este texto. Mudar algo gera uma nova versão; contratos já aceitos não mudam." />
+                  ) : (
+                    <>
+                      <div className={'ck-cm__termosprev' + (termosAcademia ? '' : ' is-vazio')}>
+                        {termosAcademia || 'A academia ainda não tem termos da fidelidade. O aceite mostra só o texto gerado com valores, prazo e regras deste ciclo.'}
+                      </div>
+                      {onEditarTermos ? <Button size="sm" icon="pencil" onClick={onEditarTermos}>{termosAcademia ? 'Editar termos da academia' : 'Criar termos da academia'}</Button> : null}
+                    </>
+                  )}
+                </div>
               </div>
             ) : null}
           </div>

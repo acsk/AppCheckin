@@ -88,6 +88,23 @@ const planoService = {
   /**
    * Tipos de ciclo (frequências de assinatura)
    */
+  // Termos adicionais da fidelização herdados por todos os ciclos da academia
+  async termosFidelizacao() {
+    try {
+      return (await api.get('/admin/termos-fidelizacao')).data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Erro ao carregar os termos' };
+    }
+  },
+
+  async salvarTermosFidelizacao(dados) {
+    try {
+      return (await api.put('/admin/termos-fidelizacao', dados)).data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Erro ao salvar os termos' };
+    }
+  },
+
   async listarTiposCiclo() {
     try {
       const response = await api.get('/admin/assinatura-frequencias');

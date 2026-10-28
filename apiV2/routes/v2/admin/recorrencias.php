@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V2\Admin\RecorrenciaController;
+use App\Http\Controllers\Api\V2\Admin\TermosFidelizacaoController;
 use Illuminate\Support\Facades\Route;
 
 // Contexto: prefix('v2/admin') + jwt.auth + admin.auth (routes/api.php). Estáticas antes de /{id}.
@@ -12,3 +13,7 @@ Route::get('/recorrencias/{id}', [RecorrenciaController::class, 'show'])->whereN
 Route::get('/recorrencias/{id}/simular-cancelamento', [RecorrenciaController::class, 'simular'])->whereNumber('id');
 Route::post('/recorrencias/{id}/cancelar', [RecorrenciaController::class, 'cancelar'])->whereNumber('id');
 Route::post('/recorrencias/{id}/sincronizar', [RecorrenciaController::class, 'sincronizar'])->whereNumber('id');
+
+// Termos adicionais da fidelização herdados pelos ciclos (Planos)
+Route::get('/termos-fidelizacao', [TermosFidelizacaoController::class, 'show']);
+Route::put('/termos-fidelizacao', [TermosFidelizacaoController::class, 'update']);

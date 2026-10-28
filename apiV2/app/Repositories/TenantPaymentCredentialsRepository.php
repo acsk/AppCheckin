@@ -79,6 +79,22 @@ class TenantPaymentCredentialsRepository
         return Schema::hasColumn('tenant_payment_credentials', 'enable_antecipacao_automatica');
     }
 
+    private function temColunaPixRecorrencia(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'enable_pix_recorrencia');
+    }
+
+    /** PIX aceito na assinatura mensal (fidelização) da academia: credencial Asaas ativa com o flag ligado. */
+    public function pixRecorrenciaHabilitado(int $tenantId): bool
+    {
+        if (! Schema::hasTable('tenant_payment_credentials') || ! $this->temColunaPixRecorrencia()) {
+            return false;
+        }
+
+        return DB::table('tenant_payment_credentials')->where('tenant_id', $tenantId)->where('provider', 'asaas')
+            ->where('is_active', 1)->where('enable_pix', 1)->where('enable_pix_recorrencia', 1)->exists();
+    }
+
     private function temColunaSomenteVinculados(): bool
     {
         return Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados');
@@ -91,6 +107,8 @@ class TenantPaymentCredentialsRepository
             : '';
 
         $sql .= $this->temColunaAntecipacaoAutomatica() ? ', enable_antecipacao_automatica' : '';
+
+        $sql .= $this->temColunaPixRecorrencia() ? ', enable_pix_recorrencia' : '';
 
         return $sql.($this->temColunaSomenteVinculados() ? ', conciliar_somente_vinculados' : '');
     }
@@ -150,6 +168,10 @@ class TenantPaymentCredentialsRepository
             $cols .= ', conciliar_somente_vinculados';
             $params[] = $dados['conciliar_somente_vinculados'] ?? 0;
         }
+        if ($this->temColunaPixRecorrencia()) {
+            $cols .= ', enable_pix_recorrencia';
+            $params[] = $dados['enable_pix_recorrencia'] ?? 0;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -191,6 +213,10 @@ class TenantPaymentCredentialsRepository
         if ($this->temColunaSomenteVinculados() && array_key_exists('conciliar_somente_vinculados', $dados)) {
             $sql .= ', conciliar_somente_vinculados = ?';
             $params[] = $dados['conciliar_somente_vinculados'];
+        }
+        if ($this->temColunaPixRecorrencia() && array_key_exists('enable_pix_recorrencia', $dados)) {
+            $sql .= ', enable_pix_recorrencia = ?';
+            $params[] = $dados['enable_pix_recorrencia'];
         }
         $sql .= ', updated_at = NOW()';
 

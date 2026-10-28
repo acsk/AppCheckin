@@ -15,6 +15,10 @@ export type Oferta = {
   regularizacao_ativa: boolean;
   termos: string;
   termos_hash: string;
+  termos_versao?: number;
+  politica_renovacao?: string;
+  /** Formas aceitas na assinatura: cartão sempre; PIX se a academia ligou nas Configurações de pagamento */
+  metodos?: ("cartao" | "pix")[];
 };
 
 export type PagamentoAberto = {

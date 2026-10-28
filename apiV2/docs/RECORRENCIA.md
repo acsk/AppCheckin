@@ -17,9 +17,15 @@ Campos da assinatura:
   - `fidelizacao_meses` (padrão = meses do ciclo) e `politica_renovacao`;
   - `regularizacao_ativa`, desligada por padrão: o sistema só calcula e mostra;
   - `regularizacao_proporcional`, `arrependimento_dias` (mínimo 7, CDC art. 49);
-  - `termos`: texto livre somado aos termos gerados. O botão "Usar termo modelo" preenche os 7 itens
-    padrão (fidelização, cobrança recorrente, cancelamento, arrependimento, reposição, renovação, ciência),
-    editáveis antes de salvar.
+  - **Termos adicionais:** herdados da academia por padrão (tabela `termos_fidelizacao`, um texto por
+    academia, editado em Planos → "Termos da fidelidade" ou pelo modal do ciclo). O ciclo só guarda
+    `plano_ciclos.termos` quando é personalizado ("Próprios deste ciclo").
+  - **Editor da academia:**
+    - "Usar termo modelo" (os 7 itens padrão);
+    - "Importar de um ciclo" (aproveita um texto já colado num ciclo);
+    - "Aplicar a todos os ciclos": os personalizados voltam a herdar.
+  - **Versão:** mudar o texto da academia sobe a versão dos termos dos ciclos que herdam. Quem já assinou
+    continua com o texto que aceitou.
 
 A flag antiga "Cobrança recorrente" (`permite_recorrencia`) agora se chama "Renovação automática no cartão
 (Mercado Pago)". Ela só tem efeito com Mercado Pago e cartão (preapproval que cobra o ciclo inteiro a cada
@@ -49,6 +55,17 @@ matrícula com contrato vivo (`409 ASSINATURA_FIDELIDADE_ATIVA`).
 A tela de assinatura tem dois passos:
 1. resumo, termos e aceite;
 2. forma de pagamento (cartão ou PIX).
+
+## Formas de pagamento da assinatura
+
+- **Cartão:** sempre disponível. É débito automático: o aluno paga a 1ª pela fatura e as seguintes são
+  debitadas no mesmo cartão.
+- **PIX:** só com **"Usar PIX na assinatura recorrente"** ligado em Configurações de pagamento → Asaas
+  (`tenant_payment_credentials.enable_pix_recorrencia`, padrão **Não**), e com o PIX da conta ligado. No PIX
+  o Asaas gera um PIX novo por mês e o aluno precisa pagar, porque não há débito automático.
+- Com o flag desligado, `contratar` com PIX responde `422 PIX_RECORRENCIA_DESLIGADO`, e o app mostra só o
+  cartão. Quem quiser PIX paga o ciclo à vista.
+- Contratos já criados com PIX seguem até o fim.
 
 ## Cobrança mensal e baixa
 
@@ -187,3 +204,25 @@ A memória de cálculo completa fica em `cancelamentos_recorrencia.memoria_calcu
 - Painel: `src/screens/recorrencias/*`, `CicloModal` (Planos).
 - App: `src/components/FidelidadeSheet.tsx`, `MinhaAssinaturaFidelidade.tsx`.
 - Testes: `tests/Feature/RecorrenciaFidelizacaoTest.php` (19 cenários).
+
+
+## Fluxo de ciclo e pagamento no mobile
+
+A tela de detalhes mantém ciclo, escolha entre **À vista** e **Mensal** e forma de
+pagamento juntos. A opção mensal só aparece em ciclos configurados para isso e
+segue a disponibilidade da oferta e a restrição de plano atual ainda vigente.
+PIX mensal continua dependendo da flag da academia; boleto segue apenas no fluxo
+à vista, quando habilitado.
+
+**Revisar e pagar** consulta os valores antes de criar a cobrança. Trocas usam a
+simulação de migração da API, incluindo o crédito; no cartão, a mesma revisão
+mostra as taxas e parcelas disponíveis. Confirmar segue para PIX ou abre o
+checkout externo. Se a abertura do checkout falhar, o link fica disponível para
+nova tentativa, sem gerar outra cobrança.
+
+**Revisar e assinar** reúne mensalidade, prazo, regras principais, método escolhido
+e aceite. O contrato completo abre em uma tela de leitura, fora da folha de
+revisão, usando exatamente o texto da oferta. Aceitar e voltar libera a ação de
+assinar; mudar a versão dos termos exige novo aceite. O servidor continua
+validando `termos_hash` antes de contratar. A primeira cobrança e a consulta de
+confirmação usam os mesmos endpoints existentes.

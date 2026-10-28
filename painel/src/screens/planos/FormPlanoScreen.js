@@ -7,6 +7,8 @@ import LayoutBase from '../../components/LayoutBase';
 import { Button, Modal } from '../../components/ck';
 import { PlanoForm, CicloModal, GerarCiclosModal, missingTypes, monthlyBase, isDailyPlan, UNLIMITED } from '../../components/ck/planos';
 import { showSuccess, showError } from '../../utils/toast';
+import TermosFidelizacaoModal from '../../components/ck/termosFidelizacao';
+import useTermosFidelizacao from './useTermosFidelizacao';
 
 const bool = (v) => v === true || v === 1 || v === '1';
 
@@ -55,6 +57,7 @@ export default function FormPlanoScreen() {
 
   const [loading, setLoading] = useState(true);
   const [readOnly, setReadOnly] = useState(false);
+  const termos = useTermosFidelizacao(isEdit);
   // Plano com matrículas: modalidade, aulas/semana e duração ficam fixas (a API também recusa)
   const [travado, setTravado] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -291,7 +294,12 @@ export default function FormPlanoScreen() {
         saving={savingCycle}
         onSave={saveCycle}
         onCancel={() => setCycleModal({ open: false, cycle: null })}
+        termosAcademia={termos.texto}
+        onEditarTermos={termos.abrir}
       />
+
+      <TermosFidelizacaoModal open={termos.aberto} dados={termos.dados} saving={termos.salvando} onCancel={termos.fechar}
+        onSave={(payload) => termos.salvar(payload, () => loadCycles())} />
 
       <Modal
         open={!!removeCycle}

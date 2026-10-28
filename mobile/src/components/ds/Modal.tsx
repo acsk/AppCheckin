@@ -15,7 +15,7 @@ type Props = React.PropsWithChildren<{
   icon?: React.ComponentProps<typeof Feather>["name"];
   variant?: "sheet" | "dialog";
   avoidKeyboard?: boolean;
-  primary: { label: string; icon?: React.ComponentProps<typeof Feather>["name"]; onPress: () => void; loading?: boolean };
+  primary: { label: string; icon?: React.ComponentProps<typeof Feather>["name"]; onPress: () => void; loading?: boolean; disabled?: boolean };
   onClose: () => void;
 }>;
 
@@ -49,7 +49,7 @@ export default function Modal({
             {children}
           </ScrollView>
           <View style={styles.footer}>
-            <Button block size="lg" accessibilityLabel={primary.label} icon={primary.icon} loading={primary.loading} onPress={primary.onPress}>
+            <Button block size="lg" accessibilityLabel={primary.label} icon={primary.icon} disabled={primary.disabled} loading={primary.loading} onPress={primary.onPress}>
               {primary.label}
             </Button>
           </View>

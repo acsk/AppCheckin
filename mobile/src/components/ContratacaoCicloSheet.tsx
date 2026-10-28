@@ -1,3 +1,5 @@
+import ContratoFidelidadeScreen from "./ContratoFidelidadeScreen";
+import { metodosAssinaturaDisponiveis } from "@/src/utils/cicloPagamento";
 import Modal from "@/src/components/ds/Modal";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
@@ -6,11 +8,12 @@ import { brl, chamarRecorrencia, type Oferta, type PagamentoAberto } from "@/src
 import { copyToClipboard } from "@/src/utils/clipboard";
 import type { MetodoPagamentoOpcao } from "@/src/utils/metodosPagamento";
 import { Feather } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 /**
- * Contratação de um ciclo que também é vendido como assinatura com fidelidade, em etapas:
+ * No fluxo principal, recebe modo e método escolhidos na tela e abre a revisão da assinatura.
+ * O modo de compatibilidade mantém a contratação em etapas:
  *   1. valor: à vista (o ciclo de uma vez) ou assinatura (mensal com fidelidade);
  *   2. informações contratuais: termos e aceite (só na assinatura);
  *   3. forma de pagamento.
@@ -41,9 +44,14 @@ type Props = {
   onPagarAvista: (metodo: MetodoPagamentoOpcao) => void;
   onClose: () => void;
   onAssinado: (contratoId: number) => void;
+  revisaoDireta?: boolean;
+  ofertaInicial?: Oferta | null;
+  metodoInicial?: MetodoPagamentoOpcao | null;
 };
 
-export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinaturaDisponivelEm, metodosAvista, rotuloAvista, onPagarAvista, onClose, onAssinado }: Props) {
+export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinaturaDisponivelEm, metodosAvista, rotuloAvista, onPagarAvista, onClose, onAssinado, revisaoDireta = false, ofertaInicial, metodoInicial }: Props) {
+  const assinaturaEnviando = useRef(false);
+  const [contratoAberto, setContratoAberto] = useState(false);
   const [etapa, setEtapa] = useState<Etapa>("valor");
   const [modo, setModo] = useState<Modo>("avista");
   const [oferta, setOferta] = useState<Oferta | null>(null);
@@ -57,16 +65,19 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
 
   useEffect(() => {
     if (!visible) return;
-    setEtapa("valor"); setModo("avista"); setAceite(false); setErro(null); setAviso(null); setOferta(null);
+    setEtapa(revisaoDireta ? "termos" : "valor"); setModo(revisaoDireta ? "assinatura" : "avista"); setMetodo(metodoInicial || "cartao"); setAceite(false); setContratoAberto(false); setErro(null); setAviso(null); setOferta(ofertaInicial || null);
+    if (ofertaInicial) return;
     chamarRecorrencia("GET", `/ofertas?plano_id=${planoId}`)
       .then(({ ok, json }) => {
         const o = ok ? (json?.data?.ofertas || []).find((x: Oferta) => Number(x.plano_ciclo_id) === Number(ciclo.id)) : null;
         setOferta(o || null);
       })
       .catch(() => setOferta(null));
-  }, [visible, planoId, ciclo.id]);
+  }, [visible, planoId, ciclo.id, revisaoDireta, ofertaInicial, metodoInicial]);
 
   const fidelidade = oferta?.fidelizacao_meses || ciclo.fidelizacao_meses || ciclo.meses;
+  // PIX na assinatura só quando a academia liga em Configurações de pagamento
+  const metodosAssinatura: MetodoPagamentoOpcao[] = metodosAssinaturaDisponiveis(oferta?.metodos);
   const assinaturaTravada = !!assinaturaDisponivelEm;
   const total = modo === "avista" ? 2 : 3;
   const passo = etapa === "valor" ? 1 : etapa === "termos" ? 2 : total;
@@ -87,6 +98,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
         setErro("Marque que leu e aceita os termos para continuar.");
         return;
       }
+      if (revisaoDireta) { void assinar(); return; }
       setEtapa("pagamento");
       return;
     }
@@ -109,7 +121,9 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
   }
 
   async function assinar() {
-    if (!oferta || !metodo) return;
+    if (!oferta || !metodo || assinaturaEnviando.current) return;
+    if (!aceite || assinaturaTravada || !metodosAssinatura.includes(metodo)) { setErro("Revise o contrato e a forma de pagamento antes de assinar."); return; }
+    assinaturaEnviando.current = true;
     setEnviando(true);
     try {
       const { ok, json } = await chamarRecorrencia("POST", "/contratar", { plano_ciclo_id: oferta.plano_ciclo_id, metodo, termos_hash: oferta.termos_hash });
@@ -126,11 +140,15 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
         setPix({ contratoId, pagamento });
         return;
       }
-      if (pagamento?.url) await Linking.openURL(pagamento.url);
+      if (pagamento?.url) {
+        try { await Linking.openURL(pagamento.url); }
+        catch { /* Contrato já criado: a cobrança pode ser reaberta em Minhas assinaturas. */ }
+      }
       onAssinado(contratoId);
     } catch {
       setErro("Sem conexão. Tente de novo.");
     } finally {
+      assinaturaEnviando.current = false;
       setEnviando(false);
     }
   }
@@ -139,7 +157,8 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
     if (!pix) return;
     setConferindo(true);
     try {
-      const { json } = await chamarRecorrencia("GET", `/contratos/${pix.contratoId}/pagamento`);
+      const { ok, json } = await chamarRecorrencia("GET", `/contratos/${pix.contratoId}/pagamento`);
+      if (!ok) { setAviso(json?.message || "Não foi possível consultar o pagamento agora."); return; }
       if (!json?.data?.pagamento) {
         const id = pix.contratoId;
         setPix(null);
@@ -147,25 +166,27 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
       } else {
         setAviso("Ainda não recebemos a confirmação. Se já pagou, aguarde alguns instantes.");
       }
+    } catch {
+      setAviso("Sem conexão. Tente consultar novamente.");
     } finally {
       setConferindo(false);
     }
   }
 
-  const titulo = etapa === "valor" ? `Como você quer pagar o ${ciclo.nome}?` : etapa === "termos" ? "Informações contratuais" : "Forma de pagamento";
-  const rotulo = etapa !== "pagamento" ? "Continuar"
+  const titulo = revisaoDireta ? "Revise e assine" : etapa === "valor" ? `Como você quer pagar o ${ciclo.nome}?` : etapa === "termos" ? "Informações contratuais" : "Forma de pagamento";
+  const rotulo = revisaoDireta ? `Assinar e pagar ${oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado}` : etapa !== "pagamento" ? "Continuar"
     : modo === "avista" ? (metodo ? rotuloAvista(metodo) : "Escolha a forma")
       : `Assinar por ${oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado}/mês`;
 
   return (
     <>
       <Modal
-        visible={visible && !pix}
+        visible={visible && !pix && !contratoAberto}
         variant="sheet"
         icon={etapa === "valor" ? "tag" : etapa === "termos" ? "file-text" : "credit-card"}
-        eyebrow={`${ciclo.nome} · passo ${passo} de ${total}`}
+        eyebrow={revisaoDireta ? `${ciclo.nome} · com fidelidade` : `${ciclo.nome} · passo ${passo} de ${total}`}
         title={titulo}
-        primary={{ label: rotulo, icon: etapa === "pagamento" ? "check" : "arrow-right", onPress: avancar, loading: enviando }}
+        primary={{ label: rotulo, icon: etapa === "pagamento" ? "check" : "arrow-right", onPress: avancar, loading: enviando, disabled: revisaoDireta && (!aceite || !oferta || assinaturaTravada) }}
         onClose={onClose}
       >
         {etapa === "valor" ? (
@@ -187,9 +208,13 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
               <Fato icon="lock" texto={`Desistência sem custo em até ${oferta.arrependimento_dias} dias após o aceite.`} />
               <Fato icon="x-circle" texto={oferta.regularizacao_ativa ? `Saindo antes do fim: paga só a diferença do desconto já recebido (${brl(oferta.desconto_mensal)} por mês pago), nunca de meses futuros.` : "Pode cancelar quando quiser, sem multa."} />
             </View>
-            <ScrollView style={styles.termos} nestedScrollEnabled>
-              <Text style={styles.termosTexto}>{oferta.termos}</Text>
-            </ScrollView>
+            <Pressable style={styles.voltar} onPress={() => setContratoAberto(true)} accessibilityRole="button">
+              <Feather name="file-text" size={18} color={ds.brandInk} /><Text style={[styles.voltarTexto, { color: ds.brandInk }]}>Ler o contrato completo</Text>
+            </Pressable>
+            {revisaoDireta ? <View style={styles.resumo}>
+              <Text style={styles.resumoTitulo}>{metodo === 'pix' ? 'PIX mensal' : 'Cartão de crédito'} · {brl(oferta.valor_mensal)}/mês</Text>
+              <Text style={styles.meta}>{metodo === 'pix' ? 'Um novo PIX a cada mês. Não há débito automático.' : 'A primeira mensalidade é paga no site seguro do provedor. As seguintes são debitadas mensalmente no mesmo cartão.'}</Text>
+            </View> : null}
             <Pressable style={styles.aceite} onPress={() => { setAceite(!aceite); setErro(null); }} accessibilityRole="checkbox" accessibilityState={{ checked: aceite }}>
               <Feather name={aceite ? "check-square" : "square"} size={22} color={aceite ? ds.brandInk : ds.inkMuted} />
               <Text style={styles.aceiteTexto}>Li e aceito os termos desta assinatura</Text>
@@ -204,16 +229,16 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
               <Text style={styles.resumoTitulo}>{modo === "avista" ? `${ciclo.nome} à vista · ${ciclo.valor_formatado}` : `${ciclo.nome} · ${ciclo.valor_mensal_formatado}/mês`}</Text>
               <Text style={styles.meta}>{modo === "avista" ? `${ciclo.meses} meses de acesso, pagamento único` : `Fidelidade de ${fidelidade} meses · termos aceitos`}</Text>
             </View>
-            <PaymentMethodOptions opcoes={modo === "avista" ? metodosAvista : ["cartao", "pix"]} value={metodo} onChange={setMetodo} />
+            <PaymentMethodOptions opcoes={modo === "avista" ? metodosAvista : metodosAssinatura} value={metodo} onChange={setMetodo} />
             {modo === "assinatura" ? (
               <Text style={styles.meta}>{metodo === "cartao"
-                ? "Você paga a 1ª mensalidade em seguida; as próximas são debitadas no mesmo cartão, uma por mês."
+                ? `Você paga a 1ª mensalidade em seguida; as próximas são debitadas no mesmo cartão, uma por mês.${metodosAssinatura.includes("pix") ? "" : " Para pagar por PIX, volte e escolha À vista."}`
                 : "Todo mês você recebe um PIX para pagar a mensalidade. A 1ª aparece em seguida."}</Text>
             ) : null}
           </>
         ) : null}
 
-        {etapa !== "valor" ? (
+        {etapa !== "valor" && !revisaoDireta ? (
           <Pressable style={styles.voltar} onPress={voltar} accessibilityRole="button">
             <Feather name="arrow-left" size={16} color={ds.inkMuted} />
             <Text style={styles.voltarTexto}>Voltar</Text>
@@ -221,6 +246,8 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
         ) : null}
         {erro ? <Text style={styles.erro}>{erro}</Text> : null}
       </Modal>
+      <ContratoFidelidadeScreen visible={visible && contratoAberto} oferta={oferta}
+        onClose={() => setContratoAberto(false)} onAccept={() => { setAceite(true); setErro(null); setContratoAberto(false); }} />
       <PixPaymentSheet
         visible={!!pix}
         amount={brl(pix?.pagamento.valor ?? 0)}

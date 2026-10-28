@@ -89,6 +89,7 @@ class RecorrenciaService
             'fidelizacao_meses' => $fidelizacao, 'politica_renovacao' => $ciclo['politica_renovacao'],
             'regularizacao_ativa' => (bool) $ciclo['regularizacao_ativa'], 'arrependimento_dias' => (int) $ciclo['arrependimento_dias'],
             'termos' => $termos, 'termos_versao' => (int) $ciclo['termos_versao'], 'termos_hash' => hash('sha256', $termos),
+            'metodos' => $this->metodosAssinatura($tenantId),
         ];
     }
 
@@ -115,11 +116,24 @@ class RecorrenciaService
             $renovacao,
             'O cancelamento pode ser pedido pelo app; o acesso vai até o fim do período já pago.',
         ];
-        if (trim((string) ($ciclo['termos'] ?? '')) !== '') {
-            $linhas[] = trim((string) $ciclo['termos']);
+        // Termos adicionais: os próprios do ciclo, ou os da academia (herdados)
+        $adicionais = trim((string) ($ciclo['termos'] ?? '')) ?: app(TermosFidelizacaoService::class)->textoDaAcademia($tenantId);
+        if ($adicionais !== '') {
+            $linhas[] = $adicionais;
         }
 
         return implode("\n\n", array_filter($linhas));
+    }
+
+    /**
+     * Formas aceitas na assinatura mensal: cartão sempre (débito automático); PIX só com
+     * "PIX na assinatura recorrente" ligado nas Configurações de pagamento (o aluno paga cada mês).
+     *
+     * @return list<string>
+     */
+    public function metodosAssinatura(int $tenantId): array
+    {
+        return app(\App\Repositories\TenantPaymentCredentialsRepository::class)->pixRecorrenciaHabilitado($tenantId) ? ['cartao', 'pix'] : ['cartao'];
     }
 
     /* ================================================================ contratar */
@@ -133,8 +147,8 @@ class RecorrenciaService
     {
         $cicloId = (int) ($data['plano_ciclo_id'] ?? 0);
         $metodo = (string) ($data['metodo'] ?? 'cartao');
-        if (! in_array($metodo, ['cartao', 'pix', 'boleto'], true)) {
-            return $this->erro('Forma de pagamento inválida.', 422);
+        if (! in_array($metodo, ['cartao', 'pix'], true)) {
+            return $this->erro('Forma de pagamento inválida para a assinatura.', 422);
         }
         $aluno = DB::table('alunos as a')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
             ->join('tenant_usuario_papel as tup', fn ($j) => $j->on('tup.usuario_id', '=', 'a.usuario_id')->where('tup.tenant_id', $tenantId)->where('tup.papel_id', 1)->where('tup.ativo', 1))
@@ -155,6 +169,9 @@ class RecorrenciaService
         // O aluno aceita o texto exato que viu: termos mudaram no meio do caminho = recarregar
         if (! hash_equals($oferta['termos_hash'], (string) ($data['termos_hash'] ?? ''))) {
             return $this->erro('Os termos deste plano foram atualizados. Leia e aceite de novo.', 409, 'TERMOS_DESATUALIZADOS', ['oferta' => $oferta]);
+        }
+        if (! in_array($metodo, $oferta['metodos'], true)) {
+            return $this->erro('A assinatura mensal desta academia é só no cartão. Para pagar por PIX, escolha o pagamento à vista.', 422, 'PIX_RECORRENCIA_DESLIGADO');
         }
         if (strlen(preg_replace('/\D/', '', (string) $aluno->cpf)) !== 11) {
             return $this->erro('Cadastre seu CPF no perfil para assinar.', 422, 'CPF_OBRIGATORIO');
@@ -213,7 +230,7 @@ class RecorrenciaService
         try {
             $sub = $this->asaas($tenantId)->criarAssinatura([
                 'contrato_id' => $contratoId, 'valor' => $oferta['valor_mensal'],
-                'billing_type' => ['cartao' => 'CREDIT_CARD', 'pix' => 'PIX', 'boleto' => 'BOLETO'][$metodo],
+                'billing_type' => ['cartao' => 'CREDIT_CARD', 'pix' => 'PIX'][$metodo],
                 'proximo_vencimento' => $hoje,
                 'descricao' => "{$plano->nome} · fidelização {$oferta['fidelizacao_meses']} meses · ".Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês',
                 // Política "encerrar": o próprio Asaas para depois da última mensalidade da fidelização
