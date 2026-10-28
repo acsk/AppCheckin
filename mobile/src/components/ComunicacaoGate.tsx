@@ -143,6 +143,9 @@ export default function ComunicacaoGate({ enabled }: { enabled: boolean }) {
         loading: enviando,
       }}
       onClose={fechar}
+      exigirLeitura
+      semFechar
+      larga
     >
       {atual.obrigatoria && total > 1 ? <Text style={styles.contador}>{textoPendencias(total)}</Text> : null}
       {atual.descricao ? <Text style={styles.descricao}>{atual.descricao}</Text> : null}
