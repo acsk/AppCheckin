@@ -2,6 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Services\PermissaoService;
+use App\Support\Papel;
+use App\Support\Permissao;
 use Mockery;
 use Tests\TestCase;
 
@@ -154,6 +157,13 @@ class V2AdminPaymentCredentialsRoutesTest extends TestCase
                 'papel_id' => $papelId,
             ]);
         $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
+
+        // Permissão por rota (configuracoes.editar) vem dos papéis no banco; aqui o papel do token decide
+        $permissoes = Mockery::mock(PermissaoService::class);
+        $permissoes->shouldReceive('papeisAtivos')->andReturn([$papelId]);
+        $permissoes->shouldReceive('tem')->andReturn($papelId === Papel::ADMIN);
+        $permissoes->shouldReceive('efetivas')->andReturn($papelId === Papel::ADMIN ? Permissao::naoSensiveis() : []);
+        $this->app->instance(PermissaoService::class, $permissoes);
 
         return app(\App\Services\JwtService::class)->encode([
             'user_id' => 5,
