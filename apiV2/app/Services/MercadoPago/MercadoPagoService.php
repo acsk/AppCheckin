@@ -781,35 +781,6 @@ class MercadoPagoService
     }
     
     /**
-     * Criar plano de assinatura recorrente
-     * 
-     * @param array $data Dados do plano
-     * @return array Plano criado
-     */
-    public function criarPlanoAssinatura(array $data): array
-    {
-        $this->validarCredenciais();
-        
-        $plan = [
-            'reason' => $data['nome'] ?? 'Plano Mensal',
-            'auto_recurring' => [
-                'frequency' => 1,
-                'frequency_type' => $data['frequencia'] ?? 'months', // months, days
-                'transaction_amount' => (float) $data['valor'],
-                'currency_id' => 'BRL',
-                'free_trial' => [
-                    'frequency' => $data['trial_dias'] ?? 0,
-                    'frequency_type' => 'days'
-                ]
-            ],
-            'back_url' => $this->successUrl,
-            'external_reference' => $data['plano_id'] ?? null
-        ];
-        
-        return $this->fazerRequisicao('POST', '/preapproval_plan', $plan);
-    }
-    
-    /**
      * Fazer requisição HTTP para API do Mercado Pago
      * 
      * @param string $method GET, POST, PUT
@@ -895,16 +866,6 @@ class MercadoPagoService
     public function getPublicKey(): string
     {
         return $this->publicKey;
-    }
-    
-    /**
-     * Verificar se está em modo produção
-     * 
-     * @return bool
-     */
-    public function isProduction(): bool
-    {
-        return $this->productionMode;
     }
     
     /**
@@ -1162,66 +1123,6 @@ class MercadoPagoService
     }
     
     /**
-     * Criar assinatura recorrente (preapproval)
-     * 
-     * @param array $dados Dados da assinatura
-     * @return array Resposta do MP
-     */
-    public function criarAssinatura(array $dados): array
-    {
-        $this->validarCredenciais();
-        
-        $payload = [
-            'reason' => $dados['reason'],
-            'external_reference' => $dados['external_reference'] ?? null,
-            'payer_email' => $dados['payer_email'],
-            'card_token_id' => $dados['card_token_id'],
-            'auto_recurring' => [
-                'frequency' => $dados['auto_recurring']['frequency'] ?? 1,
-                'frequency_type' => $dados['auto_recurring']['frequency_type'] ?? 'months',
-                'transaction_amount' => $dados['auto_recurring']['transaction_amount'],
-                'currency_id' => $dados['auto_recurring']['currency_id'] ?? 'BRL'
-            ],
-            'back_url' => $dados['back_url'] ?? $this->successUrl,
-            'status' => $dados['status'] ?? 'pending'
-        ];
-        
-        error_log("[MercadoPagoService] Criando assinatura: " . json_encode($payload));
-        
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->baseUrl . '/preapproval',
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->accessToken,
-                'Content-Type: application/json',
-                'X-Idempotency-Key: ' . uniqid('sub_', true)
-            ],
-            CURLOPT_TIMEOUT => 30
-        ]);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-        
-        $responseData = json_decode($response, true);
-        
-        error_log("[MercadoPagoService] Resposta assinatura [{$httpCode}]: " . $response);
-        
-        if ($httpCode >= 400) {
-            return [
-                'error' => true,
-                'message' => $responseData['message'] ?? 'Erro ao criar assinatura',
-                'status' => $httpCode
-            ];
-        }
-        
-        return $responseData;
-    }
-    
-    /**
      * Cancelar assinatura
      * 
      * @param string $preapprovalId ID da assinatura no MP
@@ -1401,67 +1302,5 @@ class MercadoPagoService
                 ];
             }, $results)
         ];
-    }
-
-    /**
-     * Pausar assinatura
-     * 
-     * @param string $preapprovalId ID da assinatura no MP
-     * @return array Resposta do MP
-     */
-    public function pausarAssinatura(string $preapprovalId): array
-    {
-        $this->validarCredenciais();
-        
-        $payload = ['status' => 'paused'];
-        
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->baseUrl . '/preapproval/' . $preapprovalId,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->accessToken,
-                'Content-Type: application/json'
-            ],
-            CURLOPT_TIMEOUT => 30
-        ]);
-        
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        return json_decode($response, true) ?? [];
-    }
-    
-    /**
-     * Reativar assinatura pausada
-     * 
-     * @param string $preapprovalId ID da assinatura no MP
-     * @return array Resposta do MP
-     */
-    public function reativarAssinatura(string $preapprovalId): array
-    {
-        $this->validarCredenciais();
-        
-        $payload = ['status' => 'authorized'];
-        
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $this->baseUrl . '/preapproval/' . $preapprovalId,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CUSTOMREQUEST => 'PUT',
-            CURLOPT_POSTFIELDS => json_encode($payload),
-            CURLOPT_HTTPHEADER => [
-                'Authorization: Bearer ' . $this->accessToken,
-                'Content-Type: application/json'
-            ],
-            CURLOPT_TIMEOUT => 30
-        ]);
-        
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        return json_decode($response, true) ?? [];
     }
 }

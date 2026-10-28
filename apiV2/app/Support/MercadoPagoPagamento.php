@@ -5,27 +5,6 @@ namespace App\Support;
 final class MercadoPagoPagamento
 {
     /**
-     * Mapear status do Mercado Pago para status interno
-     * 
-     * @param string $mpStatus Status do MP
-     * @return string Status interno
-     */
-    public static function mapearStatus(string $mpStatus): string
-    {
-        $statusMap = [
-            'approved' => 'pago',
-            'pending' => 'pendente',
-            'in_process' => 'processando',
-            'rejected' => 'recusado',
-            'cancelled' => 'cancelado',
-            'refunded' => 'reembolsado',
-            'charged_back' => 'estornado'
-        ];
-        
-        return $statusMap[$mpStatus] ?? 'pendente';
-    }
-
-    /**
      * formas_pagamento.id de um pagamento do MP: 2=Pix, 3=Débito, 8=Boleto, 9=Cartão.
      * Pix chega como payment_type_id=bank_transfer (o polling antigo gravava como 8 = Boleto).
      */
