@@ -2,14 +2,18 @@
 
 namespace Tests\Feature;
 
+use Tests\Concerns\UsuarioDoToken;
 use Tests\TestCase;
 
 class V2NotificationRoutesTest extends TestCase
 {
+    use UsuarioDoToken;
+
     private function bearerToken(array $claims = []): string
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
 
+        $this->mockUsuarioDoToken();
         $jwt = app(\App\Services\JwtService::class);
 
         return $jwt->encode(array_merge([
@@ -29,6 +33,8 @@ class V2NotificationRoutesTest extends TestCase
     public function test_notificacoes_unread_without_tenant_in_jwt_may_resolve_from_user(): void
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
+        $this->mockUsuarioDoToken();
+        $this->mockNotificacoes();
         $jwt = app(\App\Services\JwtService::class);
         $token = $jwt->encode([
             'user_id' => 1,
@@ -49,6 +55,8 @@ class V2NotificationRoutesTest extends TestCase
 
     public function test_notificacoes_unread_returns_success_shape(): void
     {
+        $this->mockNotificacoes();
+
         $this->getJson('/v2/notificacoes/unread', [
             'Authorization' => 'Bearer '.$this->bearerToken(),
         ])
@@ -59,5 +67,12 @@ class V2NotificationRoutesTest extends TestCase
                 'data',
                 'total',
             ]);
+    }
+
+    private function mockNotificacoes(): void
+    {
+        $notificacoes = \Mockery::mock(\App\Repositories\NotificacaoRepository::class);
+        $notificacoes->shouldReceive('listUnread')->andReturn([]);
+        $this->app->instance(\App\Repositories\NotificacaoRepository::class, $notificacoes);
     }
 }

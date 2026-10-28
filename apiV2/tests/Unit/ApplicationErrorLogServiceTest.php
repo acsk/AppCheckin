@@ -27,7 +27,8 @@ class ApplicationErrorLogServiceTest extends TestCase
 
             return true;
         }))->andReturn(42);
-        $repo->shouldReceive('countSince')->once()->andReturn(1);
+        // Sem ERROR_ALERT_EMAIL o alerta nem chega a contar repetições
+        $repo->shouldNotReceive('countSince');
 
         config([
             'appcheckin.error_alert_email' => '',
