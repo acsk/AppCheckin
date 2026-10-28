@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Repositories\UsuarioRepository;
 use App\Support\AcademyDateTime;
 use App\Services\Asaas\AsaasService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\ReferenciaExterna;

@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Asaas\AsaasService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Support\Facades\DB;
 use Tests\Concerns\RequiresSqlite;

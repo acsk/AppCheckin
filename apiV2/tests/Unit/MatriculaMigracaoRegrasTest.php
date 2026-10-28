@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Repositories\UsuarioRepository;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\MatriculaMigracaoService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use Illuminate\Support\Facades\DB;

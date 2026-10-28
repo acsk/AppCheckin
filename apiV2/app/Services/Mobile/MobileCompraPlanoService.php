@@ -8,7 +8,7 @@ use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\MatriculaEncadeamentoService;
 use App\Services\Asaas\AsaasService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\CobrancaAnteriorService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;

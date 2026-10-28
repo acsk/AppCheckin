@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Support\ReferenciaExterna;
 use Illuminate\Support\Facades\Log;
 use ReflectionMethod;

@@ -7,7 +7,7 @@ use App\Models\Parametro;
 use App\Repositories\AdminPacoteRepository;
 use App\Repositories\MobilePacoteRepository;
 use App\Repositories\UsuarioRepository;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\Pacote\PacoteConciliacaoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Support\Facades\DB;

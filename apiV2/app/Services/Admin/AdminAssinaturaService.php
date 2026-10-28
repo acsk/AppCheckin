@@ -6,7 +6,7 @@ use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
 use App\Services\Asaas\AsaasPagamentoSync;
 use App\Services\Asaas\AsaasService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;

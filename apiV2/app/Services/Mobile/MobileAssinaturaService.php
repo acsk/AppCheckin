@@ -3,7 +3,7 @@
 namespace App\Services\Mobile;
 
 use App\Services\Asaas\AsaasPagamentoSync;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\Pacote\PacoteConciliacaoService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;

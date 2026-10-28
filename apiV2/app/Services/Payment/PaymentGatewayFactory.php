@@ -3,7 +3,7 @@
 namespace App\Services\Payment;
 
 use App\Services\Asaas\AsaasService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use Illuminate\Support\Facades\DB;
 
 class PaymentGatewayFactory

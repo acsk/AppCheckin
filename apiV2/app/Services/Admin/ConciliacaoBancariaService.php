@@ -4,7 +4,7 @@ namespace App\Services\Admin;
 
 use App\Services\Asaas\AsaasService;
 use App\Services\Asaas\AsaasWebhookService;
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
 use App\Support\AsaasPagamentoStatus;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;

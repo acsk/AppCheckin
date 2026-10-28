@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Services\MercadoPagoService;
+use App\Services\MercadoPago\MercadoPagoService;
+use App\Support\MercadoPagoPagamento;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -54,7 +55,7 @@ class MercadoPagoCorrigirFormasCommand extends Command
 
             $mudancas = [];
             if ($mp) {
-                $forma = MercadoPagoService::formaPagamentoId((array) $mp);
+                $forma = MercadoPagoPagamento::formaPagamentoId((array) $mp);
                 if ($forma !== (int) $pg->forma_pagamento_id) {
                     $mudancas['forma_pagamento_id'] = $forma;
                 }
@@ -65,7 +66,7 @@ class MercadoPagoCorrigirFormasCommand extends Command
                     $servicos[$pg->tenant_id] ??= new MercadoPagoService((int) $pg->tenant_id);
                     $raw = $servicos[$pg->tenant_id]->buscarPagamento($paymentId);
                     $raw = is_array($raw['raw'] ?? null) ? $raw['raw'] : $raw;
-                    $liquido = MercadoPagoService::liquidoDoPagamento($raw);
+                    $liquido = MercadoPagoPagamento::liquidoDoPagamento($raw);
                     if ($liquido !== null) {
                         $mudancas['valor_liquido'] = $liquido;
                         if ($temDesconto) {

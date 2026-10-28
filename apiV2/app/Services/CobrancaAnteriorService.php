@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Services\Asaas\AsaasService;
+use App\Services\MercadoPago\MercadoPagoService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
