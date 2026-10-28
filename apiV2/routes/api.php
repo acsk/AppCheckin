@@ -94,6 +94,7 @@ Route::prefix('v2')->group(function () {
             Route::get('/checkin/acesso', MobileCheckinAcessoController::class);
             // Planos com fidelização (assinatura mensal) e "Minha assinatura"
             Route::get('/recorrencia/ofertas', [MobileRecorrenciaController::class, 'ofertas']);
+            Route::get('/recorrencia/taxa-cartao', [MobileRecorrenciaController::class, 'taxaCartao']);
             Route::post('/recorrencia/contratar', [MobileRecorrenciaController::class, 'contratar'])->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
             Route::get('/recorrencia/contratos', [MobileRecorrenciaController::class, 'contratos']);
             Route::get('/recorrencia/contratos/{id}/simular-cancelamento', [MobileRecorrenciaController::class, 'simular'])->whereNumber('id');

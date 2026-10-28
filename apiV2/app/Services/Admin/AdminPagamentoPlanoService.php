@@ -641,6 +641,18 @@ class AdminPagamentoPlanoService
         $alunoIdProxima = $pagamento['aluno_id'] ?? $matCicloInfo?->aluno_id ?? null;
         // Próxima parcela cobra o valor cheio da matrícula (plano/ciclo), não o valor com desconto.
         $valorProximaParcela = $matCicloInfo?->matricula_valor ?? $plano?->valor;
+        // Reajuste pendente: a próxima parcela já sai no preço novo; se a paga agora já era a do
+        // preço novo, o ciclo novo começou e o preço vira o valor da matrícula
+        $reajustes = app(\App\Services\ReajustePrecoService::class);
+        $valorRenovacao = $reajustes->valorRenovacao($tenantId, (int) $pagamento['matricula_id']);
+        if ($valorRenovacao !== null) {
+            $paga = DB::table('pagamentos_plano')->where('id', $pagamento['id'] ?? 0)->first();
+            $valorPago = $paga ? (float) ($paga->valor_original ?? $paga->valor) : 0.0;
+            if ((int) round($valorPago * 100) === (int) round($valorRenovacao * 100)) {
+                $reajustes->iniciarCicloNovo($tenantId, (int) $pagamento['matricula_id']);
+            }
+            $valorProximaParcela = $valorRenovacao;
+        }
 
         if (! $plano || (! $mesesCiclo && (int) $plano->duracao_dias <= 0)) {
             return;

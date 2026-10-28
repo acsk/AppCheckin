@@ -102,6 +102,29 @@ O comando diário `recorrencia:processar` (05:45) faz quatro coisas:
 - marca `inadimplente` (5 dias de atraso, a mesma régua da matrícula);
 - efetiva os cancelamentos agendados.
 
+## Taxa do cartão na assinatura
+
+Na assinatura no cartão, o aluno paga a taxa do cartão, como no checkout à vista:
+- **Composição:** tarifa do Asaas (`POST /payments/simulate`) + sobretaxa de antecipação **à vista** das Configurações de pagamento (`AsaasService::valorComTaxaCartaoRepassada(valor, 1)`).
+- **Onde fica:** `contratos_recorrencia.taxa_cartao_mensal`. A assinatura no Asaas cobra `valor_mensal_vigente + taxa`.
+- **O que não muda:** os valores do contrato e a regularização não incluem a taxa. Na parcela, ela fica destacada em `pagamentos_plano.tarifa_cartao`.
+- **No app:** uma linha só, "Taxa do cartão: R$ X/mês · total R$ Y/mês" (`GET /mobile/recorrencia/taxa-cartao?plano_ciclo_id=`).
+- **Recálculo:** sempre que o valor muda (reajuste, fim da fidelidade, nova fidelização).
+- **Sem simulação ou no PIX:** sem taxa.
+
+## Reajuste de preço
+
+A academia edita o valor do ciclo no dia do reajuste. Vendas novas já saem com o preço novo. Para quem já é aluno:
+
+- **À vista:** o valor novo vale a partir da **próxima renovação** (`ReajustePrecoService`).
+  - **O que muda já:** o reajuste grava o preço novo em `matriculas.valor_renovacao`, mas `matriculas.valor` segue o do ciclo já pago. Se mudasse no meio do ciclo, o crédito de troca de plano e a quitação seriam calculados sobre um preço que o aluno não pagou.
+  - **Quando passa a valer:** vira o `valor` quando o ciclo novo começa, seja na renovação por PIX, seja na baixa da parcela já no preço novo.
+  - **Parcelas futuras:** as já geradas passam ao preço novo, mantendo o desconto, se ainda não foram emitidas no provedor nem estão vencidas.
+  - **Quem fica de fora:** preço negociado (diferente da tabela anterior), pacote e matrícula pendente.
+- **Assinatura sem fidelidade ou com a fidelidade cumprida:** passa ao preço novo a partir da próxima cobrança (`reajustarContratos`). Usa `updatePendingPayments=false`, então cobranças já emitidas não mudam. Cada reajuste gera um evento `reajuste`.
+- **Assinatura em fidelidade:** o valor aceito vale até o fim. Ao cumprir, `mensal` vai para a referência vigente (`planos.valor`); `promocional` e `nova_fidelizacao` (enquanto não aceita) vão para a mensalidade atual do ciclo. Os termos novos avisam disso.
+- **Painel:** depois de salvar o ciclo, mostra quantos alunos e assinaturas foram afetados.
+
 ## Máquina de estados do contrato
 
 ```

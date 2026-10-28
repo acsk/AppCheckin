@@ -393,10 +393,11 @@ class AsaasService
     }
 
     /** Muda valor (ex.: fim da fidelização com política "mensal"); updatePendingPayments ajusta as já geradas. */
-    public function atualizarValorAssinatura(string $subscriptionId, string $valor): void
+    /** $atualizarPendentes = false: cobranças já emitidas mantêm o valor (reajuste vale da próxima em diante). */
+    public function atualizarValorAssinatura(string $subscriptionId, string $valor, bool $atualizarPendentes = true): void
     {
         $this->validarCredenciais();
-        $this->request('PUT', '/subscriptions/'.$subscriptionId, ['value' => (float) $valor, 'updatePendingPayments' => true]);
+        $this->request('PUT', '/subscriptions/'.$subscriptionId, ['value' => (float) $valor, 'updatePendingPayments' => $atualizarPendentes]);
     }
 
     /** Remove a assinatura: o Asaas para de gerar cobranças. Já removida conta como sucesso. */

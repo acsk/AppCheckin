@@ -197,12 +197,20 @@ class AdminPlanoCicloService
                 $this->sincronizarValorBase($planoId, $tenantId, $valorMensalBase);
             }
 
+            // Reajuste: alunos atuais pagam o preço novo a partir da próxima renovação
+            $reajuste = null;
+            if (round($valor, 2) !== round((float) $ciclo['valor'], 2) || $valorMensalBase !== (float) ($ciclo['plano_valor'] ?? 0)) {
+                $reajuste = app(\App\Services\ReajustePrecoService::class)->reajustarCiclo($tenantId, $cicloId, (float) $ciclo['valor'], $valor)
+                    + app(\App\Services\Recorrencia\RecorrenciaService::class)->reajustarContratos($tenantId, $planoId);
+            }
+
             return [
                 'status' => 200,
                 'body' => [
                     'success' => true,
                     'message' => 'Ciclo atualizado com sucesso',
                     'desconto_percentual' => $descontoPercentual,
+                    'reajuste' => $reajuste,
                 ],
             ];
         } catch (\Throwable $e) {

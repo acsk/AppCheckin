@@ -364,6 +364,14 @@ class MobilePagamentoService
                 }
             }
 
+            // Renovação com o ciclo pago encerrado: reajuste pendente passa a valer neste ciclo novo
+            if (in_array($matricula['status_codigo'] ?? '', ['ativa', 'vencida'], true)) {
+                $reajustado = app(\App\Services\ReajustePrecoService::class)->iniciarCicloNovo($tenantId, $matriculaId);
+                if ($reajustado !== null) {
+                    $matricula['valor'] = $reajustado;
+                }
+            }
+
             $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
             $this->pagamentosPlano->garantirParcelaPendenteUnica(
                 $tenantId,

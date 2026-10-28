@@ -265,7 +265,8 @@ class MobileCompraPlanoService
                             'data' => [
                                 'matricula_id' => (int) $matriculaAtiva['id'],
                                 'metodo_pagamento' => 'pix',
-                                'valor' => (float) ($matriculaAtiva['valor'] ?? $valorCompra),
+                                'valor' => app(\App\Services\ReajustePrecoService::class)->valorRenovacao($tenantId, (int) $matriculaAtiva['id'])
+                                    ?? (float) ($matriculaAtiva['valor'] ?? $valorCompra),
                                 'renovacao' => true,
                                 'motivo_liberacao' => $liberacao['motivo'],
                             ],

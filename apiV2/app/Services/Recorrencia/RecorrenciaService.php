@@ -11,6 +11,7 @@ use App\Support\Pessoa;
 use App\Support\RecorrenciaCalculo as Calc;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Planos com fidelização: assinatura mensal com preço promocional condicionado à permanência mínima.
@@ -44,6 +45,42 @@ class RecorrenciaService
     protected function asaas(int $tenantId): AsaasService
     {
         return app(AsaasService::class, ['tenantId' => $tenantId]);
+    }
+
+    private ?bool $colunaTaxa = null;
+
+    private function temTaxaCartao(): bool
+    {
+        return $this->colunaTaxa ??= Schema::hasColumn('contratos_recorrencia', 'taxa_cartao_mensal');
+    }
+
+    /**
+     * Taxa do cartão repassada ao aluno na mensalidade: tarifa do Asaas + sobretaxa de antecipação à vista
+     * das Configurações de pagamento (a mesma conta do checkout à vista). Sem simulação, sem taxa.
+     */
+    public function taxaCartao(int $tenantId, string $valorMensal): string
+    {
+        try {
+            $r = $this->asaas($tenantId)->valorComTaxaCartaoRepassada((float) $valorMensal, 1);
+
+            return Calc::reais(max(0, Calc::centavos(number_format((float) $r['valor_cobrar'], 2, '.', '')) - Calc::centavos($valorMensal)));
+        } catch (\Throwable $e) {
+            Log::warning('Recorrência: taxa do cartão não simulada', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
+
+            return '0.00';
+        }
+    }
+
+    /**
+     * O que o Asaas cobra por mês: mensalidade + taxa do cartão (recalculada sobre o valor).
+     *
+     * @return array{0: string, 1: string} [valor no gateway, taxa]
+     */
+    private function valorNoGateway(int $tenantId, string $metodo, string $mensal): array
+    {
+        $taxa = $metodo === 'cartao' && $this->temTaxaCartao() ? $this->taxaCartao($tenantId, $mensal) : '0.00';
+
+        return [Calc::reais(Calc::centavos($mensal) + Calc::centavos($taxa)), $taxa];
     }
 
     /* ================================================================ ofertas e termos */
@@ -109,6 +146,7 @@ class RecorrenciaService
                 "Assinatura mensal do plano {$plano['nome']} em {$academia}, sem fidelidade.",
                 "Você paga {$brl($mensal)} por mês, cobrados automaticamente. Cada mês é uma cobrança separada; não é uma compra parcelada.",
                 'Não há prazo mínimo: você pode cancelar a qualquer momento pelo app, sem multa. O acesso vai até o fim do período já pago.',
+                'Se a academia reajustar o preço do plano, o novo valor vale a partir da cobrança seguinte ao reajuste; cobranças já emitidas não mudam.',
                 "Você pode desistir em até {$ciclo['arrependimento_dias']} dias após o aceite.",
                 trim((string) ($ciclo['termos'] ?? '')),
             ]));
@@ -129,6 +167,7 @@ class RecorrenciaService
             $cancel,
             "Você pode desistir em até {$ciclo['arrependimento_dias']} dias após o aceite, sem regularização.",
             $renovacao,
+            'Durante a fidelização o valor mensal não muda. Depois dela, se a academia tiver reajustado o preço do plano, a assinatura passa ao valor vigente a partir da cobrança seguinte.',
             'O cancelamento pode ser pedido pelo app; o acesso vai até o fim do período já pago.',
         ];
         // Termos adicionais: os próprios do ciclo, ou os da academia (herdados)
@@ -212,8 +251,9 @@ class RecorrenciaService
             return $this->erro('Você já tem um plano ativo nesta modalidade. A assinatura com fidelidade pode ser feita quando ele vencer.', 409, 'MATRICULA_ATIVA_EXISTENTE');
         }
 
+        [$valorGateway, $taxa] = $this->valorNoGateway($tenantId, $metodo, $oferta['valor_mensal']);
         try {
-            [$contratoId, $matriculaId] = DB::transaction(function () use ($tenantId, $usuarioId, $aluno, $plano, $ciclo, $oferta, $metodo, $hoje, $existente, $origem) {
+            [$contratoId, $matriculaId] = DB::transaction(function () use ($tenantId, $usuarioId, $aluno, $plano, $ciclo, $oferta, $metodo, $hoje, $existente, $origem, $taxa) {
                 if ($existente) {
                     $this->transicionar($tenantId, (int) $existente->id, 'cancelado', 'substituido', null, ['por_ciclo' => $ciclo['id']]);
                 }
@@ -231,7 +271,7 @@ class RecorrenciaService
                     'aceite_ip' => isset($origem['ip']) ? mb_substr((string) $origem['ip'], 0, 45) : null,
                     'aceite_user_agent' => isset($origem['user_agent']) ? mb_substr((string) $origem['user_agent'], 0, 255) : null,
                     'contrato_anterior_id' => $existente->id ?? null, 'created_at' => now(), 'updated_at' => now(),
-                ]);
+                ] + ($this->temTaxaCartao() ? ['taxa_cartao_mensal' => $taxa] : []));
                 $this->evento($tenantId, $contratoId, 'contratado', null, 'pendente_ativacao', $usuarioId, ['termos_versao' => $oferta['termos_versao'], 'metodo' => $metodo]);
 
                 return [$contratoId, $matriculaId];
@@ -244,10 +284,10 @@ class RecorrenciaService
 
         try {
             $sub = $this->asaas($tenantId)->criarAssinatura([
-                'contrato_id' => $contratoId, 'valor' => $oferta['valor_mensal'],
+                'contrato_id' => $contratoId, 'valor' => $valorGateway,
                 'billing_type' => ['cartao' => 'CREDIT_CARD', 'pix' => 'PIX'][$metodo],
                 'proximo_vencimento' => $hoje,
-                'descricao' => "{$plano->nome} · ".($oferta['fidelizacao_meses'] > 0 ? "fidelização {$oferta['fidelizacao_meses']} meses" : 'assinatura mensal').' · '.Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês',
+                'descricao' => "{$plano->nome} · ".($oferta['fidelizacao_meses'] > 0 ? "fidelização {$oferta['fidelizacao_meses']} meses" : 'assinatura mensal').' · '.Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês'.(Calc::centavos($taxa) > 0 ? ' + taxa do cartão '.Calc::brl(Calc::centavos($taxa)) : ''),
                 // Política "encerrar": o próprio Asaas para depois da última mensalidade da fidelização
                 'max_pagamentos' => $oferta['politica_renovacao'] === 'encerrar' ? $oferta['fidelizacao_meses'] : null,
                 'cliente' => ['name' => (string) $aluno->nome, 'cpfCnpj' => (string) $aluno->cpf, 'email' => $aluno->email, 'mobilePhone' => $aluno->telefone],
@@ -440,6 +480,17 @@ class RecorrenciaService
      *
      * @param  array<string, mixed>  $payment
      */
+    /** Taxa do cartão destacada na parcela (como no checkout à vista), quando a cobrança a inclui. */
+    private function tarifaDaParcela(object $c, string $valor): array
+    {
+        $taxa = Calc::centavos((string) ($c->taxa_cartao_mensal ?? '0'));
+        if ($taxa <= 0 || Calc::centavos($valor) < $taxa || ! Schema::hasColumn('pagamentos_plano', 'tarifa_cartao')) {
+            return [];
+        }
+
+        return ['tarifa_cartao' => Calc::reais($taxa)];
+    }
+
     private function registrarCobranca(object $c, array $payment): ?object
     {
         $paymentId = (string) $payment['id'];
@@ -470,7 +521,7 @@ class RecorrenciaService
             'valor' => $valor, 'valor_original' => $valor, 'desconto' => 0, 'data_vencimento' => $vencimento, 'status_pagamento_id' => 1,
             'observacoes' => "Mensalidade {$numero} da assinatura · aguardando pagamento (Asaas {$paymentId})",
             'created_at' => now(), 'updated_at' => now(),
-        ]);
+        ] + $this->tarifaDaParcela($c, $valor));
         $dados = [
             'tenant_id' => $c->tenant_id, 'contrato_id' => $c->id, 'numero' => $numero, 'vencimento' => $vencimento, 'valor' => $valor,
             'gateway_payment_id' => $paymentId, 'pagamento_plano_id' => $parcelaId, 'status' => 'pendente', 'pago_em' => null,
@@ -535,10 +586,20 @@ class RecorrenciaService
                     $update['proxima_cobranca_em'] = null;
                     break;
                 case 'mensal':
-                    if ($c->assinatura_gateway_id && Calc::centavos((string) $c->valor_mensal_referencia) !== Calc::centavos((string) $c->valor_mensal_vigente)) {
-                        $this->asaas($tenantId)->atualizarValorAssinatura((string) $c->assinatura_gateway_id, Calc::reais(Calc::centavos((string) $c->valor_mensal_referencia)));
+                case 'promocional':
+                    // Fidelidade cumprida: reajuste de preço feito durante ela passa a valer agora
+                    $novo = $this->precoForaDaFidelidade($tenantId, $c);
+                    if ($novo !== null && Calc::centavos($novo) !== Calc::centavos((string) $c->valor_mensal_vigente)) {
+                        [$gateway, $taxa] = $this->valorNoGateway($tenantId, (string) $c->metodo, $novo);
+                        if ($c->assinatura_gateway_id) {
+                            $this->asaas($tenantId)->atualizarValorAssinatura((string) $c->assinatura_gateway_id, $gateway, false);
+                        }
+                        $update['valor_mensal_vigente'] = $novo;
+                        if ($this->temTaxaCartao()) {
+                            $update['taxa_cartao_mensal'] = $taxa;
+                        }
+                        $dados += ['valor_anterior' => (string) $c->valor_mensal_vigente, 'valor_novo' => $novo];
                     }
-                    $update['valor_mensal_vigente'] = Calc::reais(Calc::centavos((string) $c->valor_mensal_referencia));
                     break;
                 case 'nova_fidelizacao':
                     $update['renovacao_oferecida_em'] = AcademyDateTime::nowFormatted();
@@ -553,6 +614,71 @@ class RecorrenciaService
         }
         DB::table('contratos_recorrencia')->where('id', $contratoId)->update($update);
         $this->evento($tenantId, $contratoId, 'fidelizacao_cumprida', null, null, null, $dados);
+    }
+
+    /**
+     * Preço mensal de um contrato fora da fidelidade, pela tabela atual do plano.
+     * mensal: referência (planos.valor); promocional e nova_fidelizacao (enquanto não aceita): mensalidade
+     * atual do ciclo. Ciclo/plano desativado ou sem preço: null (mantém o valor do contrato).
+     */
+    private function precoForaDaFidelidade(int $tenantId, object $c): ?string
+    {
+        if ($c->politica_renovacao === 'encerrar') {
+            return null;
+        }
+        if ($c->politica_renovacao === 'mensal') {
+            $ref = DB::table('planos')->where('id', $c->plano_id)->where('tenant_id', $tenantId)->value('valor');
+
+            return $ref !== null && (float) $ref > 0 ? Calc::reais(Calc::centavos((string) $ref)) : null;
+        }
+        $ciclo = DB::table('plano_ciclos')->where('id', $c->plano_ciclo_id)->where('tenant_id', $tenantId)->where('ativo', 1)->first(['valor', 'meses']);
+        if (! $ciclo || (float) $ciclo->valor <= 0) {
+            return null;
+        }
+
+        return Calc::reais(intdiv(Calc::centavos((string) $ciclo->valor), max(1, (int) $ciclo->meses)));
+    }
+
+    /**
+     * Reajuste de preço do plano: assinaturas fora da fidelidade (mensal sem fidelidade ou fidelidade
+     * cumprida) passam ao preço novo a partir da próxima cobrança; as já emitidas no Asaas não mudam.
+     * Em fidelidade, o contrato aceito vale até o fim (verificarFimFidelizacao aplica o preço novo).
+     *
+     * @return array{contratos: int, em_fidelidade: int, falhas: int}
+     */
+    public function reajustarContratos(int $tenantId, int $planoId, ?int $usuarioId = null): array
+    {
+        $r = ['contratos' => 0, 'em_fidelidade' => 0, 'falhas' => 0];
+        $contratos = DB::table('contratos_recorrencia')->where('tenant_id', $tenantId)->where('plano_id', $planoId)
+            ->whereIn('status', self::ATIVOS)->get();
+        foreach ($contratos as $c) {
+            if ($c->em_fidelizacao) {
+                $r['em_fidelidade']++;
+
+                continue;
+            }
+            $novo = $this->precoForaDaFidelidade($tenantId, $c);
+            if ($novo === null || Calc::centavos($novo) === Calc::centavos((string) $c->valor_mensal_vigente)) {
+                continue;
+            }
+            [$gateway, $taxa] = $this->valorNoGateway($tenantId, (string) $c->metodo, $novo);
+            try {
+                if ($c->assinatura_gateway_id) {
+                    $this->asaas($tenantId)->atualizarValorAssinatura((string) $c->assinatura_gateway_id, $gateway, false);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Recorrência: reajuste não aplicado no Asaas', ['contrato_id' => $c->id, 'error' => $e->getMessage()]);
+                $r['falhas']++;
+
+                continue;
+            }
+            DB::table('contratos_recorrencia')->where('id', $c->id)->update(['valor_mensal_vigente' => $novo, 'updated_at' => now()]
+                + ($this->temTaxaCartao() ? ['taxa_cartao_mensal' => $taxa] : []));
+            $this->evento($tenantId, (int) $c->id, 'reajuste', null, null, $usuarioId, ['valor_anterior' => (string) $c->valor_mensal_vigente, 'valor_novo' => $novo]);
+            $r['contratos']++;
+        }
+
+        return $r;
     }
 
     /**
@@ -576,15 +702,16 @@ class RecorrenciaService
         if (! hash_equals($oferta['termos_hash'], $termosHash)) {
             return $this->erro('Os termos foram atualizados. Leia e aceite de novo.', 409, 'TERMOS_DESATUALIZADOS', ['oferta' => $oferta]);
         }
+        [$gateway, $taxa] = $this->valorNoGateway($tenantId, (string) $c->metodo, $oferta['valor_mensal']);
         try {
             if ($c->assinatura_gateway_id && Calc::centavos($oferta['valor_mensal']) !== Calc::centavos((string) $c->valor_mensal_vigente)) {
-                $this->asaas($tenantId)->atualizarValorAssinatura((string) $c->assinatura_gateway_id, $oferta['valor_mensal']);
+                $this->asaas($tenantId)->atualizarValorAssinatura((string) $c->assinatura_gateway_id, $gateway);
             }
         } catch (\Throwable $e) {
             return $this->erro('O gateway não aceitou a renovação agora. Tente de novo.', 502);
         }
         $hoje = AcademyDateTime::today();
-        $novoId = DB::transaction(function () use ($tenantId, $usuarioId, $c, $oferta, $hoje, $origem) {
+        $novoId = DB::transaction(function () use ($tenantId, $usuarioId, $c, $oferta, $hoje, $origem, $taxa) {
             $proximo = (string) ($c->proxima_cobranca_em ?: $hoje);
             DB::table('contratos_recorrencia')->where('id', $c->id)->update(['assinatura_gateway_id' => null, 'updated_at' => now()]);
             $this->transicionar($tenantId, (int) $c->id, 'encerrado', 'renovado_com_nova_fidelizacao', $usuarioId);
@@ -598,7 +725,7 @@ class RecorrenciaService
                 'aceite_em' => AcademyDateTime::nowFormatted(), 'aceite_usuario_id' => $usuarioId,
                 'aceite_ip' => $origem['ip'] ?? null, 'aceite_user_agent' => isset($origem['user_agent']) ? mb_substr((string) $origem['user_agent'], 0, 255) : null,
                 'contrato_anterior_id' => $c->id, 'assinatura_gateway_id' => $c->assinatura_gateway_id, 'created_at' => now(), 'updated_at' => now(),
-            ]));
+            ] + ($this->temTaxaCartao() ? ['taxa_cartao_mensal' => $taxa] : [])));
             $this->evento($tenantId, $novoId, 'contratado', null, 'ativo', $usuarioId, ['renovacao_de' => $c->id, 'termos_versao' => $oferta['termos_versao']]);
 
             return $novoId;

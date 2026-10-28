@@ -62,6 +62,8 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
   const [pix, setPix] = useState<{ contratoId: number; pagamento: NonNullable<PagamentoAberto> } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState(false);
+  // Cartão: taxa do cartão por mês (tarifa + antecipação), mostrada numa linha só
+  const [taxa, setTaxa] = useState<{ taxa_cartao: string; total_mensal: string } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -74,6 +76,18 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
       })
       .catch(() => setOferta(null));
   }, [visible, planoId, ciclo.id, revisaoDireta, ofertaInicial, metodoInicial]);
+
+  useEffect(() => {
+    setTaxa(null);
+    if (!visible || modo !== "assinatura" || metodo !== "cartao") return;
+    let vivo = true;
+    chamarRecorrencia("GET", `/taxa-cartao?plano_ciclo_id=${ciclo.id}`)
+      .then(({ ok, json }) => { if (vivo && ok && json?.data) setTaxa(json.data); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [visible, modo, metodo, ciclo.id]);
+  const comTaxa = metodo === "cartao" && taxa && Number(taxa.taxa_cartao) > 0 ? taxa : null;
+  const mensalCobrado = comTaxa ? brl(comTaxa.total_mensal) : oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado;
 
   const fidelidade = oferta?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses;
   // Ciclo mensal vira assinatura sem fidelidade: cancela quando quiser
@@ -177,9 +191,9 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
   }
 
   const titulo = revisaoDireta ? "Revise e assine" : etapa === "valor" ? `Como você quer pagar o ${ciclo.nome}?` : etapa === "termos" ? "Informações contratuais" : "Forma de pagamento";
-  const rotulo = revisaoDireta ? `Assinar e pagar ${oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado}` : etapa !== "pagamento" ? "Continuar"
+  const rotulo = revisaoDireta ? `Assinar e pagar ${mensalCobrado}` : etapa !== "pagamento" ? "Continuar"
     : modo === "avista" ? (metodo ? rotuloAvista(metodo) : "Escolha a forma")
-      : `Assinar por ${oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado}/mês`;
+      : `Assinar por ${mensalCobrado}/mês`;
 
   return (
     <>
@@ -216,6 +230,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
             </Pressable>
             {revisaoDireta ? <View style={styles.resumo}>
               <Text style={styles.resumoTitulo}>{metodo === 'pix' ? 'PIX mensal' : 'Cartão de crédito'} · {brl(oferta.valor_mensal)}/mês</Text>
+              {comTaxa ? <Text style={styles.meta}>Taxa do cartão: {brl(comTaxa.taxa_cartao)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
               <Text style={styles.meta}>{metodo === 'pix' ? 'Um novo PIX a cada mês. Não há débito automático.' : 'A primeira mensalidade é paga no site seguro do provedor. As seguintes são debitadas mensalmente no mesmo cartão.'}</Text>
             </View> : null}
             <Pressable style={styles.aceite} onPress={() => { setAceite(!aceite); setErro(null); }} accessibilityRole="checkbox" accessibilityState={{ checked: aceite }}>
@@ -233,6 +248,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
               <Text style={styles.meta}>{modo === "avista" ? `${acesso}, pagamento único` : `${semFidelidade ? "Sem fidelidade" : `Fidelidade de ${fidelidade} meses`} · termos aceitos`}</Text>
             </View>
             <PaymentMethodOptions opcoes={modo === "avista" ? metodosAvista : metodosAssinatura} value={metodo} onChange={setMetodo} />
+            {modo === "assinatura" && comTaxa ? <Text style={styles.meta}>Taxa do cartão: {brl(comTaxa.taxa_cartao)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
             {modo === "assinatura" ? (
               <Text style={styles.meta}>{metodo === "cartao"
                 ? `Você paga a 1ª mensalidade em seguida; as próximas são debitadas no mesmo cartão, uma por mês.${metodosAssinatura.includes("pix") ? "" : " Para pagar por PIX, volte e escolha À vista."}`

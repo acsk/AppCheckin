@@ -183,8 +183,16 @@ export default function FormPlanoScreen() {
         ...fidelidadeParaApi(data.fidelity),
       };
       if (data.id) {
-        await planoService.atualizarCiclo(planoId, data.id, payload);
-        showSuccess('Ciclo atualizado');
+        const res = await planoService.atualizarCiclo(planoId, data.id, payload);
+        const r = res?.reajuste;
+        // Novo preço: vendas novas já; alunos atuais na próxima renovação; assinatura em fidelidade só depois dela
+        const partes = r ? [
+          r.matriculas ? `${r.matriculas} aluno(s) à vista pagam o novo valor na próxima renovação` : null,
+          r.contratos ? `${r.contratos} assinatura(s) sem fidelidade reajustada(s) a partir da próxima cobrança` : null,
+          r.em_fidelidade ? `${r.em_fidelidade} em fidelidade mantêm o valor até o fim dela` : null,
+          r.falhas ? `${r.falhas} assinatura(s) não atualizada(s) no Asaas: tente salvar de novo` : null,
+        ].filter(Boolean) : [];
+        showSuccess(partes.length ? `Ciclo atualizado. ${partes.join('; ')}.` : 'Ciclo atualizado');
       } else {
         await planoService.criarCiclo(planoId, { ...payload, assinatura_frequencia_id: data.typeId });
         showSuccess('Ciclo adicionado');

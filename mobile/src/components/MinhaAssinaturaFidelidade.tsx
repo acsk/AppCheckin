@@ -23,6 +23,7 @@ type Contrato = {
   status: string;
   status_nome: string;
   valor_mensal: string;
+  taxa_cartao?: string;
   valor_mensal_contratado: string;
   valor_mensal_referencia: string;
   metodo: string;
@@ -175,6 +176,7 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
               <Badge tone={TOM[c.status] || "neutral"}>{c.status_nome}</Badge>
             </View>
             <Text style={styles.valor}>{brl(c.valor_mensal)}<Text style={styles.porMes}>/mês</Text></Text>
+            {Number(c.taxa_cartao) > 0 ? <Text style={styles.meta}>+ taxa do cartão {brl(c.taxa_cartao)}/mês</Text> : null}
             <View style={styles.grade}>
               <Info k="Próximo vencimento" v={dataBr(c.proxima_cobranca_em)} />
               <Info k="Forma de pagamento" v={c.metodo === "cartao" ? "Cartão (automático)" : c.metodo === "pix" ? "PIX mensal" : "Boleto"} />

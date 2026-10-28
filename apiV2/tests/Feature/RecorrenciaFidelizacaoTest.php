@@ -138,6 +138,7 @@ class RecorrenciaFidelizacaoTest extends TestCase
         });
         Schema::create('status_pagamento', fn (Blueprint $t) => [$t->increments('id'), $t->string('nome')]);
         (require database_path('migrations/2026_10_28_120000_recorrencia_fidelizacao.php'))->up();
+        (require database_path('migrations/2026_10_30_130000_recorrencia_taxa_cartao.php'))->up();
 
         DB::table('tenants')->insert([['id' => self::T, 'nome' => 'Cia'], ['id' => self::OUTRA, 'nome' => 'Outra']]);
         foreach (['ativa', 'vencida', 'cancelada', 'finalizada', 'pendente'] as $i => $c) {
@@ -174,7 +175,19 @@ class RecorrenciaFidelizacaoTest extends TestCase
 
             public array $chamadas = [];
 
+            /** % de taxa do cartão simulada (null = simulação indisponível) */
+            public ?float $taxaPct = null;
+
             public function __construct() {}
+
+            public function valorComTaxaCartaoRepassada(float $valorLiquidoDesejado, int $parcelas = 1, bool $refinar = true): array
+            {
+                if ($this->taxaPct === null) {
+                    throw new \RuntimeException('sem simulação');
+                }
+
+                return ['valor_plano' => $valorLiquidoDesejado, 'valor_cobrar' => round($valorLiquidoDesejado * (1 + $this->taxaPct / 100), 2)];
+            }
 
             public function criarAssinatura(array $data): array
             {
@@ -205,9 +218,9 @@ class RecorrenciaFidelizacaoTest extends TestCase
                 return [];
             }
 
-            public function atualizarValorAssinatura(string $subscriptionId, string $valor): void
+            public function atualizarValorAssinatura(string $subscriptionId, string $valor, bool $atualizarPendentes = true): void
             {
-                $this->chamadas[] = ['atualizar', $subscriptionId, $valor];
+                $this->chamadas[] = $atualizarPendentes ? ['atualizar', $subscriptionId, $valor] : ['atualizar_proximas', $subscriptionId, $valor];
             }
 
             public function cancelarAssinatura(string $subscriptionId): void
@@ -389,7 +402,7 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertSame(0, (int) $c->em_fidelizacao);
         $this->assertSame('120.00', $this->v($c->valor_mensal_vigente), 'política mensal aceita: passa ao valor de referência');
         $this->assertSame('100.00', $this->v($c->valor_mensal_contratado), 'o contratado fica no histórico');
-        $this->assertContains(['atualizar', 'sub_1', '120.00'], $this->asaas->chamadas);
+        $this->assertContains(['atualizar_proximas', 'sub_1', '120.00'], $this->asaas->chamadas, 'cobranças já emitidas não mudam');
         $sim = $this->svc()->simularCancelamento(self::T, $id);
         $this->assertSame(['0.00', 'fim_prazo'], [$sim['valor_regularizacao'], $sim['tipo']]);
     }
@@ -679,6 +692,93 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertSame([], $this->asaas->chamadas, 'nenhuma política de fim de fidelização aplicada');
         $sim = $this->svc()->simularCancelamento(self::T, $id);
         $this->assertSame(['0.00', 'fim_prazo'], [$sim['valor_regularizacao'], $sim['tipo']]);
+    }
+
+    public function test_reajuste_vale_para_assinatura_sem_fidelidade_e_so_depois_da_fidelidade(): void
+    {
+        DB::table('plano_ciclos')->where('id', 40)->update(['cobranca_mensal' => 1]);
+        $semFid = $this->contratar(40);
+        $comFid = $this->contratar(50, self::BIA);
+        $this->recuar($comFid, 70);
+        $this->webhook($comFid, 1);
+
+        // Reajuste: mensal 120 → 150 (referência), bimestral 200 → 240
+        DB::table('planos')->where('id', 7)->update(['valor' => '150.00']);
+        DB::table('plano_ciclos')->where('id', 40)->update(['valor' => '150.00']);
+        DB::table('plano_ciclos')->where('id', 50)->update(['valor' => '240.00']);
+        $r = $this->svc()->reajustarContratos(self::T, 7);
+
+        $this->assertSame(['contratos' => 1, 'em_fidelidade' => 1, 'falhas' => 0], $r);
+        $this->assertSame('150.00', $this->v($this->contrato($semFid)->valor_mensal_vigente));
+        $this->assertContains(['atualizar_proximas', 'sub_1', '150.00'], $this->asaas->chamadas);
+        $this->assertSame('100.00', $this->v($this->contrato($comFid)->valor_mensal_vigente), 'em fidelidade o valor aceito vale até o fim');
+        $this->assertSame(1, DB::table('recorrencia_eventos')->where('contrato_id', $semFid)->where('tipo', 'reajuste')->count());
+
+        $this->webhook($comFid, 2);
+        $this->assertSame('150.00', $this->v($this->contrato($comFid)->valor_mensal_vigente), 'fidelidade cumprida: referência vigente do plano');
+        $this->assertContains(['atualizar_proximas', 'sub_2', '150.00'], $this->asaas->chamadas);
+    }
+
+    public function test_reajuste_do_avista_so_na_proxima_renovacao(): void
+    {
+        (require database_path('migrations/2026_10_30_120000_matriculas_valor_renovacao.php'))->up();
+        Schema::table('matriculas', fn (Blueprint $t) => $t->integer('pacote_contrato_id')->nullable());
+        $hoje = AcademyDateTime::today();
+        $mat = fn (int $id, string $valor, int $status = 1, ?int $pacote = null) => DB::table('matriculas')->insert([
+            'id' => $id, 'tenant_id' => self::T, 'aluno_id' => 100, 'plano_id' => 7, 'plano_ciclo_id' => 50, 'tipo_cobranca' => 'avulso',
+            'valor' => $valor, 'status_id' => $status, 'pacote_contrato_id' => $pacote, 'data_inicio' => $hoje,
+        ]);
+        $parcela = fn (int $mat, string $venc, ?string $obs = null, string $desconto = '0') => DB::table('pagamentos_plano')->insertGetId([
+            'tenant_id' => self::T, 'matricula_id' => $mat, 'plano_id' => 7, 'valor' => Calc::reais(Calc::centavos('200') - Calc::centavos($desconto)),
+            'valor_original' => '200.00', 'desconto' => $desconto, 'data_vencimento' => $venc, 'status_pagamento_id' => 1, 'observacoes' => $obs,
+        ]);
+        $mat(1, '200.00');
+        $mat(2, '180.00');               // preço negociado
+        $mat(3, '200.00', 1, 9);         // pacote
+        $mat(4, '200.00', 5);            // compra pendente
+        $futura = $parcela(1, Calc::maisMeses($hoje, 2), 'Pagamento gerado automaticamente após confirmação', '20');
+        $emitida = $parcela(1, Calc::maisMeses($hoje, 2), 'Aguardando [Asaas pay_abc]');
+        $atrasada = $parcela(1, date('Y-m-d', strtotime($hoje.' -3 days')));
+
+        $r = app(\App\Services\ReajustePrecoService::class)->reajustarCiclo(self::T, 50, 200.0, 240.0);
+
+        $this->assertSame(['matriculas' => 1, 'parcelas' => 1], $r);
+        $m = DB::table('matriculas')->find(1);
+        $this->assertSame(['200.00', '240.00'], [$this->v($m->valor), $this->v($m->valor_renovacao)], 'ciclo pago não muda');
+        $this->assertNull(DB::table('matriculas')->find(2)->valor_renovacao, 'preço negociado fica');
+        $this->assertNull(DB::table('matriculas')->find(3)->valor_renovacao);
+        $this->assertNull(DB::table('matriculas')->find(4)->valor_renovacao);
+        $f = DB::table('pagamentos_plano')->find($futura);
+        $this->assertSame(['240.00', '220.00'], [$this->v($f->valor_original), $this->v($f->valor)], 'desconto mantido');
+        $this->assertSame('200.00', $this->v(DB::table('pagamentos_plano')->find($emitida)->valor), 'já emitida no provedor');
+        $this->assertSame('200.00', $this->v(DB::table('pagamentos_plano')->find($atrasada)->valor), 'já vencida');
+
+        // Segundo reajuste antes de renovar, depois o ciclo novo começa
+        app(\App\Services\ReajustePrecoService::class)->reajustarCiclo(self::T, 50, 240.0, 250.0);
+        $this->assertSame('250.00', $this->v(DB::table('matriculas')->find(1)->valor_renovacao));
+        $this->assertSame(250.0, app(\App\Services\ReajustePrecoService::class)->iniciarCicloNovo(self::T, 1));
+        $m = DB::table('matriculas')->find(1);
+        $this->assertSame(['250.00', null], [$this->v($m->valor), $m->valor_renovacao]);
+    }
+
+    public function test_assinatura_no_cartao_repassa_a_taxa_do_cartao(): void
+    {
+        $this->asaas->taxaPct = 5.0;
+        $this->assertSame(['valor_mensal' => '100.00', 'taxa_cartao' => '5.00', 'total_mensal' => '105.00'],
+            app(MobileRecorrenciaService::class)->taxaCartao(self::T, 50)['body']['data']);
+
+        $cartao = $this->contratar(50);
+        $this->assertSame(105.0, (float) $this->asaas->assinaturas['sub_1']['valor'], 'Asaas cobra mensalidade + taxa');
+        $c = $this->contrato($cartao);
+        $this->assertSame(['100.00', '5.00'], [$this->v($c->valor_mensal_vigente), $this->v($c->taxa_cartao_mensal)], 'contrato e regularização sem a taxa');
+        $this->assertStringContainsString('taxa do cartão', $this->asaas->assinaturas['sub_1']['descricao']);
+
+        // Fim da fidelidade (política mensal → 120): taxa recalculada sobre o novo valor
+        $this->recuar($cartao, 70);
+        $this->webhook($cartao, 1);
+        $this->webhook($cartao, 2);
+        $this->assertContains(['atualizar_proximas', 'sub_1', '126.00'], $this->asaas->chamadas);
+        $this->assertSame('6.00', $this->v($this->contrato($cartao)->taxa_cartao_mensal));
     }
 
     public function test_calculo_em_centavos(): void
