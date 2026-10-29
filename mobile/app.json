@@ -2,7 +2,7 @@
   "expo": {
     "name": "AppCheckin",
     "slug": "mobile",
-    "version": "1.0.11",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/app-icon/icon.png",
     "scheme": "mobile",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.anonymous.mobile",
-      "versionCode": 11,
+      "versionCode": 13,
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/app-icon/adaptive-foreground.png",

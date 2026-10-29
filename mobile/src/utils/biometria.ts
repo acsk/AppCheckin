@@ -11,7 +11,6 @@ import { Platform } from "react-native";
 const CREDENCIAIS = "appcheckin_biometria_credenciais";
 // Só o e-mail, para saber sem pedir a biometria se ela está ligada (e para qual conta)
 const ATIVA = "@appcheckin:biometria_email";
-const RECUSADA = "@appcheckin:biometria_recusada";
 
 const OPCOES: SecureStore.SecureStoreOptions = {
   requireAuthentication: true,
@@ -20,16 +19,38 @@ const OPCOES: SecureStore.SecureStoreOptions = {
 
 export type Credenciais = { email: string; senha: string };
 
+/**
+ * web: navegador (não há cofre do aparelho); sem_sensor; sem_cadastro: nenhuma digital/rosto no
+ * aparelho; fraca: só biometria "fraca" (rosto em muitos Android) — o cofre exige a forte (digital).
+ */
+export type MotivoBiometria = "web" | "sem_sensor" | "sem_cadastro" | "fraca" | null;
+
+export async function estadoBiometria(): Promise<{ disponivel: boolean; motivo: MotivoBiometria }> {
+  if (Platform.OS === "web") return { disponivel: false, motivo: "web" };
+  try {
+    if (!(await LocalAuthentication.hasHardwareAsync())) return { disponivel: false, motivo: "sem_sensor" };
+    if (!(await LocalAuthentication.isEnrolledAsync())) return { disponivel: false, motivo: "sem_cadastro" };
+    if (!SecureStore.canUseBiometricAuthentication()) {
+      const nivel = await LocalAuthentication.getEnrolledLevelAsync().catch(() => null);
+      return { disponivel: false, motivo: nivel === LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK ? "fraca" : "sem_cadastro" };
+    }
+    return { disponivel: true, motivo: null };
+  } catch (e) {
+    console.warn("[biometria] não deu para verificar o aparelho", e);
+    return { disponivel: false, motivo: "sem_sensor" };
+  }
+}
+
+/** Texto para o aluno quando o aparelho tem sensor mas a biometria não pode ser usada. */
+export function textoMotivoBiometria(m: MotivoBiometria): string | null {
+  if (m === "sem_cadastro") return "Para entrar com biometria, cadastre uma digital nas configurações do aparelho.";
+  if (m === "fraca") return "O reconhecimento facial deste aparelho não é aceito para entrar. Cadastre uma digital para usar a biometria.";
+  return null;
+}
+
 /** Aparelho com biometria cadastrada e o app nativo (não vale para a web). */
 export async function biometriaDisponivel(): Promise<boolean> {
-  if (Platform.OS === "web") return false;
-  try {
-    return (await LocalAuthentication.hasHardwareAsync())
-      && (await LocalAuthentication.isEnrolledAsync())
-      && SecureStore.canUseBiometricAuthentication();
-  } catch {
-    return false;
-  }
+  return (await estadoBiometria()).disponivel;
 }
 
 /** E-mail da conta com biometria ligada neste aparelho, ou null. */
@@ -41,29 +62,16 @@ export async function emailComBiometria(): Promise<string | null> {
   }
 }
 
-export async function biometriaRecusada(): Promise<boolean> {
-  try {
-    return (await AsyncStorage.getItem(RECUSADA)) === "1";
-  } catch {
-    return false;
-  }
-}
-
 /** Liga a biometria (o aparelho pede a digital/rosto para gravar). false = cancelado ou falhou. */
 export async function ativarBiometria(c: Credenciais): Promise<boolean> {
   try {
     await SecureStore.setItemAsync(CREDENCIAIS, JSON.stringify(c), { ...OPCOES, authenticationPrompt: "Confirme para ativar a entrada por biometria" });
     await AsyncStorage.setItem(ATIVA, c.email.trim().toLowerCase());
-    await AsyncStorage.removeItem(RECUSADA);
     return true;
-  } catch {
+  } catch (e) {
+    console.warn("[biometria] não deu para ativar", e);
     return false;
   }
-}
-
-/** "Agora não": não pergunta de novo até a pessoa ligar pelo login. */
-export async function recusarBiometria(): Promise<void> {
-  await AsyncStorage.setItem(RECUSADA, "1").catch(() => {});
 }
 
 export async function desativarBiometria(): Promise<void> {

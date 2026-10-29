@@ -26,12 +26,11 @@ import { ds as DS } from "../../src/components/ds/tokens";
 import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
 import {
   ativarBiometria,
-  biometriaDisponivel,
-  biometriaRecusada,
   desativarBiometria,
   emailComBiometria,
+  estadoBiometria,
   lerCredenciais,
-  recusarBiometria,
+  textoMotivoBiometria,
 } from "../../src/utils/biometria";
 import {
   APP_BUILD_VERSION,
@@ -77,14 +76,17 @@ export default function LoginScreen() {
   const senhaState = senha;
   const credLogin = useRef(null);
   const biometriaPedida = useRef(false);
-  // disponivel: aparelho com biometria; email: conta com a biometria ligada neste aparelho
-  const [biometria, setBiometria] = useState({ disponivel: false, email: null });
+  // disponivel: aparelho com biometria; motivo: por que não (MotivoBiometria);
+  // email: conta com a biometria ligada neste aparelho
+  const [biometria, setBiometria] = useState({ disponivel: false, motivo: null, email: null });
+  // "Entrar com biometria nas próximas vezes": liga no próximo login com senha
+  const [usarBiometria, setUsarBiometria] = useState(true);
 
   useEffect(() => {
     let ativo = true;
     (async () => {
-      const [disponivel, emailBio] = await Promise.all([biometriaDisponivel(), emailComBiometria()]);
-      if (ativo) setBiometria({ disponivel, email: disponivel ? emailBio : null });
+      const [estado, emailBio] = await Promise.all([estadoBiometria(), emailComBiometria()]);
+      if (ativo) setBiometria({ disponivel: estado.disponivel, motivo: estado.motivo, email: estado.disponivel ? emailBio : null });
     })();
     return () => { ativo = false; };
   }, []);
@@ -299,32 +301,23 @@ export default function LoginScreen() {
   }, [rememberMe, credentialsHydrated]);
 
   /**
-   * Depois de entrar com a senha: oferece ligar a biometria (uma vez; "Agora não" não pergunta de
-   * novo). Resolve depois da escolha, para só então seguir para o app.
+   * Depois de entrar com a senha, com "Entrar com biometria" marcado: grava as credenciais presas
+   * à biometria (o aparelho pede a digital). Resolve antes de seguir para o app.
    */
-  const oferecerBiometria = async () => {
+  const ativarBiometriaSeMarcada = async () => {
     const cred = credLogin.current;
-    if (!cred || cred.viaBiometria || !biometria.disponivel) return;
+    if (!cred || cred.viaBiometria || !biometria.disponivel || !usarBiometria) return;
     const emailNorm = cred.email.trim().toLowerCase();
-    if (biometria.email === emailNorm || (await biometriaRecusada())) return;
-    const aceitou = await new Promise((resolve) => {
-      Alert.alert(
-        "Entrar com biometria?",
-        "Da próxima vez, entre com a digital ou o rosto, sem digitar a senha.",
-        [
-          { text: "Agora não", style: "cancel", onPress: () => resolve(false) },
-          { text: "Ativar", onPress: () => resolve(true) },
-        ],
-        { cancelable: true, onDismiss: () => resolve(false) },
-      );
-    });
-    if (!aceitou) {
-      await recusarBiometria();
-      return;
-    }
     if (await ativarBiometria({ email: cred.email.trim(), senha: cred.senha })) {
       setBiometria((b) => ({ ...b, email: emailNorm }));
+      return;
     }
+    await new Promise((resolve) => Alert.alert(
+      "Biometria não ativada",
+      "A confirmação foi cancelada ou o aparelho recusou. Você pode ativar no próximo login.",
+      [{ text: "OK", onPress: () => resolve(true) }],
+      { cancelable: true, onDismiss: () => resolve(true) },
+    ));
   };
 
   const entrarComBiometria = async () => {
@@ -386,7 +379,7 @@ export default function LoginScreen() {
           return;
         }
 
-        await oferecerBiometria();
+        await ativarBiometriaSeMarcada();
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
       } else if (
@@ -513,7 +506,7 @@ export default function LoginScreen() {
         if (updateState === "reloading") {
           return;
         }
-        await oferecerBiometria();
+        await ativarBiometriaSeMarcada();
         router.replace("/(tabs)");
       } else {
         console.warn("Seleção de academia retornou sem token");
@@ -625,6 +618,24 @@ export default function LoginScreen() {
                 <Text style={styles.link}>Esqueceu sua senha?</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Biometria: liga no próximo login com senha (o aparelho pede a digital) */}
+            {biometria.disponivel && !biometria.email ? (
+              <TouchableOpacity
+                style={styles.rememberRow}
+                onPress={() => setUsarBiometria((prev) => !prev)}
+                disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: usarBiometria }}
+              >
+                <View style={[styles.rememberBox, usarBiometria && styles.rememberBoxChecked]}>
+                  {usarBiometria ? <Feather name="check" size={14} color={DS.onBrand} /> : null}
+                </View>
+                <Text style={styles.rememberText}>Entrar com biometria nas próximas vezes</Text>
+              </TouchableOpacity>
+            ) : textoMotivoBiometria(biometria.motivo) ? (
+              <Text style={styles.biometriaDesligar}>{textoMotivoBiometria(biometria.motivo)}</Text>
+            ) : null}
 
             <Button
               variant="glow"
