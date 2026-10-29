@@ -266,7 +266,6 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     // Proteção contra múltiplos cliques
     if (loading) {
-      console.log("⚠️ Login já em progresso, ignorando novo clique");
       return;
     }
 
@@ -288,17 +287,11 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      console.log("🔐 Iniciando login para:", email);
       const recaptchaToken = await getRecaptchaToken();
       const response = await authService.login(email, senha, recaptchaToken, vincularTenantId);
 
       // authService já retorna response.data e salva o token automaticamente
       if (response && response.token) {
-        console.log("✅ Login bem-sucedido");
-        console.log("📊 Dados do login:", {
-          user: response.user,
-          token: response.token?.substring(0, 20) + "...",
-        });
 
         // Pequeno delay para garantir que o token foi salvo
         await new Promise((resolve) => setTimeout(resolve, 800));
@@ -308,16 +301,13 @@ export default function LoginScreen() {
           return;
         }
 
-        console.log("🔄 Redirecionando para /(tabs)...");
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
-        console.log("✅ Redirect executado");
       } else if (
         response?.requires_tenant_selection &&
         Array.isArray(response?.tenants) &&
         response.tenants.length > 0
       ) {
-        console.log("🏷️ Seleção de tenant necessária");
         const [preferredId, lastId] = await Promise.all([
           AsyncStorage.getItem(tenantPreferenceKey(response.user.id)),
           AsyncStorage.getItem(lastTenantKey(response.user.id)),
@@ -342,7 +332,6 @@ export default function LoginScreen() {
         setTenantSelectionVisible(true);
         setLoading(false);
       } else {
-        console.log("⚠️ Login sem token", response);
         setFormError("Não foi possível fazer login. Tente de novo.");
         setLoading(false);
       }
@@ -414,7 +403,6 @@ export default function LoginScreen() {
       );
 
       if (response && response.token) {
-        console.log("✅ Tenant selecionado com sucesso");
         await AsyncStorage.setItem(
           lastTenantKey(pendingTenantLogin.userId),
           String(tenantId),

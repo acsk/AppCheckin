@@ -66,7 +66,6 @@ export function useProtectedRoute(options: UseProtectedRouteOptions = {}) {
           }
         }
 
-        console.log("[useProtectedRoute] Usuário autorizado");
         setIsAuthorized(true);
       } catch (error) {
         console.error("[useProtectedRoute] Erro na verificação:", error);

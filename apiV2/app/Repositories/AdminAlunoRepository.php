@@ -10,6 +10,17 @@ use Illuminate\Support\Facades\DB;
  */
 class AdminAlunoRepository
 {
+    /**
+     * Aluno (alias a) com pagamento em dia: matrícula ativa cujo acesso pago alcança hoje e sem
+     * parcela pendente/atrasada já vencida. Vale para qualquer ciclo (mensal, trimestral...).
+     * Um ? = tenant_id.
+     */
+    private const EM_DIA_SQL = "EXISTS (SELECT 1 FROM matriculas m JOIN status_matricula sm ON sm.id = m.status_id
+        WHERE m.aluno_id = a.id AND m.tenant_id = ? AND sm.codigo = 'ativa'
+        AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
+        AND NOT EXISTS (SELECT 1 FROM pagamentos_plano pp WHERE pp.matricula_id = m.id
+            AND pp.status_pagamento_id IN (1, 3) AND pp.data_vencimento < CURDATE()))";
+
     public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
     {
         $query = DB::table('alunos as a')
@@ -86,7 +97,7 @@ class AdminAlunoRepository
     /**
      * Lista do painel paginada no banco: busca (nome, e-mail, CPF/telefone), filtro e contagens das pílulas.
      * filtro: todos | ativos | pendentes (com plano e sem pagamento em dia) | sem_plano | inativos.
-     * "Pagamento em dia" segue temPagamentoAtivo (parcela paga com vencimento até 30 dias atrás).
+     * "Pagamento em dia" segue EM_DIA_SQL (o mesmo de temPagamentoAtivo).
      *
      * @return array{rows: list<array<string, mixed>>, total: int, contagens: array<string, int>}
      */
@@ -94,8 +105,7 @@ class AdminAlunoRepository
     {
         $temPlano = 'EXISTS (SELECT 1 FROM matriculas m JOIN status_matricula sm ON sm.id = m.status_id
             WHERE m.aluno_id = a.id AND m.tenant_id = ? AND sm.codigo = \'ativa\')';
-        $emDia = 'EXISTS (SELECT 1 FROM pagamentos_plano pp WHERE pp.aluno_id = a.id AND pp.tenant_id = ?
-            AND pp.status_pagamento_id = 2 AND DATE_ADD(pp.data_vencimento, INTERVAL 30 DAY) >= CURDATE())';
+        $emDia = self::EM_DIA_SQL;
 
         $base = DB::table('alunos as a')
             ->join('tenant_usuario_papel as tup', function ($join) use ($tenantId) {
@@ -406,12 +416,7 @@ class AdminAlunoRepository
 
     public function temPagamentoAtivo(int $alunoId, int $tenantId): bool
     {
-        return (bool) DB::table('pagamentos_plano')
-            ->where('aluno_id', $alunoId)
-            ->where('tenant_id', $tenantId)
-            ->where('status_pagamento_id', 2)
-            ->whereRaw('DATE_ADD(data_vencimento, INTERVAL 30 DAY) >= CURDATE()')
-            ->exists();
+        return DB::table('alunos as a')->where('a.id', $alunoId)->whereRaw(self::EM_DIA_SQL, [$tenantId])->exists();
     }
 
     public function hardDelete(int $id): bool

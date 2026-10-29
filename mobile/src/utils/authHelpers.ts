@@ -25,7 +25,6 @@ export const clearAuthStorage = async (): Promise<void> => {
  * Não redireciona — o usuário confirma na modal e vai para o login.
  */
 export const handleAuthError = async (message?: string): Promise<void> => {
-  console.log('🔑 Tratando erro de autenticação - Token inválido/expirado');
   await clearAuthStorage();
   notifySessionExpired(message);
 };

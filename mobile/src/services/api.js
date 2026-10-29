@@ -125,7 +125,6 @@ const api = {
         }
       }
       if (__DEV__) {
-        console.log("🌐 API_URL (api.js):", API_URL);
       }
 
       // Buscar token do storage
@@ -135,7 +134,6 @@ const api = {
 
       // Debug: listar todas as chaves do storage
       const allKeys = await AsyncStorage.getAllKeys?.();
-      console.log("🔍 Chaves no storage:", allKeys);
 
       // Montar headers base
       // Atenção: não injeta X-Tenant-* por padrão.
@@ -171,12 +169,7 @@ const api = {
         headers["Authorization"] = `Bearer ${token}`;
         // Sessão deslizante: a API devolve o token renovado em X-Refresh-Token
         headers["X-Session-Renew"] = "1";
-        console.log(
-          "🔑 Token adicionado ao header:",
-          token.substring(0, 20) + "...",
-        );
       } else if (token && (isAuthEndpoint || shouldSkipAuth)) {
-        console.log("🔓 Endpoint público/auth - Authorization removido");
       } else {
         if (!isAuthEndpoint && !shouldSkipAuth) {
           console.warn(
@@ -185,7 +178,6 @@ const api = {
           console.warn("⚠️ Para rota protegida:", endpoint);
         }
         if (!isAuthEndpoint && !shouldSkipAuth && onUnauthorizedCallback) {
-          console.log("[API] Chamando onUnauthorizedCallback...");
           onUnauthorizedCallback();
         } else {
           if (!onUnauthorizedCallback) {
@@ -205,8 +197,6 @@ const api = {
       }
 
       // Log da requisição
-      console.log(`📡 ${method} ${API_URL}${endpoint}`);
-      console.log("📋 Headers:", JSON.stringify(headers, null, 2));
 
       // Configurar requisição
       const fetchConfig = {

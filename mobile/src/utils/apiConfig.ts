@@ -148,18 +148,6 @@ export const getApiUrlRuntime = (): string => {
   const url = getApiUrl();
   cachedApiUrl = url;
   if (__DEV__) {
-    console.log(
-      "🌐 API_URL runtime:",
-      cachedApiUrl,
-      "| platform:",
-      Platform.OS,
-      "| expoHost:",
-      getHostFromExpo() || "null",
-      "| envUrl:",
-      getEnvUrl() || "null",
-      "| appEnv:",
-      APP_ENV,
-    );
   }
   return url;
 };

@@ -50,10 +50,8 @@ class DebugLogger {
 
     this.logs.push(entry);
 
-    // Também logar no console se disponível
-    if (level === 'log') {
-      console.log(`[${timestamp}] ${message}`, data || '');
-    } else if (level === 'warn') {
+    // Avisos e erros também vão para o console; o nível "log" fica só no histórico
+    if (level === 'warn') {
       console.warn(`[${timestamp}] ${message}`, data || '');
     } else if (level === 'error') {
       console.error(`[${timestamp}] ${message}`, data || '');

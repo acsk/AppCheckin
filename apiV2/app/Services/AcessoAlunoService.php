@@ -83,7 +83,7 @@ class AcessoAlunoService
                 'foto_base64' => null, 'papel_id' => Papel::ALUNO, 'papeis' => $papelAluno,
             ],
             'tenants' => $tenants,
-            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toDateTimeString(), 'somente_leitura' => true],
+            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toIso8601String(), 'somente_leitura' => true],
         ]];
     }
 

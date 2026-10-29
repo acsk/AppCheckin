@@ -263,7 +263,6 @@ export default function PlanoDetalhesScreen() {
       }
 
       const url = `${baseUrl}/mobile/planos/${planoId}`;
-      console.log("📍 Buscando detalhes do plano:", url);
 
       const response = await fetch(url, {
         method: "GET",
@@ -273,7 +272,6 @@ export default function PlanoDetalhesScreen() {
         },
       });
 
-      console.log("📡 Status da resposta:", response.status);
 
       if (!response.ok) {
         const responseText = await response.text();
@@ -289,7 +287,6 @@ export default function PlanoDetalhesScreen() {
       }
 
       const data = await response.json();
-      console.log("✅ Detalhes do plano:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data) {
         const payload = data.data;
@@ -383,7 +380,6 @@ export default function PlanoDetalhesScreen() {
           return;
         }
 
-        console.log("✅ Usuário autenticado com permissão para acessar plano");
         setPodeSandboxPix(usuarioPodeVerSandboxPagamento(user));
         setHasPermission(true);
       } catch (err) {
@@ -568,12 +564,6 @@ export default function PlanoDetalhesScreen() {
     const token = await AsyncStorage.getItem("@appcheckin:token");
     if (!token) throw new Error("Token não encontrado");
 
-    console.log("🔄 [Migrar] Enviando...", {
-      plano_id: plano.id,
-      plano_ciclo_id: selectedCicloId,
-      metodo_pagamento: metodo,
-      apiUrl,
-    });
 
     const migrarResult = await postComRetryGateway({
       url: `${apiUrl}/mobile/migrar-plano`,
@@ -595,7 +585,6 @@ export default function PlanoDetalhesScreen() {
       return;
     }
 
-    console.log("🔄 [Migrar] Resposta:", migrarResult.status, data);
 
     if (!migrarResult.ok) {
       if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
@@ -791,13 +780,6 @@ export default function PlanoDetalhesScreen() {
     if (!plano || !selectedCicloId) return;
 
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
-    console.log("🧪 [Contratar] selectedCiclo:", {
-      id: selectedCiclo?.id,
-      nome: selectedCiclo?.nome,
-      permite_recorrencia: selectedCiclo?.permite_recorrencia,
-      pix_disponivel: selectedCiclo?.pix_disponivel,
-      metodos_pagamento: selectedCiclo?.metodos_pagamento,
-    });
     if (!selectedCiclo) {
       showErrorModal(
         "⚠️ Ciclo não selecionado",
@@ -809,12 +791,6 @@ export default function PlanoDetalhesScreen() {
 
     try {
       setComprando(true);
-      console.log(
-        "🛒 Contratando plano:",
-        plano.nome,
-        "Ciclo:",
-        selectedCiclo.nome,
-      );
 
       if (plano.pode_migrar) {
         await abrirConfirmacaoMigracao(metodo);
@@ -896,7 +872,6 @@ export default function PlanoDetalhesScreen() {
       }
       const data = compraResult.json;
 
-      console.log("📡 Status:", compraResult.status);
 
       if (!compraResult.ok) {
         if (data?.code === "MIGRACAO_NECESSARIA") {
@@ -910,8 +885,6 @@ export default function PlanoDetalhesScreen() {
         );
         return;
       }
-      console.log("✅ [Contratar] Resposta:", data);
-      console.log("✅ [Contratar] payment_url:", data?.data?.payment_url);
 
       if (!data.success) {
         showErrorModal(
@@ -968,13 +941,6 @@ export default function PlanoDetalhesScreen() {
   const handlePagarPix = async () => {
     if (!plano || !selectedCicloId) return;
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
-    console.log("🧪 [PIX] selectedCiclo:", {
-      id: selectedCiclo?.id,
-      nome: selectedCiclo?.nome,
-      permite_recorrencia: selectedCiclo?.permite_recorrencia,
-      pix_disponivel: selectedCiclo?.pix_disponivel,
-      metodos_pagamento: selectedCiclo?.metodos_pagamento,
-    });
     if (!selectedCiclo) {
       showErrorModal(
         "⚠️ Ciclo não selecionado",
@@ -1039,7 +1005,6 @@ export default function PlanoDetalhesScreen() {
         );
         return;
       }
-      console.log("✅ [PIX] Resposta:", data);
       if (!data.success) {
         showErrorModal(
           "❌ Não foi Possível Comprar",

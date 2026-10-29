@@ -261,7 +261,6 @@ export default function PlanosScreen() {
           return;
         }
 
-        console.log("✅ Usuário autenticado com permissão para acessar planos");
         setHasPermission(true);
       } catch (err) {
         console.error("❌ Erro ao verificar permissão:", err);
@@ -275,9 +274,7 @@ export default function PlanosScreen() {
   useEffect(() => {
     const initializeAndFetch = async () => {
       try {
-        console.log("🚀 Inicializando página de planos...");
         const url = getApiUrlRuntime();
-        console.log("🌐 URL da API:", url);
         setApiUrl(url);
         await fetchPlanos(url);
       } catch (err) {
@@ -326,7 +323,6 @@ export default function PlanosScreen() {
   // Monitorar retorno do Mercado Pago
   useEffect(() => {
     const handleDeepLink = async (event: { url: string }) => {
-      console.log("🔗 Deep link recebido:", event.url);
 
       if (
         event.url.includes("mobile.appcheckin.com.br/pagamento") ||
@@ -337,13 +333,11 @@ export default function PlanosScreen() {
         const url = new URL(event.url);
         const params = Object.fromEntries(url.searchParams);
 
-        console.log("📋 Parâmetros recebidos:", params);
 
         const collectionStatus = params.collection_status;
 
         // Processar resultado do pagamento
         if (collectionStatus === "approved") {
-          console.log("✅ Pagamento APROVADO!");
           showErrorModal(
             "✅ Pagamento Realizado",
             "Seu pagamento foi aprovado com sucesso! Sua matrícula está ativa.",
@@ -354,21 +348,18 @@ export default function PlanosScreen() {
             fetchPlanos(apiUrl);
           }, 2000);
         } else if (collectionStatus === "pending") {
-          console.log("⏳ Pagamento PENDENTE");
           showErrorModal(
             "⏳ Pagamento em Análise",
             "Seu pagamento está em análise. Você receberá uma confirmação em breve.",
             "warning",
           );
         } else if (collectionStatus === "rejected") {
-          console.log("❌ Pagamento REJEITADO");
           showErrorModal(
             "❌ Pagamento Recusado",
             "Seu pagamento foi recusado. Tente novamente com outro método de pagamento.",
             "error",
           );
         } else {
-          console.log("❓ Status desconhecido:", collectionStatus);
           showErrorModal(
             "ℹ️ Retorno do Pagamento",
             `Seu pagamento retornou com status: ${collectionStatus}. Entre em contato se tiver dúvidas.`,
@@ -430,8 +421,6 @@ export default function PlanosScreen() {
       // Usar modalidade padrão (1) ou deixar sem filtro
       const url = `${baseUrl}/mobile/planos-disponiveis`;
 
-      console.log("📍 URL da requisição:", url);
-      console.log("🔑 Token encontrado:", token.substring(0, 20) + "...");
 
       const response = await fetch(url, {
         method: "GET",
@@ -441,7 +430,6 @@ export default function PlanosScreen() {
         },
       });
 
-      console.log("📡 Status da resposta:", response.status);
 
       if (!response.ok) {
         const responseText = await response.text();
@@ -455,7 +443,6 @@ export default function PlanosScreen() {
 
       const data: ApiResponse = await response.json();
 
-      console.log("✅ Resposta da API:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data?.planos) {
         const user = await authService.getCurrentUser();
@@ -465,7 +452,6 @@ export default function PlanosScreen() {
           ? data.data.planos
           : data.data.planos.filter((plano) => !isDevPlanName(plano?.nome));
 
-        console.log("✅ Planos carregados:", planosFiltrados.length);
         setPlanos(planosFiltrados);
       } else {
         console.warn("⚠️ Resposta sem planos:", data);
@@ -554,12 +540,6 @@ export default function PlanosScreen() {
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) throw new Error("Token não encontrado");
 
-      console.log("🔄 [Migrar] Enviando...", {
-        plano_id: plano.id,
-        plano_ciclo_id: cicloId,
-        metodo_pagamento: metodo,
-        apiUrl,
-      });
 
       const migrarResult = await postComRetryGateway({
         url: `${apiUrl}/mobile/migrar-plano`,
@@ -581,7 +561,6 @@ export default function PlanosScreen() {
         return;
       }
 
-      console.log("🔄 [Migrar] Resposta:", migrarResult.status, data);
 
       if (!migrarResult.ok) {
         if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
@@ -698,7 +677,6 @@ export default function PlanosScreen() {
         setComprando(true);
         setPlanoComprando(plano.id);
 
-        console.log("🛒 Iniciando compra do plano:", plano.nome);
 
         // Obter o ciclo selecionado para este plano
         const selectedCicloId = selectedCicloByPlano[plano.id];
@@ -738,11 +716,6 @@ export default function PlanosScreen() {
           return;
         }
 
-        console.log(
-          "📅 Ciclo selecionado:",
-          selectedCiclo.nome,
-          selectedCiclo.valor_formatado,
-        );
 
         // 1. Obter token e dados do usuário
         const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -759,7 +732,6 @@ export default function PlanosScreen() {
         }
 
         const user = JSON.parse(userJson);
-        console.log("👤 Usuário ID:", user.id);
 
         let gateway = opcoes?.gateway;
         if (metodo === "cartao" && !opcoes?.jaSimulouTaxa) {
@@ -821,7 +793,6 @@ export default function PlanosScreen() {
         }
         const matriculaData = compraResult.json;
 
-        console.log("📡 Status criação matrícula:", compraResult.status);
 
         if (!compraResult.ok) {
           console.error("❌ Erro ao criar matrícula:", matriculaData);
@@ -842,7 +813,6 @@ export default function PlanosScreen() {
           );
           return;
         }
-        console.log("✅ [Contratar] Resposta da API:", matriculaData);
 
         // Verificar se a API retornou sucesso
         if (!matriculaData.success) {
@@ -868,11 +838,6 @@ export default function PlanosScreen() {
           paymentUrl = matriculaData.data.pagamento.url;
         }
 
-        console.log("🔍 Debug payment_url:", {
-          "data keys": Object.keys(matriculaData.data || {}),
-          payment_url: paymentUrl,
-          matricula_id: matriculaId,
-        });
 
         if (!paymentUrl) {
           console.error(
@@ -896,7 +861,6 @@ export default function PlanosScreen() {
           );
         }
 
-        console.log("💳 Payment URL:", paymentUrl);
 
         setComprando(false);
         setPlanoComprando(null);
@@ -1042,7 +1006,6 @@ export default function PlanosScreen() {
           setPlanoComprando(null);
           return;
         }
-        console.log("✅ [PIX] Resposta da API:", matriculaData);
         if (!matriculaData.success) {
           const errorMessage =
             matriculaData.message || "Erro desconhecido ao processar compra";

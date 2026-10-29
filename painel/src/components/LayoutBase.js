@@ -134,6 +134,14 @@ const SECTIONS = [
   },
 ];
 
+/** A API manda ISO com fuso; sem fuso (sessão antiga) é UTC. Mostra no horário do navegador. */
+const horaLocal = (v) => {
+  if (!v) return '';
+  const s = String(v);
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.replace(' ', 'T')}Z`);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+};
+
 const BREAKPOINT_MOBILE = 768;
 const COLLAPSE_KEY = 'ck:sidebar-collapsed';
 
@@ -315,7 +323,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
             <Icon name="key" size={16} />
             <span className="ck-suporte-bar__text">
               <strong>{`Acesso de suporte: ${acessoSuporte.tenant_nome}`}</strong>
-              {` · até ${String(acessoSuporte.expira_em || '').slice(11, 16)}. Suas alterações ficam registradas e a academia vê este acesso.`}
+              {` · até ${horaLocal(acessoSuporte.expira_em)}. Suas alterações ficam registradas e a academia vê este acesso.`}
             </span>
             <Button size="sm" variant="primary" loading={encerrando} onClick={encerrarAcesso}>Encerrar acesso</Button>
           </div>

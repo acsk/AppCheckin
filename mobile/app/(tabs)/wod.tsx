@@ -131,7 +131,6 @@ export default function WodScreen() {
       
       // Se houver apenas uma modalidade, carregar direto
       if (modalidadesArray.length === 1) {
-        console.log('⚡ [WOD] Apenas 1 modalidade detectada, carregando primeiro WOD automaticamente...');
         const modalidade = modalidadesArray[0];
         const primeiWod = modalidade.wods[0];
         // Adicionar dados da modalidade ao WOD

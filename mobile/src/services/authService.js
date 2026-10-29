@@ -91,11 +91,7 @@ export const authService = {
 
       const response = await api.post("/auth/login", payload);
 
-      console.log("🔐 LOGIN RESPONSE COMPLETO:", JSON.stringify(response.data, null, 2));
-      console.log("🔐 USER no login:", response.data.user);
-      console.log("🔐 TENANTS no login:", response.data.tenants);
       if (response.data.tenants?.[0]) {
-        console.log("🔐 PRIMEIRO TENANT DETALHES:", JSON.stringify(response.data.tenants[0], null, 2));
       }
 
       // Se tem token, já salva (usuário tem apenas 1 tenant)
@@ -227,9 +223,6 @@ export const authService = {
 
       if (response.data.token) {
         let userToSave = response.data.user;
-        console.log("🔐 SELECT-TENANT-INITIAL RESPONSE:", JSON.stringify(response.data, null, 2));
-        console.log("🔐 USER após select-tenant:", response.data.user);
-        console.log("🔐 USER.papel_id após select-tenant:", response.data.user?.papel_id);
         
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
 

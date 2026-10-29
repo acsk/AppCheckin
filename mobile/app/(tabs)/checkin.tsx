@@ -175,18 +175,6 @@ function CheckinScreenContent() {
     hasRole(1) || currentAlunoId !== null || currentUserPapelId === null;
 
   // Debug: Mostrar valores de papel no console
-  console.log(
-    "🎭 PAPEL DEBUG - papel:",
-    currentUserPapelId,
-    "papeis:",
-    currentRoleIds,
-    "aluno_id:",
-    currentAlunoId,
-    "| isAluno:",
-    isAluno,
-    "| isProfessorOuAdmin:",
-    isProfessorOuAdmin,
-  );
 
   const participantsToShow = participants;
   // Removido: função não utilizada
@@ -383,7 +371,6 @@ function CheckinScreenContent() {
   };
 
   useEffect(() => {
-    console.log("\n🚀 CHECKIN SCREEN MONTADO");
     generateCalendarDays();
     loadCurrentUserId();
   }, []);
@@ -396,7 +383,6 @@ function CheckinScreenContent() {
   // Ao focar na aba Checkin, recarrega tenant e horários do dia selecionado sem alterar o estado da data
   useFocusEffect(
     useCallback(() => {
-      console.log("🔁 Aba Checkin focada: atualizando horários do dia atual");
       (async () => {
         try {
           const tenantJson = await AsyncStorage.getItem(
@@ -433,32 +419,16 @@ function CheckinScreenContent() {
   const loadCurrentUserId = async () => {
     try {
       const userStr = await AsyncStorage.getItem("@appcheckin:user");
-      console.log(
-        "👤 Carregando usuário do AsyncStorage:",
-        userStr?.substring(0, 100),
-      );
       if (userStr) {
         const user = JSON.parse(userStr);
-        console.log("👤 ID do usuário carregado:", user.id);
-        console.log("👤 aluno_id do usuário:", user.aluno_id);
-        console.log("👤 email do usuário:", user.email);
-        console.log(
-          "👤 papel_id do usuário:",
-          user.papel_id,
-          "tipo:",
-          typeof user.papel_id,
-        );
-        console.log("👤 papeis do usuário:", user.papeis);
         setCurrentUserId(user.id);
         setCurrentAlunoId(user.aluno_id || null);
         setCurrentUserEmail(user.email || null);
         setCurrentUserPapeis(Array.isArray(user.papeis) ? user.papeis : []);
         // Garantir que papel_id seja número
         const papelIdNumero = user.papel_id ? Number(user.papel_id) : null;
-        console.log("👤 papel_id convertido:", papelIdNumero);
         setCurrentUserPapelId(papelIdNumero);
       } else {
-        console.log("❌ Nenhum usuário encontrado no AsyncStorage");
       }
     } catch (error) {
       console.error("Erro ao carregar ID do usuário:", error);
@@ -522,9 +492,7 @@ function CheckinScreenContent() {
   }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateCalendarDays = () => {
-    console.log("📅 GERANDO CALENDÁRIO");
     const today = new Date();
-    console.log("   Data hoje:", today);
     const days: Date[] = [];
 
     // Começa do dia anterior (-1) até 6 dias à frente (total 8 dias)
@@ -533,7 +501,6 @@ function CheckinScreenContent() {
       date.setDate(today.getDate() + i);
       days.push(date);
     }
-    console.log("   Dias gerados:", days.length);
     setCalendarDays(days);
   };
 
@@ -547,13 +514,11 @@ function CheckinScreenContent() {
     latestSchedulesReqRef.current = reqId;
 
     if (isFetchingSchedulesRef.current) {
-      console.log("⏳ Já existe carregamento de horários em andamento");
     }
 
     isFetchingSchedulesRef.current = true;
     if (!opts?.silent) setLoading(true);
     try {
-      console.log("\n🔄 INICIANDO CARREGAMENTO DE HORÁRIOS");
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
@@ -561,12 +526,9 @@ function CheckinScreenContent() {
         showToast("Token não encontrado", "error");
         return;
       }
-      console.log("✅ Token encontrado:", token.substring(0, 20) + "...");
 
-      console.log("📅 Data formatada:", formattedDate);
 
       const url = `${getApiUrlRuntime()}/mobile/horarios-disponiveis?data=${formattedDate}`;
-      console.log("📍 URL:", url);
 
       const response = await fetch(url, {
         method: "GET",
@@ -575,21 +537,12 @@ function CheckinScreenContent() {
         },
       });
 
-      console.log("📡 RESPOSTA DO SERVIDOR");
-      console.log("   Status:", response.status);
-      console.log("   Status Text:", response.statusText);
-      console.log("   Content-Type:", response.headers.get("content-type"));
 
       const responseText = await response.text();
-      console.log(
-        "   Response Text (primeiros 500 chars):",
-        responseText.substring(0, 500),
-      );
 
       if (!response.ok) {
         // Tratar erro 401
         if (response.status === 401) {
-          console.log("🔑 Token inválido/expirado no checkin");
           await handleAuthError();
           return;
         }
@@ -603,7 +556,6 @@ function CheckinScreenContent() {
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log("✅ JSON parseado com sucesso");
       } catch (parseError) {
         console.error("❌ ERRO AO FAZER PARSE DO JSON");
         if (parseError instanceof Error) {
@@ -617,27 +569,13 @@ function CheckinScreenContent() {
         console.warn("⏭️ Ignorando resposta de horários (requisição obsoleta)");
         return;
       }
-      console.log("   Response completa:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data?.turmas) {
-        console.log("✅ Turmas carregadas com sucesso");
-        console.log("   Quantidade:", data.data.turmas.length);
-        console.log("   Total de turmas:", data.data.total);
         data.data.turmas.forEach((turma: any, index: number) => {
-          console.log(`   [${index + 1}] ${turma.nome}`);
-          console.log(`       Modalidade: ${turma.modalidade?.nome}`);
-          console.log(
-            `       Horário: ${turma.horario.inicio} - ${turma.horario.fim}`,
-          );
-          console.log(
-            `       Vagas: ${turma.alunos_inscritos}/${turma.limite_alunos}`,
-          );
         });
         setAvailableSchedules(data.data.turmas);
       } else {
         console.warn("⚠️ Resposta inválida ou sem turmas");
-        console.log("   success:", data.success);
-        console.log("   turmas:", data.data?.turmas);
         setAvailableSchedules([]);
       }
     } catch (error) {
@@ -801,9 +739,6 @@ function CheckinScreenContent() {
       return;
     }
 
-    console.log("🔙 DESFAZENDO CHECK-IN");
-    console.log("   checkinId:", checkinId);
-    console.log("   turma.id:", turma?.id);
 
     setCheckinLoading(true);
     try {
@@ -814,7 +749,6 @@ function CheckinScreenContent() {
       }
 
       const url = `${getApiUrlRuntime()}/mobile/checkin/${checkinId}/desfazer`;
-      console.log("📍 URL DELETE:", url);
 
       const response = await fetch(url, {
         method: "DELETE",
@@ -907,7 +841,6 @@ function CheckinScreenContent() {
       }
 
       const url = `${getApiUrlRuntime()}/mobile/turma/${participantsTurma.id}/confirmar-presenca`;
-      console.log("📝 Confirmando presenças:", presencasParaEnviar);
 
       const response = await fetch(url, {
         method: "POST",
@@ -957,15 +890,8 @@ function CheckinScreenContent() {
   };
 
   const checkUserHasCheckin = useCallback(() => {
-    console.log("🔍 Verificando check-in do usuário");
-    console.log("   currentUserId:", currentUserId);
-    console.log("   currentAlunoId:", currentAlunoId);
-    console.log("   currentUserEmail:", currentUserEmail);
-    console.log("   participants.length:", participants.length);
-    console.log("   checkinsRecentes.length:", checkinsRecentes.length);
 
     if (!currentUserId && !currentAlunoId && !currentUserEmail) {
-      console.log("   ❌ Sem currentUserId, currentAlunoId e currentUserEmail");
       setUserCheckinId(null);
       return false;
     }
@@ -973,17 +899,6 @@ function CheckinScreenContent() {
     // PRIORIDADE 1: Verificar nos participantes pelo email (mais confiável)
     // A API retorna email na lista de alunos
     if (participants.length > 0 && currentUserEmail) {
-      console.log(
-        "   Participantes:",
-        JSON.stringify(
-          participants.map((p) => ({
-            aluno_id: p.aluno_id,
-            email: p.email,
-            checkins: p.checkins,
-            nome: p.nome,
-          })),
-        ),
-      );
 
       const userByEmail = participants.find(
         (p) =>
@@ -993,7 +908,6 @@ function CheckinScreenContent() {
       );
 
       if (userByEmail && userByEmail.checkins > 0) {
-        console.log("   ✅ Usuário encontrado pelo EMAIL:", userByEmail);
 
         // Buscar o checkin_id nos checkinsRecentes usando o aluno_id encontrado
         if (checkinsRecentes.length > 0) {
@@ -1002,7 +916,6 @@ function CheckinScreenContent() {
           );
           if (checkin) {
             const checkinId = checkin.checkin_id || checkin.id;
-            console.log("   📝 checkin_id encontrado:", checkinId);
             setUserCheckinId(checkinId);
             return true;
           }
@@ -1012,28 +925,13 @@ function CheckinScreenContent() {
 
     // PRIORIDADE 2: Verificar em checkinsRecentes pelo aluno_id
     if (checkinsRecentes.length > 0 && currentAlunoId) {
-      console.log(
-        "   Check-ins recentes:",
-        JSON.stringify(
-          checkinsRecentes.map((c) => ({
-            checkin_id: c.checkin_id,
-            aluno_id: c.aluno_id,
-            usuario_nome: c.usuario_nome,
-          })),
-        ),
-      );
 
       const userCheckin = checkinsRecentes.find(
         (c) => Number(c.aluno_id) === Number(currentAlunoId),
       );
 
       if (userCheckin) {
-        console.log(
-          "   ✅ Usuário encontrado em check-ins recentes:",
-          userCheckin,
-        );
         const checkinId = userCheckin.checkin_id || userCheckin.id;
-        console.log("   📝 checkin_id:", checkinId);
         setUserCheckinId(checkinId);
         return true;
       }
@@ -1051,10 +949,6 @@ function CheckinScreenContent() {
       if (userByEmailCheckin) {
         const checkinId =
           userByEmailCheckin.checkin_id || userByEmailCheckin.id;
-        console.log("   ✅ Usuário encontrado em check-ins pelo EMAIL:", {
-          checkinId,
-          usuario_email: userByEmailCheckin.usuario_email,
-        });
         setUserCheckinId(checkinId);
         return true;
       }
@@ -1067,10 +961,6 @@ function CheckinScreenContent() {
       );
       if (userByIdCheckin) {
         const checkinId = userByIdCheckin.checkin_id || userByIdCheckin.id;
-        console.log("   ✅ Usuário encontrado em check-ins pelo usuario_id:", {
-          checkinId,
-          usuario_id: userByIdCheckin.usuario_id,
-        });
         setUserCheckinId(checkinId);
         return true;
       }
@@ -1083,10 +973,6 @@ function CheckinScreenContent() {
       );
 
       if (userParticipant && userParticipant.checkins > 0) {
-        console.log(
-          "   ✅ Usuário encontrado nos participantes com checkins:",
-          userParticipant,
-        );
 
         if (checkinsRecentes.length > 0) {
           const checkin = checkinsRecentes.find(
@@ -1094,7 +980,6 @@ function CheckinScreenContent() {
           );
           if (checkin) {
             const checkinId = checkin.checkin_id || checkin.id;
-            console.log("   📝 checkin_id encontrado:", checkinId);
             setUserCheckinId(checkinId);
             return true;
           }
@@ -1102,7 +987,6 @@ function CheckinScreenContent() {
       }
     }
 
-    console.log("   ❌ Usuário não encontrado - sem check-in");
     setUserCheckinId(null);
     return false;
   }, [
@@ -1140,7 +1024,6 @@ function CheckinScreenContent() {
       });
 
       const text = await response.text();
-      console.log("🔎 detalhes turma raw:", text.substring(0, 400));
       if (!response.ok) {
         console.error("Erro ao carregar participantes:", response.status, text);
         showToast("Falha ao carregar participantes", "error");
@@ -1160,13 +1043,6 @@ function CheckinScreenContent() {
         turmaApi.alunos_inscritos ??
         0;
 
-      console.log("🔎 detalhes turma parse:", {
-        turmaId: turmaApi.id,
-        alunosCount,
-        alunosListaLen: alunosLista.length,
-        checkinsRecentes: checkinsLista.length,
-        resumoKeys: resumoData ? Object.keys(resumoData) : [],
-      });
 
       setParticipants(alunosLista);
       setCheckinsRecentes(checkinsLista);
@@ -1717,14 +1593,6 @@ function CheckinScreenContent() {
   };
 
   // Debug: Log dos estados para verificar papel do usuário
-  console.log(
-    "🎯 RENDER - currentUserPapelId:",
-    currentUserPapelId,
-    "isAluno:",
-    isAluno,
-    "isProfessorOuAdmin:",
-    isProfessorOuAdmin,
-  );
 
   return (
     <>

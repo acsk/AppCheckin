@@ -82,7 +82,6 @@ function TurmaDetalhesScreenContent() {
   // Recarrega os dados quando a tela volta ao foco
   useFocusEffect(
     useCallback(() => {
-      console.log("🔄 TELA TURMA-DETALHES VOLTOU AO FOCO - Recarregando dados");
       if (turmaId) {
         loadTurmaDetails();
       }
@@ -308,7 +307,6 @@ function TurmaDetalhesScreenContent() {
       }
 
       if (!turmaData?.horario?.fim) {
-        console.log("   ⚠️ Sem horário de fim, permitindo");
         return false;
       }
       const end = combineDateTime(
@@ -316,12 +314,6 @@ function TurmaDetalhesScreenContent() {
         turmaData?.horario?.fim ?? "00:00:00",
       );
       const passou = now > end;
-      console.log(
-        "   Horário fim:",
-        end.toLocaleString("pt-BR"),
-        "- Passou?",
-        passou,
-      );
       return passou;
     } catch (e) {
       console.warn("Falha ao calcular disponibilidade da turma:", e);
@@ -331,22 +323,16 @@ function TurmaDetalhesScreenContent() {
 
   const isCheckinDisabled = (turmaData: any): boolean => {
     if (!turmaData) {
-      console.log("🔴 Botão desabilitado: turma não existe");
       return true;
     }
 
     const disabled = isTurmaDisabled(turmaData);
     if (disabled) {
-      console.log("🔴 Botão desabilitado: turma desabilitada (horário passou)");
       return true;
     }
 
     const windowCheck = isWithinCheckinWindow(turmaData);
     if (!windowCheck.allowed) {
-      console.log(
-        "🔴 Botão desabilitado: fora da janela -",
-        windowCheck.reason,
-      );
       return true;
     }
 
@@ -430,17 +416,6 @@ function TurmaDetalhesScreenContent() {
       // Converter turma da API para formato da listagem
       const turmaApi = payload.turma;
 
-      console.log("� ========== RESPONSE DO BACKEND ==========");
-      console.log("📦 Payload completo:", JSON.stringify(payload, null, 2));
-      console.log("📋 Dados brutos da turma:", {
-        id: turmaApi.id,
-        horario_inicio: turmaApi.horario_inicio,
-        horario_fim: turmaApi.horario_fim,
-        tolerancia_antes_minutos: turmaApi.tolerancia_antes_minutos,
-        tolerancia_minutos: turmaApi.tolerancia_minutos,
-        dia_aula: turmaApi.dia_aula,
-      });
-      console.log("=========================================");
 
       // Buscar os dados completos da turma da listagem (que tem tolerância)
       let horarioCompleto = {
@@ -452,44 +427,26 @@ function TurmaDetalhesScreenContent() {
 
       // Se não tiver tolerância, buscar da API de listagem
       if (!turmaApi.tolerancia_antes_minutos && !turmaApi.tolerancia_minutos) {
-        console.log(
-          "⚠️ Turma sem dados de tolerância, buscando da listagem...",
-        );
         try {
           // Usar o dia_aula da turma para buscar na listagem
           const diaAula = turmaApi.dia_aula || formatDateParam(selectedDate);
           const baseUrl = getApiUrlRuntime();
           const listUrl = `${baseUrl}/mobile/horarios-disponiveis?data=${diaAula}`;
-          console.log("   Buscando em:", listUrl);
-          console.log("   Procurando turma ID:", turmaApi.id);
           const listResponse = await fetch(listUrl, {
             headers: { Authorization: `Bearer ${token}` },
           });
           const listData = await listResponse.json();
-          console.log(
-            "   Turmas disponíveis:",
-            listData.data?.turmas?.length || 0,
-          );
           const turmaFromList = listData.data?.turmas?.find(
             (t: any) => t.id === turmaApi.id,
           );
-          console.log("   Turma encontrada na listagem?", !!turmaFromList);
           if (turmaFromList?.horario) {
-            console.log(
-              "📥 Dados de tolerância da listagem:",
-              turmaFromList.horario,
-            );
             horarioCompleto = turmaFromList.horario;
           } else {
-            console.log(
-              "❌ Turma não encontrada na listagem ou sem dados de horário",
-            );
           }
         } catch (e) {
           console.warn("⚠️ Não foi possível buscar tolerância da listagem:", e);
         }
       } else {
-        console.log("✅ Turma já tem dados de tolerância:", horarioCompleto);
       }
 
       const turmaFormatted = {
@@ -520,10 +477,6 @@ function TurmaDetalhesScreenContent() {
         turmaFormatted.alunos_inscritos ??
         0;
 
-      console.log("✅ Dados carregados:", {
-        participantes: alunosLista.length,
-        checkinsRecentes: checkinsLista.length,
-      });
 
       setTurma(turmaFormatted);
       setParticipants(alunosLista);
@@ -570,10 +523,6 @@ function TurmaDetalhesScreenContent() {
       // Usar dia_aula da turma, não selectedDate do parâmetro da URL
       const dataCheckin = turma.dia_aula || formatDateParam(selectedDate);
 
-      console.log("🗓️ DEBUG DATA CHECK-IN:");
-      console.log("   turma.dia_aula:", turma.dia_aula);
-      console.log("   selectedDate formatted:", formatDateParam(selectedDate));
-      console.log("   dataCheckin escolhida:", dataCheckin);
 
       const payload: any = {
         turma_id: turma.id,
@@ -584,9 +533,6 @@ function TurmaDetalhesScreenContent() {
         payload.horario_id = turma.horario.id;
       }
 
-      console.log("📦 PAYLOAD DO CHECK-IN:", JSON.stringify(payload, null, 2));
-      console.log("📍 ENDPOINT:", `${getApiUrlRuntime()}/mobile/checkin`);
-      console.log("🔑 Token:", token.substring(0, 20) + "...");
 
       const response = await fetch(`${getApiUrlRuntime()}/mobile/checkin`, {
         method: "POST",
@@ -777,7 +723,6 @@ function TurmaDetalhesScreenContent() {
           userParticipant.checkin_id || userParticipant.id_checkin;
 
         if (checkinId) {
-          console.log("✅ Check-in encontrado:", checkinId);
           setUserCheckinId(checkinId);
           return true;
         }
@@ -910,7 +855,6 @@ function TurmaDetalhesScreenContent() {
                             if (checkinId) {
                               await handleUndoCheckin(checkinId);
                             } else {
-                              console.log("❌ Check-in ID não encontrado");
                               showErrorModal(
                                 "Não foi possível encontrar o ID do check-in",
                                 "error",

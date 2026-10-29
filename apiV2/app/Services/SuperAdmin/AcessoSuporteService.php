@@ -79,7 +79,7 @@ class AcessoSuporteService
         return ['status' => 201, 'body' => [
             'message' => 'Acesso iniciado',
             'token' => $token,
-            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toDateTimeString()],
+            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toIso8601String()],
             'academia' => ['id' => (int) $academia->id, 'nome' => $academia->nome],
         ]];
     }

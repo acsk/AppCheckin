@@ -9,32 +9,22 @@ export default function Index() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    console.log("📍 Index - Iniciando verificação de token");
     checkToken();
   }, []);
 
   const checkToken = async () => {
     try {
-      console.log("📍 Index - Buscando token...");
       const token = await AsyncStorage.getItem("@appcheckin:token");
-      console.log("📍 Index - Token encontrado:", !!token);
       setHasToken(!!token);
     } catch (err) {
       console.error("📍 Index - Erro ao buscar token:", err);
       setError(String(err));
       setHasToken(false);
     } finally {
-      console.log("📍 Index - Finalizando verificação");
       setIsLoading(false);
     }
   };
 
-  console.log(
-    "📍 Index - Render: isLoading=",
-    isLoading,
-    "hasToken=",
-    hasToken,
-  );
 
   if (error) {
     return (
@@ -68,10 +58,8 @@ export default function Index() {
   }
 
   if (hasToken) {
-    console.log("📍 Index - Redirecionando para /(tabs)");
     return <Redirect href="/(tabs)" />;
   }
 
-  console.log("📍 Index - Redirecionando para /(auth)/login");
   return <Redirect href="/(auth)/login" />;
 }

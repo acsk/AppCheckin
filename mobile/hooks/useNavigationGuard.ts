@@ -45,12 +45,6 @@ export function useNavigationGuard() {
         const currentRoute = segments?.[0];
 
         // Debug
-        console.log("[NavigationGuard]", {
-          pathname,
-          currentRoute,
-          isAuthenticated,
-          segments,
-        });
 
         // Se rota protegida e sem autenticação: redirecionar
         if (
@@ -58,9 +52,6 @@ export function useNavigationGuard() {
           PROTECTED_ROUTES.includes(currentRoute) &&
           !isAuthenticated
         ) {
-          console.log(
-            `[NavigationGuard] ⚠️ Acesso negado à rota protegida: ${currentRoute}`
-          );
           guardTimeoutRef.current = setTimeout(() => {
             router.replace("/(auth)/login");
           }, 100);
@@ -73,7 +64,6 @@ export function useNavigationGuard() {
           isAuthenticated &&
           !pathname.includes("register")
         ) {
-          console.log("[NavigationGuard] Usuário autenticado, redirecionando de (auth)");
           guardTimeoutRef.current = setTimeout(() => {
             router.replace("/(tabs)");
           }, 100);

@@ -10,6 +10,13 @@ export const ACESSO_ALUNO_KEY = "@appcheckin:acesso_aluno";
 
 type Acesso = { id: number; expira_em: string; nome: string; academia: string };
 
+/** A API manda ISO com fuso; sem fuso (formato antigo) é UTC. Mostra no horário do aparelho. */
+function horaLocal(v: string): string {
+  if (!v) return "";
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(v) ? v : `${v.replace(" ", "T")}Z`);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
 /** Faixa do "ver app como aluno" (aberto pelo painel): avisa que é só visualização e encerra o acesso. */
 export default function AcessoAlunoBanner() {
   const [acesso, setAcesso] = useState<Acesso | null>(null);
@@ -37,7 +44,7 @@ export default function AcessoAlunoBanner() {
     }
   };
 
-  const ate = acesso.expira_em ? acesso.expira_em.slice(11, 16) : "";
+  const ate = horaLocal(acesso.expira_em);
   return (
     <View style={styles.faixa} accessibilityRole="alert">
       <Feather name="eye" size={16} color={ds.onBrand} />

@@ -118,10 +118,6 @@ function RootContent() {
   // Guard: verificar token ao iniciar e redirecionar rotas protegidas
   useEffect(() => {
     const checkTokenAndGuard = async () => {
-      console.log(
-        "[RootLayout] Verificando autenticação... Segments:",
-        segments,
-      );
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       const authenticated = !!token;
@@ -153,9 +149,6 @@ function RootContent() {
         }, 50);
       } else if (authenticated && currentSegment === "(auth)") {
         // Se autenticado tentando acessar (auth), redirecionar para home
-        console.log(
-          "[RootLayout] Usuário autenticado em (auth), redirecionando para home",
-        );
         setTimeout(() => {
           router.replace("/(tabs)");
         }, 50);
@@ -202,16 +195,10 @@ function RootContent() {
   useEffect(() => {
     // Configurar callback para tratar 401 globalmente (abre modal, sem redirect imediato)
     setOnUnauthorized(async () => {
-      console.log(
-        "[RootLayout:setOnUnauthorized] Token inválido — abrindo modal de sessão expirada",
-      );
       await handleAuthError();
     });
 
     setOnUnauthorizedClient(async () => {
-      console.log(
-        "[RootLayout:setOnUnauthorizedClient] Token inválido — abrindo modal de sessão expirada",
-      );
       await handleAuthError();
     });
 

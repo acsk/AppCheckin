@@ -212,26 +212,18 @@ export default function AccountScreen() {
   const getTenantName = () => {
     // Preferir o nome vindo de /auth/tenants (lista) que reflete o display desejado
     const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-    console.log(
-      "🔎 [getTenantName] currentId:",
-      currentId,
-      "tenants.length:",
-      Array.isArray(tenants) ? tenants.length : 0,
-    );
     if (currentId && Array.isArray(tenants) && tenants.length > 0) {
       const match = tenants.find(
         (t: any) => t?.tenant?.id === currentId || t?.id === currentId,
       );
       const nomeLista = match?.tenant?.nome ?? match?.nome;
       if (nomeLista) {
-        console.log("✅ [getTenantName] Nome encontrado na lista:", nomeLista);
         return nomeLista;
       }
     }
     // Fallback para nome do objeto currentTenant
     const fallbackName =
       currentTenant?.tenant?.nome ?? currentTenant?.nome ?? "Academia";
-    console.log("⚠️ [getTenantName] Usando fallback:", fallbackName);
     return fallbackName;
   };
 
@@ -372,9 +364,6 @@ export default function AccountScreen() {
   // Memoized loaders to satisfy hook dependencies
   const loadUserProfileMemo = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
-      console.log("📊 [loadUserProfileMemo] currentTenant:", currentTenant);
-      console.log("📊 [loadUserProfileMemo] apiUrl:", apiUrl);
       const expectedTenantId =
         currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
       const reqId = Date.now();
@@ -401,17 +390,8 @@ export default function AccountScreen() {
         }
         setUserProfile(profileData.data);
         setHasPhotoLoadError(false);
-        console.log(
-          "✅ [loadUserProfileMemo] Perfil carregado com sucesso:",
-          profileData.data?.nome,
-        );
-        console.log(
-          "📋 [loadUserProfileMemo] Plano recebido:",
-          JSON.stringify(profileData.data?.plano, null, 2),
-        );
         if (profileData.data?.foto_caminho) {
           const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
-          console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
         }
       } else {
         const errorMsg =
@@ -425,7 +405,6 @@ export default function AccountScreen() {
       );
       const status = error?.response?.status;
       if (status === 401) {
-        console.log("🔑 Detectado 401 - Token inválido/expirado");
         await handleAuthError();
         return;
       }
@@ -455,11 +434,6 @@ export default function AccountScreen() {
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) return;
       const url = `${getApiUrlRuntime()}/mobile/checkins/por-modalidade`;
-      console.log("📅 [Semana] Request iniciada", {
-        tenantId: expectedTenantId,
-        url,
-      });
-      console.log("📅 [loadWeekCheckinsMemo] Iniciando carregamento...");
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -477,11 +451,6 @@ export default function AccountScreen() {
         return;
       }
       if (response.ok && data?.success) {
-        console.log("✅ [Semana] Sucesso", {
-          semana_inicio: data.data?.semana_inicio,
-          semana_fim: data.data?.semana_fim,
-          diasCount: Array.isArray(data.data?.dias) ? data.data.dias.length : 0,
-        });
         setWeekSemanaInicio(data.data?.semana_inicio || null);
         setWeekSemanaFim(data.data?.semana_fim || null);
         setWeekDias(data.data?.dias || []);
@@ -520,13 +489,6 @@ export default function AccountScreen() {
             ? "/mobile/ranking/anual"
             : "/mobile/ranking/mensal";
         const url = `${getApiUrlRuntime()}${path}${params}`;
-        console.log("🏆 [Ranking] Request iniciada", {
-          tenantId: expectedTenantId,
-          modalidadeId: modalidadeId ?? null,
-          periodo: rankingPeriodoTipo,
-          url,
-        });
-        console.log("🏆 [loadRankingMemo] Iniciando carregamento...");
         const response = await fetch(url, {
           method: "GET",
           cache: "no-store",
@@ -548,15 +510,6 @@ export default function AccountScreen() {
           throw new Error(data?.error || "Erro ao carregar ranking");
         }
         const rankingData = data?.data;
-        console.log("✅ [Ranking] Sucesso", {
-          periodo: rankingData?.periodo,
-          rankingTop3Count: Array.isArray(rankingData?.ranking)
-            ? Math.min(3, rankingData.ranking.length)
-            : 0,
-          modalidadesCount: Array.isArray(rankingData?.modalidades)
-            ? rankingData.modalidades.length
-            : 0,
-        });
         setRanking(rankingData?.ranking || []);
         const limite = Number(rankingData?.limite_home);
         setRankingLimite(Number.isInteger(limite) && limite >= 1 && limite <= 100 ? limite : 15);
@@ -597,17 +550,12 @@ export default function AccountScreen() {
   // Inicializa API URL e carrega tenants no mount
 
   useEffect(() => {
-    console.log("🎬 [Account Mount] Iniciando...");
     setApiUrl(getApiUrlRuntime());
-    console.log("📍 API URL (Account):", getApiUrlRuntime());
     (async () => {
       try {
-        console.log("🔄 [Account Mount] Carregando tenants...");
         const ts = await AuthService.getTenants();
-        console.log("✅ [Account Mount] Tenants carregados:", ts);
         setTenants(Array.isArray(ts) ? ts : []);
         const ct = await AuthService.getCurrentTenant();
-        console.log("✅ [Account Mount] currentTenant:", ct);
         setCurrentTenant(ct);
       } catch (e) {
         console.warn("⚠️ Falha ao carregar tenants atuais", e);
@@ -618,27 +566,15 @@ export default function AccountScreen() {
   // Carrega perfil apenas quando tenant estiver definido e evita duplicidade
   useEffect(() => {
     const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-    console.log(
-      "🔹 [Effect 1] Carregamento de perfil - tenantId:",
-      tenantId,
-      "apiUrl:",
-      apiUrl ? "set" : "vazio",
-    );
     if (!apiUrl || !tenantId) {
-      console.log("⏭️ [Effect 1] Aguardando apiUrl ou tenantId...");
       return;
     }
     if (
       profileLoadTriggeredRef.current &&
       lastLoadedTenantIdRef.current === tenantId
     ) {
-      console.log("⏭️ [Effect 1] Já carregado para tenantId:", tenantId);
       return;
     }
-    console.log(
-      "🚀 [Effect 1] Disparando loadUserProfileMemo para tenantId:",
-      tenantId,
-    );
     profileLoadTriggeredRef.current = true;
     lastLoadedTenantIdRef.current = tenantId;
     loadUserProfileMemo();
@@ -662,9 +598,6 @@ export default function AccountScreen() {
       if (hasVerifiedTokenTenantRef.current) return; // Evita duplicidade
       const tokenTenantId = await getTokenTenantId();
       if (tokenTenantId && tokenTenantId !== tenantId) {
-        console.log(
-          `🔁 Realinhando token: token.tenant_id=${tokenTenantId} → atual=${tenantId}`,
-        );
         try {
           await AuthService.selectTenant(tenantId);
           const ct = await AuthService.getCurrentTenant();
@@ -685,14 +618,9 @@ export default function AccountScreen() {
       const tenantNome = currentTenant?.tenant?.nome ?? currentTenant?.nome;
       if (!tenantId) return;
       const tokenTenantId = await getTokenTenantId();
-      console.log(
-        `🏷️ Tenant atual: id=${tenantId} nome=${tenantNome ?? "(sem nome)"}`,
-      );
-      console.log(`🔎 JWT tenant_id: ${tokenTenantId ?? "null"}`);
       if (tokenTenantId && tokenTenantId !== tenantId) {
         console.warn("⚠️ Divergência: token aponta para outro tenant");
       } else {
-        console.log("✅ Token alinhado com tenant atual");
       }
     };
     logTenantAlignment();
@@ -758,12 +686,7 @@ export default function AccountScreen() {
 
   useEffect(() => {
     if (userProfile && apiUrl) {
-      console.log("\n🔍 DEBUG: Render Photo");
-      console.log("   apiUrl:", apiUrl);
-      console.log("   photoUrl:", photoUrl || "vazio");
-      console.log("   foto_caminho:", userProfile.foto_caminho || "vazio");
       if (userProfile.foto_caminho) {
-        console.log("   URL completa:", `${apiUrl}${userProfile.foto_caminho}`);
       }
     }
   }, [userProfile, apiUrl, photoUrl]);
@@ -777,11 +700,6 @@ export default function AccountScreen() {
       // Aguarda a seleção inicial do perfil; sem modalidades, consulta o ranking geral.
       if (!selectedModalidadeId && userProfile.ranking_modalidades?.length) return;
       const rankingKey = `${tenantId}:${rankingPeriodoTipo}:${selectedModalidadeId ?? "geral"}`;
-      console.log("🔸 [Ranking] Trigger por mudança de modalidade/período", {
-        tenantId,
-        selectedModalidadeId,
-        rankingPeriodoTipo,
-      });
       if (lastRankingCalledIdRef.current === rankingKey) {
         return;
       }
@@ -801,9 +719,6 @@ export default function AccountScreen() {
     const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
     if (!tenantId) return; // Aguarda tenant carregado
     if (userProfile && !hasLoadedWeekRef.current) {
-      console.log("🔹 [Semana] Trigger por carregamento de perfil", {
-        tenantId,
-      });
       hasLoadedWeekRef.current = true;
       loadWeekCheckinsMemo();
     }
@@ -1118,36 +1033,17 @@ export default function AccountScreen() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
 
-        console.log("\n\n");
-        console.log("═══════════════════════════════════════════════════════");
-        console.log("🖼️ NOVO FLUXO DE UPLOAD - handleChangePhoto");
-        console.log("═══════════════════════════════════════════════════════");
-        console.log("📸 Asset selecionado:", {
-          uri: asset.uri,
-          width: asset.width,
-          height: asset.height,
-          type: asset.type,
-        });
 
         setUpdatingPhoto(true);
 
         try {
           // 🎨 Comprimir imagem antes de enviar
-          console.log("🎨 Iniciando compressão de imagem...");
-          console.log("📸 Asset URI:", asset.uri);
-          console.log("📱 Platform.OS:", Platform.OS);
 
           let uploadUri = asset.uri;
           let uploadType = "image/jpeg";
 
           // ✅ COMPRESSÃO ATIVADA
           try {
-            console.log("⏳ Chamando compressImage()...");
-            console.log(
-              "📦 compressImage function type:",
-              typeof compressImage,
-            );
-            console.log("📦 compressImage function exists:", !!compressImage);
 
             const compressResult = await compressImage(asset.uri, {
               maxWidth: 1080,
@@ -1155,7 +1051,6 @@ export default function AccountScreen() {
               quality: 0.8,
               outputFormat: "jpeg",
             });
-            console.log("✅ compressImage retornou:", compressResult);
 
             // Log das informações de compressão
             logCompressionInfo(compressResult);
@@ -1168,11 +1063,6 @@ export default function AccountScreen() {
             console.error(
               "❌ Erro de compressão (stack):",
               compressionError.stack,
-            );
-            console.log(
-              "📸 Usando imagem original:",
-              asset.uri,
-              "Tamanho desconhecido",
             );
           }
 
@@ -1196,21 +1086,14 @@ export default function AccountScreen() {
           }
 
           // Enviar para servidor
-          console.log("📸 Enviando foto para servidor...");
           const response: any = await MobileService.atualizarFoto(formData);
-          console.log("📸 Resposta do servidor:", response);
 
           if (response?.success) {
-            console.log("✅ Foto enviada com sucesso, recarregando perfil...");
             // Armazenar URL da foto se disponível
             if (response.data?.caminho_url) {
               const apiUrl = getApiUrlRuntime();
               setHasPhotoLoadError(false);
               setPhotoUrl(`${apiUrl}${response.data.caminho_url}`);
-              console.log(
-                "📸 URL da foto armazenada:",
-                `${apiUrl}${response.data.caminho_url}`,
-              );
             }
             Alert.alert("Sucesso", "Foto atualizada com sucesso!");
             // Recarregar perfil para pegar a nova foto

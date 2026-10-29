@@ -314,8 +314,6 @@ export default function MinhasAssinaturasScreen() {
 
         const url = `${baseUrl}/mobile/assinaturas`;
 
-        console.log("📍 URL da requisição:", url);
-        console.log("🔑 Token encontrado:", token.substring(0, 20) + "...");
 
         const response = await fetch(url, {
           method: "GET",
@@ -325,7 +323,6 @@ export default function MinhasAssinaturasScreen() {
           },
         });
 
-        console.log("📡 Status da resposta:", response.status);
 
         if (!response.ok) {
           const responseText = await response.text();
@@ -339,10 +336,8 @@ export default function MinhasAssinaturasScreen() {
 
         const data: ApiResponse = await response.json();
 
-        console.log("✅ Resposta da API:", JSON.stringify(data, null, 2));
 
         if (data.success && data.assinaturas) {
-          console.log("✅ Assinaturas carregadas:", data.assinaturas.length);
           setAssinaturas(data.assinaturas);
         } else {
           console.warn("⚠️ Resposta sem assinaturas:", data);
@@ -512,9 +507,7 @@ export default function MinhasAssinaturasScreen() {
     useCallback(() => {
       const initializeAndFetch = async () => {
         try {
-          console.log("🚀 Inicializando página de assinaturas...");
           const url = getApiUrlRuntime();
-          console.log("🌐 URL da API:", url);
           setApiUrl(url);
           await fetchAssinaturasCallback(url);
         } catch (err) {
@@ -546,7 +539,6 @@ export default function MinhasAssinaturasScreen() {
 
         const url = `${apiUrl}/mobile/assinatura/${assinatura.id}/cancelar`;
 
-        console.log("🗑️ Cancelando assinatura ID:", assinatura.id);
 
         const response = await fetch(url, {
           method: "POST",
@@ -559,7 +551,6 @@ export default function MinhasAssinaturasScreen() {
           }),
         });
 
-        console.log("📡 Status da resposta:", response.status);
 
         if (!response.ok) {
           const responseText = await response.text();
@@ -585,7 +576,6 @@ export default function MinhasAssinaturasScreen() {
 
         const data = await response.json();
 
-        console.log("✅ Resposta do cancelamento:", data);
 
         if (data.success) {
           const dataLimite =

@@ -46,28 +46,18 @@ export async function compressImage(
   imageUri: string,
   options: CompressionOptions = {},
 ): Promise<CompressionResult> {
-  console.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
-  console.log('📸 URI da imagem:', imageUri);
-  console.log('⚙️ Plataforma:', Platform.OS);
   
   debugLogger.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
   debugLogger.log('📸 URI da imagem:', { uri: imageUri });
   debugLogger.log('⚙️ Plataforma:', { platform: Platform.OS });
   
   const config = { ...DEFAULT_COMPRESSION_OPTIONS, ...options };
-  console.log('⚙️ Configuração final:', config);
   debugLogger.log('⚙️ Configuração final:', config);
 
   try {
     if (Platform.OS === 'web') {
-      console.log('🌐 Usando compressão WEB (Canvas)');
       debugLogger.log('🌐 Usando compressão WEB (Canvas)');
       const result = await compressImageWeb(imageUri, config);
-      console.log('✅ Compressão WEB concluída:', {
-        originalSize: result.originalSize,
-        newSize: result.size,
-        ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
-      });
       debugLogger.log('✅ Compressão WEB concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
@@ -75,16 +65,9 @@ export async function compressImage(
       });
       return result;
     } else {
-      console.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
       debugLogger.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
-      console.log('🔍 Chamando compressImageMobile com URI:', imageUri);
       debugLogger.log('🔍 Chamando compressImageMobile com URI:', { uri: imageUri });
       const result = await compressImageMobile(imageUri, config);
-      console.log('✅ Compressão MOBILE concluída:', {
-        originalSize: result.originalSize,
-        newSize: result.size,
-        ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
-      });
       debugLogger.log('✅ Compressão MOBILE concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
@@ -241,26 +224,16 @@ async function compressImageMobile(
   imageUri: string,
   options: CompressionOptions,
 ): Promise<CompressionResult> {
-  console.log('\n\n');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('📱 [compressImageMobile] INICIANDO COMPRESSÃO MOBILE');
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('📸 [compressImageMobile] URI:', imageUri);
-  console.log('⚙️ [compressImageMobile] Opções:', options);
   
   try {
     // Importar dinamicamente para não quebrar no web
-    console.log('📦 [compressImageMobile] Importando expo-image-manipulator...');
     const { manipulateAsync, SaveFormat } = await import(
       'expo-image-manipulator'
     );
-    console.log('✅ [compressImageMobile] expo-image-manipulator importado com sucesso');
 
     // Obter informações da imagem original
-    console.log('📊 [compressImageMobile] Obtendo informações da imagem original...');
     const originalInfo = await FileSystem.getInfoAsync(imageUri);
     const originalSize = originalInfo.size || 0;
-    console.log('📏 [compressImageMobile] Tamanho original:', formatFileSize(originalSize), `(${originalSize} bytes)`);
 
     // Definir formato de saída
     const formatMap: {
@@ -273,15 +246,10 @@ async function compressImageMobile(
 
     const saveFormat =
       formatMap[options.outputFormat || 'jpeg'] || SaveFormat.JPEG;
-    console.log('🎨 [compressImageMobile] Formato de saída:', options.outputFormat || 'jpeg');
 
     // Manipular imagem - REDIMENSIONAR
     const resizeWidth = options.maxWidth || 800;
     const resizeHeight = options.maxHeight || 800;
-    console.log('🔧 [compressImageMobile] Redimensionando para:', {
-      width: resizeWidth,
-      height: resizeHeight,
-    });
     const manipResult = await manipulateAsync(imageUri, [
       {
         resize: {
@@ -290,15 +258,9 @@ async function compressImageMobile(
         },
       },
     ]);
-    console.log('✅ [compressImageMobile] Redimensionamento concluído:', {
-      newUri: manipResult.uri,
-      width: manipResult.width,
-      height: manipResult.height,
-    });
 
     // Salvar imagem comprimida
     const quality = options.quality || 0.8;
-    console.log('💾 [compressImageMobile] Comprimindo com quality:', quality);
     const compressResult = await manipulateAsync(
       manipResult.uri,
       [],
@@ -307,18 +269,14 @@ async function compressImageMobile(
         format: saveFormat,
       },
     );
-    console.log('✅ [compressImageMobile] Compressão concluída:', compressResult.uri);
 
     // Obter informações da imagem comprimida
-    console.log('📊 [compressImageMobile] Obtendo informações da imagem comprimida...');
     const compressedInfo = await FileSystem.getInfoAsync(
       compressResult.uri,
     );
     const compressedSize = compressedInfo.size || 0;
     const compressionPercentage = ((originalSize - compressedSize) / originalSize) * 100;
     
-    console.log('📏 [compressImageMobile] Tamanho comprimido:', formatFileSize(compressedSize), `(${compressedSize} bytes)`);
-    console.log('📊 [compressImageMobile] Taxa de compressão:', `${compressionPercentage.toFixed(1)}%`);
 
     const result = {
       uri: compressResult.uri,
@@ -329,13 +287,10 @@ async function compressImageMobile(
       compressionRatio: compressionPercentage,
     };
 
-    console.log('✅ [compressImageMobile] SUCESSO FINAL:', result);
-    console.log('═══════════════════════════════════════════════════════════\n\n');
     return result;
   } catch (error) {
     console.error('❌ [compressImageMobile] ERRO FATAL:', error);
     console.error('❌ [compressImageMobile] Stack:', (error as any).stack);
-    console.log('═══════════════════════════════════════════════════════════\n\n');
     throw error;
   }
 }
@@ -357,14 +312,4 @@ export function formatFileSize(bytes: number): string {
  * Log de compressão formatado
  */
 export function logCompressionInfo(result: CompressionResult): void {
-  console.log('📸 === COMPRESSÃO DE IMAGEM ===');
-  console.log(`📏 Dimensões: ${result.width}x${result.height}`);
-  console.log(
-    `📦 Tamanho original: ${formatFileSize(result.originalSize)}`,
-  );
-  console.log(`📦 Tamanho comprimido: ${formatFileSize(result.size)}`);
-  console.log(
-    `📉 Compressão: ${result.compressionRatio.toFixed(2)}% redução`,
-  );
-  console.log('================================');
 }

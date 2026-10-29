@@ -68,7 +68,6 @@ export default function ForceUpdateGate({ children }: Props) {
         publicada = at.versao_recomendada || null;
         release = at.disponivel && at.url ? { version: at.versao_recomendada || at.versao_minima || "", apk_url: at.url, obrigatoria: !!at.obrigatoria } : null;
       }
-      console.log("[ForceUpdateGate]", JSON.stringify({ instalada: APP_VERSION, android: remote ? remote.android : "falhou", release }));
       setApk(release);
       return { release, publicada };
     }

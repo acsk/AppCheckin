@@ -36,7 +36,6 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
         return;
       }
 
-      console.log("Buscando matrícula:", matriculaId);
       const baseUrl = getApiUrlRuntime();
       const response = await fetch(
         `${baseUrl}/mobile/matriculas/${matriculaId}`,
@@ -50,7 +49,6 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
       );
 
       const data = await response.json();
-      console.log("Matrícula carregada:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data) {
         setMatricula(data.data.matricula);

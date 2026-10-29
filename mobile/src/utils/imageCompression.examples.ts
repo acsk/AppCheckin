@@ -18,7 +18,6 @@ async function exemploBasico(imageUri: string) {
     // Log automático
     logCompressionInfo(result);
     
-    console.log(`Imagem comprimida: ${result.uri}`);
     return result.uri;
   } catch (error) {
     console.error('Erro:', error);
@@ -36,7 +35,6 @@ async function exemploQualidadeAlta(imageUri: string) {
     maxHeight: 2048,
   });
 
-  console.log(`Qualidade: 90% | Tamanho: ${result.size} bytes`);
   return result.uri;
 }
 
@@ -51,7 +49,6 @@ async function exemploCompressaoAgressiva(imageUri: string) {
     maxHeight: 800,
   });
 
-  console.log(`Redução: ${result.compressionRatio.toFixed(2)}%`);
   return result.uri;
 }
 
@@ -107,9 +104,6 @@ async function exemploFormatos(imageUri: string) {
     quality: 0.8,
   });
 
-  console.log(`JPEG: ${jpeg.size / 1024}KB`);
-  console.log(`PNG: ${png.size / 1024}KB`);
-  console.log(`WebP: ${webp.size / 1024}KB`);
 }
 
 // ============================================
@@ -149,7 +143,6 @@ async function exemploUpload() {
       body: formData,
     });
 
-    console.log('Upload completo!');
   }
 }
 
@@ -254,8 +247,6 @@ async function exemploBatch(imageUris: string[]) {
   const sucessos = results.filter(r => !r.error);
   const falhas = results.filter(r => r.error);
 
-  console.log(`✅ ${sucessos.length} comprimidas`);
-  console.log(`❌ ${falhas.length} falharam`);
 
   return sucessos;
 }
@@ -272,9 +263,6 @@ async function exemploPerformance(imageUri: string) {
   const endTime = Date.now();
   const endMemory = (performance as any).memory?.usedJSHeapSize || 0;
 
-  console.log(`⏱️  Tempo: ${endTime - startTime}ms`);
-  console.log(`💾 Memória: ${(endMemory - startMemory) / 1024}KB`);
-  console.log(`📊 Taxa: ${(result.originalSize / (endTime - startTime)).toFixed(2)}KB/ms`);
 
   return result.uri;
 }
@@ -283,16 +271,12 @@ async function exemploPerformance(imageUri: string) {
 // EXEMPLO 11: Pré-visualizar Redução
 // ============================================
 async function exemploPreview(imageUri: string) {
-  console.log('Testando diferentes qualidades:');
 
   for (let quality = 1.0; quality >= 0.1; quality -= 0.2) {
     const result = await compressImage(imageUri, { quality });
     const sizeMB = (result.size / 1024 / 1024).toFixed(2);
     const reduction = result.compressionRatio.toFixed(1);
 
-    console.log(
-      `Qualidade ${(quality * 100).toFixed(0)}%: ${sizeMB}MB (-${reduction}%)`
-    );
   }
 }
 
@@ -314,11 +298,6 @@ async function exemploAdaptarConexao(imageUri: string) {
     maxHeight: maxWidth,
   });
 
-  console.log(
-    isSlowConnection
-      ? `📶 Conexão lenta: ${result.compressionRatio.toFixed(1)}% redução`
-      : `📡 Conexão rápida: Qualidade normal`
-  );
 
   return result.uri;
 }
