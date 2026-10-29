@@ -60,3 +60,18 @@ test('invalida o JavaScript anterior sem apagar o cache nativo', (t) => {
   assert.equal(fs.existsSync(dir), false);
   assert.equal(fs.readFileSync(nativeCache, 'utf8'), 'preservar');
 });
+
+test('publica o APK com manifesto e remove o anterior da pasta de downloads', (t) => {
+  const root = fixture(t);
+  const destino = path.join(root, 'downloads');
+  const apk = path.join(root, 'app.apk');
+  fs.writeFileSync(apk, 'apk-1');
+  version.publicarApk(apk, { version: '1.0.2', versionCode: 2 }, destino);
+  fs.writeFileSync(apk, 'apk-2');
+  const m = version.publicarApk(apk, { version: '1.0.3', versionCode: 3 }, destino);
+  assert.deepEqual(fs.readdirSync(destino).sort(), ['android.json', 'appcheckin-1.0.3-3.apk']);
+  assert.deepEqual(read(destino, 'android.json'), m);
+  assert.equal(m.arquivo, 'appcheckin-1.0.3-3.apk');
+  assert.equal(m.tamanho, 5);
+  assert.match(m.sha256, /^[0-9a-f]{64}$/);
+});

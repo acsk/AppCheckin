@@ -64,6 +64,8 @@ return [
     'android_release' => [
         'version' => env('APP_ANDROID_VERSION', ''),
         'apk_url' => env('APP_ANDROID_APK_URL', ''),
+        // Gravado pelo `npm run android:apk` junto do APK. Quando existe, vale como versão publicada e link.
+        'manifest' => env('APP_ANDROID_APK_MANIFEST', public_path('downloads/android.json')),
     ],
 
     /*

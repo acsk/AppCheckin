@@ -762,11 +762,19 @@ class MatriculaMigracaoService
 
         // Assinatura com fidelização em curso nesta modalidade: trocar de plano = cancelar (com a
         // regularização do contrato) e contratar de novo. A migração com crédito não se aplica.
-        if (\Illuminate\Support\Facades\Schema::hasTable('contratos_recorrencia')
-            && \Illuminate\Support\Facades\DB::table('contratos_recorrencia as c')->join('planos as p', 'p.id', '=', 'c.plano_id')
+        $assinatura = \Illuminate\Support\Facades\Schema::hasTable('contratos_recorrencia')
+            ? \Illuminate\Support\Facades\DB::table('contratos_recorrencia as c')->join('planos as p', 'p.id', '=', 'c.plano_id')
                 ->where('c.tenant_id', $tenantId)->where('c.aluno_id', $alunoId)->where('p.modalidade_id', $novoPlano['modalidade_id'])
-                ->whereIn('c.status', \App\Services\Recorrencia\RecorrenciaService::ATIVOS)->exists()) {
-            return ['erro' => $this->erro(409, 'ASSINATURA_FIDELIDADE_ATIVA', 'Você tem uma assinatura com fidelidade nesta modalidade. Para trocar de plano, cancele a assinatura em Minhas assinaturas e contrate o novo plano.')];
+                ->whereIn('c.status', \App\Services\Recorrencia\RecorrenciaService::ATIVOS)->orderByDesc('c.id')->first(['c.id', 'c.status', 'c.em_fidelizacao'])
+            : null;
+        if ($assinatura) {
+            $mensagem = match (true) {
+                $assinatura->status === 'pendente_ativacao' => 'Você tem uma assinatura aguardando o primeiro pagamento nesta modalidade. Para trocar de plano, cancele-a em Minhas assinaturas (sem custo) e contrate o novo plano.',
+                (bool) $assinatura->em_fidelizacao => 'Você tem uma assinatura com fidelidade nesta modalidade. Para trocar de plano, cancele a assinatura em Minhas assinaturas e contrate o novo plano.',
+                default => 'Você tem uma assinatura mensal nesta modalidade. Para trocar de plano, cancele a assinatura em Minhas assinaturas e contrate o novo plano.',
+            };
+
+            return ['erro' => $this->erro(409, 'ASSINATURA_FIDELIDADE_ATIVA', $mensagem, ['contrato_id' => (int) $assinatura->id])];
         }
 
         $novoCiclo = null;

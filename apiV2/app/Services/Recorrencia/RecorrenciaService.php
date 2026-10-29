@@ -249,6 +249,17 @@ class RecorrenciaService
             return $this->erro('Você já tem um plano ativo nesta modalidade. A assinatura com fidelidade pode ser feita quando ele vencer.', 409, 'MATRICULA_ATIVA_EXISTENTE');
         }
 
+        // Contrato substituído: a assinatura antiga não pode continuar cobrando no Asaas
+        if ($existente && $existente->assinatura_gateway_id) {
+            try {
+                $this->asaas($tenantId)->cancelarAssinatura((string) $existente->assinatura_gateway_id);
+            } catch (\Throwable $e) {
+                Log::error('Recorrência: falha ao cancelar a assinatura substituída no Asaas', ['contrato_id' => $existente->id, 'error' => $e->getMessage()]);
+
+                return $this->erro('Não conseguimos cancelar a assinatura anterior no gateway de pagamento. Tente de novo em instantes.', 502, 'GATEWAY_ERRO');
+            }
+        }
+
         [$valorGateway, $taxa] = $this->valorNoGateway($tenantId, $metodo, $oferta['valor_mensal']);
         try {
             [$contratoId, $matriculaId] = DB::transaction(function () use ($tenantId, $usuarioId, $aluno, $plano, $ciclo, $oferta, $metodo, $hoje, $existente, $origem, $taxa) {
@@ -278,6 +289,9 @@ class RecorrenciaService
             Log::error('Recorrência: falha ao contratar', ['tenant_id' => $tenantId, 'usuario_id' => $usuarioId, 'error' => $e->getMessage()]);
 
             return $this->erro('Não foi possível criar a assinatura. Tente de novo.', 500);
+        }
+        if ($existente) {
+            $this->cancelarFuturas($tenantId, (int) $existente->id, '0000-00-00', true);
         }
 
         try {

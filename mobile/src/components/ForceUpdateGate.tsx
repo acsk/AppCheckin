@@ -11,6 +11,7 @@ import {
 } from "@/src/config/appVersion";
 import Modal from "@/src/components/ds/Modal";
 import { atualizarConfigRemota } from "@/src/services/remoteConfig";
+import { baixarEInstalarApk } from "@/src/utils/instalarApk";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
@@ -34,6 +35,9 @@ export default function ForceUpdateGate({ children }: Props) {
   const [remoteDate, setRemoteDate] = useState("");
   const [apk, setApk] = useState<AndroidRelease | null>(null);
   const [apkDismissed, setApkDismissed] = useState("");
+  const [baixando, setBaixando] = useState(false);
+  const [progresso, setProgresso] = useState<number | null>(null);
+  const [erroDownload, setErroDownload] = useState("");
   // Web com atualização opcional (definida pelo super admin): só avisa, sem bloquear
   const [webOpcional, setWebOpcional] = useState("");
   const [webDismissed, setWebDismissed] = useState("");
@@ -125,9 +129,26 @@ export default function ForceUpdateGate({ children }: Props) {
     await forceReloadApp();
   };
 
-  const downloadApk = () => {
-    if (apk?.apk_url) void Linking.openURL(apk.apk_url);
+  const downloadApk = async () => {
+    if (!apk?.apk_url || baixando) return;
+    if (Platform.OS !== "android") {
+      void Linking.openURL(apk.apk_url);
+      return;
+    }
+    setBaixando(true);
+    setProgresso(null);
+    setErroDownload("");
+    try {
+      await baixarEInstalarApk(apk.apk_url, apk.version, setProgresso);
+    } catch (e) {
+      console.warn("[ForceUpdateGate] download do APK", e);
+      setErroDownload("Não deu para baixar pelo app. Abrimos o link no navegador.");
+      void Linking.openURL(apk.apk_url);
+    } finally {
+      setBaixando(false);
+    }
   };
+  const progressoTexto = baixando ? (progresso === null ? "Baixando…" : `Baixando… ${Math.round(progresso * 100)}%`) : "";
 
   if (apk?.obrigatoria) {
     return (
@@ -141,8 +162,9 @@ export default function ForceUpdateGate({ children }: Props) {
             Baixe e instale a nova versão do AppCheckin para continuar.
           </Text>
           <Text style={styles.meta}>Seu app: {APP_VERSION} · Disponível: {apk.version}</Text>
-          <TouchableOpacity style={styles.button} onPress={downloadApk}>
-            <Text style={styles.buttonText}>Baixar atualização</Text>
+          {erroDownload ? <Text style={styles.meta}>{erroDownload}</Text> : null}
+          <TouchableOpacity style={[styles.button, baixando && { opacity: 0.6 }]} disabled={baixando} onPress={() => void downloadApk()}>
+            <Text style={styles.buttonText}>{progressoTexto || "Baixar e instalar"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -183,9 +205,9 @@ export default function ForceUpdateGate({ children }: Props) {
         variant="dialog"
         icon="download"
         title="Nova versão disponível"
-        description={`A versão ${apk?.version ?? ""} do AppCheckin já está disponível (a sua é ${APP_VERSION}). Baixe e instale para receber as novidades.`}
-        primary={{ label: "Baixar atualização", icon: "download", onPress: downloadApk }}
-        onClose={() => setApkDismissed(apk?.version ?? "")}
+        description={`A versão ${apk?.version ?? ""} do AppCheckin já está disponível (a sua é ${APP_VERSION}). Baixe e instale para receber as novidades.${erroDownload ? `\n\n${erroDownload}` : ""}`}
+        primary={{ label: progressoTexto || "Baixar e instalar", icon: "download", onPress: () => void downloadApk(), loading: baixando }}
+        onClose={() => !baixando && setApkDismissed(apk?.version ?? "")}
       />
       <Modal
         visible={!!webOpcional && webDismissed !== webOpcional}

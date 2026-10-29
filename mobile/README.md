@@ -8,7 +8,14 @@ o comando incrementa o patch de `expo.version` (1.0.1 → 1.0.2 → 1.0.3) e o
 `artifacts/appcheckin-<versão>-<versionCode>.apk`, com assinatura conferida.
 
 O padrão é a API de produção. Para outro ambiente, informe `EXPO_PUBLIC_APP_ENV`
-e `EXPO_PUBLIC_API_URL` no comando. O processo não publica a versão na API.
+e `EXPO_PUBLIC_API_URL` no comando.
+
+Ao terminar, o build copia o APK para `apiV2/public/downloads/` (fora do git; outra
+pasta via `APK_PUBLISH_DIR`) junto com `android.json`. A apiV2 lê esse manifesto como
+versão publicada e link (`/downloads/appcheckin-<versão>-<versionCode>.apk`), e o app
+mostra "Nova versão disponível", baixa e abre o instalador. Para publicar, suba a pasta
+no servidor: primeiro o `.apk`, depois o `android.json`. Para bloquear versões antigas,
+defina a versão mínima em Super Admin → Configurações do app → Versões.
 
 Se um build falhar, corrija a causa e execute `npm run android:apk -- --retry`
 para retomar a mesma versão reservada. A versão não é reduzida em caso de falha.

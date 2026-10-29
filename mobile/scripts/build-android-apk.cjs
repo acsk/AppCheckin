@@ -3,9 +3,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { incrementarVersaoAndroid, invalidarBundleAndroid } = require('./android-version.cjs');
+const { incrementarVersaoAndroid, invalidarBundleAndroid, publicarApk } = require('./android-version.cjs');
 
 const root = path.resolve(__dirname, '..');
+// Pasta servida pela apiV2 em /downloads (fora do git; sobe no deploy)
+const publishDir = path.resolve(process.env.APK_PUBLISH_DIR || path.join(root, '../apiV2/public/downloads'));
 const expoDir = path.join(root, '.expo');
 const statePath = path.join(expoDir, 'android-apk-state.json');
 const lockPath = path.join(expoDir, 'android-apk.lock');
@@ -92,6 +94,9 @@ try {
   fs.copyFileSync(sourceApk, output, fs.constants.COPYFILE_EXCL);
   fs.writeFileSync(statePath, JSON.stringify({ ...version, completed: true, output }, null, 2) + '\n');
   console.log(`\nAPK validado: ${output}\n`);
+  const publicado = publicarApk(output, version, publishDir);
+  console.log(`Publicado em ${path.join(publishDir, publicado.arquivo)} + android.json.`);
+  console.log('Suba a pasta no deploy (primeiro o .apk, depois o android.json) para o app avisar da nova versão.\n');
 } catch (e) {
   console.error(`\n${e.message}\nPara retomar a mesma versão após corrigir a falha: npm run android:apk -- --retry`);
   process.exitCode = 1;

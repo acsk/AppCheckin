@@ -17,6 +17,8 @@
 /public/build
 /public/fonts-manifest.dev.json
 /public/hot
+/public/downloads/*
+!/public/downloads/.htaccess
 /public/storage
 /public/uploads/fotos/*
 !/public/uploads/fotos/.gitkeep

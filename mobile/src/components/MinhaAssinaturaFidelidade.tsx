@@ -112,7 +112,10 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
     setCancelando({ c, sim: null });
     const { ok, json } = await chamarRecorrencia("GET", `/contratos/${c.id}/simular-cancelamento`);
     if (ok) setCancelando({ c, sim: json?.data?.simulacao });
-    else setCancelando(null);
+    else {
+      setCancelando(null);
+      setAviso({ ok: false, texto: json?.message || "Não foi possível calcular o cancelamento agora." });
+    }
   }
 
   async function confirmarCancelamento() {
@@ -209,6 +212,9 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
               {c.tem_pagamento_aberto ? <Button size="sm" icon={c.metodo === "pix" ? "zap" : "credit-card"} loading={busy} onPress={() => void pagar(c)}>
                 {c.metodo === "cartao" ? "Pagar / trocar cartão" : "Pagar mensalidade"}
               </Button> : null}
+              {c.pode_cancelar ? <Button size="sm" variant="danger" icon="x-circle" onPress={() => void abrirCancelamento(c)}>
+                {c.status === "pendente_ativacao" ? "Cancelar pedido" : "Solicitar cancelamento"}
+              </Button> : null}
               <Button size="sm" variant="ghost" icon={expandido ? "chevron-up" : "chevron-down"} onPress={() => setAberto(expandido ? null : c.id)}>
                 {expandido ? "Menos" : "Pagamentos e termos"}
               </Button>
@@ -228,7 +234,6 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
                 </View>
                 <Text style={styles.label}>Termos aceitos em {dataBr(c.aceite_em)} (versão {c.termos_versao})</Text>
                 <Text style={styles.termos}>{c.termos_aceitos}</Text>
-                {c.pode_cancelar ? <Button size="sm" variant="danger" icon="x-circle" onPress={() => void abrirCancelamento(c)}>Solicitar cancelamento</Button> : null}
               </View>
             ) : null}
           </View>

@@ -125,7 +125,7 @@ class MobileRecorrenciaService
             'condicoes_renovacao' => self::RENOVACAO[$c['politica_renovacao']] ?? null,
             'termos_aceitos' => $c['termos_aceitos'], 'termos_versao' => (int) $c['termos_versao'], 'aceite_em' => $c['aceite_em'],
             'pagamentos' => array_map(fn ($x) => ['numero' => (int) $x['numero'], 'vencimento' => $x['vencimento'], 'valor' => $x['valor'], 'status' => $x['status'], 'pago_em' => $x['pago_em']], $cobrancas),
-            'tem_pagamento_aberto' => (bool) array_filter($cobrancas, fn ($x) => in_array($x['status'], ['pendente', 'vencida'], true)),
+            'tem_pagamento_aberto' => $vivo && (bool) array_filter($cobrancas, fn ($x) => in_array($x['status'], ['pendente', 'vencida'], true)),
             'pode_cancelar' => $vivo,
             'cancelamento' => $cancelamento ? (array) $cancelamento + ['valor_final' => Calc::reais(max(0, Calc::centavos((string) $cancelamento->valor_regularizacao) - Calc::centavos((string) $cancelamento->valor_isencao)))] : null,
             'nova_fidelizacao' => $oferta,

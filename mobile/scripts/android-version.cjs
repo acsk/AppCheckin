@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -37,4 +38,26 @@ function invalidarBundleAndroid(root) {
   fs.rmSync(path.join(root, 'android/app/build/generated/assets/createBundleReleaseJsAndAssets'), { recursive: true, force: true });
 }
 
-module.exports = { incrementarVersaoAndroid, invalidarBundleAndroid };
+/**
+ * Copia o APK para a pasta de downloads da apiV2 e grava android.json, que a API lê como versão
+ * publicada. Mantém só o APK atual; o manifesto é gravado por último (troca atômica).
+ */
+function publicarApk(apkPath, { version, versionCode }, destino) {
+  fs.mkdirSync(destino, { recursive: true });
+  const arquivo = `appcheckin-${version}-${versionCode}.apk`;
+  fs.copyFileSync(apkPath, path.join(destino, arquivo));
+  const manifesto = {
+    version, version_code: versionCode, arquivo,
+    sha256: crypto.createHash('sha256').update(fs.readFileSync(apkPath)).digest('hex'),
+    tamanho: fs.statSync(apkPath).size, gerado_em: new Date().toISOString(),
+  };
+  const tmp = path.join(destino, 'android.json.tmp');
+  fs.writeFileSync(tmp, JSON.stringify(manifesto, null, 2) + '\n');
+  fs.renameSync(tmp, path.join(destino, 'android.json'));
+  for (const f of fs.readdirSync(destino)) {
+    if (/^appcheckin-.+\.apk$/.test(f) && f !== arquivo) fs.rmSync(path.join(destino, f));
+  }
+  return manifesto;
+}
+
+module.exports = { incrementarVersaoAndroid, invalidarBundleAndroid, publicarApk };

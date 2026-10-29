@@ -1,0 +1,11 @@
+# APKs gerados por `npm run android:apk` (mobile). Os arquivos não vão para o git: suba esta pasta no deploy.
+AddType application/vnd.android.package-archive .apk
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.apk$">
+        Header set Content-Disposition "attachment"
+    </FilesMatch>
+    <FilesMatch "^android\.json$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>

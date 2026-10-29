@@ -134,6 +134,7 @@ export default function PlanoDetalhesScreen() {
   const [carregandoOfertas, setCarregandoOfertas] = useState(false);
   const [tentativaOfertas, setTentativaOfertas] = useState(0);
   const [creditoPrevia, setCreditoPrevia] = useState<MigracaoSimulacao | null>(null);
+  const [bloqueioMigracao, setBloqueioMigracao] = useState<string | null>(null);
   const [revisaoTipo, setRevisaoTipo] = useState<'migracao' | 'compra'>('migracao');
   const [revisaoGateway, setRevisaoGateway] = useState<string | undefined>();
 
@@ -152,6 +153,7 @@ export default function PlanoDetalhesScreen() {
 
   useEffect(() => {
     setCreditoPrevia(null);
+    setBloqueioMigracao(null);
     if (!plano || !selectedCicloId || !precisaRevisaoMigracao(plano, selectedCicloId)) return;
     let ativo = true;
     const timer = setTimeout(async () => {
@@ -161,6 +163,8 @@ export default function PlanoDetalhesScreen() {
         const response = await fetch(`${apiUrl}/mobile/simular-migracao`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ plano_id: plano.id, plano_ciclo_id: selectedCicloId }) });
         const json = await response.json();
         if (ativo && response.ok && json.success) setCreditoPrevia(json.data);
+        // Bloqueio de negócio (ex.: assinatura ativa na modalidade): avisa já na tela, não só ao confirmar
+        else if (ativo && response.status === 409 && json.message) setBloqueioMigracao(json.message);
       } catch { /* A revisão busca novamente os valores oficiais antes de confirmar. */ }
     }, 300);
     return () => { ativo = false; clearTimeout(timer); };
@@ -1348,6 +1352,19 @@ export default function PlanoDetalhesScreen() {
                 Você já iniciou a contratação deste plano. Conclua o pagamento
                 para ativar a matrícula.
               </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {bloqueioMigracao ? (
+          <View style={styles.pendingBanner}>
+            <Feather name="alert-circle" size={18} color={ds.warning} />
+            <View style={styles.pendingBannerContent}>
+              <Text style={styles.pendingBannerTitle}>Troca de plano indisponível</Text>
+              <Text style={styles.pendingBannerText}>{bloqueioMigracao}</Text>
+              <Button size="sm" variant="secondary" icon="file-text" onPress={() => router.push("/minhas-assinaturas")}>
+                Minhas assinaturas
+              </Button>
             </View>
           </View>
         ) : null}

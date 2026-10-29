@@ -1,5 +1,5 @@
 /* AppCheckin PWA — CACHE_VERSION é gravado no build (increment-version.js). */
-const CACHE_VERSION = "v1.68";
+const CACHE_VERSION = "v1.69";
 const CACHE_NAME = "appcheckin-" + CACHE_VERSION;
 
 self.addEventListener("install", (event) => {

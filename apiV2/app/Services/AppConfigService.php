@@ -45,7 +45,7 @@ class AppConfigService
     {
         $ctx = $this->comPapeis($ctx);
 
-        return AppConfigResolver::contrato(AppConfigResolver::resolver($this->publicada(), $ctx), $ctx['plataforma'] ?? 'web', $ctx['versao_app'] ?? null);
+        return AppConfigResolver::contrato(self::comApkPublicado(AppConfigResolver::resolver($this->publicada(), $ctx)), $ctx['plataforma'] ?? 'web', $ctx['versao_app'] ?? null);
     }
 
     /** @param  array{tenant_id?: int|null, usuario_id?: int|null, plataforma?: string, versao_app?: string|null}  $ctx */
@@ -64,7 +64,39 @@ class AppConfigService
     /** @return array<string, mixed> */
     public function versoes(): array
     {
-        return AppConfigResolver::resolver($this->publicada(), [])['versoes'];
+        return self::comApkPublicado(AppConfigResolver::resolver($this->publicada(), []))['versoes'];
+    }
+
+    /**
+     * APK que o build deixou em public/downloads (android.json + arquivo): vale como versão publicada
+     * e link, sem preencher no painel. A versão mínima (bloqueio) continua no painel.
+     *
+     * @return array{version: string, url: string}|null
+     */
+    public static function apkPublicado(): ?array
+    {
+        $manifest = (string) config('appcheckin.android_release.manifest', '');
+        $m = $manifest !== '' && is_file($manifest) ? json_decode((string) file_get_contents($manifest), true) : null;
+        $arquivo = basename((string) ($m['arquivo'] ?? ''));
+        if (! preg_match('/^\d+\.\d+\.\d+$/', (string) ($m['version'] ?? '')) || $arquivo === '' || ! is_file(dirname($manifest).'/'.$arquivo)) {
+            return null;
+        }
+
+        return ['version' => (string) $m['version'], 'url' => rtrim((string) config('app.url'), '/').'/downloads/'.rawurlencode($arquivo)];
+    }
+
+    /**
+     * @param  array<string, mixed>  $resolvida  saída de AppConfigResolver::resolver()
+     * @return array<string, mixed>
+     */
+    private static function comApkPublicado(array $resolvida): array
+    {
+        if ($apk = self::apkPublicado()) {
+            $resolvida['versoes']['android_versao_recomendada'] = $apk['version'];
+            $resolvida['versoes']['android_apk_url'] = $apk['url'];
+        }
+
+        return $resolvida;
     }
 
     /* ---------- Super admin ---------- */
@@ -246,7 +278,7 @@ class AppConfigService
         }
         $plataforma = self::plataforma($plataforma);
         // Sem usuário: o rollout parcial aparece como desligado; os papéis do app são aluno e professor
-        $resolvida = AppConfigResolver::resolver($this->publicada(), ['tenant_id' => $tenantId, 'papeis' => [1, 2], 'plataforma' => $plataforma, 'versao_app' => $versaoApp]);
+        $resolvida = self::comApkPublicado(AppConfigResolver::resolver($this->publicada(), ['tenant_id' => $tenantId, 'papeis' => [1, 2], 'plataforma' => $plataforma, 'versao_app' => $versaoApp]));
 
         return $this->ok(['efetiva' => $resolvida, 'contrato' => AppConfigResolver::contrato($resolvida, $plataforma, $versaoApp)]);
     }
