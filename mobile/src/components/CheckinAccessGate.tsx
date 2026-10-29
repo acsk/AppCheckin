@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import AsyncStorage from '@/src/utils/storage';
 import { useParametro } from '@/src/hooks/useConfigRemota';
 import { useRefreshOnFocus } from '@/src/hooks/useRefreshOnFocus';
 import { abrirPendencias, textoPendencias, useResumoComunicacoes } from '@/src/services/comunicacoes';
+import { apiAlcancavel, esperar } from '@/src/utils/conexao';
 import AppHeader from './ds/AppHeader';
 import Button from './ds/Button';
 import { ds } from './ds/tokens';
@@ -16,36 +17,72 @@ import { ds } from './ds/tokens';
 export default function CheckinAccessGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const exigirMatricula = useParametro('checkin_exigir_matricula_ativa');
-  const [estado, setEstado] = useState<'carregando' | 'permitido' | 'bloqueado' | 'erro'>('carregando');
+  const [estado, setEstadoBruto] = useState<'carregando' | 'permitido' | 'bloqueado' | 'erro' | 'offline'>('carregando');
   const [mensagem, setMensagem] = useState('');
   const requisicao = useRef(0);
+  const estadoRef = useRef(estado);
+  const setEstado = useCallback((e: typeof estado) => { estadoRef.current = e; setEstadoBruto(e); }, []);
   const comunicacoes = useResumoComunicacoes();
   const verificar = useCallback(async () => {
     const id = ++requisicao.current;
-    try {
-      const academia = await AsyncStorage.getItem('@appcheckin:tenant_id');
+    const vigente = () => id === requisicao.current;
+    // Já dentro do Check-in, uma oscilação de rede na atualização automática não tira o aluno da tela
+    const falhaDeRede = () => {
+      if (!vigente() || estadoRef.current === 'permitido') return;
+      setMensagem('Não conseguimos falar com o servidor. Confira sua internet; verificamos de novo assim que a conexão voltar.');
+      setEstado('offline');
+    };
+    const consultar = async () => {
       const r: any = await api.get('/mobile/checkin/acesso');
+      if (typeof r?.data?.permitido !== 'boolean') throw new Error('Resposta inválida');
+      return r.data as { permitido: boolean; motivo?: string | null };
+    };
+    try {
+      // 1. Teste de comunicação antes: sem internet nunca vira "sem matrícula"
+      if (!(await apiAlcancavel())) return falhaDeRede();
+      const academia = await AsyncStorage.getItem('@appcheckin:tenant_id');
+      let d = await consultar();
+      // 2. "Sem acesso" só depois de confirmar: comunicação de pé e a segunda consulta igual
+      if (!d.permitido) {
+        await esperar(800);
+        if (!(await apiAlcancavel())) return falhaDeRede();
+        d = await consultar();
+      }
       const academiaAtual = await AsyncStorage.getItem('@appcheckin:tenant_id');
-      if (id !== requisicao.current) return;
+      if (!vigente()) return;
       if (academia !== academiaAtual) {
         setMensagem('A academia selecionada mudou. Verifique novamente o acesso.');
         setEstado('erro');
         return;
       }
-      if (typeof r?.data?.permitido !== 'boolean') throw new Error('Resposta inválida');
-      setMensagem(r.data.motivo || 'Você precisa de uma matrícula ativa com plano nesta academia.');
-      setEstado(r.data.permitido ? 'permitido' : 'bloqueado');
-    } catch {
-      if (id !== requisicao.current) return;
+      setMensagem(d.motivo || 'Você precisa de uma matrícula ativa com plano nesta academia.');
+      setEstado(d.permitido ? 'permitido' : 'bloqueado');
+    } catch (e: any) {
+      if (!vigente()) return;
+      // Caiu no meio da consulta: se a API não responde ao ping, é conexão, não pendência
+      if (e?.isNetworkError || !(await apiAlcancavel())) return falhaDeRede();
+      if (!vigente() || estadoRef.current === 'permitido') return;
       setMensagem('Não foi possível verificar seu acesso ao Check-in. Tente novamente.');
       setEstado('erro');
     }
-  }, []);
+  }, [setEstado]);
+
+  // Sem conexão: tenta de novo sozinho (a cada 5 s e quando o navegador avisa que voltou)
+  useEffect(() => {
+    if (estado !== 'offline') return;
+    const t = setInterval(() => { void verificar(); }, 5000);
+    const voltou = () => { void verificar(); };
+    if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('online', voltou);
+    return () => {
+      clearInterval(t);
+      if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('online', voltou);
+    };
+  }, [estado, verificar]);
   useFocusEffect(useCallback(() => {
     setEstado('carregando');
     void verificar();
     return () => { requisicao.current++; };
-  }, [verificar, exigirMatricula]));
+  }, [verificar, exigirMatricula, setEstado]));
   useRefreshOnFocus(verificar);
 
   if (estado === 'permitido') {
@@ -69,10 +106,11 @@ export default function CheckinAccessGate({ children }: { children: React.ReactN
       <View style={styles.body}>
         {estado === 'carregando' ? <><ActivityIndicator color={ds.brand} /><Text style={styles.text}>Verificando acesso ao Check-in…</Text></>
           : <>
-            <Text style={styles.title}>{estado === 'erro' ? 'Não foi possível verificar o acesso' : 'Check-in indisponível'}</Text>
+            {estado === 'offline' ? <Feather name="wifi-off" size={36} color={ds.inkMuted} /> : null}
+            <Text style={styles.title}>{estado === 'offline' ? 'Sem conexão' : estado === 'erro' ? 'Não foi possível verificar o acesso' : 'Check-in indisponível'}</Text>
             <Text style={styles.text}>{mensagem}</Text>
             {estado === 'bloqueado' ? <Button onPress={() => router.replace('/(tabs)/planos')}>Ver meus planos</Button> : null}
-            <Button variant="secondary" onPress={() => { setEstado('carregando'); void verificar(); }}>Verificar novamente</Button>
+            <Button variant="secondary" onPress={() => { setEstado('carregando'); void verificar(); }}>{estado === 'offline' ? 'Tentar novamente' : 'Verificar novamente'}</Button>
             <Button variant="ghost" onPress={() => router.replace('/(tabs)/account')}>Voltar ao início</Button>
           </>}
       </View>

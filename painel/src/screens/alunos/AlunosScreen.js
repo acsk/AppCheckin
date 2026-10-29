@@ -6,6 +6,8 @@ import LayoutBase from '../../components/LayoutBase';
 import { Button, Callout, Modal } from '../../components/ck';
 import { AlunosLista, maskPhone, titleCase } from '../../components/ck/pessoas';
 import { showSuccess, showError } from '../../utils/toast';
+import { API_V2_BASE_URL } from '../../config/api';
+import { fotoUrl } from '../../utils/prospeccao';
 
 const PAGE_SIZE = 20;
 const bool = (v) => v === true || v === 1 || v === '1';
@@ -17,6 +19,7 @@ export const toStudentRow = (a) => ({
   email: a.email || '',
   phone: a.telefone ? maskPhone(a.telefone) : '',
   cpf: a.cpf || '',
+  avatar: fotoUrl(a.foto_caminho, API_V2_BASE_URL),
   status: bool(a.ativo) ? 'ativo' : 'inativo',
   payment: a.plano ? (a.pagamento_ativo === true ? 'em_dia' : 'pendente') : undefined,
   plan: a.plano ? {

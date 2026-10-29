@@ -5,7 +5,8 @@ import { authService } from '../../services/authService';
 import { creditoService } from '../../services/creditoService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, IconButton, Modal, TextAreaField, TextField } from '../../components/ck';
-import { MOBILE_WEB_URL } from '../../config/api';
+import { API_V2_BASE_URL, MOBILE_WEB_URL } from '../../config/api';
+import { fotoUrl } from '../../utils/prospeccao';
 import { AlunoDetalhe, maskPhone, titleCase } from '../../components/ck/pessoas';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -30,7 +31,7 @@ const toStudent = (a) => ({
   birthDate: a.data_nascimento ? String(a.data_nascimento).slice(0, 10) : null,
   gender: a.sexo || '',
   status: bool(a.ativo) ? 'ativo' : 'inativo',
-  avatar: a.foto_url || undefined,
+  avatar: fotoUrl(a.foto_caminho, API_V2_BASE_URL),
   address: { cep: a.cep, street: a.logradouro, number: a.numero, complement: a.complemento, district: a.bairro, city: a.cidade, uf: a.estado },
   createdAt: isoDateTime(a.created_at),
   updatedAt: isoDateTime(a.updated_at),

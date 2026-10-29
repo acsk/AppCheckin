@@ -143,7 +143,7 @@ import { Sparkline } from './graficos';
               var name = titleCase(r.name), pay = r.plan ? STU_PAY[r.payment] : null, off = r.status === 'inativo';
               return h('tr', { key: r.id, className: cx('ck-ml__row', off && 'is-off'), onClick: function (e) { if (!e.target.closest('button, a')) open(r); } },
                 h('td', null, h('div', { className: 'ck-ml__who' },
-                  h(Avatar, { name: name, size: 'sm', decorative: true }),
+                  h(Avatar, { name: name, src: r.avatar, size: 'sm', decorative: true }),
                   h('span', { style: { minWidth: 0 } },
                     h('a', { href: r.href || '#', className: 'ck-ml__name', onClick: function (e) { if (p.onOpen) { e.preventDefault(); open(r); } } }, name),
                     h('span', { className: 'ck-mt-cell__sub' }, 'Aluno #' + r.id)))),
