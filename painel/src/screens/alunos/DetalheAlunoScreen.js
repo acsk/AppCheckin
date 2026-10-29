@@ -4,7 +4,8 @@ import alunoService from '../../services/alunoService';
 import { authService } from '../../services/authService';
 import { creditoService } from '../../services/creditoService';
 import LayoutBase from '../../components/LayoutBase';
-import { Button, IconButton, Modal, TextField } from '../../components/ck';
+import { Button, IconButton, Modal, TextAreaField, TextField } from '../../components/ck';
+import { MOBILE_WEB_URL } from '../../config/api';
 import { AlunoDetalhe, maskPhone, titleCase } from '../../components/ck/pessoas';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -77,6 +78,29 @@ export default function DetalheAlunoScreen() {
   const [savingCredit, setSavingCredit] = useState(false);
   const [cancelCredit, setCancelCredit] = useState(null);
   const [cancelingCredit, setCancelingCredit] = useState(false);
+  const [podeVerApp, setPodeVerApp] = useState(false);
+  const [verApp, setVerApp] = useState(false);
+  const [motivoApp, setMotivoApp] = useState('');
+  const [abrindoApp, setAbrindoApp] = useState(false);
+
+  // Sessão do aluno vai no fragmento (#d=): não chega ao servidor do app nem aos logs
+  const abrirApp = async () => {
+    // Abre a aba no clique (antes do await) para o navegador não bloquear o pop-up
+    const aba = window.open('about:blank', '_blank');
+    setAbrindoApp(true);
+    try {
+      const sessao = await alunoService.acessarApp(alunoId, motivoApp.trim());
+      const d = btoa(unescape(encodeURIComponent(JSON.stringify(sessao)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const url = `${MOBILE_WEB_URL}/acesso-aluno#d=${d}`;
+      if (aba) { aba.opener = null; aba.location.href = url; } else window.open(url, '_blank', 'noopener');
+      setVerApp(false);
+    } catch (error) {
+      aba?.close();
+      showError(error?.message || error?.error || 'Não foi possível abrir o app do aluno');
+    } finally {
+      setAbrindoApp(false);
+    }
+  };
 
   const loadAluno = async () => {
     try {
@@ -130,6 +154,8 @@ export default function DetalheAlunoScreen() {
           router.replace('/');
           return;
         }
+        // Admin da academia, inclusive o super admin no "acessar como academia" (a API confere)
+        setPodeVerApp(user.papel_id === 3);
       } catch {
         router.replace('/');
         return;
@@ -275,7 +301,27 @@ export default function DetalheAlunoScreen() {
         onOpenEnrollment={(e) => router.push(`/matriculas/detalhe?id=${e.id}`)}
         onToggleActive={() => setConfirmToggle(true)}
         onAddCredit={() => setCreditModal(true)}
+        onViewApp={podeVerApp ? () => { setMotivoApp(''); setVerApp(true); } : undefined}
       />
+
+      <Modal
+        open={verApp}
+        size="sm"
+        title={`Ver app como ${name.split(' ')[0]}`}
+        description="Abre o app web numa nova aba, logado como este aluno, por até 1 hora e só para visualizar: check-in, pagamentos e alterações ficam bloqueados. O motivo fica registrado."
+        dismissable={!abrindoApp}
+        onClose={() => setVerApp(false)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={abrindoApp} onClick={() => setVerApp(false)}>Cancelar</Button>
+            <Button variant="primary" icon="smartphone" loading={abrindoApp} disabled={motivoApp.trim().length < 10} onClick={abrirApp}>Abrir app</Button>
+          </>
+        )}
+      >
+        <TextAreaField label="Motivo" value={motivoApp} maxLength={500} placeholder="Ex.: aluno diz que o plano não aparece no app"
+          onChange={(e) => setMotivoApp(e.target.value)} hint="Mínimo de 10 caracteres. Abrir outro aluno encerra este acesso." />
+      </Modal>
 
       <Modal
         open={confirmToggle}

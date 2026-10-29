@@ -28,6 +28,7 @@ import AppSplash from "@/src/components/AppSplash";
 import AtualizacaoCadastralGate from "@/src/components/AtualizacaoCadastralGate";
 import ComunicacaoGate from "@/src/components/ComunicacaoGate";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
+import AcessoAlunoBanner from "@/src/components/AcessoAlunoBanner";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
@@ -255,7 +256,9 @@ function RootContent() {
           {!isTokenChecked ? bootScreen : (
           <View style={styles.root}>
             <StatusBarBackground />
+            {hasToken && Platform.OS === "web" ? <AcessoAlunoBanner /> : null}
             <Stack screenOptions={{ contentStyle: { backgroundColor: ds.ground } }}>
+              <Stack.Screen name="acesso-aluno" options={{ headerShown: false }} />
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

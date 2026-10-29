@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Repositories\UsuarioRepository;
+use App\Services\AcessoAlunoService;
 use App\Services\JwtService;
 use App\Services\SuperAdmin\AcessoSuporteService;
 use App\Support\ApiError;
@@ -80,6 +81,19 @@ class JwtAuthenticate
             $usuario['tenant_id'] = $resolvedTenantId;
         }
 
+        // "Ver app como aluno": token do aluno, só leitura, conferido a cada requisição
+        $acessoAluno = null;
+        if (! empty($payload['acesso_aluno_id'])) {
+            $acessoAluno = app(AcessoAlunoService::class)->sessaoValida((int) $payload['acesso_aluno_id'], $userId, (int) $resolvedTenantId);
+            if (! $acessoAluno) {
+                return ApiError::json('A visualização como aluno terminou. Abra de novo pelo painel.', 'ACESSO_ALUNO_ENCERRADO', 401);
+            }
+            if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && ! in_array($request->path(), AcessoAlunoService::ESCRITAS_LIVRES, true)) {
+                return ApiError::json('Modo visualização: as ações do aluno estão bloqueadas.', 'MODO_VISUALIZACAO', 403);
+            }
+            $usuario['papel_id'] = Papel::ALUNO;
+        }
+
         $request->attributes->set('userId', $userId);
         $request->attributes->set('userEmail', $payload['email'] ?? $usuario['email']);
         $request->attributes->set('tenantId', $resolvedTenantId ?: null);
@@ -89,10 +103,11 @@ class JwtAuthenticate
         $request->attributes->set('usuario', $usuario);
         $request->attributes->set('is_super_admin', $acessoSuporte ? false : (bool) ($payload['is_super_admin'] ?? false));
         $request->attributes->set('acesso_suporte', $acessoSuporte);
+        $request->attributes->set('acesso_aluno', $acessoAluno);
 
         $response = $next($request);
 
-        $this->renovarSessaoDoApp($request, $response, $payload, (bool) $acessoSuporte);
+        $this->renovarSessaoDoApp($request, $response, $payload, $acessoSuporte || $acessoAluno);
 
         if ($acessoSuporte && ! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && ! $request->is('v2/suporte/acesso/encerrar')) {
             app(AcessoSuporteService::class)->registrarAcao((int) $acessoSuporte['id'], $request->method(), '/'.$request->path(), $response->getStatusCode());

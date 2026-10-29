@@ -55,6 +55,18 @@ const alunoService = {
   },
 
   /**
+   * "Ver app como aluno": sessão de 1h do aluno, só leitura, com motivo registrado (admin da academia)
+   * @returns {Promise<Object>} { token, user, tenants, acesso }
+   */
+  async acessarApp(id, motivo) {
+    try {
+      return (await api.post(`/admin/acesso-aluno/${id}`, { motivo })).data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Não foi possível abrir o app do aluno' };
+    }
+  },
+
+  /**
    * Buscar aluno por CPF (global, cross-tenant)
    * @param {string} cpf - CPF do aluno (apenas números)
    * @returns {Promise<Object>} { found, aluno, tenants, ja_associado, pode_associar }

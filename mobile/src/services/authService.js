@@ -377,6 +377,8 @@ export const authService = {
     await AsyncStorage.removeItem("@appcheckin:user");
     await AsyncStorage.removeItem("@appcheckin:tenants");
     await AsyncStorage.removeItem("@appcheckin:current_tenant");
+    // "Ver app como aluno" (AcessoAlunoBanner)
+    await AsyncStorage.removeItem("@appcheckin:acesso_aluno");
   },
 
   /**

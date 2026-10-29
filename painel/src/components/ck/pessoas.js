@@ -319,7 +319,8 @@ import { Sparkline } from './graficos';
           h('div', { className: 'ck-mt-hero__actions' },
             p.onEdit ? h(Button, { variant: 'secondary', icon: 'pencil', onClick: p.onEdit }, 'Editar dados') : null,
             !e && p.onEnroll ? h(Button, { variant: 'primary', icon: 'plus', onClick: p.onEnroll }, 'Nova matrícula') : null,
-            p.onToggleActive || p.onResetPassword ? h(ActionMenu, { label: 'Mais ações', variant: 'secondary', size: 'md', items: [
+            p.onToggleActive || p.onResetPassword || p.onViewApp ? h(ActionMenu, { label: 'Mais ações', variant: 'secondary', size: 'md', items: [
+              p.onViewApp ? { label: 'Ver app como aluno', icon: 'smartphone', onClick: p.onViewApp } : null,
               p.onResetPassword ? { label: 'Enviar nova senha', icon: 'key', onClick: p.onResetPassword } : null,
               p.onToggleActive ? '-' : null,
               p.onToggleActive ? (s.status === 'inativo' ? { label: 'Reativar aluno', icon: 'power', onClick: p.onToggleActive } : { label: 'Desativar aluno', icon: 'ban', danger: true, onClick: p.onToggleActive }) : null].filter(Boolean) }) : null))),
