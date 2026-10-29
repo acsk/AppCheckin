@@ -166,8 +166,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     return ((w[0] || '')[0] + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase();
   }
   function Avatar(p) {
+    // Foto que não carrega (arquivo apagado, link antigo) volta para as iniciais
+    var falhou = useState(null);
+    var src = p.src && falhou[0] !== p.src ? p.src : null;
     return h('span', { className: cx('ck-avatar', 'ck-avatar--' + (p.size || 'md'), p.className), 'aria-hidden': p.decorative ? true : undefined, title: p.decorative ? undefined : p.name },
-      p.src ? h('img', { src: p.src, alt: p.name || '' }) : (p.initials || initialsOf(p.name)));
+      src ? h('img', { src: src, alt: p.name || '', onError: function () { falhou[1](src); } }) : (p.initials || initialsOf(p.name)));
   }
 
   function Switch(p) {

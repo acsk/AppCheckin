@@ -1,8 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+    Alert,
     Image,
     KeyboardAvoidingView,
     Platform,
@@ -23,6 +24,15 @@ import TextField from "../../src/components/ds/TextField";
 import TenantSelectionModal from "../../src/components/ds/TenantSelectionModal";
 import { ds as DS } from "../../src/components/ds/tokens";
 import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
+import {
+  ativarBiometria,
+  biometriaDisponivel,
+  biometriaRecusada,
+  desativarBiometria,
+  emailComBiometria,
+  lerCredenciais,
+  recusarBiometria,
+} from "../../src/utils/biometria";
 import {
   APP_BUILD_VERSION,
   APP_VERSION,
@@ -62,6 +72,31 @@ export default function LoginScreen() {
   const [tenantSelectionError, setTenantSelectionError] = useState("");
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  // Valores do formulário com outro nome: no handleLogin, email/senha podem vir da biometria
+  const emailState = email;
+  const senhaState = senha;
+  const credLogin = useRef(null);
+  const biometriaPedida = useRef(false);
+  // disponivel: aparelho com biometria; email: conta com a biometria ligada neste aparelho
+  const [biometria, setBiometria] = useState({ disponivel: false, email: null });
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      const [disponivel, emailBio] = await Promise.all([biometriaDisponivel(), emailComBiometria()]);
+      if (ativo) setBiometria({ disponivel, email: disponivel ? emailBio : null });
+    })();
+    return () => { ativo = false; };
+  }, []);
+
+  // Com a biometria ligada, já oferece ao abrir a tela (uma vez; cadastro com outro e-mail não)
+  useEffect(() => {
+    if (!biometria.disponivel || !biometria.email || biometriaPedida.current) return;
+    if (emailParam && emailParam !== biometria.email) return;
+    biometriaPedida.current = true;
+    void entrarComBiometria();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [biometria]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -263,11 +298,61 @@ export default function LoginScreen() {
     persistRememberState();
   }, [rememberMe, credentialsHydrated]);
 
-  const handleLogin = async () => {
+  /**
+   * Depois de entrar com a senha: oferece ligar a biometria (uma vez; "Agora não" não pergunta de
+   * novo). Resolve depois da escolha, para só então seguir para o app.
+   */
+  const oferecerBiometria = async () => {
+    const cred = credLogin.current;
+    if (!cred || cred.viaBiometria || !biometria.disponivel) return;
+    const emailNorm = cred.email.trim().toLowerCase();
+    if (biometria.email === emailNorm || (await biometriaRecusada())) return;
+    const aceitou = await new Promise((resolve) => {
+      Alert.alert(
+        "Entrar com biometria?",
+        "Da próxima vez, entre com a digital ou o rosto, sem digitar a senha.",
+        [
+          { text: "Agora não", style: "cancel", onPress: () => resolve(false) },
+          { text: "Ativar", onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+    if (!aceitou) {
+      await recusarBiometria();
+      return;
+    }
+    if (await ativarBiometria({ email: cred.email.trim(), senha: cred.senha })) {
+      setBiometria((b) => ({ ...b, email: emailNorm }));
+    }
+  };
+
+  const entrarComBiometria = async () => {
+    if (loading) return;
+    setFormError("");
+    const { credenciais, invalidada } = await lerCredenciais();
+    if (!credenciais) {
+      if (invalidada) {
+        setBiometria((b) => ({ ...b, email: null }));
+        setFormError("A biometria do aparelho mudou. Entre com a senha para ativar de novo.");
+      }
+      return;
+    }
+    setEmail(credenciais.email);
+    setSenha(credenciais.senha);
+    await handleLogin({ ...credenciais, viaBiometria: true });
+  };
+
+  const handleLogin = async (viaBiometria) => {
     // Proteção contra múltiplos cliques
     if (loading) {
       return;
     }
+    // onPress/onSubmitEditing passam o evento; a biometria passa { email, senha, viaBiometria }
+    const bio = viaBiometria?.viaBiometria ? viaBiometria : null;
+    const email = bio ? bio.email : emailState;
+    const senha = bio ? bio.senha : senhaState;
+    credLogin.current = { email, senha, viaBiometria: !!bio };
 
     // Validação no próprio campo (Alert.alert não aparece na web).
     const emailVal = email.trim();
@@ -301,6 +386,7 @@ export default function LoginScreen() {
           return;
         }
 
+        await oferecerBiometria();
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
       } else if (
@@ -368,7 +454,13 @@ export default function LoginScreen() {
       }
 
       // Credenciais erradas aparecem no campo da senha; o resto, no aviso do topo.
-      if (error?.code === "INVALID_CREDENTIALS" || error?.status === 401 || error?.response?.status === 401) {
+      if ((error?.code === "INVALID_CREDENTIALS" || error?.status === 401 || error?.response?.status === 401) && credLogin.current?.viaBiometria) {
+        // Senha trocada depois de ligar a biometria: desliga e pede a senha nova uma vez
+        await desativarBiometria();
+        setBiometria((b) => ({ ...b, email: null }));
+        setSenha("");
+        setFormError("Sua senha mudou. Entre com a senha nova para ativar a biometria de novo.");
+      } else if (error?.code === "INVALID_CREDENTIALS" || error?.status === 401 || error?.response?.status === 401) {
         setSenhaError("Senha incorreta. Tente de novo ou redefina.");
       } else {
         setFormError(mensagem);
@@ -421,6 +513,7 @@ export default function LoginScreen() {
         if (updateState === "reloading") {
           return;
         }
+        await oferecerBiometria();
         router.replace("/(tabs)");
       } else {
         console.warn("Seleção de academia retornou sem token");
@@ -543,6 +636,24 @@ export default function LoginScreen() {
             >
               {loading ? "Entrando…" : "Entrar"}
             </Button>
+
+            {biometria.disponivel && biometria.email ? (
+              <View style={styles.biometria}>
+                <Button variant="secondary" size="lg" block icon="unlock" disabled={loading} onPress={() => void entrarComBiometria()}>
+                  Entrar com biometria
+                </Button>
+                <TouchableOpacity
+                  style={styles.linkHit}
+                  disabled={loading}
+                  onPress={() => {
+                    void desativarBiometria();
+                    setBiometria((b) => ({ ...b, email: null }));
+                  }}
+                >
+                  <Text style={styles.biometriaDesligar}>Desativar biometria neste aparelho</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
 
             <View style={styles.signup}>
               <Text style={styles.signupText}>Não tem uma conta?</Text>
@@ -694,6 +805,17 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "600",
     color: DS.info,
+  },
+  biometria: {
+    alignItems: "center",
+    gap: 4,
+    marginTop: 12,
+    alignSelf: "stretch",
+  },
+  biometriaDesligar: {
+    fontSize: 13,
+    color: DS.inkMuted,
+    fontWeight: "600",
   },
   signup: {
     flexDirection: "row",
