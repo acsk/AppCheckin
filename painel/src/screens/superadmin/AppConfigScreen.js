@@ -217,6 +217,15 @@ function VersoesTab(props) {
         </dl>
         {webObrigatoria ? <Callout tone="warning" title="Use para correções urgentes">Atualização obrigatória força todo mundo a atualizar na hora, inclusive quem está no meio de um check-in.</Callout> : null}
       </Panel>
+      <Panel title="APK Android publicado" description="Registrado pelo build (npm run android:apk), que envia o APK por FTP. Quem tem versão menor vê o aviso de atualização; para bloquear, use a versão mínima do Android abaixo.">
+        <dl className="ck-mc-dl">
+          <div><dt>Versão</dt><dd>{versao?.android?.version || '—'}{versao?.android?.version_code ? ` (build ${versao.android.version_code})` : ''}</dd></div>
+          <div><dt>Publicada em</dt><dd>{fdata(versao?.android?.release_date)}</dd></div>
+          <div><dt>Tamanho</dt><dd>{versao?.android?.tamanho ? `${(versao.android.tamanho / 1048576).toFixed(1)} MB` : '—'}</dd></div>
+          <div><dt>Versão mínima</dt><dd>{versao?.android?.versao_minima || 'Nenhuma (só avisa)'}</dd></div>
+          <div><dt>Link</dt><dd>{versao?.android?.apk_url ? <a href={versao.android.apk_url} target="_blank" rel="noreferrer">Baixar APK</a> : '—'}</dd></div>
+        </dl>
+      </Panel>
       <ItensTab {...props} grupo="versao" />
     </>
   );

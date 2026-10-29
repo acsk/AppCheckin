@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { incrementarVersaoAndroid, invalidarBundleAndroid, publicarApk } = require('./android-version.cjs');
+const { publicarFtp } = require('./publicar-apk-ftp.cjs');
 
 const root = path.resolve(__dirname, '..');
 // Pasta servida pela apiV2 em /downloads (fora do git; sobe no deploy)
@@ -96,7 +97,13 @@ try {
   console.log(`\nAPK validado: ${output}\n`);
   const publicado = publicarApk(output, version, publishDir);
   console.log(`Publicado em ${path.join(publishDir, publicado.arquivo)} + android.json.`);
-  console.log('Suba a pasta no deploy (primeiro o .apk, depois o android.json) para o app avisar da nova versão.\n');
+  try {
+    if (!publicarFtp(publishDir)) console.log('Sem .env.apk-ftp.local: suba a pasta no deploy (primeiro o .apk, depois o android.json).\n');
+  } catch (e) {
+    // O APK já está pronto; só o envio falhou e pode ser repetido sem novo build
+    console.error(`\n${e.message}\nPara reenviar sem novo build: npm run android:apk:publicar`);
+    process.exitCode = 1;
+  }
 } catch (e) {
   console.error(`\n${e.message}\nPara retomar a mesma versão após corrigir a falha: npm run android:apk -- --retry`);
   process.exitCode = 1;

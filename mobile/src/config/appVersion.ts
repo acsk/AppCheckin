@@ -22,6 +22,8 @@ export type AndroidRelease = {
   version: string;
   apk_url: string;
   obrigatoria: boolean;
+  /** Abaixo dela o APK fica bloqueado (Super Admin → Versões). */
+  versao_minima?: string | null;
 };
 
 // Só a web recarrega o bundle; no APK não existe window.location (quebrava o login).
@@ -187,7 +189,8 @@ export async function fetchMobileVersion(): Promise<RemoteAppVersion | null> {
     const url = `${base}/version/mobile`;
     const response = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      cache: "no-store",
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     });
     if (!response.ok) return null;
     const raw: any = await response.json().catch(() => ({}));
@@ -198,6 +201,7 @@ export async function fetchMobileVersion(): Promise<RemoteAppVersion | null> {
           version: String(body.android.version),
           apk_url: String(body.android.apk_url),
           obrigatoria: !!body.android.obrigatoria,
+          versao_minima: body.android.versao_minima ? String(body.android.versao_minima) : null,
         }
       : null;
     return {

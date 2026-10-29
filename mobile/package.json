@@ -1,13 +1,14 @@
 {
   "name": "mobile",
   "main": "expo-router/entry",
-  "version": "1.0.4",
+  "version": "1.0.8",
   "scripts": {
     "start": "expo start",
     "start:clear": "expo start --clear",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "android:apk": "node scripts/build-android-apk.cjs",
+    "android:apk:publicar": "node scripts/publicar-apk-ftp.cjs",
     "test:android-version": "node --test scripts/android-version.test.mjs",
     "ios": "expo start --ios",
     "web": "expo start --web",

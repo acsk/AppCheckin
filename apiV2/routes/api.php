@@ -47,6 +47,7 @@ Route::prefix('v2')->group(function () {
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);
     Route::get('/version/mobile', [AppVersionController::class, 'mobile']);
     Route::post('/version/mobile', [AppVersionController::class, 'updateMobile']);
+    Route::post('/version/android', [AppVersionController::class, 'updateAndroid']);
     // Configuração remota do app antes do login (só o global)
     Route::get('/app-config', [AppConfigController::class, 'publico']);
     Route::post('/webhooks/asaas', [AsaasWebhookController::class, 'handle']);

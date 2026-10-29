@@ -60,6 +60,29 @@ class AppVersionController extends Controller
         ]);
     }
 
+    /** Build do APK (npm run android:apk) registra a versão enviada por FTP. */
+    public function updateAndroid(Request $request): JsonResponse
+    {
+        $authError = $this->authorizeUpdate($request);
+        if ($authError !== null) {
+            return $authError;
+        }
+
+        $validated = $request->validate([
+            'version' => ['required', 'string', 'regex:/^\d{1,4}\.\d{1,4}\.\d{1,4}$/'],
+            'version_code' => ['required', 'integer', 'min:1'],
+            'apk_url' => ['required', 'url:https,http', 'max:500'],
+            'sha256' => ['nullable', 'string', 'regex:/^[0-9a-f]{64}$/'],
+            'tamanho' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'APK registrado.',
+            'data' => $this->versions->storeAndroid($validated),
+        ]);
+    }
+
     private function authorizeUpdate(Request $request): ?JsonResponse
     {
         $configured = (string) config('appcheckin.app_version_update_token', '');

@@ -20,7 +20,8 @@ import {
     RankingPeriodoTipo,
     UserProfile,
 } from "@/src/types";
-import { APP_BUILD_VERSION, forceReloadApp } from "@/src/config/appVersion";
+import { APP_BUILD_VERSION, APP_VERSION, forceReloadApp } from "@/src/config/appVersion";
+import { verificarAtualizacaoAgora } from "@/src/components/ForceUpdateGate";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -971,16 +972,25 @@ export default function AccountScreen() {
             : null
         }
         groups={groups}
-        version={APP_BUILD_VERSION}
+        version={Platform.OS === "web" ? APP_BUILD_VERSION : APP_VERSION}
         updatingPhoto={updatingPhoto}
         forcingUpdate={forcingUpdate}
         onClose={closeSidebar}
         onEditPhoto={handleChangePhoto}
-        // No APK a atualização vem pelo aviso de nova versão (ForceUpdateGate)
         onForceUpdate={Platform.OS === "web" ? async () => {
           setForcingUpdate(true);
           await forceReloadApp();
-        } : undefined}
+        } : async () => {
+          // APK: verifica na hora; com versão nova abre o aviso do ForceUpdateGate
+          setForcingUpdate(true);
+          try {
+            const r = await verificarAtualizacaoAgora();
+            closeSidebar();
+            if (!r?.release) Alert.alert("Você está em dia", `Versão instalada: ${APP_VERSION}${r?.publicada ? ` · publicada: ${r.publicada}` : ""}.`);
+          } finally {
+            setForcingUpdate(false);
+          }
+        }}
         onLogout={() => {
           closeSidebar();
           router.push("/logout");

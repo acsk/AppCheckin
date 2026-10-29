@@ -345,7 +345,7 @@ export default function SideMenu({
               onPress={onForceUpdate}
               disabled={forcingUpdate}
               accessibilityRole="button"
-              accessibilityLabel="Forçar atualização do app"
+              accessibilityLabel={Platform.OS === "web" ? "Forçar atualização do app" : "Verificar atualização do app"}
             >
               {forcingUpdate ? (
                 <ActivityIndicator size="small" color={ds.brandInk} />
@@ -353,7 +353,7 @@ export default function SideMenu({
                 <Feather name="refresh-cw" size={18} color={ds.brandInk} />
               )}
               <Text style={styles.forceUpdateText}>
-                {forcingUpdate ? "Atualizando…" : "Forçar atualização"}
+                {Platform.OS === "web" ? (forcingUpdate ? "Atualizando…" : "Forçar atualização") : forcingUpdate ? "Verificando…" : "Verificar atualização"}
               </Text>
             </TouchableOpacity>
           ) : null}

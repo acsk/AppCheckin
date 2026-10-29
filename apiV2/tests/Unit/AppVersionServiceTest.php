@@ -71,4 +71,24 @@ class AppVersionServiceTest extends TestCase
         $config->aplicarAgora(null, 'versao.android_versao_minima', '1.2.0', null, null);
         $this->assertTrue($service->androidRelease()['obrigatoria']);
     }
+
+    public function test_apk_registrado_pelo_build_vira_a_versao_publicada_do_android(): void
+    {
+        (require database_path('migrations/2026_11_01_100000_app_versions_apk_android.php'))->up();
+        config(['appcheckin.android_release.manifest' => '']);
+        $service = new AppVersionService();
+        $this->assertNull($service->androidRelease());
+
+        $service->storeAndroid(['version' => '1.0.7', 'version_code' => 7, 'apk_url' => 'https://exemplo.com/7.apk']);
+        $service->storeAndroid(['version' => '1.0.8', 'version_code' => 8, 'apk_url' => 'https://exemplo.com/8.apk', 'tamanho' => 10]);
+
+        $android = $service->androidRelease();
+        $this->assertSame('1.0.8', $android['version']);
+        $this->assertSame('https://exemplo.com/8.apk', $android['apk_url']);
+        $this->assertSame(8, $android['version_code']);
+        $this->assertFalse($android['obrigatoria']);
+        $at = app(AppConfigService::class)->contrato(['plataforma' => 'android', 'versao_app' => '1.0.7'])['atualizacao'];
+        $this->assertTrue($at['disponivel']);
+        $this->assertSame('1.0.8', $at['versao_recomendada']);
+    }
 }

@@ -36,6 +36,9 @@
         <server name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value="" force="true"/>
         <server name="DB_URL" value="" force="true"/>
+        <!-- Sem o android.json local do último build: os testes definem o APK publicado -->
+        <env name="APP_ANDROID_APK_MANIFEST" value="" force="true"/>
+        <server name="APP_ANDROID_APK_MANIFEST" value="" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <server name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>

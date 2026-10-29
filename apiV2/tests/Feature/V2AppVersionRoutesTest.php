@@ -92,4 +92,29 @@ class V2AppVersionRoutesTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.version', 'v1.4');
     }
+
+    public function test_post_android_version_requires_token_in_production(): void
+    {
+        config(['app.env' => 'production', 'appcheckin.app_version_update_token' => 'secret-token']);
+
+        $this->postJson('/v2/version/android', ['version' => '1.0.8', 'version_code' => 8, 'apk_url' => 'https://exemplo.com/a.apk'])
+            ->assertUnauthorized();
+    }
+
+    public function test_post_android_version_registra_apk_com_token(): void
+    {
+        config(['appcheckin.app_version_update_token' => 'secret-token']);
+
+        $service = Mockery::mock(AppVersionService::class);
+        $service->shouldReceive('storeAndroid')->once()
+            ->with(['version' => '1.0.8', 'version_code' => 8, 'apk_url' => 'https://exemplo.com/a.apk'])
+            ->andReturn(['version' => '1.0.8', 'version_code' => 8, 'url' => 'https://exemplo.com/a.apk']);
+        $this->app->instance(AppVersionService::class, $service);
+
+        $this->postJson('/v2/version/android', ['version' => '1.0.8', 'version_code' => 8, 'apk_url' => 'https://exemplo.com/a.apk'], ['X-App-Version-Token' => 'secret-token'])
+            ->assertOk()
+            ->assertJsonPath('data.version', '1.0.8');
+        $this->postJson('/v2/version/android', ['version' => 'v1.0', 'version_code' => 8, 'apk_url' => 'https://exemplo.com/a.apk'], ['X-App-Version-Token' => 'secret-token'])
+            ->assertUnprocessable();
+    }
 }

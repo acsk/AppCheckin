@@ -68,30 +68,15 @@ class AppConfigService
     }
 
     /**
-     * APK que o build deixou em public/downloads (android.json + arquivo): vale como versão publicada
-     * e link, sem preencher no painel. A versão mínima (bloqueio) continua no painel.
+     * APK publicado pelo build (AppVersionService::apkPublicado) vale como versão publicada e link,
+     * sem preencher no painel. A versão mínima (bloqueio) continua no painel.
      *
-     * @return array{version: string, url: string}|null
-     */
-    public static function apkPublicado(): ?array
-    {
-        $manifest = (string) config('appcheckin.android_release.manifest', '');
-        $m = $manifest !== '' && is_file($manifest) ? json_decode((string) file_get_contents($manifest), true) : null;
-        $arquivo = basename((string) ($m['arquivo'] ?? ''));
-        if (! preg_match('/^\d+\.\d+\.\d+$/', (string) ($m['version'] ?? '')) || $arquivo === '' || ! is_file(dirname($manifest).'/'.$arquivo)) {
-            return null;
-        }
-
-        return ['version' => (string) $m['version'], 'url' => rtrim((string) config('app.url'), '/').'/downloads/'.rawurlencode($arquivo)];
-    }
-
-    /**
      * @param  array<string, mixed>  $resolvida  saída de AppConfigResolver::resolver()
      * @return array<string, mixed>
      */
     private static function comApkPublicado(array $resolvida): array
     {
-        if ($apk = self::apkPublicado()) {
+        if ($apk = AppVersionService::apkPublicado()) {
             $resolvida['versoes']['android_versao_recomendada'] = $apk['version'];
             $resolvida['versoes']['android_apk_url'] = $apk['url'];
         }

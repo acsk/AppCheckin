@@ -104,10 +104,11 @@ class AppVersionService
     }
 
     /**
-     * APK publicado no formato antigo de /version/mobile. APKs anteriores à configuração remota não mandam
-     * a versão, então só ficam bloqueados quando a mínima alcança a publicada.
+     * APK publicado em /version/mobile. O app compara a própria versão com version (aviso) e
+     * versao_minima (bloqueio). obrigatoria serve aos APKs antigos, que não comparam a mínima:
+     * só ficam bloqueados quando a mínima alcança a publicada.
      *
-     * @return array{version: string, apk_url: string, obrigatoria: bool}|null
+     * @return array{version: string, apk_url: string, obrigatoria: bool, versao_minima: ?string, version_code: ?int, release_date: ?string, tamanho: ?int}|null
      */
     public function androidRelease(): ?array
     {
@@ -118,12 +119,73 @@ class AppVersionService
             return null;
         }
         $minima = (string) ($v['android_versao_minima'] ?? '');
+        $apk = self::apkPublicado();
+        $doBuild = $apk && $apk['version'] === $versao;
 
         return [
             'version' => $versao,
             'apk_url' => $url,
             'obrigatoria' => $minima !== '' && AppConfigCatalogo::compararVersoes($minima, $versao) >= 0,
+            'versao_minima' => $minima ?: null,
+            'version_code' => $doBuild ? $apk['version_code'] : null,
+            'release_date' => $doBuild ? $apk['release_date'] : null,
+            'tamanho' => $doBuild ? $apk['tamanho'] : null,
         ];
+    }
+
+    /**
+     * Registra o APK que o build acabou de enviar (POST /version/android com o token de publicação).
+     *
+     * @param  array{version: string, version_code: int, apk_url: string, sha256?: ?string, tamanho?: ?int}  $apk
+     * @return array<string, mixed>
+     */
+    public function storeAndroid(array $apk): array
+    {
+        $dados = [
+            'version' => $apk['version_code'], 'release' => 0, 'release_date' => date('Y-m-d'),
+            'versao_nome' => $apk['version'], 'url' => $apk['apk_url'],
+            'sha256' => $apk['sha256'] ?? null, 'tamanho' => $apk['tamanho'] ?? null, 'updated_at' => now(),
+        ];
+        if ($this->find('android')) {
+            DB::table('app_versions')->where('app', 'android')->update($dados);
+        } else {
+            DB::table('app_versions')->insert($dados + ['app' => 'android', 'created_at' => now()]);
+        }
+
+        return self::apkPublicado() ?? [];
+    }
+
+    /**
+     * APK publicado pelo build: linha android de app_versions; sem ela, o android.json que o build
+     * deixa em public/downloads. Vale como versão publicada e link; a mínima continua no painel.
+     *
+     * @return array{version: string, version_code: ?int, url: string, release_date: ?string, tamanho: ?int}|null
+     */
+    public static function apkPublicado(): ?array
+    {
+        try {
+            $row = Schema::hasColumn('app_versions', 'versao_nome')
+                ? DB::table('app_versions')->where('app', 'android')->whereNotNull('versao_nome')->whereNotNull('url')->first()
+                : null;
+        } catch (\Throwable) {
+            $row = null;
+        }
+        if ($row) {
+            return ['version' => (string) $row->versao_nome, 'version_code' => (int) $row->version, 'url' => (string) $row->url,
+                'release_date' => (string) $row->release_date, 'tamanho' => $row->tamanho !== null ? (int) $row->tamanho : null];
+        }
+
+        $manifest = (string) config('appcheckin.android_release.manifest', '');
+        $m = $manifest !== '' && is_file($manifest) ? json_decode((string) file_get_contents($manifest), true) : null;
+        $arquivo = basename((string) ($m['arquivo'] ?? ''));
+        if (! preg_match('/^\d+\.\d+\.\d+$/', (string) ($m['version'] ?? '')) || $arquivo === '' || ! is_file(dirname($manifest).'/'.$arquivo)) {
+            return null;
+        }
+
+        return ['version' => (string) $m['version'], 'version_code' => isset($m['version_code']) ? (int) $m['version_code'] : null,
+            'url' => rtrim((string) config('app.url'), '/').'/downloads/'.rawurlencode($arquivo),
+            'release_date' => isset($m['gerado_em']) ? substr((string) $m['gerado_em'], 0, 10) : null,
+            'tamanho' => isset($m['tamanho']) ? (int) $m['tamanho'] : null];
     }
 
     private function obrigatoria(): bool

@@ -29,6 +29,14 @@ type Props = {
   children: React.ReactNode;
 };
 
+type Verificacao = { release: AndroidRelease | null; publicada: string | null };
+let verificarAgora: (() => Promise<Verificacao | null>) | null = null;
+
+/** APK: verifica agora (menu). Com versão nova, a modal abre de novo mesmo se foi fechada. */
+export function verificarAtualizacaoAgora(): Promise<Verificacao | null> {
+  return verificarAgora ? verificarAgora() : Promise.resolve(null);
+}
+
 export default function ForceUpdateGate({ children }: Props) {
   const [mustUpdate, setMustUpdate] = useState(false);
   const [remoteVersion, setRemoteVersion] = useState("");
@@ -46,16 +54,23 @@ export default function ForceUpdateGate({ children }: Props) {
     // Nativo: a configuração remota já compara a versão instalada com a mínima (bloqueia)
     // e a publicada (só avisa). Sem configuração publicada, vale o /version/mobile antigo.
     if (Platform.OS !== "web") {
-      const config = await atualizarConfigRemota({ forcar: true });
-      const at = config.atualizacao;
-      if (config.versao_config > 0) {
-        setApk(at.disponivel && at.url ? { version: at.versao_recomendada || at.versao_minima || "", apk_url: at.url, obrigatoria: !!at.obrigatoria } : null);
-        return;
-      }
+      // Igual à web: /version/mobile direto (sem login, cache nem ETag), com o APK registrado no banco
+      // pelo build. A configuração remota só entra se essa chamada falhar.
       const remote = await fetchMobileVersion();
-      const release = remote?.android;
-      setApk(release && compareBuildVersions(release.version, APP_VERSION) > 0 ? release : null);
-      return;
+      let release: AndroidRelease | null = null;
+      let publicada: string | null = remote?.android?.version ?? null;
+      if (remote?.android) {
+        const a = remote.android;
+        const obrigatoria = !!a.versao_minima && compareBuildVersions(APP_VERSION, a.versao_minima) < 0;
+        release = obrigatoria || compareBuildVersions(a.version, APP_VERSION) > 0 ? { ...a, obrigatoria } : null;
+      } else if (!remote) {
+        const at = (await atualizarConfigRemota({ forcar: true })).atualizacao;
+        publicada = at.versao_recomendada || null;
+        release = at.disponivel && at.url ? { version: at.versao_recomendada || at.versao_minima || "", apk_url: at.url, obrigatoria: !!at.obrigatoria } : null;
+      }
+      console.log("[ForceUpdateGate]", JSON.stringify({ instalada: APP_VERSION, android: remote ? remote.android : "falhou", release }));
+      setApk(release);
+      return { release, publicada };
     }
 
     if (!isProductionRuntime()) {
@@ -97,6 +112,14 @@ export default function ForceUpdateGate({ children }: Props) {
 
     setMustUpdate(true);
   }, []);
+
+  useEffect(() => {
+    verificarAgora = async () => {
+      setApkDismissed("");
+      return (await checkVersion(false)) ?? null;
+    };
+    return () => { verificarAgora = null; };
+  }, [checkVersion]);
 
   useEffect(() => {
     const stop = startPwaUpdateWatcher();
