@@ -625,9 +625,8 @@ class AssinaturaController
                     $assinaturaData['pode_pagar'] = true;
                     $assinaturaData['pode_renovar'] = true;
                     $assinaturaData['motivo_pode_pagar'] = $motivoPodePagar;
-                    if (!empty($row['payment_url'])) {
-                        $assinaturaData['payment_url'] = $row['payment_url'];
-                    }
+                    // Sem payment_url: o link da assinatura é da cobrança anterior (já paga);
+                    // o app gera um PIX novo para a parcela aberta.
                 } else {
                     $assinaturaData['pode_pagar'] = false;
                 }

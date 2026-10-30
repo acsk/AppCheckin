@@ -249,11 +249,10 @@ class MobileAssinaturaService
                 }
 
                 if ($liberar) {
+                    // Sem payment_url: o link da assinatura é da cobrança anterior (já paga);
+                    // o app gera um PIX novo para a parcela aberta.
                     $item['pode_pagar'] = true;
                     $item['pode_renovar'] = true;
-                    if (! empty($row['payment_url'])) {
-                        $item['payment_url'] = $row['payment_url'];
-                    }
                 }
             }
 
