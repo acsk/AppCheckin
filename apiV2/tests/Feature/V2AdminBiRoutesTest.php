@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Bi\BiExportacaoService;
 use App\Services\Bi\BiVisaoGeralService;
 use App\Support\Papel;
 use Mockery;
@@ -73,5 +74,24 @@ class V2AdminBiRoutesTest extends TestCase
         $this->app->instance(BiVisaoGeralService::class, $service);
 
         $this->getJson('/v2/admin/bi/visao-geral', ['Authorization' => 'Bearer '.$this->tokenParaPapel(Papel::FINANCEIRO)])->assertOk();
+    }
+
+    public function test_exportar_devolve_csv_do_tenant_do_token(): void
+    {
+        $service = Mockery::mock(BiExportacaoService::class);
+        $service->shouldReceive('exportar')->once()->with(3, 'saidas', null, 'mes')
+            ->andReturn(['status' => 200, 'csv' => "\xEF\xBB\xBFAluno\nANA\n", 'arquivo' => 'bi-saidas.csv']);
+        $this->app->instance(BiExportacaoService::class, $service);
+
+        $r = $this->get('/v2/admin/bi/exportar?indicador=saidas&periodo=mes&tenant_id=99', ['Authorization' => 'Bearer '.$this->tokenParaPapel(Papel::ADMIN)]);
+        $r->assertOk()->assertHeader('Content-Disposition', 'attachment; filename="bi-saidas.csv"');
+        $this->assertStringContainsString('ANA', $r->getContent());
+        $this->getJson('/v2/admin/bi/exportar?indicador=saidas', ['Authorization' => 'Bearer '.$this->tokenParaPapel(Papel::COMERCIAL)])->assertForbidden();
+        $this->getJson('/v2/admin/bi/retencao', ['Authorization' => 'Bearer '.$this->tokenParaPapel(Papel::COMERCIAL)])->assertForbidden();
+    }
+
+    public function test_bi_global_so_para_superadmin(): void
+    {
+        $this->getJson('/v2/superadmin/bi/global', ['Authorization' => 'Bearer '.$this->tokenParaPapel(Papel::ADMIN)])->assertForbidden();
     }
 }

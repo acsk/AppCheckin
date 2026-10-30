@@ -297,7 +297,7 @@ class AdminMatriculaRepository
         ]);
     }
 
-    public function cancelar(int $id, ?int $adminId, string $motivo): void
+    public function cancelar(int $id, ?int $adminId, string $motivo, ?string $motivoCodigo = null): void
     {
         DB::update(
             "UPDATE matriculas
@@ -305,9 +305,10 @@ class AdminMatriculaRepository
                  cancelado_por = ?,
                  data_cancelamento = CURDATE(),
                  motivo_cancelamento = ?,
+                 motivo_cancelamento_codigo = ?,
                  updated_at = NOW()
              WHERE id = ?",
-            [$adminId, $motivo, $id]
+            [$adminId, $motivo, $motivoCodigo, $id]
         );
     }
 

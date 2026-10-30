@@ -185,3 +185,54 @@ export function EditarPagamentoModal({ open, payment, context, saving, onSave, o
     </Modal>
   );
 }
+
+const hojeLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+/**
+ * Devolução ao aluno de parcela paga fora do provedor. Total ou parcial; a receita continua no mês do
+ * pagamento e o estorno sai no mês da devolução (BI). Parcela com estorno não pode mais ser editada.
+ */
+export function EstornoModal({ pagamento, saving, error, onCancel, onConfirm }) {
+  const pago = Number(pagamento?.valor || 0);
+  const restante = Math.round((pago - Number(pagamento?.valor_estornado || 0)) * 100) / 100;
+  const [valor, setValor] = useState(moneyInput(restante));
+  const [data, setData] = useState(hojeLocal());
+  const [motivo, setMotivo] = useState('');
+  const [tried, setTried] = useState(false);
+  if (!pagamento) return null;
+
+  const v = parseMoney(valor);
+  const erros = {
+    valor: v == null || v <= 0 ? 'Informe o valor devolvido.' : v > restante + 0.001 ? `No máximo ${money(restante)}.` : null,
+    data: !data ? 'Informe a data.' : data > hojeLocal() ? 'A data não pode ser futura.' : pagamento.data_pagamento && data < String(pagamento.data_pagamento).slice(0, 10) ? 'Antes do pagamento.' : null,
+    motivo: motivo.trim().length < 3 ? 'Informe o motivo.' : null,
+  };
+  const parcial = v != null && v < restante - 0.001;
+  const confirmar = () => {
+    setTried(true);
+    if (Object.values(erros).some(Boolean)) return;
+    onConfirm({ valor: v, data_estorno: data, motivo: motivo.trim() });
+  };
+
+  return (
+    <Modal open size="sm" onClose={onCancel} dismissable={!saving} autoFocus={false}
+      title={`Estornar a parcela #${pagamento.id ?? pagamento.pagamento_id}`}
+      description={`Paga em ${fdate(pagamento.data_pagamento)}: ${money(pago)}${restante < pago ? `, já estornado ${money(pago - restante)}` : ''}.`}
+      footer={<>
+        <Button variant="ghost" disabled={saving} onClick={onCancel}>Voltar</Button>
+        <Button variant="danger" icon="rotate-ccw" loading={saving} onClick={confirmar}>{parcial ? 'Registrar estorno parcial' : 'Estornar pagamento'}</Button>
+      </>}>
+      <div className="ck-cm">
+        {error ? <Callout tone="danger" title="Não foi possível estornar">{error}</Callout> : null}
+        <Callout tone="info" title="O dinheiro não é devolvido pelo sistema">
+          Registre aqui depois de devolver ao aluno (dinheiro, Pix, transferência). {parcial ? 'No estorno parcial a parcela continua paga.' : 'A parcela deixa de contar como paga e a matrícula é recalculada.'}
+        </Callout>
+        <TextField label="Valor devolvido" prefix="R$" inputMode="decimal" value={valor}
+          onChange={(e) => setValor(e.target.value.replace(/[^\d,.]/g, ''))} onBlur={() => setValor(moneyInput(parseMoney(valor)))}
+          error={tried ? erros.valor : undefined} hint={`Até ${money(restante)}`} />
+        <TextField type="date" label="Data da devolução" value={data} max={hojeLocal()} onChange={(e) => setData(e.target.value)} error={tried ? erros.data : undefined} />
+        <TextAreaField label="Motivo" value={motivo} maxLength={255} onChange={(e) => setMotivo(e.target.value)} error={tried ? erros.motivo : undefined} />
+      </div>
+    </Modal>
+  );
+}

@@ -22,6 +22,17 @@ export const pagamentoPlanoService = {
     }
   },
 
+  /** dados: { valor?, motivo, data_estorno? } — sem valor estorna o restante */
+  async estornar(id, dados) {
+    try {
+      const response = await api.post(`/admin/pagamentos-plano/${id}/estornar`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao estornar pagamento:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async excluir(id) {
     try {
       const response = await api.delete(`/admin/pagamentos-plano/${id}/excluir`);

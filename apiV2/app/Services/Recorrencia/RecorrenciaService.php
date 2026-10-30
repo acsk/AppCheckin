@@ -440,9 +440,14 @@ class RecorrenciaService
             if (in_array($status, self::ESTORNOS, true)) {
                 if ($cob->status !== 'estornada') {
                     DB::table('recorrencia_cobrancas')->where('id', $cob->id)->update(['status' => 'estornada', 'updated_at' => now()]);
-                    DB::table('pagamentos_plano')->where('id', $cob->pagamento_plano_id)->update([
-                        'status_pagamento_id' => 4, 'observacoes' => "Mensalidade {$cob->numero} estornada/contestada no Asaas ({$status}) · {$paymentId}", 'updated_at' => now(),
-                    ]);
+                    $motivo = "Mensalidade {$cob->numero} estornada/contestada no Asaas ({$status}) · {$paymentId}";
+                    // Paga: estorno (a receita fica no mês do pagamento); não paga: só cancela a cobrança
+                    $estorno = $this->pagamentosPlano->registrarEstorno($tenantId, (int) $cob->pagamento_plano_id, null, AcademyDateTime::today(), $motivo, null);
+                    if (! $estorno['ok']) {
+                        DB::table('pagamentos_plano')->where('id', $cob->pagamento_plano_id)->whereIn('status_pagamento_id', [1, 3])->update([
+                            'status_pagamento_id' => 4, 'observacoes' => $motivo, 'updated_at' => now(),
+                        ]);
+                    }
                     $this->evento($tenantId, $contratoId, 'mensalidade_estornada', null, null, null, ['cobranca' => $cob->numero, 'status' => $status]);
                 }
 

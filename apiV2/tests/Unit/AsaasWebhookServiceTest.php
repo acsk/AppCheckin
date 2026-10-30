@@ -491,6 +491,27 @@ class AsaasWebhookServiceTest extends TestCase
         );
     }
 
+    public function test_estorno_no_asaas_estorna_a_parcela_baixada_com_a_cobranca(): void
+    {
+        DB::table('pagamentos_plano')->update(['status_pagamento_id' => 2, 'data_pagamento' => '2026-10-16', 'observacoes' => 'Pago via Asaas (Pix) [Asaas pay_xlm9exz869gjx520]']);
+        $parcela = (int) DB::table('pagamentos_plano')->value('id');
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('registrarEstorno')->once()
+            ->with(3, $parcela, null, Mockery::type('string'), 'Estornado no Asaas · pay_xlm9exz869gjx520', null)
+            ->andReturn(['ok' => true, 'total' => true, 'valor_estornado' => 70.0]);
+        $pagamentos->shouldNotReceive('atualizarStatusMatricula');
+
+        $result = (new AsaasWebhookService($pagamentos, new EncryptionService()))->processar([
+            'id' => 'evt_r',
+            'event' => 'PAYMENT_REFUNDED',
+            'payment' => ['id' => 'pay_xlm9exz869gjx520', 'status' => 'REFUNDED', 'billingType' => 'PIX', 'externalReference' => 'MAT-189-x', 'value' => 70],
+        ], null);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertTrue($result['body']['estorno']);
+    }
+
     public function test_payload_invalido_retorna_400(): void
     {
         $service = new AsaasWebhookService(

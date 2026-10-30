@@ -50,12 +50,16 @@ class BiFinanceiroService
         $fin = $this->repo->financeiro($tenantId, $p->inicio, $p->fim, $hoje);
         $ant = $this->repo->financeiro($tenantId, $p->anteriorInicio, $p->anteriorFim, $hoje);
         $par = fn ($atual, $anterior) => ['atual' => $atual, 'anterior' => $anterior];
+        $est = $this->repo->estornos($tenantId, $p->inicio, $p->fim);
+        $estAnt = $this->repo->estornos($tenantId, $p->anteriorInicio, $p->anteriorFim);
 
         return [
             'periodo' => $p->toArray(),
             'indicadores' => [
                 'receita_prevista' => $par($fin['previsto'], $ant['previsto']),
                 'receita_recebida' => $par($fin['recebido'], $ant['recebido']),
+                'estornos' => $par($est['valor'], $estAnt['valor']),
+                'receita_liquida' => $par(round($fin['recebido'] - $est['valor'], 2), round($ant['recebido'] - $estAnt['valor'], 2)),
                 'a_vencer' => $par($fin['a_vencer'], $ant['a_vencer']),
                 'valor_vencido' => $par($fin['vencido'], $ant['vencido']),
                 'inadimplencia' => $par(self::pct($fin['vencido'], $fin['previsto']), self::pct($ant['vencido'], $ant['previsto'])),
@@ -77,7 +81,7 @@ class BiFinanceiroService
         $out = [];
         for ($i = 0; $i < 12; $i++) {
             $mes = date('Y-m', strtotime($ini." +{$i} months"));
-            $m = $porMes[$mes] ?? ['previsto' => 0.0, 'a_vencer' => 0.0, 'vencido' => 0.0, 'recebido' => 0.0, 'pagantes' => 0];
+            $m = $porMes[$mes] ?? ['previsto' => 0.0, 'a_vencer' => 0.0, 'vencido' => 0.0, 'recebido' => 0.0, 'estornado' => 0.0, 'pagantes' => 0];
             $out[] = $m + [
                 'mes' => $mes,
                 'inadimplencia' => self::pct($m['vencido'], $m['previsto']),

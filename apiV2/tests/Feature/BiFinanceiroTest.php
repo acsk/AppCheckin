@@ -62,7 +62,7 @@ class BiFinanceiroTest extends TestCase
         $porMes = array_column($mensal, null, 'mes');
 
         $this->assertSame(
-            ['previsto' => 350.0, 'a_vencer' => 120.0, 'vencido' => 130.0, 'recebido' => 250.0, 'pagantes' => 2, 'mes' => '2026-10', 'inadimplencia' => 37.1, 'ticket_medio' => 125.0],
+            ['previsto' => 350.0, 'a_vencer' => 120.0, 'vencido' => 130.0, 'recebido' => 250.0, 'estornado' => 0.0, 'pagantes' => 2, 'mes' => '2026-10', 'inadimplencia' => 37.1, 'ticket_medio' => 125.0],
             $porMes['2026-10'],
         );
         // Setembro: a parcela de 28/09 foi paga em outubro, então entra no previsto de setembro e no recebido de outubro

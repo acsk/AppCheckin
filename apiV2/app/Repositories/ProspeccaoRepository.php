@@ -52,7 +52,7 @@ class ProspeccaoRepository
      * Matrículas canceladas elegíveis: a mais recente de cada aluno vem primeiro.
      * Exclui diárias avulsas, alunos sem vínculo de aluno no tenant e quem tem matrícula em andamento.
      *
-     * @return list<object{id: int, aluno_id: int, data_cancelamento: ?string, data_atualizacao: string}>
+     * @return list<object{id: int, aluno_id: int, data_cancelamento: ?string, motivo_cancelamento_codigo: ?string, data_atualizacao: string}>
      */
     public function matriculasCanceladasElegiveis(int $tenantId, string $dataMinima): array
     {
@@ -73,7 +73,7 @@ class ProspeccaoRepository
             ->orderBy('m.aluno_id')
             ->orderByRaw($dataEfetiva.' DESC')
             ->orderByDesc('m.id')
-            ->select(['m.id', 'm.aluno_id', 'm.data_cancelamento', DB::raw('DATE(m.updated_at) as data_atualizacao')])
+            ->select(['m.id', 'm.aluno_id', 'm.data_cancelamento', 'm.motivo_cancelamento_codigo', DB::raw('DATE(m.updated_at) as data_atualizacao')])
             ->get()
             ->all();
     }
@@ -159,7 +159,7 @@ class ProspeccaoRepository
             ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $alunoId)->where('sm.codigo', 'cancelada')
             ->orderByRaw('COALESCE(m.data_cancelamento, DATE(m.updated_at)) DESC')->orderByDesc('m.id')
-            ->select(['m.id', 'm.data_cancelamento', DB::raw('DATE(m.updated_at) as data_atualizacao')])
+            ->select(['m.id', 'm.data_cancelamento', 'm.motivo_cancelamento_codigo', DB::raw('DATE(m.updated_at) as data_atualizacao')])
             ->first();
     }
 

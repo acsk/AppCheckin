@@ -7,7 +7,7 @@ import { ChartBarList, ColumnChart, Heatmap, deltaObj } from '../../components/c
 import { fdate } from '../../components/ck/financeiro';
 import { buscarBiFrequencia } from '../../services/biService';
 import BiDetalheModal from './BiDetalheModal';
-import { ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
+import { BotaoExportar, ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
 
 // Fórmulas exibidas na tela; a fonte é App\Services\Bi\BiFrequenciaService
 const COMO_CALCULAMOS = [
@@ -87,7 +87,10 @@ export default function BiFrequenciaScreen() {
         <PageHeader
           title="Frequência e ocupação"
           description={per ? `De ${fdate(per.inicio)} a ${fdate(per.fim)}. Quando os alunos vêm, quais turmas enchem e quem está vindo menos.` : 'Quando os alunos vêm, quais turmas enchem e quem está vindo menos.'}
-          actions={<SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />}
+          actions={<>
+            <SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />
+            <BotaoExportar alvo={{ tela: 'frequencia' }} periodo={periodo}>Exportar turmas</BotaoExportar>
+          </>}
         />
 
         {erro ? (

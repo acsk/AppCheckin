@@ -124,6 +124,7 @@ trait ProspeccaoSchema
             $t->integer('status_id');
             $t->date('data_cancelamento')->nullable();
             $t->text('motivo_cancelamento')->nullable();
+            $t->string('motivo_cancelamento_codigo', 30)->nullable();
             $t->timestamps();
         });
         Schema::create('checkins', function (Blueprint $t) {

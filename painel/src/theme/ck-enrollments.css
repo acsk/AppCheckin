@@ -191,3 +191,10 @@
   .ck-xm__list li { flex-wrap: wrap; }
   .ck-xm__list em { margin-left: 26px; }
 }
+
+/* Cancelar matrícula */
+.ck-cm { display: grid; gap: var(--space-4); }
+.ck-cm__check { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-md); cursor: pointer; }
+.ck-cm__check input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--primary); }
+.ck-cm__check > span { display: grid; gap: 2px; font-size: 14px; line-height: 20px; }
+.ck-cm__check > span > span { color: var(--ink-muted); }

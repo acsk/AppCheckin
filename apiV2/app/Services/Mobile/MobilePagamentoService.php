@@ -181,10 +181,19 @@ class MobilePagamentoService
             $matricula = (array) $matricula;
 
             $valorPlano = (float) ($matricula['valor'] ?? 0);
-            $pagoCiclo = $this->pagamentosPlano->somarPagamentosPagosNoCiclo(
+            // Ciclo cobrado: o da parcela em aberto; sem ela, o próximo vencimento (renovação)
+            $vencimentoCobrado = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento')
+                ->min('data_vencimento') ?? ($matricula['proxima_data_vencimento'] ?? null);
+            $pagoCiclo = $this->pagamentosPlano->somarPagoNoCicloCobrado(
                 $tenantId,
                 $matriculaId,
-                isset($matricula['data_inicio']) ? (string) $matricula['data_inicio'] : null
+                $matricula['status_codigo'] ?? null,
+                isset($matricula['data_inicio']) ? (string) $matricula['data_inicio'] : null,
+                $vencimentoCobrado !== null ? (string) $vencimentoCobrado : null
             );
             if ($valorPlano > 0 && $pagoCiclo + 0.001 >= $valorPlano) {
                 $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);

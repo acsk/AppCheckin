@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V2\Admin;
 use App\Http\Controllers\Controller;
 use App\Services\Admin\AdminMatriculaService;
 use App\Support\ApiError;
+use App\Support\MotivoCancelamento;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -83,6 +84,13 @@ class MatriculaController extends Controller
         );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function motivosCancelamento(): JsonResponse
+    {
+        $motivos = array_map(fn ($codigo, $rotulo) => ['codigo' => $codigo, 'rotulo' => $rotulo], array_keys(MotivoCancelamento::ESCOLHIVEIS), MotivoCancelamento::ESCOLHIVEIS);
+
+        return response()->json(['motivos' => $motivos], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     public function cancelar(Request $request, int $id): JsonResponse

@@ -4,6 +4,7 @@ import { Avatar, Button, Callout, Modal } from '../../components/ck';
 import { titleCase } from '../../components/ck/pessoas';
 import { fdate, money } from '../../components/ck/financeiro';
 import { buscarBiDetalhe } from '../../services/biService';
+import { BotaoExportar } from './biComum';
 
 const num = (v) => new Intl.NumberFormat('pt-BR').format(v || 0);
 
@@ -15,6 +16,11 @@ const TITULOS = {
   receita_recebida: ['Receita recebida', 'Parcelas pagas no período, pela data do pagamento.'],
   valor_vencido: ['Valor vencido', 'Parcelas do período que já venceram e não foram pagas.'],
   a_vencer: ['A vencer', 'Parcelas do período que vencem de hoje em diante e ainda não foram pagas.'],
+  estornos: ['Estornos', 'Valores devolvidos aos alunos no período, pela data da devolução.'],
+  cancelaram: ['Cancelaram', 'Estavam ativos no início do período, cancelaram no período e não estavam ativos no fim (troca de plano não entra).'],
+  nao_renovaram: ['Não renovaram', 'Estavam ativos no início do período, não cancelaram e o acesso acabou há mais de 7 dias.'],
+  renovacao_atrasada: ['Renovação atrasada', 'Estavam ativos no início do período e o acesso acabou há até 7 dias. Ainda podem renovar.'],
+  recuperados: ['Recuperados pela Prospecção', 'Voltaram com uma matrícula nova a partir de uma oportunidade da Prospecção. O motivo é o do cancelamento.'],
   sem_checkin: ['Sem check-in há 14 dias', 'Alunos ativos sem check-in há 14 dias ou mais. Quem começou a matrícula há menos de 14 dias fica de fora.'],
   em_queda: ['Frequência em queda', 'Alunos ativos cuja média das últimas 4 semanas ficou abaixo de 60% da média das 12 semanas anteriores.'],
 };
@@ -53,7 +59,10 @@ export default function BiDetalheModal({ indicador, periodo, onClose }) {
 
   return (
     <Modal open onClose={onClose} size="md" title={titulo} description={`${descricao} ${resumo}`}
-      footer={<Button onClick={onClose}>Fechar</Button>}>
+      footer={<>
+        {itens.length ? <BotaoExportar alvo={{ indicador }} periodo={periodo} variant="ghost">Exportar CSV</BotaoExportar> : null}
+        <Button onClick={onClose}>Fechar</Button>
+      </>}>
       {erro ? (
         <Callout tone="warning" title="A lista não carregou" action={<Button size="sm" icon="refresh-cw" onClick={() => setReload((x) => x + 1)}>Tentar de novo</Button>}>{erro}</Callout>
       ) : !dados ? (
@@ -72,7 +81,7 @@ export default function BiDetalheModal({ indicador, periodo, onClose }) {
                 </button>
                 <span className="ck-db__when">
                   <strong>{x.valor != null ? money(x.valor) : fdate(x.data)}</strong>
-                  <span>{x.valor != null ? `${x.detalhe} ${fdate(x.data)}` : x.detalhe}</span>
+                  <span>{x.valor != null ? `${x.detalhe} ${fdate(x.data)}` : x.motivo ? `Motivo: ${x.motivo}` : x.detalhe}</span>
                 </span>
               </li>
             ))}

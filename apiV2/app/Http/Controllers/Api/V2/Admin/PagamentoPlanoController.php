@@ -124,6 +124,19 @@ class PagamentoPlanoController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function estornar(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->estornar($tenantId, $id, $adminId ? (int) $adminId : null, $request->all());
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function excluir(Request $request, int $id): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

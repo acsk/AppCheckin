@@ -34,7 +34,7 @@ class LimpezaPendenciasTest extends TestCase
         $this->registrarFuncoesSqlite(['CONCAT' => [fn (...$a) => implode('', $a), -1]]);
 
         Schema::create('status_matricula', fn (Blueprint $t) => [$t->increments('id'), $t->string('codigo')]);
-        Schema::create('matriculas', fn (Blueprint $t) => [$t->increments('id'), $t->integer('tenant_id'), $t->integer('status_id'), $t->timestamps()]);
+        Schema::create('matriculas', fn (Blueprint $t) => [$t->increments('id'), $t->integer('tenant_id'), $t->integer('status_id'), $t->date('data_cancelamento')->nullable(), $t->text('motivo_cancelamento')->nullable(), $t->string('motivo_cancelamento_codigo', 30)->nullable(), $t->timestamps()]);
         Schema::create('pagamentos_plano', function (Blueprint $t) {
             $t->increments('id');
             $t->integer('tenant_id');
@@ -191,6 +191,7 @@ class LimpezaPendenciasTest extends TestCase
         $a = DB::table('assinaturas')->find($abandonado);
         $this->assertSame([5, 'expired', 4], [(int) $a->status_id, $a->status_gateway, (int) $a->cancelado_por_id]);
         $this->assertSame(3, (int) DB::table('matriculas')->find(400)->status_id, 'compra abandonada cancelada');
+        $this->assertSame('checkout_nao_pago', DB::table('matriculas')->find(400)->motivo_cancelamento_codigo);
         $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('matricula_id', 400)->value('status_pagamento_id'));
         $this->assertSame(5, (int) DB::table('matriculas')->find(401)->status_id, 'matrícula com pagamento não é mexida');
         $this->assertSame(5, (int) DB::table('assinaturas')->find($comPagamento)->status_id);

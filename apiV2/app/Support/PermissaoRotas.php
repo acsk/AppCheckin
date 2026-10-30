@@ -34,6 +34,7 @@ final class PermissaoRotas
         [['POST'], '#^admin/matriculas/\d+/vincular-atual$#', Permissao::FINANCEIRO_AVANCADO],
         [['PUT'], '#^admin/pagamentos-plano/\d+$#', Permissao::FINANCEIRO_AVANCADO],
         [['DELETE'], '#^admin/pagamentos-plano/\d+/excluir$#', Permissao::FINANCEIRO_AVANCADO],
+        [['POST'], '#^admin/pagamentos-plano/\d+/estornar$#', Permissao::FINANCEIRO_AVANCADO],
 
         // Baixas e sincronização de cobranças feitas a partir da matrícula
         [['POST'], '#^admin/matriculas/(\d+/pagamentos/\d+/confirmar|contas/\d+/baixa|pacote-contrato/\d+/baixa|\d+/sincronizar-(asaas|assinatura))$#', Permissao::FINANCEIRO_BAIXAR],

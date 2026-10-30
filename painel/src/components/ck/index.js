@@ -70,6 +70,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     'clock': [Ci(12, 12, 10), P('M12 6v6l4 2')],
     'waves': [P('M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'), P('M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'), P('M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1')],
     'more-horizontal': [Ci(12, 12, 1), Ci(19, 12, 1), Ci(5, 12, 1)],
+    'rotate-ccw': [P('M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'), P('M3 3v5h5')],
     'refresh-cw': [P('M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8'), P('M21 3v5h-5'), P('M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16'), P('M8 16H3v5')],
     'repeat': [P('m17 2 4 4-4 4'), P('M3 11v-1a4 4 0 0 1 4-4h14'), P('m7 22-4-4 4-4'), P('M21 13v1a4 4 0 0 1-4 4H3')],
     'trash': [P('M3 6h18'), P('M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6'), P('M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2')],
@@ -426,7 +427,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
   function fdate(iso) { if (!iso) return '—'; var a = String(iso).split('-'); return a[2] + '/' + a[1] + '/' + a[0]; }
   function dayDiff(a, b) { return Math.round((pd(b) - pd(a)) / 86400000); }
   var ENROLL_STATUS = { pendente: ['warning', 'Pagamento pendente'], ativa: ['success', 'Ativa'], bloqueada: ['danger', 'Bloqueada'], cancelada: ['neutral', 'Cancelada'] };
-  var INV_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'] };
+  var INV_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'], estornado: ['neutral', 'Estornado'] };
 
   function MtPlanCard(p) {
     var e = p.enrollment, today = p.today;
@@ -541,7 +542,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
               h('td', { className: 'is-num' }, h('span', { className: 'ck-mt-cell__main ck-mt-money' }, money(i.amount)),
                 i.net != null && !Number.isNaN(i.net) ? h('span', { className: 'ck-mt-cell__sub' }, 'Líquido ' + money(i.net)) : null,
                 i.credit ? h('span', { className: 'ck-mt-cell__sub' }, 'Crédito de ' + money(i.credit)) : null,
-                i.discount ? h('span', { className: 'ck-mt-cell__sub ck-mt-cell__sub--discount' }, '− ' + money(i.discount) + (i.discountNote ? ' (' + i.discountNote + ')' : ' de desconto')) : null),
+                i.discount ? h('span', { className: 'ck-mt-cell__sub ck-mt-cell__sub--discount' }, '− ' + money(i.discount) + (i.discountNote ? ' (' + i.discountNote + ')' : ' de desconto')) : null,
+                i.refunded ? h('span', { className: 'ck-mt-cell__sub', title: i.refundNote || undefined }, 'Estornado ' + money(i.refunded) + (i.refundDate ? ' em ' + fdate(i.refundDate) : '')) : null),
               h('td', null, i.paidDate ? h('div', { className: 'ck-mt-paid' },
                   i.paidBy ? h(Avatar, { name: i.paidBy, size: 'sm', className: 'ck-mt-paid__avatar' }) : null,
                   h('span', null, h('span', { className: 'ck-mt-cell__main' }, fdate(i.paidDate)),
@@ -552,10 +554,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
                 due && i.canSettle !== false ? h(Button, { size: 'sm', variant: 'secondary', icon: 'check-circle', onClick: function () { p.onSettle && p.onSettle(i); } }, 'Dar baixa') : null,
                 due && i.canSettle === false && i.settleNote ? h(Badge, { tone: 'info', icon: 'package' }, i.settleNote) : null,
                 // locked: baixa automática do provedor, só dá para ver os detalhes
-                p.menu === false ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: i.locked ? [
-                  { label: 'Ver detalhes', icon: 'eye', onClick: function () { p.onEdit && p.onEdit(i); } }] : [
-                  { label: 'Editar parcela', icon: 'pencil', onClick: function () { p.onEdit && p.onEdit(i); } }, '-',
-                  { label: 'Excluir parcela', icon: 'trash', danger: true, onClick: function () { p.onDelete && p.onDelete(i); } }] })));
+                // refunded: estorno registrado, a parcela não muda mais (o motivo fica no título da linha)
+                p.menu === false || (i.refunded && !i.canRefund) ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: i.locked ? [
+                  { label: 'Ver detalhes', icon: 'eye', onClick: function () { p.onEdit && p.onEdit(i); } }] : i.refunded ? [
+                  { label: 'Estornar o restante', icon: 'rotate-ccw', onClick: function () { p.onRefund && p.onRefund(i); } }] : [
+                  { label: 'Editar parcela', icon: 'pencil', onClick: function () { p.onEdit && p.onEdit(i); } },
+                  i.canRefund && p.onRefund ? { label: 'Estornar pagamento', icon: 'rotate-ccw', onClick: function () { p.onRefund(i); } } : null, '-',
+                  { label: 'Excluir parcela', icon: 'trash', danger: true, onClick: function () { p.onDelete && p.onDelete(i); } }].filter(Boolean) })));
           }) : h('tr', null, h('td', { colSpan: 6, className: 'ck-mt-table__empty' }, filter === 'canceladas' ? 'Nenhuma fatura cancelada.' : 'Nenhuma fatura ativa.'))))));
   }
 
@@ -596,7 +601,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
         h(MtPlanCard, { enrollment: e, today: p.today }),
         h(MtFinance, { invoices: p.invoices }),
         h(MtDiscounts, { discounts: p.discounts, onAdd: p.onAddDiscount, onEdit: p.onEditDiscount, onRemove: p.onRemoveDiscount })),
-      h(MtInvoices, { invoices: p.invoices, counts: p.counts, today: p.today, onSettle: p.onSettle, onEdit: p.onEditInvoice, onDelete: p.onDeleteInvoice, onReload: p.onReload, menu: p.invoiceMenu }),
+      h(MtInvoices, { invoices: p.invoices, counts: p.counts, today: p.today, onSettle: p.onSettle, onEdit: p.onEditInvoice, onDelete: p.onDeleteInvoice, onRefund: p.onRefundInvoice, onReload: p.onReload, menu: p.invoiceMenu }),
       p.children || null);
   }
 

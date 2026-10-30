@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Icon } from '../../components/ck';
+import { Button, Icon } from '../../components/ck';
+import { exportarBi } from '../../services/biService';
+import { showError } from '../../utils/toast';
 import { fdate } from '../../components/ck/financeiro';
 
 /* Peças comuns das telas do BI (Inteligência de negócios). */
@@ -78,4 +80,20 @@ export function ComoCalculamos({ itens }) {
       {aberto ? <dl>{itens.map(([t, d]) => <div key={t}><dt>{t}</dt><dd>{d}</dd></div>)}</dl> : null}
     </section>
   );
+}
+
+/** Baixa o CSV de uma lista (alvo.indicador) ou do histórico da tela (alvo.tela) no período */
+export function BotaoExportar({ alvo, periodo, children = 'Exportar', variant = 'secondary' }) {
+  const [baixando, setBaixando] = useState(false);
+  const baixar = async () => {
+    setBaixando(true);
+    try {
+      await exportarBi(alvo, periodo);
+    } catch (e) {
+      showError(e?.mensagemLimpa || 'Não foi possível gerar o arquivo.');
+    } finally {
+      setBaixando(false);
+    }
+  };
+  return <Button size="sm" variant={variant} icon="download" loading={baixando} onClick={baixar}>{children}</Button>;
 }

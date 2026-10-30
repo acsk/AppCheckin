@@ -8,8 +8,10 @@ use App\Services\Pacote\PacoteConciliacaoService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Recorrencia\RecorrenciaService;
 use App\Services\SuperAdmin\CobrancaContratoService;
+use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
 use App\Support\ReferenciaExterna;
+use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -107,6 +109,10 @@ class AsaasWebhookService
             $tenantId = $this->tenantIdDaReferencia((string) ($payment['externalReference'] ?? ''));
         }
 
+        if ($event === 'PAYMENT_REFUNDED' || strtoupper((string) ($payment['status'] ?? '')) === 'REFUNDED') {
+            return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'id' => $eventId, 'event' => $event, 'estorno' => $this->registrarEstorno($tenantId, $paymentId)]];
+        }
+
         if (! $this->pagamentoEstaPago($event, $payment)) {
             return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => $event, 'id' => $eventId]];
         }
@@ -197,6 +203,27 @@ class AsaasWebhookService
                 'matricula_id' => $matriculaId,
             ],
         ];
+    }
+
+    /**
+     * Estorno feito no Asaas: a parcela baixada com esta cobrança fica estornada (idempotente: já estornada não muda).
+     * Parcela não encontrada (cobrança nunca baixada aqui) é ignorada.
+     */
+    private function registrarEstorno(int $tenantId, string $paymentId): bool
+    {
+        $parcela = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
+            ->where('observacoes', 'like', '%'.$paymentId.'%')
+            ->orderByDesc('id')
+            ->value('id');
+        if (! $parcela) {
+            return false;
+        }
+        $r = $this->pagamentosPlano->registrarEstorno($tenantId, (int) $parcela, null, AcademyDateTime::today(), 'Estornado no Asaas · '.$paymentId, null);
+        Log::info('Asaas webhook estorno', ['tenant_id' => $tenantId, 'payment_id' => $paymentId, 'parcela_id' => $parcela, 'ok' => $r['ok']]);
+
+        return $r['ok'];
     }
 
     /** Contrato de recorrência da cobrança: pela assinatura do Asaas ou pela referência REC-. */

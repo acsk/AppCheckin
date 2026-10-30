@@ -5,7 +5,7 @@ import { financeiroService } from '../../services/financeiroService';
 import LayoutBase from '../../components/LayoutBase';
 import { Avatar, Badge, Button, Callout, Icon, IconButton, PageHeader, SegmentedControl, TextField } from '../../components/ck';
 import {
-  BarList, KpiCard, MonthlyChart, STATUS, StatusSplit, byMonth, fdate, groupSum, isoDate, money, monthEnd, monthLabel, monthStart, pct, statusOf, summarize,
+  BarList, KpiCard, MonthlyChart, STATUS, StatusSplit, byMonth, fdate, foraDoTotal, groupSum, isoDate, money, monthEnd, monthLabel, monthStart, pct, statusOf, summarize,
 } from '../../components/ck/financeiro';
 import { abrirRelatorioHtml, relatorioHead } from '../../utils/relatorioPlanos';
 import { showError } from '../../utils/toast';
@@ -112,7 +112,7 @@ export default function RelatorioFinanceiroScreen() {
     return q ? recebidos.filter((p) => matches(p, q)) : recebidos;
   }, [recebidos, query]);
   const counts = useMemo(() => {
-    const c = { todos: searched.length, recebido: searchedReceived.length, pago: 0, aguardando: 0, atrasado: 0, cancelado: 0 };
+    const c = { todos: searched.length, recebido: searchedReceived.length, pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0 };
     searched.forEach((p) => { c[statusOf(p, today)] += 1; });
     return c;
   }, [searched, searchedReceived]);
@@ -123,13 +123,13 @@ export default function RelatorioFinanceiroScreen() {
       .filter((p) => filter === 'todos' || statusOf(p, today) === filter)
       .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)) || String(a.aluno_nome).localeCompare(String(b.aluno_nome), 'pt-BR'))),
   [searched, searchedReceived, filter]);
-  const rowsTotal = rows.reduce((a, p) => a + (statusOf(p, today) === 'cancelado' ? 0 : Number(p.valor) || 0), 0);
+  const rowsTotal = rows.reduce((a, p) => a + (foraDoTotal(statusOf(p, today)) ? 0 : Number(p.valor) || 0), 0);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const pageRows = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const months = useMemo(() => byMonth(payments, today, fromDate, toDate), [payments, from, to]);
   const byMethod = useMemo(() => groupSum(recebidos, (p) => p.forma_pagamento_nome), [recebidos]);
-  const byPlan = useMemo(() => groupSum(payments, (p) => p.plano_nome, (p) => statusOf(p, today) !== 'cancelado'), [payments]);
+  const byPlan = useMemo(() => groupSum(payments, (p) => p.plano_nome, (p) => !foraDoTotal(statusOf(p, today))), [payments]);
 
   const periodLabel = from.slice(0, 7) === to.slice(0, 7) && from.endsWith('-01') && to === isoDate(monthEnd(fromDate))
     ? fromDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })

@@ -6,6 +6,7 @@ use App\Repositories\MatriculaRepository;
 use App\Services\Asaas\AsaasPagamentoSync;
 use App\Services\PagamentoPlanoService;
 use App\Support\AsaasPagamentoStatus;
+use App\Support\MotivoCancelamento;
 use Illuminate\Support\Facades\DB;
 
 class MobileMatriculaService
@@ -344,7 +345,11 @@ class MobileMatriculaService
                 }
 
                 DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)
-                    ->update(['status_id' => (int) $statusCanceladaId, 'updated_at' => now()]);
+                    ->update([
+                        'status_id' => (int) $statusCanceladaId, 'data_cancelamento' => now()->toDateString(),
+                        'motivo_cancelamento' => 'Diária cancelada pelo aluno', 'motivo_cancelamento_codigo' => MotivoCancelamento::PELO_APP,
+                        'updated_at' => now(),
+                    ]);
 
                 $statusAssCancelId = DB::table('assinatura_status')->where('codigo', 'cancelada')->value('id');
                 if ($statusAssCancelId) {

@@ -47,5 +47,6 @@ Route::delete('/matricula-descontos/{id}', [MatriculaDescontoController::class, 
 Route::get('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'show']);
 Route::put('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'update'])->middleware('permissao:financeiro_avancado');
 Route::post('/pagamentos-plano/{id}/confirmar', [PagamentoPlanoController::class, 'confirmar']);
+Route::post('/pagamentos-plano/{id}/estornar', [PagamentoPlanoController::class, 'estornar'])->middleware('permissao:financeiro_avancado');
 Route::delete('/pagamentos-plano/{id}/excluir', [PagamentoPlanoController::class, 'excluir'])->middleware('permissao:financeiro_avancado');
 Route::delete('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'cancelar']);

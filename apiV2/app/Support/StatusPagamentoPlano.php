@@ -15,6 +15,9 @@ final class StatusPagamentoPlano
 
     public const CANCELADO = 4;
 
+    /** Estorno total; o parcial mantém PAGO com valor_estornado. A receita do mês do pagamento não muda. */
+    public const ESTORNADO = 5;
+
     /** Parcelas ainda em aberto (aguardando ou atrasada). */
     public const EM_ABERTO = [self::AGUARDANDO, self::ATRASADO];
 }

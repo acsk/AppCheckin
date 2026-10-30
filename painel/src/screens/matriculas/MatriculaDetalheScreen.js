@@ -17,7 +17,8 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
 import TrocaPlanoModal from '../../components/ck/TrocaPlanoModal';
-import { EditarPagamentoModal, isBaixaAutomatica, provedorDaBaixa } from '../../components/ck/pagamento';
+import CancelarMatriculaModal from '../../components/ck/CancelarMatriculaModal';
+import { EditarPagamentoModal, EstornoModal, isBaixaAutomatica, provedorDaBaixa } from '../../components/ck/pagamento';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
@@ -96,6 +97,8 @@ export default function MatriculaDetalheScreen() {
   // Editar/excluir parcela: permissão "Ações financeiras avançadas" (a API confere a mesma)
   const [financeiroAvancado, setFinanceiroAvancado] = useState(false);
   const [modalBloquearVisible, setModalBloquearVisible] = useState(false);
+  const [modalCancelarVisible, setModalCancelarVisible] = useState(false);
+  const [estorno, setEstorno] = useState({ pagamento: null, saving: false, erro: '' });
   const [motivoBloqueio, setMotivoBloqueio] = useState('');
   const [bloqueandoMatricula, setBloqueandoMatricula] = useState(false);
   const [desbloqueandoMatricula, setDesbloqueandoMatricula] = useState(false);
@@ -259,6 +262,20 @@ export default function MatriculaDetalheScreen() {
       setErrorModal({ visible: true, title: 'Erro ao bloquear', message: mensagem });
     } finally {
       setBloqueandoMatricula(false);
+    }
+  };
+
+  const handleConfirmarEstorno = async (dados) => {
+    const pg = estorno.pagamento;
+    if (!pg) return;
+    setEstorno((e) => ({ ...e, saving: true, erro: '' }));
+    try {
+      const r = await pagamentoPlanoService.estornar(getPagamentoId(pg), dados);
+      setEstorno({ pagamento: null, saving: false, erro: '' });
+      showToast(r?.message || 'Estorno registrado.');
+      await carregarDados();
+    } catch (error) {
+      setEstorno((e) => ({ ...e, saving: false, erro: obterMensagemErro(error, 'Não foi possível registrar o estorno') }));
     }
   };
 
@@ -927,6 +944,9 @@ export default function MatriculaDetalheScreen() {
   const isMatriculaBloqueada = Number(matricula?.status_id) === 6;
   const podeBloquearMatricula = matricula && [1, 2, 5].includes(Number(matricula.status_id));
   const podeDesbloquearMatricula = isMatriculaBloqueada;
+  // Fidelização cancela pela Recorrência (multa/aviso) e pacote pelo contrato
+  const podeCancelarMatricula = matricula && [1, 2, 5, 6].includes(Number(matricula.status_id))
+    && !isPacote && matricula.tipo_cobranca !== 'recorrente';
   const podeExibirAlterarPlano = (!isPacote || isMatriculaRenovavel) && !isMatriculaBloqueada;
   const isPagamentoPendente = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
@@ -1231,7 +1251,9 @@ export default function MatriculaDetalheScreen() {
       const status =
         statusId === 2
           ? 'pago'
-          : statusId === 4
+          : statusId === 5
+            ? 'estornado'
+            : statusId === 4
             ? 'cancelado'
             : statusId === 3 || isVencido(pg.data_vencimento)
               ? 'atrasado'
@@ -1257,6 +1279,10 @@ export default function MatriculaDetalheScreen() {
         discount: Number(pg.desconto) > 0 ? Number(pg.desconto) : undefined,
         discountNote: pg.motivo_desconto || undefined,
         status,
+        refunded: Number(pg.valor_estornado) > 0 ? Number(pg.valor_estornado) : undefined,
+        refundDate: isoDia(pg.data_estorno),
+        refundNote: pg.motivo_estorno || undefined,
+        canRefund: statusId === 2 && !isBaixaAutomatica(pg) && !pacoteSemBaixaIndividual,
         canSettle: !pacoteSemBaixaIndividual,
         settleNote: pacoteSemBaixaIndividual ? 'Baixa só no pacote' : undefined,
       };
@@ -1310,7 +1336,7 @@ export default function MatriculaDetalheScreen() {
 
   // Ações do cabeçalho, conforme o estado da matrícula.
   const acoesCabecalho =
-    podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula ? (
+    podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula || podeCancelarMatricula ? (
       <>
         {podeExibirAlterarPlano && !(matricula?.valor > 0) ? (
           <CkButton variant="ghost" icon="calendar" onClick={handleAbrirModalEditarVencimento}>
@@ -1320,6 +1346,11 @@ export default function MatriculaDetalheScreen() {
         {podeBloquearMatricula ? (
           <CkButton variant="ghost" icon="lock" onClick={() => setModalBloquearVisible(true)}>
             Bloquear matrícula
+          </CkButton>
+        ) : null}
+        {podeCancelarMatricula ? (
+          <CkButton variant="ghost" icon="ban" onClick={() => setModalCancelarVisible(true)}>
+            Cancelar matrícula
           </CkButton>
         ) : null}
         {podeDesbloquearMatricula ? (
@@ -1389,6 +1420,7 @@ export default function MatriculaDetalheScreen() {
             invoiceMenu={financeiroAvancado}
             onEditInvoice={(inv) => handleAbrirEditarPagamento(inv.raw)}
             onDeleteInvoice={(inv) => handleAbrirExcluirPagamento(inv.raw)}
+            onRefundInvoice={(inv) => setEstorno({ pagamento: inv.raw, saving: false, erro: '' })}
             onSettlePackage={() => setModalBaixaPacoteVisible(true)}
             onAddDiscount={abrirNovoDesconto}
             onEditDiscount={(d) => abrirEditarDesconto(d.raw)}
@@ -2286,6 +2318,30 @@ export default function MatriculaDetalheScreen() {
           </View>
         </View>
       </Modal>
+
+      {estorno.pagamento ? (
+        <EstornoModal
+          pagamento={estorno.pagamento}
+          saving={estorno.saving}
+          error={estorno.erro}
+          onCancel={() => setEstorno({ pagamento: null, saving: false, erro: '' })}
+          onConfirm={handleConfirmarEstorno}
+        />
+      ) : null}
+
+      {modalCancelarVisible ? (
+        <CancelarMatriculaModal
+          matricula={matricula}
+          alunoNome={matricula?.usuario_nome || matricula?.aluno_nome}
+          temParcelasAbertas={pagamentos.some((pg) => [1, 3].includes(Number(pg.status_pagamento_id)) && !pg.data_pagamento)}
+          onClose={() => setModalCancelarVisible(false)}
+          onCancelada={async () => {
+            setModalCancelarVisible(false);
+            showToast('Matrícula cancelada.');
+            await carregarDados();
+          }}
+        />
+      ) : null}
 
       {/* Modal Bloquear Matrícula */}
       <Modal

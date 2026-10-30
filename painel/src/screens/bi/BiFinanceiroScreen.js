@@ -6,12 +6,13 @@ import { ChartBarList, ChartLegend, ColumnChart, GroupedColumnChart, deltaObj } 
 import { fdate, money, moneyShort } from '../../components/ck/financeiro';
 import { buscarBiFinanceiro } from '../../services/biService';
 import BiDetalheModal from './BiDetalheModal';
-import { ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
+import { BotaoExportar, ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
 
 // Fórmulas exibidas na tela; a fonte é App\Repositories\Bi\BiTenantRepository
 const COMO_CALCULAMOS = [
   ['Comparação', 'Contra o período anterior de mesma duração. Em "Este mês", do dia 1 até hoje contra o mesmo trecho do mês passado.'],
   ['Receita prevista', 'Parcelas não canceladas que vencem no período, já com desconto.'],
+  ['Estornos', 'Valor devolvido aos alunos, pela data da devolução. A parcela continua na receita recebida do mês em que foi paga; a receita líquida é a recebida menos os estornos do período.'],
   ['Receita recebida', 'Parcelas pagas, pela data do pagamento. Uma parcela que vence em um mês e é paga no seguinte entra no previsto do primeiro e no recebido do segundo.'],
   ['A vencer e vencido', 'Parcelas do período ainda não pagas: a vencer se vencem de hoje em diante, vencido se já venceram.'],
   ['Inadimplência', 'Valor vencido ÷ receita prevista do mesmo período.'],
@@ -54,7 +55,10 @@ export default function BiFinanceiroScreen() {
         <PageHeader
           title="Financeiro"
           description={per ? `De ${fdate(per.inicio)} a ${fdate(per.fim)}. Receita, recebimentos e inadimplência, com o histórico dos últimos 12 meses.` : 'Receita, recebimentos e inadimplência ao longo do tempo.'}
-          actions={<SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />}
+          actions={<>
+            <SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />
+            <BotaoExportar alvo={{ tela: 'financeiro' }} periodo={periodo}>Exportar meses</BotaoExportar>
+          </>}
         />
 
         {erro ? (
@@ -81,6 +85,9 @@ export default function BiFinanceiroScreen() {
             delta={deltaObj(par('ticket_medio').atual, par('ticket_medio').anterior, vs, true)} />
           <StatTile label="Descontos concedidos" icon="tag" value={v(money(par('descontos').atual))}
             delta={deltaObj(par('descontos').atual, par('descontos').anterior, vs, false)} note={dados ? 'Nas parcelas pagas' : null} />
+          <StatTile label="Estornos" icon="rotate-ccw" value={v(money(par('estornos').atual))}
+            delta={deltaObj(par('estornos').atual, par('estornos').anterior, vs, false)}
+            note={dados ? `Receita líquida ${money(par('receita_liquida').atual)}` : null} {...abre('estornos', 'os estornos')} />
         </div>
 
         <Panel

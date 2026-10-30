@@ -9,6 +9,7 @@ use App\Services\MatriculaEncadeamentoService;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
+use App\Support\MotivoCancelamento;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -371,9 +372,17 @@ class AdminMatriculaService
             return $this->error('Matrícula já está cancelada', 400);
         }
 
-        $motivoCancelamento = $data['motivo_cancelamento'] ?? 'Cancelado pelo admin';
+        $motivoCodigo = isset($data['motivo_codigo']) && $data['motivo_codigo'] !== '' ? (string) $data['motivo_codigo'] : null;
+        if ($motivoCodigo !== null && ! MotivoCancelamento::escolhivel($motivoCodigo)) {
+            return $this->error('Motivo de cancelamento inválido', 422);
+        }
+        $motivoCancelamento = trim((string) ($data['motivo_cancelamento'] ?? ''))
+            ?: ($motivoCodigo !== null ? MotivoCancelamento::rotulo($motivoCodigo) : 'Cancelado pelo admin');
 
-        $this->matriculas->cancelar($id, $adminId, (string) $motivoCancelamento);
+        $this->matriculas->cancelar($id, $adminId, $motivoCancelamento, $motivoCodigo);
+        if (! empty($data['cancelar_parcelas_abertas'])) {
+            $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $id, 'Matrícula cancelada');
+        }
         $this->matriculas->desativarDescontosSeTabelaExiste($tenantId, $id);
 
         $usuarioId = $this->matriculas->findUsuarioIdPorAluno((int) $matricula['aluno_id']);
@@ -1924,6 +1933,7 @@ class AdminMatriculaService
 
         $gerarCredito = ! empty($data['gerar_credito']);
         $motivoCancelamento = $data['motivo_cancelamento'] ?? 'Cancelado para alteração de plano';
+        $motivoCodigo = MotivoCancelamento::escolhivel($data['motivo_codigo'] ?? null) ? (string) $data['motivo_codigo'] : MotivoCancelamento::TROCA_PLANO;
         $valorPlano = (float) $matricula['valor'];
         $creditoValor = 0.0;
         $creditoInfo = null;
@@ -1964,9 +1974,10 @@ class AdminMatriculaService
                     cancelado_por = ?,
                     data_cancelamento = CURDATE(),
                     motivo_cancelamento = ?,
+                    motivo_cancelamento_codigo = ?,
                     updated_at = NOW()
                 WHERE id = ?
-            ', [$adminId, $motivoCancelamento, $id]);
+            ', [$adminId, $motivoCancelamento, $motivoCodigo, $id]);
 
             $this->matriculas->desativarDescontosSeTabelaExiste($tenantId, $id);
 

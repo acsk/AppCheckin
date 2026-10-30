@@ -64,9 +64,10 @@ export const matriculaService = {
     }
   },
 
-  async cancelar(id) {
+  /** dados: { motivo_codigo, motivo_cancelamento?, cancelar_parcelas_abertas? } */
+  async cancelar(id, dados = {}) {
     try {
-      const response = await api.post(`/admin/matriculas/${id}/cancelar`);
+      const response = await api.post(`/admin/matriculas/${id}/cancelar`, dados);
       return response.data;
     } catch (error) {
       console.error('Erro ao cancelar matrícula:', error);
@@ -80,6 +81,16 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao excluir matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async motivosCancelamento() {
+    try {
+      const response = await api.get('/admin/matriculas/motivos-cancelamento');
+      return response.data?.motivos || [];
+    } catch (error) {
+      console.error('Erro ao buscar motivos de cancelamento:', error);
       throw prepararErro(error.response?.data || error);
     }
   },

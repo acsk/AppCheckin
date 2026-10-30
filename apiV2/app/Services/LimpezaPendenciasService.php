@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Services\Asaas\AsaasService;
 use App\Services\Recorrencia\RecorrenciaService;
+use App\Support\MotivoCancelamento;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -190,7 +191,10 @@ class LimpezaPendenciasService
         DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update([
             'status_id' => DB::table('status_matricula')->where('codigo', $status)->value('id'),
             'updated_at' => now(),
-        ]);
+        ] + ($status === 'cancelada' ? [
+            'data_cancelamento' => now()->toDateString(), 'motivo_cancelamento' => 'Checkout não pago: encerrado automaticamente',
+            'motivo_cancelamento_codigo' => MotivoCancelamento::CHECKOUT_NAO_PAGO,
+        ] : []));
 
         return true;
     }

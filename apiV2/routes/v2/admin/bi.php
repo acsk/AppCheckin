@@ -11,3 +11,5 @@ Route::get('/bi/visao-geral/detalhe', [BiController::class, 'detalhe']);
 Route::get('/bi/financeiro', [BiController::class, 'financeiro']);
 Route::get('/bi/alunos', [BiController::class, 'alunos']);
 Route::get('/bi/frequencia', [BiController::class, 'frequencia']);
+Route::get('/bi/retencao', [BiController::class, 'retencao']);
+Route::get('/bi/exportar', [BiController::class, 'exportar']);

@@ -2,14 +2,17 @@
 
 namespace App\Repositories\Bi;
 
+use App\Support\MotivoCancelamento;
+use App\Support\ProspeccaoStatus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Consultas do BI da academia. Toda consulta recebe o tenant do token e filtra por ele.
  * Datas no formato Y-m-d, intervalos fechados [inicio, fim].
  *
  * Status de matrícula: 1 ativa, 2 vencida, 3 cancelada, 4 finalizada, 5 pendente, 6 bloqueado, 7 concluída.
- * Status de pagamento: 1 aguardando, 2 pago, 3 atrasado, 4 cancelado.
+ * Status de pagamento: 1 aguardando, 2 pago, 3 atrasado, 4 cancelado, 5 estornado.
  */
 class BiTenantRepository
 {
@@ -18,6 +21,12 @@ class BiTenantRepository
 
     /** Dias sem matrícula vigente para uma nova matrícula contar como retorno do aluno */
     public const GAP_RETORNO_DIAS = 30;
+
+    /**
+     * Parcelas que entraram no caixa: pagas e estornadas (o estorno não apaga a receita do mês do pagamento;
+     * sai no mês do estorno, ver estornos()). Nos SQL crus: IN (2, 5).
+     */
+    private const RECEBIDA = [2, 5];
 
     /*
      * Cada indicador de alunos tem uma lista (o detalhamento) e a contagem é o tamanho dela,
@@ -108,7 +117,80 @@ class BiTenantRepository
                 && (string) $n->data_inicio <= $limite && (string) $n->data_vencimento >= (string) $c->data_cancelamento);
         });
 
-        return self::umPorAluno($sairam, fn ($r) => ['data' => (string) $r->data_cancelamento, 'detalhe' => 'Cancelada em']);
+        return self::umPorAluno($sairam, fn ($r) => [
+            'data' => (string) $r->data_cancelamento, 'detalhe' => 'Cancelada em',
+            'motivo_codigo' => $r->motivo_cancelamento_codigo, 'motivo' => MotivoCancelamento::rotulo($r->motivo_cancelamento_codigo),
+        ]);
+    }
+
+    /** Alunos com alguma matrícula cancelada no período (inclui troca de plano e diária): aluno_id => último cancelamento */
+    public function alunosComCancelamento(int $tenantId, string $inicio, string $fim): array
+    {
+        return DB::table('matriculas')->where('tenant_id', $tenantId)->where('status_id', 3)
+            ->whereBetween('data_cancelamento', [$inicio, $fim])->whereNotNull('aluno_id')
+            ->groupBy('aluno_id')->pluck(DB::raw('MAX(data_cancelamento)'), 'aluno_id')
+            ->mapWithKeys(fn ($d, $a) => [(int) $a => substr((string) $d, 0, 10)])->all();
+    }
+
+    /** Fim do acesso mais recente de cada aluno (matrículas não pendentes e não canceladas): aluno_id => data */
+    public function ultimoAcesso(int $tenantId, array $alunoIds): array
+    {
+        if ($alunoIds === []) {
+            return [];
+        }
+
+        return DB::table('matriculas')->where('tenant_id', $tenantId)->whereIn('aluno_id', $alunoIds)
+            ->whereNotIn('status_id', [3, 5])->groupBy('aluno_id')
+            ->pluck(DB::raw('MAX(data_vencimento)'), 'aluno_id')
+            ->mapWithKeys(fn ($d, $a) => [(int) $a => substr((string) $d, 0, 10)])->all();
+    }
+
+    /**
+     * Alunos recuperados pela Prospecção: oportunidade convertida (matrícula nova) no período.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function recuperadosLista(int $tenantId, string $inicio, string $fim): array
+    {
+        if (! Schema::hasTable('prospeccao_oportunidades')) {
+            return [];
+        }
+        $rows = $this->matriculasComAluno($tenantId)
+            ->join('prospeccao_oportunidades as o', fn ($j) => $j->on('o.matricula_conversao_id', '=', 'm.id')->on('o.tenant_id', '=', 'm.tenant_id'))
+            ->where('o.status', ProspeccaoStatus::RECUPERADO)
+            ->whereBetween(DB::raw('DATE(o.convertida_em)'), [$inicio, $fim])
+            ->addSelect([DB::raw('DATE(o.convertida_em) AS convertida'), 'o.motivo_categoria'])
+            ->get();
+
+        return self::umPorAluno($rows, fn ($r) => [
+            'data' => (string) $r->convertida, 'detalhe' => 'Voltou pela Prospecção',
+            'motivo_codigo' => $r->motivo_categoria, 'motivo' => MotivoCancelamento::rotulo($r->motivo_categoria),
+        ]);
+    }
+
+    /**
+     * Oportunidades da Prospecção criadas no período e até onde chegaram (status atual).
+     *
+     * @return array{criadas: int, contatadas: int, recuperadas: int, sem_interesse: int, abertas: int}
+     */
+    public function funilProspeccao(int $tenantId, string $inicio, string $fim): array
+    {
+        $vazio = ['criadas' => 0, 'contatadas' => 0, 'recuperadas' => 0, 'sem_interesse' => 0, 'abertas' => 0];
+        if (! Schema::hasTable('prospeccao_oportunidades')) {
+            return $vazio;
+        }
+        $abertos = "'".implode("','", ProspeccaoStatus::ABERTOS)."'";
+        $r = DB::selectOne("
+            SELECT COUNT(*) AS criadas,
+                SUM(CASE WHEN ultimo_contato_em IS NOT NULL OR status NOT IN (?, ?) THEN 1 ELSE 0 END) AS contatadas,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS recuperadas,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS sem_interesse,
+                SUM(CASE WHEN status IN ({$abertos}) THEN 1 ELSE 0 END) AS abertas
+            FROM prospeccao_oportunidades
+            WHERE tenant_id = ? AND DATE(created_at) BETWEEN ? AND ?
+        ", [ProspeccaoStatus::NAO_CONTATADO, ProspeccaoStatus::NAO_CONTATAR, ProspeccaoStatus::RECUPERADO, ProspeccaoStatus::SEM_INTERESSE, $tenantId, $inicio, $fim]);
+
+        return array_map(fn ($v) => (int) $v, (array) $r) + $vazio;
     }
 
     public function reativados(int $tenantId, string $inicio, string $fim): int
@@ -282,7 +364,7 @@ class BiTenantRepository
             ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
             ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
             ->where('m.tenant_id', $tenantId)
-            ->select(['m.id', 'm.aluno_id', 'm.data_matricula', 'm.data_inicio', 'm.data_vencimento', 'm.data_cancelamento',
+            ->select(['m.id', 'm.aluno_id', 'm.data_matricula', 'm.data_inicio', 'm.data_vencimento', 'm.data_cancelamento', 'm.motivo_cancelamento_codigo',
                 'a.nome AS aluno_nome', 'p.nome AS plano_nome', 'md.nome AS modalidade_nome']);
     }
 
@@ -317,8 +399,8 @@ class BiTenantRepository
 
     /**
      * Parcelas que compõem os valores: `recebido` (pagas pela data do pagamento), `vencido`
-     * (aguardando/atrasadas que venceram no período antes de hoje) ou `a_vencer` (as que vencem de hoje
-     * até o fim do período). Mesmos filtros de financeiro().
+     * (aguardando/atrasadas que venceram no período antes de hoje), `a_vencer` (as que vencem de hoje
+     * até o fim do período) ou `estornado` (valor devolvido, pela data do estorno). Mesmos filtros de financeiro().
      *
      * @return list<array<string, mixed>>
      */
@@ -330,7 +412,9 @@ class BiTenantRepository
             ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
             ->where('pp.tenant_id', $tenantId);
         if ($tipo === 'recebido') {
-            $q->where('pp.status_pagamento_id', 2)->whereBetween('pp.data_pagamento', [$inicio, $fim])->orderByDesc('pp.data_pagamento');
+            $q->whereIn('pp.status_pagamento_id', self::RECEBIDA)->whereBetween('pp.data_pagamento', [$inicio, $fim])->orderByDesc('pp.data_pagamento');
+        } elseif ($tipo === 'estornado') {
+            $q->where('pp.valor_estornado', '>', 0)->whereBetween('pp.data_estorno', [$inicio, $fim])->orderByDesc('pp.data_estorno');
         } elseif ($tipo === 'a_vencer') {
             $q->whereIn('pp.status_pagamento_id', [1, 3])->whereBetween('pp.data_vencimento', [$inicio, $fim])
                 ->where('pp.data_vencimento', '>=', $hoje)->orderBy('pp.data_vencimento');
@@ -340,21 +424,21 @@ class BiTenantRepository
         }
 
         return $q->orderBy('pp.id')
-            ->get(['pp.id', 'pp.matricula_id', 'pp.valor', 'pp.data_vencimento', 'pp.data_pagamento', 'a.id AS aluno_id', 'a.nome AS aluno_nome', 'p.nome AS plano_nome'])
+            ->get(['pp.id', 'pp.matricula_id', 'pp.valor', 'pp.valor_estornado', 'pp.data_vencimento', 'pp.data_pagamento', 'pp.data_estorno', 'a.id AS aluno_id', 'a.nome AS aluno_nome', 'p.nome AS plano_nome'])
             ->map(fn ($r) => [
                 'parcela_id' => (int) $r->id,
                 'aluno_id' => $r->aluno_id !== null ? (int) $r->aluno_id : null,
                 'aluno_nome' => (string) ($r->aluno_nome ?? ''),
                 'plano_nome' => $r->plano_nome,
                 'matricula_id' => (int) $r->matricula_id,
-                'valor' => round((float) $r->valor, 2),
-                'data' => (string) ($tipo === 'recebido' ? $r->data_pagamento : $r->data_vencimento),
-                'detalhe' => ['recebido' => 'Pago em', 'a_vencer' => 'Vence em'][$tipo] ?? 'Venceu em',
+                'valor' => round((float) ($tipo === 'estornado' ? $r->valor_estornado : $r->valor), 2),
+                'data' => (string) match ($tipo) { 'recebido' => $r->data_pagamento, 'estornado' => $r->data_estorno, default => $r->data_vencimento },
+                'detalhe' => ['recebido' => 'Pago em', 'a_vencer' => 'Vence em', 'estornado' => 'Estornado em'][$tipo] ?? 'Venceu em',
             ])->all();
     }
 
     /**
-     * Recebido = parcelas pagas pela data do pagamento. Previsto = parcelas não canceladas que vencem
+     * Recebido = parcelas pagas (e as depois estornadas) pela data do pagamento. Previsto = parcelas não canceladas que vencem
      * no período, separadas em pagas, a vencer e vencidas (aguardando ou atrasadas com vencimento antes de hoje).
      *
      * @return array{recebido: float, pagantes: int, previsto: float, previsto_pago: float, a_vencer: float, vencido: float, vencido_qtd: int}
@@ -364,13 +448,13 @@ class BiTenantRepository
         $rec = DB::selectOne('
             SELECT COALESCE(SUM(pp.valor), 0) AS total, COUNT(DISTINCT COALESCE(pp.aluno_id, m.aluno_id)) AS pagantes
             FROM pagamentos_plano pp LEFT JOIN matriculas m ON m.id = pp.matricula_id
-            WHERE pp.tenant_id = ? AND pp.status_pagamento_id = 2 AND pp.data_pagamento BETWEEN ? AND ?
+            WHERE pp.tenant_id = ? AND pp.status_pagamento_id IN (2, 5) AND pp.data_pagamento BETWEEN ? AND ?
         ', [$tenantId, $inicio, $fim]);
 
         $prev = DB::selectOne('
             SELECT
                 COALESCE(SUM(valor), 0) AS previsto,
-                COALESCE(SUM(CASE WHEN status_pagamento_id = 2 THEN valor ELSE 0 END), 0) AS pago,
+                COALESCE(SUM(CASE WHEN status_pagamento_id IN (2, 5) THEN valor ELSE 0 END), 0) AS pago,
                 COALESCE(SUM(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento >= ? THEN valor ELSE 0 END), 0) AS a_vencer,
                 COALESCE(SUM(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < ? THEN valor ELSE 0 END), 0) AS vencido,
                 COALESCE(SUM(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < ? THEN 1 ELSE 0 END), 0) AS vencido_qtd
@@ -389,6 +473,17 @@ class BiTenantRepository
         ];
     }
 
+    /** Devolvido aos alunos no período, pela data do estorno (total e parcial) */
+    public function estornos(int $tenantId, string $inicio, string $fim): array
+    {
+        $r = DB::selectOne('
+            SELECT COALESCE(SUM(valor_estornado), 0) AS total, COUNT(*) AS qtd FROM pagamentos_plano
+            WHERE tenant_id = ? AND valor_estornado > 0 AND data_estorno BETWEEN ? AND ?
+        ', [$tenantId, $inicio, $fim]);
+
+        return ['valor' => round((float) $r->total, 2), 'qtd' => (int) $r->qtd];
+    }
+
     /**
      * Recebido no período agrupado por plano ou por forma de pagamento, maior primeiro.
      * Plano: o da parcela, senão o da matrícula. `valor` já vem com desconto; `desconto` à parte.
@@ -398,7 +493,7 @@ class BiTenantRepository
     public function recebidoPorGrupo(int $tenantId, string $grupo, string $inicio, string $fim): array
     {
         $q = DB::table('pagamentos_plano as pp')
-            ->where('pp.tenant_id', $tenantId)->where('pp.status_pagamento_id', 2)
+            ->where('pp.tenant_id', $tenantId)->whereIn('pp.status_pagamento_id', self::RECEBIDA)
             ->whereBetween('pp.data_pagamento', [$inicio, $fim]);
         if ($grupo === 'plano') {
             $q->leftJoin('matriculas as m', 'm.id', '=', 'pp.matricula_id')
@@ -419,7 +514,7 @@ class BiTenantRepository
     public function descontosRecebidos(int $tenantId, string $inicio, string $fim): float
     {
         return round((float) (DB::table('pagamentos_plano')
-            ->where('tenant_id', $tenantId)->where('status_pagamento_id', 2)
+            ->where('tenant_id', $tenantId)->whereIn('status_pagamento_id', self::RECEBIDA)
             ->whereBetween('data_pagamento', [$inicio, $fim])
             ->sum('desconto')), 2);
     }
@@ -428,13 +523,13 @@ class BiTenantRepository
      * Mês a mês no intervalo: previsto, a vencer e vencido pelo mês do vencimento; recebido e pagantes
      * pelo mês do pagamento (mesmos critérios de financeiro()).
      *
-     * @return array<string, array{previsto: float, a_vencer: float, vencido: float, recebido: float, pagantes: int}>
+     * @return array<string, array{previsto: float, a_vencer: float, vencido: float, recebido: float, estornado: float, pagantes: int}>
      */
     public function financeiroPorMes(int $tenantId, string $inicio, string $fim, string $hoje): array
     {
         $out = [];
         $mes = function (string $ym) use (&$out) {
-            $out[$ym] ??= ['previsto' => 0.0, 'a_vencer' => 0.0, 'vencido' => 0.0, 'recebido' => 0.0, 'pagantes' => []];
+            $out[$ym] ??= ['previsto' => 0.0, 'a_vencer' => 0.0, 'vencido' => 0.0, 'recebido' => 0.0, 'estornado' => 0.0, 'pagantes' => []];
         };
 
         foreach (DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('status_pagamento_id', '<>', 4)
@@ -448,7 +543,7 @@ class BiTenantRepository
         }
 
         foreach (DB::table('pagamentos_plano as pp')->leftJoin('matriculas as m', 'm.id', '=', 'pp.matricula_id')
-            ->where('pp.tenant_id', $tenantId)->where('pp.status_pagamento_id', 2)
+            ->where('pp.tenant_id', $tenantId)->whereIn('pp.status_pagamento_id', self::RECEBIDA)
             ->whereBetween('pp.data_pagamento', [$inicio, $fim])
             ->get(['pp.data_pagamento', 'pp.valor', DB::raw('COALESCE(pp.aluno_id, m.aluno_id) AS aluno')]) as $r) {
             $ym = substr((string) $r->data_pagamento, 0, 7);
@@ -459,9 +554,16 @@ class BiTenantRepository
             }
         }
 
+        foreach (DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('valor_estornado', '>', 0)
+            ->whereBetween('data_estorno', [$inicio, $fim])->get(['data_estorno', 'valor_estornado']) as $r) {
+            $ym = substr((string) $r->data_estorno, 0, 7);
+            $mes($ym);
+            $out[$ym]['estornado'] += (float) $r->valor_estornado;
+        }
+
         return array_map(fn ($m) => [
             'previsto' => round($m['previsto'], 2), 'a_vencer' => round($m['a_vencer'], 2), 'vencido' => round($m['vencido'], 2),
-            'recebido' => round($m['recebido'], 2), 'pagantes' => count($m['pagantes']),
+            'recebido' => round($m['recebido'], 2), 'estornado' => round($m['estornado'], 2), 'pagantes' => count($m['pagantes']),
         ], $out);
     }
 
@@ -471,7 +573,7 @@ class BiTenantRepository
         $out = [];
         foreach (DB::select('
             SELECT data_pagamento AS dia, SUM(valor) AS total FROM pagamentos_plano
-            WHERE tenant_id = ? AND status_pagamento_id = 2 AND data_pagamento BETWEEN ? AND ?
+            WHERE tenant_id = ? AND status_pagamento_id IN (2, 5) AND data_pagamento BETWEEN ? AND ?
             GROUP BY data_pagamento
         ', [$tenantId, $inicio, $fim]) as $r) {
             $out[substr((string) $r->dia, 0, 10)] = (float) $r->total;

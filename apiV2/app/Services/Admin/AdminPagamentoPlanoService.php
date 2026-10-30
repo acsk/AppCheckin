@@ -3,13 +3,15 @@
 namespace App\Services\Admin;
 
 use App\Services\PagamentoPlanoService;
+use App\Support\AcademyDateTime;
+use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Pagamentos de plano do painel (paridade com Slim PagamentoPlanoController + Models\PagamentoPlano).
  *
- * status_pagamento_id: 1=Aguardando, 2=Pago, 3=Atrasado, 4=Cancelado.
+ * status_pagamento_id: 1=Aguardando, 2=Pago, 3=Atrasado, 4=Cancelado, 5=Estornado.
  */
 class AdminPagamentoPlanoService
 {
@@ -221,7 +223,7 @@ class AdminPagamentoPlanoService
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
         }
-        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+        if ($bloqueio = $this->bloqueioAlteracao($pagamento)) {
             return $bloqueio;
         }
 
@@ -332,6 +334,11 @@ class AdminPagamentoPlanoService
 
                 return $this->erro('Pagamento não encontrado', 404);
             }
+            if ((int) ($pagamento['status_pagamento_id'] ?? 0) === StatusPagamentoPlano::ESTORNADO) {
+                DB::rollBack();
+
+                return $this->erro('Esta parcela foi estornada e não pode ser confirmada de novo.', 422);
+            }
 
             if (empty($data['forcar'])) {
                 $conflito = $this->checarSequenciaEDuplicidade(
@@ -400,7 +407,7 @@ class AdminPagamentoPlanoService
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
         }
-        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+        if ($bloqueio = $this->bloqueioAlteracao($pagamento)) {
             return $bloqueio;
         }
 
@@ -424,6 +431,53 @@ class AdminPagamentoPlanoService
     }
 
     /**
+     * Devolução ao aluno de parcela paga fora do provedor (dinheiro, Pix direto…). Total ou parcial.
+     * Parcela com baixa do Asaas/Mercado Pago: o estorno é feito no provedor e chega pelo webhook.
+     *
+     * @param  array<string, mixed>  $data  valor?, motivo, data_estorno?
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function estornar(int $tenantId, int $pagamentoId, ?int $adminId, array $data): array
+    {
+        $pagamento = $this->buscarPorId($tenantId, $pagamentoId);
+        if (! $pagamento) {
+            return $this->erro('Pagamento não encontrado', 404);
+        }
+        if ($this->bloqueioBaixaAutomatica($pagamento)) {
+            return ['status' => 422, 'body' => [
+                'type' => 'error',
+                'code' => 'BAIXA_AUTOMATICA',
+                'message' => 'Este pagamento foi recebido pelo provedor. Faça o estorno no Asaas ou Mercado Pago: ele aparece aqui automaticamente.',
+            ]];
+        }
+        $motivo = trim((string) ($data['motivo'] ?? ''));
+        if (mb_strlen($motivo) < 3) {
+            return $this->erro('Informe o motivo do estorno', 422);
+        }
+        $hoje = AcademyDateTime::today();
+        $dataEstorno = AcademyDateTime::dateOnly($data['data_estorno'] ?? null) ?? $hoje;
+        if ($dataEstorno > $hoje) {
+            return $this->erro('A data do estorno não pode ser futura', 422);
+        }
+        $valor = isset($data['valor']) && $data['valor'] !== '' ? (float) $data['valor'] : null;
+
+        $r = $this->pagamentosPlano->registrarEstorno($tenantId, $pagamentoId, $valor, $dataEstorno, $motivo, $adminId);
+        if (! $r['ok']) {
+            return $this->erro($r['erro'], 422);
+        }
+        Log::info('pagamento_plano.estorno', ['tenant_id' => $tenantId, 'pagamento_id' => $pagamentoId, 'admin_id' => $adminId, 'valor_estornado' => $r['valor_estornado'], 'total' => $r['total']]);
+
+        return [
+            'status' => 200,
+            'body' => [
+                'type' => 'success',
+                'message' => $r['total'] ? 'Pagamento estornado' : 'Estorno parcial registrado',
+                'pagamento' => $this->buscarPorId($tenantId, $pagamentoId),
+            ],
+        ];
+    }
+
+    /**
      * @return array{status: int, body: array<string, mixed>}
      */
     public function excluir(int $tenantId, int $pagamentoId): array
@@ -432,7 +486,7 @@ class AdminPagamentoPlanoService
         if (! $pagamento) {
             return $this->erro('Pagamento não encontrado', 404);
         }
-        if ($bloqueio = $this->bloqueioBaixaAutomatica($pagamento)) {
+        if ($bloqueio = $this->bloqueioAlteracao($pagamento)) {
             return $bloqueio;
         }
 
@@ -962,6 +1016,25 @@ class AdminPagamentoPlanoService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
+    /**
+     * Parcela com estorno (total ou parcial) não muda mais: cancelar, editar ou excluir apagaria a devolução.
+     *
+     * @param  array<string, mixed>  $pagamento
+     * @return array{status: int, body: array<string, mixed>}|null
+     */
+    private function bloqueioAlteracao(array $pagamento): ?array
+    {
+        if ((int) ($pagamento['status_pagamento_id'] ?? 0) === StatusPagamentoPlano::ESTORNADO || (float) ($pagamento['valor_estornado'] ?? 0) > 0) {
+            return ['status' => 422, 'body' => [
+                'type' => 'error',
+                'code' => 'PARCELA_ESTORNADA',
+                'message' => 'Esta parcela tem estorno registrado e não pode ser alterada.',
+            ]];
+        }
+
+        return $this->bloqueioBaixaAutomatica($pagamento);
+    }
+
     /**
      * Parcela paga com baixa automática do provedor (Asaas, Mercado Pago): só pode ser vista.
      * Mudar aqui não mexe no provedor e deixaria o Check-in diferente do que foi cobrado.

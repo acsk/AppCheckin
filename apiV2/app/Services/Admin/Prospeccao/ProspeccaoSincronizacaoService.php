@@ -4,6 +4,7 @@ namespace App\Services\Admin\Prospeccao;
 
 use App\Repositories\ProspeccaoRepository;
 use App\Support\AcademyDateTime;
+use App\Support\MotivoCancelamento;
 use App\Support\ProspeccaoStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -141,13 +142,15 @@ class ProspeccaoSincronizacaoService
 
             $status = isset($restritos[$alunoId]) ? ProspeccaoStatus::NAO_CONTATAR : ProspeccaoStatus::NAO_CONTATADO;
             try {
-                $id = DB::transaction(function () use ($tenantId, $alunoId, $matriculaId, $data, $estimada, $status, $agora) {
+                $motivo = MotivoCancelamento::escolhivel($m->motivo_cancelamento_codigo ?? null) ? $m->motivo_cancelamento_codigo : null;
+                $id = DB::transaction(function () use ($tenantId, $alunoId, $matriculaId, $data, $estimada, $status, $agora, $motivo) {
                     $id = $this->repo->inserirOportunidade([
                         'tenant_id' => $tenantId,
                         'aluno_id' => $alunoId,
                         'matricula_referencia_id' => $matriculaId,
                         'data_cancelamento_referencia' => $data,
                         'data_cancelamento_estimada' => $estimada,
+                        'motivo_categoria' => $motivo,
                         'status' => $status,
                         'encerrada_em' => $status === ProspeccaoStatus::NAO_CONTATAR ? $agora : null,
                     ]);
@@ -266,6 +269,7 @@ class ProspeccaoSincronizacaoService
                 'matricula_referencia_id' => (int) $ref->id,
                 'data_cancelamento_referencia' => substr((string) ($ref->data_cancelamento ?? $ref->data_atualizacao), 0, 10),
                 'data_cancelamento_estimada' => $ref->data_cancelamento === null,
+                'motivo_categoria' => MotivoCancelamento::escolhivel($ref->motivo_cancelamento_codigo ?? null) ? $ref->motivo_cancelamento_codigo : null,
                 'status' => $status,
                 'responsavel_id' => $usuarioId,
                 'encerrada_em' => $restrito ? $agora : null,

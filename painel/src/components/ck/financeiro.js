@@ -25,6 +25,7 @@ export function statusOf(p, todayISO) {
   const id = Number(p.status_pagamento_id);
   if (id === 2) return 'pago';
   if (id === 4) return 'cancelado';
+  if (id === 5) return 'estornado';
   if (id === 3) return 'atrasado';
   return String(p.data_vencimento || '').slice(0, 10) < todayISO ? 'atrasado' : 'aguardando';
 }
@@ -33,10 +34,13 @@ export const STATUS = {
   aguardando: { tone: 'warning', label: 'Aguardando', plural: 'Aguardando' },
   atrasado: { tone: 'danger', label: 'Atrasado', plural: 'Atrasados' },
   cancelado: { tone: 'neutral', label: 'Cancelado', plural: 'Cancelados' },
+  estornado: { tone: 'neutral', label: 'Estornado', plural: 'Estornados' },
 };
+/** Fora dos totais a receber/recebidos da lista (o estorno aparece no BI, pela data da devolução) */
+export const foraDoTotal = (st) => st === 'cancelado' || st === 'estornado';
 
 export function summarize(payments, todayISO) {
-  const s = { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, count: { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0 } };
+  const s = { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0, count: { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0 } };
   payments.forEach((p) => {
     const st = statusOf(p, todayISO);
     s[st] += Number(p.valor) || 0;
@@ -54,7 +58,7 @@ export function byMonth(payments, todayISO, fromDate, toDate) {
   payments.forEach((p) => {
     const k = String(p.data_vencimento || '').slice(0, 7);
     const st = statusOf(p, todayISO);
-    if (map[k] && st !== 'cancelado') map[k][st] += Number(p.valor) || 0;
+    if (map[k] && !foraDoTotal(st)) map[k][st] += Number(p.valor) || 0;
   });
   return keys.map((k) => map[k]);
 }

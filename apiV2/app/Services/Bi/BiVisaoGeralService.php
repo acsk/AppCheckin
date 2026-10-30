@@ -20,6 +20,7 @@ class BiVisaoGeralService
     public function __construct(
         private readonly BiTenantRepository $repo,
         private readonly BiFrequenciaService $frequencia,
+        private readonly BiRetencaoService $retencao,
     ) {}
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -47,7 +48,11 @@ class BiVisaoGeralService
     }
 
     /** Indicadores que podem ser abertos em lista */
-    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'reativados', 'saidas', 'receita_recebida', 'valor_vencido', 'a_vencer', 'sem_checkin', 'em_queda'];
+    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'reativados', 'saidas', 'receita_recebida', 'valor_vencido', 'a_vencer', 'estornos', 'sem_checkin', 'em_queda',
+        'cancelaram', 'nao_renovaram', 'renovacao_atrasada', 'recuperados'];
+
+    /** Listas de parcelas (com valor); as demais são de alunos */
+    public const DETALHAVEIS_VALOR = ['receita_recebida', 'valor_vencido', 'a_vencer', 'estornos'];
 
     /** Teto de itens devolvidos no detalhamento (o total continua sendo o do período inteiro) */
     private const MAX_ITENS = 1000;
@@ -69,17 +74,8 @@ class BiVisaoGeralService
         $p = Periodo::resolver($preset, $hoje);
 
         try {
-            $itens = match ($indicador) {
-                'alunos_ativos' => $this->repo->alunosAtivosLista($tenantId, $p->fim),
-                'novos_alunos' => $this->repo->novosAlunosLista($tenantId, $p->inicio, $p->fim),
-                'reativados' => $this->repo->reativadosLista($tenantId, $p->inicio, $p->fim),
-                'saidas' => $this->repo->saidasLista($tenantId, $p->inicio, $p->fim),
-                'receita_recebida' => $this->repo->parcelasLista($tenantId, 'recebido', $p->inicio, $p->fim, $hoje),
-                'valor_vencido' => $this->repo->parcelasLista($tenantId, 'vencido', $p->inicio, $p->fim, $hoje),
-                'a_vencer' => $this->repo->parcelasLista($tenantId, 'a_vencer', $p->inicio, $p->fim, $hoje),
-                'sem_checkin', 'em_queda' => $this->frequencia->alunosEmAtencao($tenantId, $p->fim)[$indicador],
-            };
-            $valores = in_array($indicador, ['receita_recebida', 'valor_vencido', 'a_vencer'], true);
+            $itens = $this->itensDetalhe($tenantId, $indicador, $p, $hoje);
+            $valores = in_array($indicador, self::DETALHAVEIS_VALOR, true);
 
             return ['status' => 200, 'body' => ['success' => true, 'data' => [
                 'indicador' => $indicador,
@@ -94,6 +90,35 @@ class BiVisaoGeralService
 
             return ['status' => 500, 'body' => ['success' => false, 'error' => 'Não foi possível carregar a lista']];
         }
+    }
+
+    /**
+     * Registros completos de um indicador (sem limite): base do detalhe e da exportação.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function itensDetalhe(int $tenantId, string $indicador, Periodo $p, string $hoje): array
+    {
+        return match ($indicador) {
+            'alunos_ativos' => $this->repo->alunosAtivosLista($tenantId, $p->fim),
+            'novos_alunos' => $this->repo->novosAlunosLista($tenantId, $p->inicio, $p->fim),
+            'reativados' => $this->repo->reativadosLista($tenantId, $p->inicio, $p->fim),
+            'saidas' => $this->repo->saidasLista($tenantId, $p->inicio, $p->fim),
+            'receita_recebida' => $this->repo->parcelasLista($tenantId, 'recebido', $p->inicio, $p->fim, $hoje),
+            'valor_vencido' => $this->repo->parcelasLista($tenantId, 'vencido', $p->inicio, $p->fim, $hoje),
+            'a_vencer' => $this->repo->parcelasLista($tenantId, 'a_vencer', $p->inicio, $p->fim, $hoje),
+            'estornos' => $this->repo->parcelasLista($tenantId, 'estornado', $p->inicio, $p->fim, $hoje),
+            'sem_checkin', 'em_queda' => $this->frequencia->alunosEmAtencao($tenantId, $p->fim)[$indicador],
+            'cancelaram', 'nao_renovaram', 'renovacao_atrasada' => $this->ordenarPorNome($this->retencao->composicao($tenantId, $p->inicio, $p->fim)[$indicador]),
+            'recuperados' => $this->repo->recuperadosLista($tenantId, $p->inicio, $p->fim),
+        };
+    }
+
+    private function ordenarPorNome(array $itens): array
+    {
+        usort($itens, fn ($a, $b) => strcmp($a['aluno_nome'], $b['aluno_nome']));
+
+        return $itens;
     }
 
     /** @return array<string, mixed> */

@@ -6,7 +6,7 @@ import { ChartBarList, ChartLegend, ColumnChart, GroupedColumnChart, deltaObj } 
 import { fdate } from '../../components/ck/financeiro';
 import { buscarBiAlunos } from '../../services/biService';
 import BiDetalheModal from './BiDetalheModal';
-import { ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
+import { BotaoExportar, ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
 
 // Fórmulas exibidas na tela; a fonte é App\Repositories\Bi\BiTenantRepository e App\Services\Bi\BiAlunosService
 const COMO_CALCULAMOS = [
@@ -56,7 +56,10 @@ export default function BiAlunosScreen() {
         <PageHeader
           title="Alunos e matrículas"
           description={per ? `De ${fdate(per.inicio)} a ${fdate(per.fim)}. Quem entrou, quem voltou, quem saiu e como a base se distribui.` : 'Como a base de alunos cresce, encolhe e se distribui.'}
-          actions={<SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />}
+          actions={<>
+            <SegmentedControl label="Período" value={periodo} onChange={setPeriodo} options={PERIODOS} />
+            <BotaoExportar alvo={{ tela: 'alunos' }} periodo={periodo}>Exportar meses</BotaoExportar>
+          </>}
         />
 
         {erro ? (

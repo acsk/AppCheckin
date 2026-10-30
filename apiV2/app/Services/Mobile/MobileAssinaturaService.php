@@ -7,6 +7,7 @@ use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\Pacote\PacoteConciliacaoService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
+use App\Support\MotivoCancelamento;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -601,7 +602,11 @@ class MobileAssinaturaService
             ->whereIn('id', function ($q) use ($assinaturaId) {
                 $q->select('matricula_id')->from('assinaturas')->where('id', $assinaturaId)->whereNotNull('matricula_id');
             })
-            ->update(['status_id' => $statusMatriculaCanceladaId, 'updated_at' => now()]);
+            ->update([
+                'status_id' => $statusMatriculaCanceladaId, 'data_cancelamento' => now()->toDateString(),
+                'motivo_cancelamento' => $body['motivo'] ?? 'Cancelado pelo usuário',
+                'motivo_cancelamento_codigo' => MotivoCancelamento::PELO_APP, 'updated_at' => now(),
+            ]);
 
         return [
             'status' => 200,

@@ -38,6 +38,72 @@ class PagamentoPlanoService
         return round((float) $q->sum('valor'), 2);
     }
 
+    /**
+     * Pago no ciclo que está sendo cobrado. Na 1ª cobrança o ciclo começa em data_inicio; na renovação
+     * (ativa/vencida) data_inicio ainda é a do 1º ciclo e somaria as mensalidades anteriores, então
+     * valem só as parcelas pagas com vencimento a partir do vencimento cobrado.
+     */
+    public function somarPagoNoCicloCobrado(int $tenantId, int $matriculaId, ?string $statusCodigo, ?string $dataInicio, ?string $vencimentoCobrado): float
+    {
+        $vencimento = AcademyDateTime::dateOnly($vencimentoCobrado);
+        if ($vencimento === null || ! in_array($statusCodigo, ['ativa', 'vencida'], true)) {
+            return $this->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $dataInicio);
+        }
+
+        return round((float) DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
+            ->whereDate('data_vencimento', '>=', $vencimento)
+            ->sum('valor'), 2);
+    }
+
+    /**
+     * Registra devolução de parcela paga (painel ou webhook do provedor). Acumula estornos parciais;
+     * ao completar o valor a parcela vira ESTORNADO e a matrícula é recalculada (o ciclo deixa de estar pago).
+     * data_pagamento e valor ficam como estão: a receita é do mês em que entrou, o estorno do mês em que saiu.
+     *
+     * @return array{ok: bool, erro?: string, total?: bool, valor_estornado?: float}
+     */
+    public function registrarEstorno(int $tenantId, int $parcelaId, ?float $valor, string $data, string $motivo, ?int $por): array
+    {
+        $resultado = DB::transaction(function () use ($tenantId, $parcelaId, $valor, $data, $motivo, $por) {
+            $p = DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('id', $parcelaId)->lockForUpdate()->first();
+            if (! $p || (int) $p->status_pagamento_id !== StatusPagamentoPlano::PAGO) {
+                return ['ok' => false, 'erro' => 'Só parcelas pagas podem ser estornadas'];
+            }
+            $jaEstornado = round((float) ($p->valor_estornado ?? 0), 2);
+            $restante = round((float) $p->valor - $jaEstornado, 2);
+            $valor = round($valor ?? $restante, 2);
+            if ($valor <= 0 || $valor > $restante + self::FLOAT_EPSILON) {
+                return ['ok' => false, 'erro' => 'O valor do estorno deve ser maior que zero e no máximo R$ '.number_format($restante, 2, ',', '.')];
+            }
+            $pagoEm = AcademyDateTime::dateOnly($p->data_pagamento ?? null);
+            if ($pagoEm !== null && $data < $pagoEm) {
+                return ['ok' => false, 'erro' => 'A data do estorno não pode ser anterior ao pagamento'];
+            }
+
+            $acumulado = round($jaEstornado + $valor, 2);
+            $total = $acumulado + self::FLOAT_EPSILON >= (float) $p->valor;
+            DB::table('pagamentos_plano')->where('id', $parcelaId)->update([
+                'valor_estornado' => $acumulado,
+                'data_estorno' => $data,
+                'motivo_estorno' => mb_substr($motivo, 0, 255),
+                'estornado_por' => $por,
+                'status_pagamento_id' => $total ? StatusPagamentoPlano::ESTORNADO : StatusPagamentoPlano::PAGO,
+                'updated_at' => now(),
+            ]);
+
+            return ['ok' => true, 'total' => $total, 'valor_estornado' => $acumulado, 'matricula_id' => (int) $p->matricula_id];
+        });
+
+        if (($resultado['total'] ?? false) && ! empty($resultado['matricula_id'])) {
+            $this->atualizarStatusMatricula($tenantId, (int) $resultado['matricula_id']);
+        }
+
+        return $resultado;
+    }
+
     /** $vencimentoAntesDe: só as parcelas que vencem antes dessa data (preserva a renovação do próximo ciclo). */
     public function cancelarParcelasAbertas(int $tenantId, int $matriculaId, string $motivo, ?string $vencimentoAntesDe = null): int
     {
@@ -92,11 +158,18 @@ class PagamentoPlanoService
             return (int) $existente;
         }
 
-        $dataInicio = DB::table('matriculas')
-            ->where('id', $matriculaId)
-            ->where('tenant_id', $tenantId)
-            ->value('data_inicio');
-        $pagoCiclo = $this->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $dataInicio ? (string) $dataInicio : null);
+        $meta = DB::table('matriculas as m')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->first(['m.data_inicio', 'sm.codigo as status_codigo']);
+        $pagoCiclo = $this->somarPagoNoCicloCobrado(
+            $tenantId,
+            $matriculaId,
+            $meta->status_codigo ?? null,
+            isset($meta->data_inicio) ? (string) $meta->data_inicio : null,
+            $dataVencimento
+        );
         if ($valor > 0 && $pagoCiclo + self::FLOAT_EPSILON >= $valor) {
             $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Valor já quitado neste ciclo');
             $pagoId = DB::table('pagamentos_plano')

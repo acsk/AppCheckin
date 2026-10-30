@@ -60,6 +60,7 @@ trait BiSchema
             $t->date('data_vencimento');
             $t->integer('status_id');
             $t->date('data_cancelamento')->nullable();
+            $t->string('motivo_cancelamento_codigo', 30)->nullable();
         });
         Schema::create('pagamentos_plano', function (Blueprint $t) {
             $t->increments('id');
@@ -71,8 +72,13 @@ trait BiSchema
             $t->decimal('desconto', 10, 2)->default(0);
             $t->date('data_vencimento');
             $t->date('data_pagamento')->nullable();
+            $t->decimal('valor_estornado', 10, 2)->nullable();
+            $t->date('data_estorno')->nullable();
+            $t->string('motivo_estorno')->nullable();
+            $t->integer('estornado_por')->nullable();
             $t->integer('status_pagamento_id');
             $t->integer('forma_pagamento_id')->nullable();
+            $t->timestamp('updated_at')->nullable();
         });
         Schema::create('formas_pagamento', function (Blueprint $t) {
             $t->increments('id');

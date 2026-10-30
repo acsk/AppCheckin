@@ -58,18 +58,8 @@ final class ProspeccaoStatus
         self::NAO_CONTATAR => [],
     ];
 
-    /** Categorias de motivo de cancelamento (matriculas.motivo_cancelamento é texto livre). */
-    public const MOTIVOS = [
-        'financeiro' => 'Financeiro',
-        'horario' => 'Horário incompatível',
-        'tempo' => 'Falta de tempo',
-        'mudanca' => 'Mudança de cidade/bairro',
-        'saude' => 'Saúde ou lesão',
-        'temporario' => 'Pausa temporária (viagem, férias)',
-        'insatisfacao' => 'Insatisfação com o serviço',
-        'concorrencia' => 'Foi para outra academia',
-        'outro' => 'Outro',
-    ];
+    /** Categorias de motivo de cancelamento: as mesmas que o admin escolhe ao cancelar a matrícula. */
+    public const MOTIVOS = MotivoCancelamento::ESCOLHIVEIS;
 
     public const CANAIS = ['whatsapp' => 'WhatsApp', 'telefone' => 'Ligação', 'presencial' => 'Presencial', 'email' => 'E-mail', 'outro' => 'Outro'];
 

@@ -61,6 +61,20 @@ class ProspeccaoRecuperacaoTest extends TestCase
         $this->assertNotNull($ops[0]->score_calculado_em);
     }
 
+    public function test_motivo_do_cancelamento_vira_categoria_da_oportunidade(): void
+    {
+        $a = $this->aluno($this->t1);
+        $b = $this->aluno($this->t1);
+        $this->matricula($this->t1, $a, $this->plano, 'cancelada', $this->dia(-10), ['motivo_cancelamento_codigo' => 'horario']);
+        $this->matricula($this->t1, $b, $this->plano, 'cancelada', $this->dia(-10), ['motivo_cancelamento_codigo' => 'troca_plano']);
+
+        $this->sincronizar($this->t1);
+        $porAluno = collect($this->oportunidades($this->t1))->keyBy('aluno_id');
+
+        $this->assertSame('horario', $porAluno[$a]->motivo_categoria);
+        $this->assertNull($porAluno[$b]->motivo_categoria, 'motivo automático não é categoria da Prospecção');
+    }
+
     public function test_sincronizacao_e_idempotente(): void
     {
         $this->matricula($this->t1, $this->aluno($this->t1), $this->plano, 'cancelada', $this->dia(-5));
