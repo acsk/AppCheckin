@@ -13,7 +13,14 @@ export const buscarBiVisaoGeral = async (periodo: BiPeriodo): Promise<any> => {
 };
 
 /** Indicadores que abrem lista (BiVisaoGeralService::DETALHAVEIS) */
-export type BiIndicadorDetalhe = 'alunos_ativos' | 'novos_alunos' | 'reativados' | 'saidas' | 'receita_recebida' | 'valor_vencido' | 'a_vencer';
+export type BiIndicadorDetalhe = 'alunos_ativos' | 'novos_alunos' | 'reativados' | 'saidas' | 'receita_recebida' | 'valor_vencido' | 'a_vencer'
+  | 'sem_checkin' | 'em_queda';
+
+/** Frequência e ocupação: check-ins, ocupação, mapa, turmas, professores e alunos em atenção. GET /admin/bi/frequencia */
+export const buscarBiFrequencia = async (periodo: BiPeriodo): Promise<any> => {
+  const response = await api.get('/admin/bi/frequencia', { params: { periodo } });
+  return response.data?.data;
+};
 
 /** Alunos e matrículas: entradas, retornos, saídas, retenção e distribuição. GET /admin/bi/alunos */
 export const buscarBiAlunos = async (periodo: BiPeriodo): Promise<any> => {
@@ -33,4 +40,4 @@ export const buscarBiDetalhe = async (indicador: BiIndicadorDetalhe, periodo: Bi
   return response.data?.data;
 };
 
-export default { buscarBiVisaoGeral, buscarBiDetalhe, buscarBiFinanceiro, buscarBiAlunos };
+export default { buscarBiVisaoGeral, buscarBiDetalhe, buscarBiFinanceiro, buscarBiAlunos, buscarBiFrequencia };

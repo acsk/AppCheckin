@@ -90,9 +90,20 @@ trait BiSchema
             $t->increments('id');
             $t->date('data');
         });
+        Schema::create('professores', function (Blueprint $t) {
+            $t->increments('id');
+            $t->string('nome');
+        });
+        DB::table('professores')->insert([['id' => 1, 'nome' => 'Rafael Lima'], ['id' => 2, 'nome' => 'Carla Souza']]);
         Schema::create('turmas', function (Blueprint $t) {
             $t->increments('id');
+            $t->integer('tenant_id')->default(self::T1);
             $t->integer('dia_id');
+            $t->integer('modalidade_id')->nullable();
+            $t->integer('professor_id')->nullable();
+            $t->time('horario_inicio')->nullable();
+            $t->integer('limite_alunos')->nullable();
+            $t->boolean('ativo')->default(true);
         });
         Schema::create('checkins', function (Blueprint $t) {
             $t->increments('id');
@@ -127,9 +138,18 @@ trait BiSchema
         ]);
     }
 
-    private function checkin(string $quando, ?int $turma = null, ?bool $presente = null, int $tenant = self::T1): void
+    private function checkin(string $quando, ?int $turma = null, ?bool $presente = null, int $tenant = self::T1, int $aluno = 1): void
     {
-        DB::table('checkins')->insert(['tenant_id' => $tenant, 'aluno_id' => 1, 'turma_id' => $turma, 'data_checkin' => $quando.' 07:00:00', 'presente' => $presente]);
+        DB::table('checkins')->insert(['tenant_id' => $tenant, 'aluno_id' => $aluno, 'turma_id' => $turma, 'data_checkin' => $quando.' 07:00:00', 'presente' => $presente]);
+    }
+
+    /** Uma aula: turma num dia (como no sistema, cada linha de turmas é uma aula) */
+    private function aula(string $data, string $hora, ?int $limite, int $modalidade = 1, int $professor = 1, bool $ativo = true, int $tenant = self::T1): int
+    {
+        $dia = DB::table('dias')->where('data', $data)->value('id') ?? DB::table('dias')->insertGetId(['data' => $data]);
+
+        return (int) DB::table('turmas')->insertGetId(['tenant_id' => $tenant, 'dia_id' => $dia, 'modalidade_id' => $modalidade,
+            'professor_id' => $professor, 'horario_inicio' => $hora, 'limite_alunos' => $limite, 'ativo' => $ativo]);
     }
 
     private function cenario(): void
@@ -165,13 +185,23 @@ trait BiSchema
         $this->parcela($a, 1, 200, '2026-09-10', 2, '2026-09-10', self::T1, ['forma_pagamento_id' => self::DINHEIRO, 'desconto' => 5]);
         $this->parcela($outra, 1, 5000, '2026-10-05', 2, '2026-10-05', self::T2, ['forma_pagamento_id' => self::PIX, 'desconto' => 500]);
 
-        $dia = (int) DB::table('dias')->insertGetId(['data' => '2026-10-06']);
-        $turma = (int) DB::table('turmas')->insertGetId(['dia_id' => $dia]);
-        $this->checkin('2026-10-07', $turma);       // conta no dia da aula (06/10)
-        $this->checkin('2026-10-08', null, true);
-        $this->checkin('2026-10-09');
+        // Aulas: natação 06:00 com Rafael (limite 10) em 06/10 e 08/10; hidro 19:00 com Carla sem limite em 09/10;
+        // uma aula desativada sem check-in (fora de tudo) e uma da outra academia
+        $natacao = $this->aula('2026-10-06', '06:00:00', 10);
+        $this->aula('2026-10-08', '06:00:00', 10);
+        $hidro = $this->aula('2026-10-09', '19:00:00', null, 2, 2);
+        $this->aula('2026-10-12', '06:00:00', 10, 1, 1, false);
+        $this->aula('2026-10-06', '06:00:00', 1, 1, 1, true, self::T2);
+
+        $this->checkin('2026-10-07', $natacao);     // conta no dia da aula (06/10)
+        $this->checkin('2026-10-08', null, true);   // sem aula: hora do check-in (07h)
+        $this->checkin('2026-10-09', $hidro);
         $this->checkin('2026-10-10', null, false);  // marcado ausente
         $this->checkin('2026-09-15');
+        // D: 8 check-ins em agosto e nenhum nas últimas 4 semanas — frequência em queda
+        foreach (['08-02', '08-05', '08-09', '08-12', '08-16', '08-19', '08-23', '08-26'] as $md) {
+            $this->checkin('2026-'.$md, null, null, self::T1, 4);
+        }
         for ($i = 0; $i < 10; $i++) {
             $this->checkin('2026-10-05', null, null, self::T2);
         }

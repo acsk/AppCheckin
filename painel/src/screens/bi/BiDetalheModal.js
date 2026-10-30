@@ -15,6 +15,8 @@ const TITULOS = {
   receita_recebida: ['Receita recebida', 'Parcelas pagas no período, pela data do pagamento.'],
   valor_vencido: ['Valor vencido', 'Parcelas do período que já venceram e não foram pagas.'],
   a_vencer: ['A vencer', 'Parcelas do período que vencem de hoje em diante e ainda não foram pagas.'],
+  sem_checkin: ['Sem check-in há 14 dias', 'Alunos ativos sem check-in há 14 dias ou mais. Quem começou a matrícula há menos de 14 dias fica de fora.'],
+  em_queda: ['Frequência em queda', 'Alunos ativos cuja média das últimas 4 semanas ficou abaixo de 60% da média das 12 semanas anteriores.'],
 };
 
 /** Lista dos registros que compõem um indicador da Visão geral. `indicador` null = fechado. */

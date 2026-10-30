@@ -72,7 +72,7 @@ class BiVisaoGeralTest extends TestCase
         $d = $this->dados('12m');
 
         $this->assertSame('mes', $d['checkins_serie']['agrupamento']);
-        $this->assertSame(4, $d['indicadores']['checkins']['atual']);
+        $this->assertSame(12, $d['indicadores']['checkins']['atual']); // 4 de A + 8 de D em agosto
     }
 
     private function detalhe(string $indicador, string $preset = 'mes'): array
