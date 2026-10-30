@@ -38,16 +38,19 @@ class PagamentoPlanoService
         return round((float) $q->sum('valor'), 2);
     }
 
-    public function cancelarParcelasAbertas(int $tenantId, int $matriculaId, string $motivo): int
+    /** $vencimentoAntesDe: só as parcelas que vencem antes dessa data (preserva a renovação do próximo ciclo). */
+    public function cancelarParcelasAbertas(int $tenantId, int $matriculaId, string $motivo, ?string $vencimentoAntesDe = null): int
     {
+        $antes = $vencimentoAntesDe !== null ? ' AND data_vencimento < ?' : '';
+
         return DB::update(
             "UPDATE pagamentos_plano
              SET status_pagamento_id = 4,
                  observacoes = CONCAT(COALESCE(observacoes, ''), ?),
                  updated_at = NOW()
              WHERE tenant_id = ? AND matricula_id = ?
-               AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL",
-            [' ['.$motivo.']', $tenantId, $matriculaId]
+               AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL{$antes}",
+            array_merge([' ['.$motivo.']', $tenantId, $matriculaId], $vencimentoAntesDe !== null ? [$vencimentoAntesDe] : [])
         );
     }
 
@@ -211,7 +214,10 @@ class PagamentoPlanoService
                 isset($matriculaMeta->data_inicio) ? (string) $matriculaMeta->data_inicio : null
             );
             if ($valorPlano > 0 && $pagoCiclo + self::FLOAT_EPSILON >= $valorPlano) {
-                $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Valor já quitado neste ciclo');
+                // Só cobranças duplicadas do ciclo pago; a renovação (vence no fim do ciclo ou depois) fica.
+                // Pendente também vem do limite de check-ins, e aí a parcela futura é a próxima mensalidade.
+                $fimCiclo = AcademyDateTime::dateOnly($matriculaMeta->data_vencimento ?? null);
+                $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Valor já quitado neste ciclo', $fimCiclo);
             } else {
                 $aguardandoAtivacao = DB::table('pagamentos_plano')
                     ->where('tenant_id', $tenantId)

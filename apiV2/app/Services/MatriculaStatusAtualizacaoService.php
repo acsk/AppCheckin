@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\Log;
  *
  * Usa a mesma regra que roda quando o aluno abre o app (PagamentoPlanoService::atualizarStatusMatricula),
  * para o painel não mostrar status parado até o aluno aparecer. Só mexe em ativa/pendente/vencida:
- * bloqueada, cancelada e finalizada são decisões do admin ou estados finais.
+ * bloqueada, cancelada e finalizada são decisões do admin ou estados finais. O passo de limite de
+ * check-ins do job Slim ficou de fora: o limite é mensal e marcava pendente quem acabou de renovar.
  *
  * Cada academia roda numa transação; em simulação a transação é desfeita e só a lista de mudanças volta.
  */
@@ -40,10 +41,14 @@ class MatriculaStatusAtualizacaoService
             // Parcelas vencidas viram "Atrasado" antes do recálculo (é o que define vencida/cancelada)
             $resultado['parcelas_atrasadas'] = $this->pagamentos->marcarAtrasados($tenantId);
 
-            foreach (array_keys($antes) as $matriculaId) {
+            foreach ($antes as $matriculaId => $a) {
+                // Limite mensal de check-ins é trava do check-in (o próprio check-in marca pendente). Aqui não
+                // marca ninguém por limite (o mês conta check-ins de antes da renovação) e não reativa quem
+                // ainda está no limite do mês.
+                if ($a['status'] === 'pendente' && $this->matriculas->avaliarLimiteMensalPorMatricula($matriculaId, false) !== null) {
+                    continue;
+                }
                 $this->pagamentos->atualizarStatusMatricula($tenantId, $matriculaId);
-                // O recálculo reativa pendentes pagas; quem empatou o limite de check-ins do ciclo volta a pendente
-                $this->matriculas->marcarPendenteSeLimiteCicloEsgotado($matriculaId);
             }
 
             $depois = $this->statusPorId(array_keys($antes));

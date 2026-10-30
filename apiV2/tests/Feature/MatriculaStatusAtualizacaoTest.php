@@ -36,6 +36,7 @@ class MatriculaStatusAtualizacaoTest extends TestCase
             ['id' => 10, 'tenant_id' => self::T, 'aluno_id' => 1, 'status_id' => 5], // pendente já paga
             ['id' => 11, 'tenant_id' => self::T, 'aluno_id' => 2, 'status_id' => 6], // bloqueada
             ['id' => 12, 'tenant_id' => self::T, 'aluno_id' => 3, 'status_id' => 1], // ativa sem mudança
+            ['id' => 13, 'tenant_id' => self::T, 'aluno_id' => 3, 'status_id' => 5], // pendente pelo limite de check-ins
         ]);
     }
 
@@ -61,7 +62,9 @@ class MatriculaStatusAtualizacaoTest extends TestCase
             }
         });
         $rep = Mockery::mock(MatriculaRepository::class);
-        $rep->shouldReceive('marcarPendenteSeLimiteCicloEsgotado')->andReturn(false);
+        $rep->shouldNotReceive('marcarPendenteSeLimiteCicloEsgotado');
+        // #13: pendente ainda no limite do mês
+        $rep->shouldReceive('avaliarLimiteMensalPorMatricula')->andReturnUsing(fn (int $id) => $id === 13 ? ['limite_mensal' => 9] : null);
 
         return [new MatriculaStatusAtualizacaoService($pag, $rep), $chamadas];
     }
@@ -71,7 +74,7 @@ class MatriculaStatusAtualizacaoTest extends TestCase
         [$s, $chamadas] = $this->servico();
         $r = $s->processarTenant(self::T);
 
-        $this->assertSame([10, 12], $chamadas->getArrayCopy());
+        $this->assertSame([10, 12], $chamadas->getArrayCopy(), 'bloqueada e pendente no limite ficam de fora');
         $this->assertSame([['matricula_id' => 10, 'aluno' => 'Ana', 'de' => 'pendente', 'para' => 'ativa']], $r['mudancas']);
         $this->assertSame(2, $r['parcelas_atrasadas']);
         $this->assertSame(1, (int) DB::table('matriculas')->where('id', 10)->value('status_id'));
@@ -95,6 +98,31 @@ class MatriculaStatusAtualizacaoTest extends TestCase
         $this->assertSame('boom', $r['erro']);
         $this->assertSame([], $r['mudancas']);
         $this->assertSame(5, (int) DB::table('matriculas')->where('id', 10)->value('status_id'));
+    }
+
+    public function test_quitado_no_ciclo_cancela_so_duplicada_e_preserva_renovacao(): void
+    {
+        $this->registrarFuncoesSqlite(['CONCAT' => [fn (...$a) => implode('', $a), -1], 'NOW' => [fn () => date('Y-m-d H:i:s'), 0]]);
+        Schema::create('pagamentos_plano', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->integer('matricula_id');
+            $t->integer('status_pagamento_id');
+            $t->date('data_vencimento');
+            $t->date('data_pagamento')->nullable();
+            $t->text('observacoes')->nullable();
+            $t->timestamps();
+        });
+        DB::table('pagamentos_plano')->insert([
+            ['id' => 1, 'tenant_id' => self::T, 'matricula_id' => 10, 'status_pagamento_id' => 1, 'data_vencimento' => '2026-10-16', 'observacoes' => ''], // duplicada do ciclo pago
+            ['id' => 2, 'tenant_id' => self::T, 'matricula_id' => 10, 'status_pagamento_id' => 1, 'data_vencimento' => '2026-12-16', 'observacoes' => ''], // renovação
+        ]);
+
+        $n = app(PagamentoPlanoService::class)->cancelarParcelasAbertas(self::T, 10, 'Valor já quitado neste ciclo', '2026-12-16');
+
+        $this->assertSame(1, $n);
+        $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('id', 1)->value('status_pagamento_id'));
+        $this->assertSame(1, (int) DB::table('pagamentos_plano')->where('id', 2)->value('status_pagamento_id'));
     }
 
     public function test_so_academias_ativas(): void
