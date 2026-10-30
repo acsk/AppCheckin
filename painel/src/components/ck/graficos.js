@@ -96,7 +96,8 @@ export function ColumnChart({ data = [], format = num, formatAxis, height = 200,
 
 /**
  * Duas séries lado a lado por coluna (portado do BiGroupedBars do protótipo do BI): `a` em contorno,
- * `b` cheia — ex.: previsto × recebido. Estilos `ck-bi-gb` em ck-graficos.css.
+ * `b` cheia — ex.: previsto × recebido. `ratioText={false}` tira a linha "b/a %" da dica.
+ * Estilos `ck-bi-gb` em ck-graficos.css.
  */
 export function GroupedColumnChart({ labels = [], tips, a, b, format = num, formatAxis, height = 220, ratioText, caption }) {
   const [hv, setHv] = useState(null);
@@ -123,7 +124,7 @@ export function GroupedColumnChart({ labels = [], tips, a, b, format = num, form
                       <strong>{tip}</strong>
                       <span className="ck-bi-tiprow"><i className="is-outline" />{a.name}: <b>{format(va)}</b></span>
                       <span className="ck-bi-tiprow"><i className="is-accent" />{b.name}: <b>{format(vb)}</b></span>
-                      {va ? <span>{`${Math.round((vb / va) * 100)}% ${ratioText || `de ${a.name.toLowerCase()}`}`}</span> : null}
+                      {va && ratioText !== false ? <span>{`${Math.round((vb / va) * 100)}% ${ratioText || `de ${a.name.toLowerCase()}`}`}</span> : null}
                     </span>
                   ) : null}
                 </div>

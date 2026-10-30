@@ -19,6 +19,7 @@ const SECTIONS = [
         children: [
           { id: 'bi-visao-geral', label: 'Visão geral', path: '/bi', roles: [3], perm: 'bi.ver' },
           { id: 'bi-financeiro', label: 'Financeiro', path: '/bi/financeiro', roles: [3], perm: 'bi.ver' },
+          { id: 'bi-alunos', label: 'Alunos e matrículas', path: '/bi/alunos', roles: [3], perm: 'bi.ver' },
         ],
       },
       { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3], perm: 'conta.gerenciar' },

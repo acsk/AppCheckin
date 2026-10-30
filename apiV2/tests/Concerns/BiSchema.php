@@ -37,9 +37,16 @@ trait BiSchema
         DB::purge('sqlite');
         $this->requireSqlite();
 
+        Schema::create('modalidades', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->string('nome');
+        });
+        DB::table('modalidades')->insert([['id' => 1, 'tenant_id' => self::T1, 'nome' => 'Natação'], ['id' => 2, 'tenant_id' => self::T1, 'nome' => 'Hidroginástica']]);
         Schema::create('planos', function (Blueprint $t) {
             $t->increments('id');
             $t->integer('tenant_id');
+            $t->integer('modalidade_id')->nullable();
             $t->string('nome');
             $t->integer('duracao_dias')->default(30);
         });
@@ -76,7 +83,7 @@ trait BiSchema
             $t->increments('id');
             $t->string('nome');
         });
-        foreach ([1 => 'ANA', 2 => 'BRUNO', 3 => 'CARLA', 4 => 'DIEGO', 5 => 'EVA', 6 => 'FABIO', 9 => 'OUTRA ACADEMIA'] as $id => $nome) {
+        foreach ([1 => 'ANA', 2 => 'BRUNO', 3 => 'CARLA', 4 => 'DIEGO', 5 => 'EVA', 6 => 'FABIO', 7 => 'GUSTAVO', 9 => 'OUTRA ACADEMIA'] as $id => $nome) {
             DB::table('alunos')->insert(['id' => $id, 'nome' => $nome]);
         }
         Schema::create('dias', function (Blueprint $t) {
@@ -97,9 +104,9 @@ trait BiSchema
             $t->boolean('presente')->nullable();
         });
 
-        $this->mensal = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'nome' => 'Mensal', 'duracao_dias' => 30]);
-        $this->diaria = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'nome' => 'Diária', 'duracao_dias' => 1]);
-        $this->trimestral = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'nome' => 'Trimestral', 'duracao_dias' => 90]);
+        $this->mensal = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'modalidade_id' => 1, 'nome' => 'Mensal', 'duracao_dias' => 30]);
+        $this->diaria = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'modalidade_id' => 1, 'nome' => 'Diária', 'duracao_dias' => 1]);
+        $this->trimestral = (int) DB::table('planos')->insertGetId(['tenant_id' => self::T1, 'modalidade_id' => 2, 'nome' => 'Trimestral', 'duracao_dias' => 90]);
         $this->cenario();
     }
 
@@ -141,6 +148,9 @@ trait BiSchema
         $this->matricula(5, '2026-10-03', '2026-10-03', '2026-10-03', 3, '2026-10-03', $this->diaria);
         // F: só pendente — não é aluno ativo nem novo
         $this->matricula(6, '2026-10-08', '2026-10-08', '2026-11-07', 5);
+        // G: parou em abril e voltou em 06/10, no plano trimestral (Hidroginástica)
+        $this->matricula(7, '2026-03-01', '2026-03-01', '2026-04-30', 4);
+        $this->matricula(7, '2026-10-06', '2026-10-06', '2027-01-05', 1, null, $this->trimestral);
         // Outra academia: nada disso pode aparecer
         $outra = $this->matricula(1, '2026-10-01', '2026-10-01', '2026-10-31', 1, null, null, self::T2);
         $this->matricula(9, '2026-10-02', '2026-10-02', '2026-10-31', 3, '2026-10-04', null, self::T2);

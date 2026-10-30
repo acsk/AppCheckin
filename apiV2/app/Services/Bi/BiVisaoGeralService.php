@@ -5,6 +5,7 @@ namespace App\Services\Bi;
 use App\Repositories\Bi\BiTenantRepository;
 use App\Support\AcademyDateTime;
 use App\Support\Bi\Periodo;
+use App\Support\Bi\Serie;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -16,11 +17,9 @@ class BiVisaoGeralService
 {
     private const CACHE_SEGUNDOS = 300;
 
-    /** Acima disso a série de check-ins vem por mês, não por dia */
-    private const MAX_DIAS_SERIE_DIARIA = 62;
-
     public function __construct(
         private readonly BiTenantRepository $repo,
+        private readonly BiFrequenciaService $frequencia,
     ) {}
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -48,7 +47,7 @@ class BiVisaoGeralService
     }
 
     /** Indicadores que podem ser abertos em lista */
-    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'saidas', 'receita_recebida', 'valor_vencido', 'a_vencer'];
+    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'reativados', 'saidas', 'receita_recebida', 'valor_vencido', 'a_vencer', 'sem_checkin', 'em_queda'];
 
     /** Teto de itens devolvidos no detalhamento (o total continua sendo o do período inteiro) */
     private const MAX_ITENS = 1000;
@@ -73,10 +72,12 @@ class BiVisaoGeralService
             $itens = match ($indicador) {
                 'alunos_ativos' => $this->repo->alunosAtivosLista($tenantId, $p->fim),
                 'novos_alunos' => $this->repo->novosAlunosLista($tenantId, $p->inicio, $p->fim),
+                'reativados' => $this->repo->reativadosLista($tenantId, $p->inicio, $p->fim),
                 'saidas' => $this->repo->saidasLista($tenantId, $p->inicio, $p->fim),
                 'receita_recebida' => $this->repo->parcelasLista($tenantId, 'recebido', $p->inicio, $p->fim, $hoje),
                 'valor_vencido' => $this->repo->parcelasLista($tenantId, 'vencido', $p->inicio, $p->fim, $hoje),
                 'a_vencer' => $this->repo->parcelasLista($tenantId, 'a_vencer', $p->inicio, $p->fim, $hoje),
+                'sem_checkin', 'em_queda' => $this->frequencia->alunosEmAtencao($tenantId, $p->fim)[$indicador],
             };
             $valores = in_array($indicador, ['receita_recebida', 'valor_vencido', 'a_vencer'], true);
 
@@ -127,7 +128,7 @@ class BiVisaoGeralService
             ],
             'receita_mensal' => $this->receitaMensal($tenantId, $p->fim),
             'alunos_ativos_mensal' => $this->ativosMensal($tenantId, $p->fim),
-            'checkins_serie' => $this->serieCheckins($checkins, $p),
+            'checkins_serie' => Serie::diariaOuMensal($checkins, $p),
         ];
     }
 
@@ -159,27 +160,6 @@ class BiVisaoGeralService
         $out[] = ['data' => $fim, 'total' => $this->repo->alunosAtivosEm($tenantId, $fim)];
 
         return $out;
-    }
-
-    /** @param  array<string, int>  $porDia */
-    private function serieCheckins(array $porDia, Periodo $p): array
-    {
-        if ($p->dias() <= self::MAX_DIAS_SERIE_DIARIA) {
-            $pontos = [];
-            for ($d = $p->inicio; $d <= $p->fim; $d = date('Y-m-d', strtotime($d.' +1 day'))) {
-                $pontos[] = ['data' => $d, 'total' => $porDia[$d] ?? 0];
-            }
-
-            return ['agrupamento' => 'dia', 'pontos' => $pontos];
-        }
-
-        $meses = self::porMes($porDia);
-        $pontos = [];
-        for ($m = substr($p->inicio, 0, 7); $m <= substr($p->fim, 0, 7); $m = date('Y-m', strtotime($m.'-01 +1 month'))) {
-            $pontos[] = ['data' => $m, 'total' => (int) ($meses[$m] ?? 0)];
-        }
-
-        return ['agrupamento' => 'mes', 'pontos' => $pontos];
     }
 
     /**

@@ -9,3 +9,5 @@ use Illuminate\Support\Facades\Route;
 Route::get('/bi/visao-geral', [BiController::class, 'visaoGeral']);
 Route::get('/bi/visao-geral/detalhe', [BiController::class, 'detalhe']);
 Route::get('/bi/financeiro', [BiController::class, 'financeiro']);
+Route::get('/bi/alunos', [BiController::class, 'alunos']);
+Route::get('/bi/frequencia', [BiController::class, 'frequencia']);

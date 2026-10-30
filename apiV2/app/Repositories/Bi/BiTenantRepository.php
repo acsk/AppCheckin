@@ -16,6 +16,9 @@ class BiTenantRepository
     /** Dias após o cancelamento em que uma nova matrícula do aluno conta como troca de plano, não saída */
     public const JANELA_TROCA_DIAS = 7;
 
+    /** Dias sem matrícula vigente para uma nova matrícula contar como retorno do aluno */
+    public const GAP_RETORNO_DIAS = 30;
+
     /*
      * Cada indicador de alunos tem uma lista (o detalhamento) e a contagem é o tamanho dela,
      * para o número do card e a lista sempre baterem. Itens: um por aluno.
@@ -108,15 +111,179 @@ class BiTenantRepository
         return self::umPorAluno($sairam, fn ($r) => ['data' => (string) $r->data_cancelamento, 'detalhe' => 'Cancelada em']);
     }
 
-    /** Matrículas da academia com aluno e plano (base das listas de alunos) */
+    public function reativados(int $tenantId, string $inicio, string $fim): int
+    {
+        return count($this->reativadosLista($tenantId, $inicio, $fim));
+    }
+
+    /**
+     * Alunos que voltaram: matrícula iniciada no período depois de mais de GAP_RETORNO_DIAS sem nenhuma
+     * vigente. A primeira matrícula do aluno é "novo", não retorno; renovação e troca de plano emendam
+     * na anterior e também não contam.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function reativadosLista(int $tenantId, string $inicio, string $fim): array
+    {
+        $comecaram = $this->matriculasComAluno($tenantId)
+            ->where('m.status_id', '<>', 5)
+            ->whereBetween('m.data_inicio', [$inicio, $fim])
+            ->get();
+        if ($comecaram->isEmpty()) {
+            return [];
+        }
+
+        $anteriores = DB::table('matriculas')
+            ->where('tenant_id', $tenantId)->where('status_id', '<>', 5)
+            ->whereIn('aluno_id', $comecaram->pluck('aluno_id')->unique()->all())
+            ->get(['id', 'aluno_id', 'data_inicio', 'data_vencimento', 'data_cancelamento'])
+            ->groupBy('aluno_id');
+
+        $voltaram = $comecaram->filter(function ($c) use ($anteriores) {
+            $fimAnterior = null;
+            foreach ($anteriores[$c->aluno_id] ?? [] as $a) {
+                if ((int) $a->id === (int) $c->id || (string) $a->data_inicio >= (string) $c->data_inicio) {
+                    continue;
+                }
+                // Acesso termina no vencimento ou no cancelamento, o que vier antes
+                $ate = $a->data_cancelamento && (string) $a->data_cancelamento < (string) $a->data_vencimento ? (string) $a->data_cancelamento : (string) $a->data_vencimento;
+                $fimAnterior = max($fimAnterior ?? $ate, $ate);
+            }
+
+            return $fimAnterior !== null
+                && (string) $c->data_inicio > date('Y-m-d', strtotime($fimAnterior.' +'.self::GAP_RETORNO_DIAS.' days'));
+        });
+
+        return self::umPorAluno($voltaram, fn ($r) => ['data' => (string) $r->data_inicio, 'detalhe' => 'Voltou em']);
+    }
+
+    /**
+     * Data da primeira matrícula (não pendente) de cada aluno, para o tempo de permanência.
+     *
+     * @param  list<int>  $alunoIds
+     * @return array<int, string>
+     */
+    public function primeiraMatricula(int $tenantId, array $alunoIds): array
+    {
+        if ($alunoIds === []) {
+            return [];
+        }
+
+        return DB::table('matriculas')
+            ->where('tenant_id', $tenantId)->where('status_id', '<>', 5)->whereIn('aluno_id', $alunoIds)
+            ->groupBy('aluno_id')
+            ->get(['aluno_id', DB::raw('MIN(data_matricula) AS primeira')])
+            ->mapWithKeys(fn ($r) => [(int) $r->aluno_id => (string) $r->primeira])->all();
+    }
+
+    /* ------------------------------------------------------------ frequência */
+
+    /** Dia do check-in: o da aula; sem aula vinculada, o do próprio check-in */
+    private const DIA_CHECKIN = 'DATE(COALESCE(d.data, c.data_checkin_date, c.data_checkin))';
+
+    /** Check-ins válidos: sem os marcados como ausente */
+    private const CHECKIN_VALIDO = '(c.presente IS NULL OR c.presente = 1)';
+
+    /**
+     * Check-ins do período por dia e hora da aula (hora do check-in quando não há aula), para o mapa.
+     *
+     * @return list<array{dia: string, hora: int, total: int}>
+     */
+    public function checkinsPorDiaHora(int $tenantId, string $inicio, string $fim): array
+    {
+        $dia = self::DIA_CHECKIN;
+        $hora = 'SUBSTR(COALESCE(t.horario_inicio, TIME(c.data_checkin)), 1, 2)';
+
+        return array_map(fn ($r) => ['dia' => substr((string) $r->dia, 0, 10), 'hora' => (int) $r->hora, 'total' => (int) $r->total], DB::select("
+            SELECT {$dia} AS dia, {$hora} AS hora, COUNT(*) AS total
+            FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id
+            WHERE c.tenant_id = ? AND ".self::CHECKIN_VALIDO." AND {$dia} BETWEEN ? AND ?
+            GROUP BY {$dia}, {$hora}
+        ", [$tenantId, $inicio, $fim]));
+    }
+
+    /** Alunos distintos com pelo menos um check-in no período */
+    public function participantes(int $tenantId, string $inicio, string $fim): int
+    {
+        $dia = self::DIA_CHECKIN;
+
+        return (int) (DB::selectOne("
+            SELECT COUNT(DISTINCT c.aluno_id) AS total
+            FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id
+            WHERE c.tenant_id = ? AND ".self::CHECKIN_VALIDO." AND {$dia} BETWEEN ? AND ?
+        ", [$tenantId, $inicio, $fim])->total ?? 0);
+    }
+
+    /**
+     * Aulas do período com check-ins, limite, modalidade e professor. Aula desativada só entra se teve check-in.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function aulas(int $tenantId, string $inicio, string $fim): array
+    {
+        $rows = DB::table('turmas as t')
+            ->join('dias as d', 'd.id', '=', 't.dia_id')
+            ->leftJoin('modalidades as md', 'md.id', '=', 't.modalidade_id')
+            ->leftJoin('professores as pr', 'pr.id', '=', 't.professor_id')
+            ->where('t.tenant_id', $tenantId)
+            ->whereBetween('d.data', [$inicio, $fim])
+            ->select(['t.id', 't.modalidade_id', 't.professor_id', 't.horario_inicio', 't.limite_alunos', 't.ativo', 'd.data',
+                'md.nome AS modalidade_nome', 'pr.nome AS professor_nome',
+                DB::raw('(SELECT COUNT(*) FROM checkins c WHERE c.turma_id = t.id AND c.tenant_id = t.tenant_id AND '.self::CHECKIN_VALIDO.') AS checkins')])
+            ->get();
+
+        return $rows->filter(fn ($r) => (int) $r->ativo === 1 || (int) $r->checkins > 0)->map(fn ($r) => [
+            'aula_id' => (int) $r->id,
+            'data' => substr((string) $r->data, 0, 10),
+            'horario' => substr((string) $r->horario_inicio, 0, 5),
+            'modalidade_id' => $r->modalidade_id !== null ? (int) $r->modalidade_id : null,
+            'modalidade' => $r->modalidade_nome,
+            'professor_id' => $r->professor_id !== null ? (int) $r->professor_id : null,
+            'professor' => $r->professor_nome,
+            'limite' => (int) $r->limite_alunos > 0 ? (int) $r->limite_alunos : null,
+            'checkins' => (int) $r->checkins,
+        ])->values()->all();
+    }
+
+    /**
+     * Check-ins por aluno e dia no intervalo, e o último check-in de cada um até `fim`.
+     *
+     * @param  list<int>  $alunoIds
+     * @return array{por_dia: array<int, array<string, int>>, ultimo: array<int, string>}
+     */
+    public function checkinsDosAlunos(int $tenantId, array $alunoIds, string $inicio, string $fim): array
+    {
+        $out = ['por_dia' => [], 'ultimo' => []];
+        if ($alunoIds === []) {
+            return $out;
+        }
+        $dia = self::DIA_CHECKIN;
+        $in = implode(',', array_fill(0, count($alunoIds), '?'));
+        $base = "FROM checkins c LEFT JOIN turmas t ON t.id = c.turma_id LEFT JOIN dias d ON d.id = t.dia_id
+            WHERE c.tenant_id = ? AND ".self::CHECKIN_VALIDO." AND c.aluno_id IN ({$in})";
+
+        foreach (DB::select("SELECT c.aluno_id, {$dia} AS dia, COUNT(*) AS total {$base} AND {$dia} BETWEEN ? AND ? GROUP BY c.aluno_id, {$dia}",
+            array_merge([$tenantId], $alunoIds, [$inicio, $fim])) as $r) {
+            $out['por_dia'][(int) $r->aluno_id][substr((string) $r->dia, 0, 10)] = (int) $r->total;
+        }
+        foreach (DB::select("SELECT c.aluno_id, MAX({$dia}) AS ultimo {$base} AND {$dia} <= ? GROUP BY c.aluno_id",
+            array_merge([$tenantId], $alunoIds, [$fim])) as $r) {
+            $out['ultimo'][(int) $r->aluno_id] = substr((string) $r->ultimo, 0, 10);
+        }
+
+        return $out;
+    }
+
+    /** Matrículas da academia com aluno, plano e modalidade (base das listas de alunos) */
     private function matriculasComAluno(int $tenantId): \Illuminate\Database\Query\Builder
     {
         return DB::table('matriculas as m')
             ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
             ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
             ->where('m.tenant_id', $tenantId)
             ->select(['m.id', 'm.aluno_id', 'm.data_matricula', 'm.data_inicio', 'm.data_vencimento', 'm.data_cancelamento',
-                'a.nome AS aluno_nome', 'p.nome AS plano_nome']);
+                'a.nome AS aluno_nome', 'p.nome AS plano_nome', 'md.nome AS modalidade_nome']);
     }
 
     /**
@@ -139,7 +306,9 @@ class BiTenantRepository
             'aluno_id' => (int) $r->aluno_id,
             'aluno_nome' => (string) $r->aluno_nome,
             'plano_nome' => $r->plano_nome,
+            'modalidade_nome' => $r->modalidade_nome ?? null,
             'matricula_id' => (int) $r->id,
+            'matricula_inicio' => (string) $r->data_inicio,
         ] + $extra($r), array_values($por));
         usort($out, fn ($a, $b) => strcmp($a['aluno_nome'], $b['aluno_nome']));
 

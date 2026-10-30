@@ -10,6 +10,7 @@ const num = (v) => new Intl.NumberFormat('pt-BR').format(v || 0);
 const TITULOS = {
   alunos_ativos: ['Alunos ativos', 'Com matrícula vigente no último dia do período.'],
   novos_alunos: ['Novos alunos', 'Primeira matrícula na academia dentro do período.'],
+  reativados: ['Voltaram', 'Começaram uma matrícula no período depois de mais de 30 dias sem nenhuma.'],
   saidas: ['Saídas', 'Cancelaram no período e não começaram outro plano em até 7 dias.'],
   receita_recebida: ['Receita recebida', 'Parcelas pagas no período, pela data do pagamento.'],
   valor_vencido: ['Valor vencido', 'Parcelas do período que já venceram e não foram pagas.'],

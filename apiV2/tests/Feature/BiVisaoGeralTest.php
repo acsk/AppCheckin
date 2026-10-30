@@ -32,7 +32,7 @@ class BiVisaoGeralTest extends TestCase
     {
         $i = $this->dados()['indicadores'];
 
-        $this->assertSame(['atual' => 3, 'anterior' => 3], $i['alunos_ativos']); // A, B, D hoje; A, C, D em 20/09
+        $this->assertSame(['atual' => 4, 'anterior' => 3], $i['alunos_ativos']); // A, B, D, G hoje; A, C, D em 20/09
         $this->assertSame(['atual' => 2, 'anterior' => 0], $i['novos_alunos']);  // B e E (diária também é aluno novo)
         $this->assertSame(['atual' => 1, 'anterior' => 0], $i['saidas']);        // só C
     }
@@ -96,7 +96,7 @@ class BiVisaoGeralTest extends TestCase
 
     public function test_detalhamento_mostra_quem_compoe_e_nada_de_outra_academia(): void
     {
-        $this->assertSame(['ANA', 'BRUNO', 'DIEGO'], array_column($this->detalhe('alunos_ativos')['itens'], 'aluno_nome'));
+        $this->assertSame(['ANA', 'BRUNO', 'DIEGO', 'GUSTAVO'], array_column($this->detalhe('alunos_ativos')['itens'], 'aluno_nome'));
         $this->assertSame(['BRUNO', 'EVA'], array_column($this->detalhe('novos_alunos')['itens'], 'aluno_nome'));
 
         $saida = $this->detalhe('saidas')['itens'];
