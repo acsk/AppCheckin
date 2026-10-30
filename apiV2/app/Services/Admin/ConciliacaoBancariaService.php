@@ -131,7 +131,8 @@ class ConciliacaoBancariaService
         }
 
         $matriculaId = self::matriculaDaReferencia((string) ($payment['externalReference'] ?? ''))
-            ?? $this->matriculasDoPix($tenantId, [$paymentId])[$paymentId] ?? null;
+            ?? $this->matriculasDoPix($tenantId, [$paymentId])[$paymentId]
+            ?? $this->matriculaDaMensalidade($tenantId, $paymentId);
         $daAcademia = $matriculaId !== null && DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->exists();
         if (! $daAcademia) {
             return ['status' => 422, 'body' => ['success' => false, 'error' => 'O pagamento não está ligado a uma matrícula desta academia. Dê a baixa manualmente na matrícula.']];
@@ -142,7 +143,9 @@ class ConciliacaoBancariaService
             'event' => 'PAYMENT_RECEIVED',
             'payment' => $payment,
         ], null);
-        $ok = ($result['status'] ?? 500) < 300;
+        // Assinatura com fidelização: o webhook responde 200 mesmo sem baixa; só "paga" conta
+        $recorrencia = $result['body']['recorrencia'] ?? null;
+        $ok = ($result['status'] ?? 500) < 300 && ($recorrencia === null || in_array($recorrencia, ['paga', 'ja_paga'], true));
 
         return [
             'status' => $ok ? 200 : 422,
@@ -405,7 +408,8 @@ class ConciliacaoBancariaService
             'aluno_nome' => $l['aluno_nome'] ?? null,
             'plano_nome' => $l['plano_nome'] ?? null,
             'parcela' => $l ? self::resumoParcela($l) : null,
-            'pode_reprocessar' => $p['provedor'] === 'asaas' && $matricula !== null
+            // Mensalidade de assinatura (referência REC-) não aponta para a matrícula: vale a parcela casada
+            'pode_reprocessar' => $p['provedor'] === 'asaas' && ($matricula ?? $l['matricula_id'] ?? null) !== null
                 && ($status === 'sem_baixa' || ($status === 'divergente' && str_starts_with((string) $motivo, 'Líquido')) || $nota === 'O líquido ainda não foi gravado na parcela.'),
         ];
     }
@@ -839,6 +843,21 @@ class ConciliacaoBancariaService
             ->pluck('matricula_id', 'payment_id')
             ->map(fn ($v) => (int) $v)
             ->all();
+    }
+
+    /** Matrícula da mensalidade de plano com fidelização cobrada por este pagamento. */
+    private function matriculaDaMensalidade(int $tenantId, string $paymentId): ?int
+    {
+        if (! Schema::hasTable('recorrencia_cobrancas')) {
+            return null;
+        }
+        $id = DB::table('recorrencia_cobrancas as rc')
+            ->join('contratos_recorrencia as c', 'c.id', '=', 'rc.contrato_id')
+            ->where('rc.tenant_id', $tenantId)
+            ->where('rc.gateway_payment_id', $paymentId)
+            ->value('c.matricula_id');
+
+        return $id ? (int) $id : null;
     }
 
     public static function matriculaDaReferencia(string $ref): ?int

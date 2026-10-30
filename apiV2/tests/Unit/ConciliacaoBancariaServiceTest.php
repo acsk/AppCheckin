@@ -81,6 +81,21 @@ class ConciliacaoBancariaServiceTest extends TestCase
         $this->assertTrue($l['pode_reprocessar']);
     }
 
+    public function test_mensalidade_de_assinatura_sem_baixa_pode_reprocessar(): void
+    {
+        // Assinatura com fidelização: referência REC-, a matrícula vem da parcela casada pelo id da cobrança
+        $r = C::montar(
+            [$this->asaas('pay_vt1', 48.32, 45.82, ['externalReference' => 'REC-4', 'status' => 'CONFIRMED', 'billingType' => 'CREDIT_CARD', 'paymentDate' => null, 'confirmedDate' => '2026-10-30'])],
+            [$this->parcela(1532, 317, 48.32, 1, ['data_vencimento' => '2026-10-30', 'observacoes' => 'Mensalidade 1 da assinatura · aguardando pagamento (Asaas pay_vt1)'])],
+            [], '2026-10-01', '2026-10-31'
+        );
+
+        $l = $this->linha($r, 'asaas:pay_vt1');
+        $this->assertSame('sem_baixa', $l['status']);
+        $this->assertSame(317, $l['matricula_id']);
+        $this->assertTrue($l['pode_reprocessar']);
+    }
+
     public function test_matricula_pelo_pix_salvo_quando_nao_ha_referencia(): void
     {
         $r = C::montar([$this->asaas('pay_c', 70, 68.01)], [], ['pay_c' => 77], '2026-10-01', '2026-10-31');

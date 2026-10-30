@@ -2,6 +2,7 @@
 
 namespace App\Services\Asaas;
 
+use App\Services\Recorrencia\RecorrenciaService;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -121,7 +122,9 @@ class AsaasPagamentoSync
     /**
      * Rede de segurança do webhook (schedule): cobranças Asaas atuais de matrículas com parcela em aberto.
      * Só a cobrança da assinatura ainda não aprovada e PIX pendentes — nunca o histórico das observações,
-     * para uma cobrança antiga já paga não dar baixa na parcela nova.
+     * para uma cobrança antiga já paga não dar baixa na parcela nova. Mensalidades de plano com fidelização
+     * (recorrencia_cobrancas já vencidas e em aberto) também: sem isso o aluno que pagou fica sem acesso até
+     * a rotina diária da recorrência.
      *
      * @param  (callable(int, string): array<string, mixed>)|null  $obter  consulta da cobrança (testes)
      * @return array{conferidas: int, pagas: int, removidas: int, erros: int, mensagens: list<string>}
@@ -165,10 +168,28 @@ class AsaasPagamentoSync
             ->limit($limite)
             ->get(['x.tenant_id', 'x.matricula_id', 'x.payment_id']);
 
+        $recorrencia = Schema::hasTable('recorrencia_cobrancas')
+            ? DB::table('recorrencia_cobrancas as x')
+                ->join('contratos_recorrencia as c', 'c.id', '=', 'x.contrato_id')
+                ->whereIn('x.status', ['pendente', 'vencida'])
+                ->where('x.gateway_payment_id', 'like', 'pay_%')
+                ->where('x.vencimento', '<=', now()->toDateString())
+                ->where('x.vencimento', '>=', now()->subDays(max(1, $dias))->toDateString())
+                ->whereExists($comAsaas)
+                ->when($tenantId, fn ($q) => $q->where('x.tenant_id', $tenantId))
+                ->orderByDesc('x.vencimento')
+                ->limit($limite)
+                ->get(['x.tenant_id', 'c.matricula_id', 'x.gateway_payment_id as payment_id', 'x.contrato_id'])
+            : collect();
+
         $alvos = [];
-        foreach ($assinaturas->concat($pix) as $row) {
+        $contratos = [];
+        foreach ($assinaturas->concat($pix)->concat($recorrencia) as $row) {
             if (! Cache::has(self::CACHE_REMOVIDA.$row->payment_id)) {
                 $alvos[$row->payment_id] ??= [(int) $row->tenant_id, (int) $row->matricula_id];
+                if (isset($row->contrato_id)) {
+                    $contratos[$row->payment_id] = (int) $row->contrato_id;
+                }
             }
         }
 
@@ -181,6 +202,21 @@ class AsaasPagamentoSync
                     throw new AsaasNaoEncontradoException('Cobrança removida no Asaas');
                 }
                 if ($payment === [] || ! AsaasPagamentoStatus::pago((string) ($payment['status'] ?? ''))) {
+                    continue;
+                }
+                if (isset($contratos[$paymentId])) {
+                    $r = app(RecorrenciaService::class)->processarPagamento(
+                        $tenant,
+                        $contratos[$paymentId],
+                        $payment,
+                        AsaasPagamentoStatus::eventoWebhook((string) $payment['status']),
+                        true,
+                    );
+                    if ($r === 'paga') {
+                        $res['pagas']++;
+                        Log::info('Asaas schedule: mensalidade da assinatura aplicada', ['tenant_id' => $tenant, 'matricula_id' => $matriculaId, 'contrato_id' => $contratos[$paymentId], 'payment_id' => $paymentId]);
+                    }
+
                     continue;
                 }
                 $r = app(AsaasWebhookService::class)->processar([
