@@ -786,11 +786,20 @@ class AsaasService
                 return;
             }
             if ($id !== '') {
-                $this->request('PUT', '/webhooks/'.$id, [
-                    'enabled' => true,
-                    'interrupted' => false,
-                    'events' => $this->eventosWebhook(),
-                ]);
+                try {
+                    $this->request('PUT', '/webhooks/'.$id, [
+                        'enabled' => true,
+                        'interrupted' => false,
+                        'events' => $this->eventosWebhook(),
+                    ]);
+                } catch (\Throwable $e) {
+                    if ($enabled && ! $interrupted) {
+                        throw $e;
+                    }
+                    // A lista de eventos foi recusada: ao menos religa a fila, senão nenhum webhook chega
+                    $this->request('PUT', '/webhooks/'.$id, ['enabled' => true, 'interrupted' => false]);
+                    Log::warning('Asaas: fila do webhook religada sem atualizar os eventos', ['webhook_id' => $id, 'error' => $e->getMessage()]);
+                }
             }
 
             return;
@@ -826,10 +835,12 @@ class AsaasService
      */
     private function eventosWebhook(): array
     {
+        // Só eventos que o Asaas aceita em /webhooks: um inválido derruba o PUT inteiro (e com ele a
+        // reativação da fila). Baixa em dinheiro chega como PAYMENT_RECEIVED; antecipação, pelos
+        // PAYMENT_ANTICIPATED / PAYMENT_UPDATED da cobrança.
         return [
             'PAYMENT_CONFIRMED',
             'PAYMENT_RECEIVED',
-            'PAYMENT_RECEIVED_IN_CASH',
             'PAYMENT_UPDATED',
             // Cobranças de contrato: excluída, vencida ou restaurada (ver AsaasContratoWebhook)
             'PAYMENT_DELETED',
@@ -842,11 +853,6 @@ class AsaasService
             'PAYMENT_REFUNDED',
             'PAYMENT_CHARGEBACK_REQUESTED',
             'PAYMENT_CHARGEBACK_DISPUTE',
-            'ANTICIPATION_PENDING',
-            'ANTICIPATION_SCHEDULED',
-            'ANTICIPATION_CREDITED',
-            'ANTICIPATION_DENIED',
-            'ANTICIPATION_CANCELLED',
         ];
     }
 
