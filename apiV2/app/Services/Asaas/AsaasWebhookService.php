@@ -132,7 +132,14 @@ class AsaasWebhookService
             ->where('payment_id', $paymentId)
             ->update(['status' => 'approved']);
 
-        $this->baixarParcelaAberta($tenantId, $matriculaId, $payment);
+        // Cartão parcelado: uma cobrança por parcela no Asaas, uma parcela cheia no Check-in
+        $parcelamento = $this->cobrancasDoParcelamento($tenantId, $payment);
+        $this->baixarParcelaAberta(
+            $tenantId,
+            $matriculaId,
+            AsaasPagamentoStatus::somarParcelamento($payment, $parcelamento),
+            array_values(array_filter(array_map(fn ($p) => (string) ($p['id'] ?? ''), $parcelamento))),
+        );
 
         $statusPagaId = DB::table('assinatura_status')->where('codigo', 'paga')->value('id')
             ?: DB::table('assinatura_status')->where('codigo', 'ativa')->value('id');
@@ -321,38 +328,63 @@ class AsaasWebhookService
     }
 
     /**
+     * Cobranças do mesmo parcelamento no Asaas (vazio se não for cartão parcelado ou a consulta falhar).
+     *
      * @param  array<string, mixed>  $payment
+     * @return list<array<string, mixed>>
      */
-    private function baixarParcelaAberta(int $tenantId, int $matriculaId, array $payment): void
+    protected function cobrancasDoParcelamento(int $tenantId, array $payment): array
+    {
+        $installment = (string) ($payment['installment'] ?? '');
+        if ($installment === '') {
+            return [];
+        }
+
+        try {
+            return (new AsaasService($tenantId))->pagamentosDoParcelamento($installment);
+        } catch (\Throwable $e) {
+            Log::warning('Asaas webhook: falha ao consultar o parcelamento', [
+                'payment_id' => $payment['id'] ?? null,
+                'installment' => $installment,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     * @param  list<string>  $idsDoParcelamento  demais cobranças do cartão parcelado: qualquer uma já baixada vale para todas
+     */
+    private function baixarParcelaAberta(int $tenantId, int $matriculaId, array $payment, array $idsDoParcelamento = []): void
     {
         $paymentId = (string) ($payment['id'] ?? '');
         if ($paymentId !== '') {
-            $jaBaixada = DB::table('pagamentos_plano')
+            $ids = array_values(array_unique([$paymentId, ...$idsDoParcelamento]));
+            $parcelaPaga = DB::table('pagamentos_plano')
                 ->where('tenant_id', $tenantId)
                 ->where('matricula_id', $matriculaId)
                 ->where('status_pagamento_id', 2)
-                ->where('observacoes', 'like', '%'.$paymentId.'%')
-                ->exists();
-            if ($jaBaixada) {
-                $parcelaPaga = DB::table('pagamentos_plano')
-                    ->where('tenant_id', $tenantId)
-                    ->where('matricula_id', $matriculaId)
-                    ->where('status_pagamento_id', 2)
-                    ->where('observacoes', 'like', '%'.$paymentId.'%')
-                    ->orderByDesc('id')
-                    ->first();
-                if ($parcelaPaga) {
-                    // Parcela baixada antes da correção ainda pode estar com "Aguardando pagamento via Mercado Pago"
-                    $obsAtual = (string) ($parcelaPaga->observacoes ?? '');
-                    $this->persistirTarifaProvedor(
-                        (int) $parcelaPaga->id,
-                        $tenantId,
-                        $payment,
-                        self::observacaoPagoAsaas($obsAtual, $paymentId, $payment),
-                        true,
-                        $obsAtual,
-                    );
-                }
+                ->where(function ($q) use ($ids) {
+                    foreach ($ids as $id) {
+                        $q->orWhere('observacoes', 'like', '%'.$id.'%');
+                    }
+                })
+                ->orderByDesc('id')
+                ->first();
+            if ($parcelaPaga) {
+                // Parcela baixada antes da correção ainda pode estar com "Aguardando pagamento via Mercado Pago"
+                $obsAtual = (string) ($parcelaPaga->observacoes ?? '');
+                $idNaObs = array_values(array_filter($ids, fn ($id) => str_contains($obsAtual, $id)))[0] ?? $paymentId;
+                $this->persistirTarifaProvedor(
+                    (int) $parcelaPaga->id,
+                    $tenantId,
+                    $payment,
+                    self::observacaoPagoAsaas($obsAtual, $idNaObs, $payment),
+                    true,
+                    $obsAtual,
+                );
 
                 return;
             }

@@ -130,6 +130,42 @@ class AsaasPagamentoStatus
     }
 
     /**
+     * Cartão parcelado: no Check-in a parcela é o valor cheio, então valor e líquido somam todas as
+     * cobranças do parcelamento. Líquido fica de fora se alguma cobrança ainda não tiver netValue.
+     *
+     * @param  array<string, mixed>  $payment
+     * @param  list<array<string, mixed>>  $parcelas
+     * @return array<string, mixed>
+     */
+    public static function somarParcelamento(array $payment, array $parcelas): array
+    {
+        if (count($parcelas) < 2) {
+            return $payment;
+        }
+
+        $valor = 0.0;
+        $liquido = 0.0;
+        $semLiquido = false;
+        foreach ($parcelas as $p) {
+            $valor += (float) ($p['value'] ?? 0);
+            if (! array_key_exists('netValue', $p) || $p['netValue'] === null || $p['netValue'] === '') {
+                $semLiquido = true;
+            } else {
+                $liquido += (float) $p['netValue'];
+            }
+        }
+
+        $payment['value'] = round($valor, 2);
+        if ($semLiquido) {
+            unset($payment['netValue']);
+        } else {
+            $payment['netValue'] = round($liquido, 2);
+        }
+
+        return $payment;
+    }
+
+    /**
      * Antecipação em análise/creditada: o líquido a receber (já com taxa de antecipação)
      * substitui o netValue da cobrança (que só desconta a tarifa do cartão).
      *

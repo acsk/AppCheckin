@@ -649,6 +649,32 @@ class AsaasService
     }
 
     /**
+     * Cobranças de um cartão parcelado (uma por parcela), com o líquido da antecipação quando houver.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function pagamentosDoParcelamento(string $installmentId): array
+    {
+        $this->validarCredenciais();
+        $lista = [];
+        foreach ($this->paginar(['installment' => $installmentId], 100) as $p) {
+            if (($p['deleted'] ?? false) === true) {
+                continue;
+            }
+            if (($p['anticipated'] ?? false) === true) {
+                try {
+                    $p = AsaasPagamentoStatus::aplicarAntecipacao($p, $this->obterAntecipacaoAtiva((string) $p['id']));
+                } catch (\Throwable) {
+                    // segue com o netValue da cobrança
+                }
+            }
+            $lista[] = $p;
+        }
+
+        return $lista;
+    }
+
+    /**
      * Liga ou desliga a antecipação automática das vendas no cartão na conta Asaas.
      * Devolve o estado que o Asaas confirmou.
      */

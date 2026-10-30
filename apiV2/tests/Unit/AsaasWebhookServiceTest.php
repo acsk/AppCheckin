@@ -398,6 +398,66 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(2, (int) $parcela->status_pagamento_id);
     }
 
+    public function test_cartao_parcelado_grava_liquido_do_parcelamento_e_nao_baixa_outra_parcela(): void
+    {
+        DB::table('pagamentos_pix')->delete();
+        DB::table('assinaturas')->where('matricula_id', 189)->update(['gateway_preference_id' => 'pay_p1']);
+        DB::table('pagamentos_plano')->where('matricula_id', 189)->update(['valor' => 108.72, 'observacoes' => 'Aguardando pagamento via Asaas']);
+        // Parcela do próximo ciclo já gerada: as cobranças 2 e 3 do cartão não podem baixá-la
+        DB::table('pagamentos_plano')->insert([
+            'tenant_id' => 3,
+            'matricula_id' => 189,
+            'status_pagamento_id' => 1,
+            'valor' => 36.24,
+            'data_vencimento' => '2026-11-16',
+            'observacoes' => 'Próximo ciclo',
+        ]);
+
+        $cobranca = fn (int $n, float $liquido) => [
+            'id' => 'pay_p'.$n,
+            'status' => 'CONFIRMED',
+            'billingType' => 'CREDIT_CARD',
+            'externalReference' => 'MAT-189-abc',
+            'confirmedDate' => '2026-10-16',
+            'installment' => 'ins_abc',
+            'installmentNumber' => $n,
+            'value' => 36.24,
+            'netValue' => $liquido,
+        ];
+        $grupo = [$cobranca(1, 34.19), $cobranca(2, 33.59), $cobranca(3, 33.00)];
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->times(3)->with(3, 189);
+
+        $service = new class($pagamentos, new EncryptionService(), $grupo) extends AsaasWebhookService
+        {
+            public function __construct(PagamentoPlanoService $p, EncryptionService $e, private array $grupo)
+            {
+                parent::__construct($p, $e);
+            }
+
+            protected function cobrancasDoParcelamento(int $tenantId, array $payment): array
+            {
+                return $this->grupo;
+            }
+        };
+
+        foreach ($grupo as $p) {
+            $this->assertSame(200, $service->processar(['event' => 'PAYMENT_CONFIRMED', 'payment' => $p], null)['status']);
+        }
+
+        $paga = DB::table('pagamentos_plano')->where('valor', 108.72)->first();
+        $this->assertSame(2, (int) $paga->status_pagamento_id);
+        $this->assertEquals(100.78, (float) $paga->valor_liquido);
+        $this->assertEquals(7.94, (float) $paga->desconto_provedor);
+        $this->assertStringContainsString('valor R$ 108,72 líquido R$ 100,78 desconto_provedor R$ 7,94', (string) $paga->observacoes);
+        $this->assertStringNotContainsString('pay_p2', (string) $paga->observacoes);
+
+        $proxima = DB::table('pagamentos_plano')->where('observacoes', 'Próximo ciclo')->first();
+        $this->assertSame(1, (int) $proxima->status_pagamento_id);
+        $this->assertNull($proxima->data_pagamento);
+    }
+
     public function test_reprocessar_parcela_ja_paga_tira_o_texto_do_mercado_pago(): void
     {
         DB::table('pagamentos_plano')->where('matricula_id', 189)->update([
