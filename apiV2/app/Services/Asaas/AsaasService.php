@@ -39,6 +39,10 @@ class AsaasService
 
     private int $maxParcelasCartao = AsaasTarifaCartao::MAX_PARCELAS_PADRAO;
 
+    private float $sobretaxaFolgaPercentual = AsaasSobretaxaAntecipacao::FOLGA_PADRAO;
+
+    private bool $usarTaxaAsaas = false;
+
     /** @var array<string, mixed>|null */
     private ?array $taxasContaCache = null;
 
@@ -955,6 +959,13 @@ class AsaasService
             }
         }
         $this->maxParcelasCartao = AsaasTarifaCartao::maxParcelas($flags['max_parcelas_cartao'] ?? null);
+        if (isset($flags['sobretaxa_folga_percentual']) && is_numeric($flags['sobretaxa_folga_percentual'])) {
+            $v = round((float) $flags['sobretaxa_folga_percentual'], 2);
+            if ($v >= 0 && $v <= 30) {
+                $this->sobretaxaFolgaPercentual = $v;
+            }
+        }
+        $this->usarTaxaAsaas = $this->boolCredencial($flags['usar_taxa_antecipacao_asaas'] ?? false);
     }
 
     /**
@@ -966,6 +977,8 @@ class AsaasService
             'habilitada' => $this->enableAntecipacaoAutomatica && $this->enableSobretaxaAntecipacao,
             'avista' => $this->sobretaxaAvistaPercentual,
             'parcelada' => $this->sobretaxaParceladaPercentual,
+            'folga' => $this->sobretaxaFolgaPercentual,
+            'usar_taxa_asaas' => $this->usarTaxaAsaas,
         ];
     }
 
@@ -974,6 +987,22 @@ class AsaasService
      *
      * @return array<string, mixed>
      */
+    /**
+     * Taxas mensais de antecipação do cartão que o Asaas informa para a conta (para o painel mostrar).
+     *
+     * @return array{avista: ?float, parcelada: ?float}
+     */
+    public function taxasAntecipacaoInformadas(): array
+    {
+        $this->validarCredenciais();
+        $taxas = $this->request('GET', '/myAccount/fees');
+
+        return [
+            'avista' => AsaasSobretaxaAntecipacao::taxaOficialConta(1, $taxas),
+            'parcelada' => AsaasSobretaxaAntecipacao::taxaOficialConta(2, $taxas),
+        ];
+    }
+
     public function taxasDaConta(): array
     {
         if ($this->taxasContaCache !== null) {

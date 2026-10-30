@@ -172,6 +172,8 @@ class AdminPaymentCredentialsService
                 'sobretaxa_antecipacao_avista_percentual' => $sobretaxa['sobretaxa_antecipacao_avista_percentual'],
                 'sobretaxa_antecipacao_parcelada_percentual' => $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'],
                 'enable_antecipacao_automatica' => $sobretaxa['enable_antecipacao_automatica'],
+                'sobretaxa_folga_percentual' => $sobretaxa['sobretaxa_folga_percentual'],
+                'usar_taxa_antecipacao_asaas' => $sobretaxa['usar_taxa_antecipacao_asaas'],
                 'conciliar_somente_vinculados' => $this->somenteVinculadosDoBody($provider, $body, $existente),
                 'enable_pix_recorrencia' => $this->pixRecorrenciaDoBody($provider, $body, $existente),
                 'max_parcelas_cartao' => AsaasTarifaCartao::maxParcelas($body['max_parcelas_cartao'] ?? $existente['max_parcelas_cartao'] ?? null),
@@ -206,6 +208,8 @@ class AdminPaymentCredentialsService
                 $update['sobretaxa_antecipacao_avista_percentual'] = $sobretaxa['sobretaxa_antecipacao_avista_percentual'];
                 $update['sobretaxa_antecipacao_parcelada_percentual'] = $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'];
                 $update['enable_antecipacao_automatica'] = $sobretaxa['enable_antecipacao_automatica'];
+                $update['sobretaxa_folga_percentual'] = $sobretaxa['sobretaxa_folga_percentual'];
+                $update['usar_taxa_antecipacao_asaas'] = $sobretaxa['usar_taxa_antecipacao_asaas'];
                 $update['conciliar_somente_vinculados'] = $dados['conciliar_somente_vinculados'];
                 $update['enable_pix_recorrencia'] = $dados['enable_pix_recorrencia'];
                 $update['max_parcelas_cartao'] = $dados['max_parcelas_cartao'];
@@ -425,6 +429,10 @@ class AdminPaymentCredentialsService
         $row['max_parcelas_cartao'] = AsaasTarifaCartao::maxParcelas($row['max_parcelas_cartao'] ?? null);
         $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
+        $row['sobretaxa_folga_percentual'] = round((float) ($row['sobretaxa_folga_percentual'] ?? 1.00), 2);
+        $row['usar_taxa_antecipacao_asaas'] = $this->boolish($row['usar_taxa_antecipacao_asaas'] ?? false);
+        $row['taxa_antecipacao_asaas_avista'] ??= null;
+        $row['taxa_antecipacao_asaas_parcelada'] ??= null;
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
         $row['has_token_prod'] = $this->boolish($row['has_token_prod'] ?? false);
         $row['public_key_test_masked'] = $this->mascarar($row['public_key_test'] ?? null);
@@ -454,6 +462,10 @@ class AdminPaymentCredentialsService
             'enable_sobretaxa_antecipacao' => false,
             'sobretaxa_antecipacao_avista_percentual' => 1.15,
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
+            'sobretaxa_folga_percentual' => 1.00,
+            'usar_taxa_antecipacao_asaas' => false,
+            'taxa_antecipacao_asaas_avista' => null,
+            'taxa_antecipacao_asaas_parcelada' => null,
             'has_token_test' => false,
             'has_token_prod' => false,
             'public_key_test_masked' => null,
@@ -464,7 +476,7 @@ class AdminPaymentCredentialsService
     /**
      * @param  array<string, mixed>  $body
      * @param  array<string, mixed>|null  $existente
-     * @return array{enable_antecipacao_automatica: int, enable_sobretaxa_antecipacao: int, sobretaxa_antecipacao_avista_percentual: float, sobretaxa_antecipacao_parcelada_percentual: float}
+     * @return array{enable_antecipacao_automatica: int, enable_sobretaxa_antecipacao: int, sobretaxa_antecipacao_avista_percentual: float, sobretaxa_antecipacao_parcelada_percentual: float, sobretaxa_folga_percentual: float, usar_taxa_antecipacao_asaas: int}
      */
     private function sobretaxaDoBody(string $provider, array $body, ?array $existente): array
     {
@@ -486,6 +498,12 @@ class AdminPaymentCredentialsService
             'enable_sobretaxa_antecipacao' => $habilitada ? 1 : 0,
             'sobretaxa_antecipacao_avista_percentual' => $avista,
             'sobretaxa_antecipacao_parcelada_percentual' => $parcelada,
+            'sobretaxa_folga_percentual' => $this->percentualOuPadrao(
+                $body['sobretaxa_folga_percentual'] ?? $existente['sobretaxa_folga_percentual'] ?? 1.00,
+                1.00
+            ),
+            'usar_taxa_antecipacao_asaas' => $habilitada
+                && $this->boolish($body['usar_taxa_antecipacao_asaas'] ?? $existente['usar_taxa_antecipacao_asaas'] ?? false) ? 1 : 0,
         ];
     }
 
@@ -586,6 +604,15 @@ class AdminPaymentCredentialsService
         if ($naConta !== null && $naConta !== $local) {
             $this->credentials->definirAntecipacaoAutomatica($tenantId, 'asaas', $naConta);
             $row['enable_antecipacao_automatica'] = $naConta;
+        }
+
+        // Taxas que o Asaas informa para a conta: o painel mostra ao lado dos campos
+        try {
+            $taxas = ($this->asaas)($tenantId)->taxasAntecipacaoInformadas();
+            $row['taxa_antecipacao_asaas_avista'] = $taxas['avista'];
+            $row['taxa_antecipacao_asaas_parcelada'] = $taxas['parcelada'];
+        } catch (Throwable) {
+            // sem as taxas da conta o painel segue só com os campos
         }
 
         return $row;

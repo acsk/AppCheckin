@@ -220,4 +220,32 @@ class AsaasSobretaxaAntecipacaoTest extends TestCase
         $this->assertSame(1, AsaasTarifaCartao::maxParcelas('1'));
         $this->assertSame(12, AsaasTarifaCartao::maxParcelas(18));
     }
+
+    public function test_folga_configurada_muda_o_alvo(): void
+    {
+        $semFolga = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'parcelada' => 1.6, 'folga' => 0], 6);
+        $padrao = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'parcelada' => 1.6], 6);
+        $tres = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'parcelada' => 1.6, 'folga' => 3], 6);
+
+        $this->assertGreaterThanOrEqual(400.0, $semFolga['liquido_estimado']);
+        $this->assertLessThan(400.5, $semFolga['liquido_estimado']);
+        $this->assertGreaterThanOrEqual(404.0, $padrao['liquido_estimado']);
+        $this->assertGreaterThanOrEqual(412.0, $tres['liquido_estimado']);
+        $this->assertLessThan($padrao['valor_cobrar'], $semFolga['valor_cobrar']);
+        $this->assertGreaterThan($padrao['valor_cobrar'], $tres['valor_cobrar']);
+    }
+
+    public function test_usar_taxa_asaas_prevalece_sobre_o_campo_do_painel(): void
+    {
+        $conta = ['anticipation' => ['creditCard' => ['detachedMonthlyFeeValue' => 1.15, 'installmentMonthlyFeeValue' => 1.6]]];
+        $painel = ['avista' => 1.5, 'parcelada' => 2.1];
+
+        // Desligado: vale o painel, mesmo com a conta informando
+        $this->assertSame(2.1, AsaasSobretaxaAntecipacao::taxaMensal(6, $painel, $conta));
+        // Ligado: vale a conta
+        $this->assertSame(1.6, AsaasSobretaxaAntecipacao::taxaMensal(6, $painel + ['usar_taxa_asaas' => true], $conta));
+        $this->assertSame(1.15, AsaasSobretaxaAntecipacao::taxaMensal(1, $painel + ['usar_taxa_asaas' => true], $conta));
+        // Ligado sem resposta do Asaas: cai no painel
+        $this->assertSame(2.1, AsaasSobretaxaAntecipacao::taxaMensal(6, $painel + ['usar_taxa_asaas' => true], []));
+    }
 }

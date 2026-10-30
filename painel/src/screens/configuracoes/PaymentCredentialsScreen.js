@@ -35,6 +35,21 @@ const METODOS = [
 
 const ligado = (v) => v === true || v === 1 || v === '1';
 
+const pct = (v) => `${Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+
+// Taxas de antecipação que o Asaas informou para a conta (vêm do GET das credenciais).
+function taxaAsaasTexto(row) {
+  const avista = row?.taxa_antecipacao_asaas_avista;
+  const parcelada = row?.taxa_antecipacao_asaas_parcelada;
+  if (avista == null && parcelada == null) {
+    return 'O Asaas não informou as taxas desta conta agora; enquanto isso valem as taxas abaixo.';
+  }
+  const partes = [];
+  if (avista != null) partes.push(`${pct(avista)} ao mês à vista`);
+  if (parcelada != null) partes.push(`${pct(parcelada)} ao mês no parcelado`);
+  return `O Asaas informa ${partes.join(' e ')}. As taxas abaixo só valem se ele deixar de informar.`;
+}
+
 function formDe(provider, row) {
   return {
     provider,
@@ -50,6 +65,8 @@ function formDe(provider, row) {
     enable_sobretaxa_antecipacao: ligado(row?.enable_sobretaxa_antecipacao),
     sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
+    sobretaxa_folga_percentual: Number(row?.sobretaxa_folga_percentual ?? 1),
+    usar_taxa_antecipacao_asaas: ligado(row?.usar_taxa_antecipacao_asaas),
     access_token_test: '',
     public_key_test: '',
     access_token_prod: '',
@@ -163,6 +180,10 @@ export default function PaymentCredentialsScreen() {
       enable_sobretaxa_antecipacao: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao,
       sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
       sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
+      sobretaxa_folga_percentual: Number.isFinite(Number(f.sobretaxa_folga_percentual)) && String(f.sobretaxa_folga_percentual).trim() !== ''
+        ? Number(f.sobretaxa_folga_percentual)
+        : 1,
+      usar_taxa_antecipacao_asaas: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao && !!f.usar_taxa_antecipacao_asaas,
     };
     ['access_token_test', 'public_key_test', 'access_token_prod', 'public_key_prod', 'webhook_secret'].forEach((k) => {
       if (f[k].trim()) dados[k] = f[k].trim();
@@ -454,6 +475,14 @@ export default function PaymentCredentialsScreen() {
                       onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
                     />
                     {form.enable_sobretaxa_antecipacao ? (
+                      <Switch
+                        label="Usar a taxa informada pelo Asaas"
+                        description={taxaAsaasTexto(row)}
+                        checked={!!form.usar_taxa_antecipacao_asaas}
+                        onChange={(v) => atualizar(selecionado, { usar_taxa_antecipacao_asaas: v })}
+                      />
+                    ) : null}
+                    {form.enable_sobretaxa_antecipacao ? (
                       <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-2)' }}>
                         <TextField
                           label="Taxa à vista (% ao mês)"
@@ -480,6 +509,19 @@ export default function PaymentCredentialsScreen() {
                             sobretaxa_antecipacao_parcelada_percentual: e?.target ? e.target.value : e,
                           })}
                           hint="Asaas: 1,6% ao mês nas cobranças parceladas (D+2)."
+                        />
+                        <TextField
+                          label="Folga sobre o plano (%)"
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="30"
+                          inputMode="decimal"
+                          value={String(form.sobretaxa_folga_percentual ?? 1)}
+                          onChange={(e) => atualizar(selecionado, {
+                            sobretaxa_folga_percentual: e?.target ? e.target.value : e,
+                          })}
+                          hint="Margem para a academia nunca receber abaixo do plano. Padrão: 1%."
                         />
                       </div>
                     ) : null}

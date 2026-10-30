@@ -100,6 +100,11 @@ class TenantPaymentCredentialsRepository
         return Schema::hasColumn('tenant_payment_credentials', 'max_parcelas_cartao');
     }
 
+    private function temColunasRepasse(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'usar_taxa_antecipacao_asaas');
+    }
+
     private function temColunaSomenteVinculados(): bool
     {
         return Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados');
@@ -116,6 +121,8 @@ class TenantPaymentCredentialsRepository
         $sql .= $this->temColunaPixRecorrencia() ? ', enable_pix_recorrencia' : '';
 
         $sql .= $this->temColunaMaxParcelas() ? ', max_parcelas_cartao' : '';
+
+        $sql .= $this->temColunasRepasse() ? ', sobretaxa_folga_percentual, usar_taxa_antecipacao_asaas' : '';
 
         return $sql.($this->temColunaSomenteVinculados() ? ', conciliar_somente_vinculados' : '');
     }
@@ -183,6 +190,11 @@ class TenantPaymentCredentialsRepository
             $cols .= ', max_parcelas_cartao';
             $params[] = $dados['max_parcelas_cartao'] ?? 6;
         }
+        if ($this->temColunasRepasse()) {
+            $cols .= ', sobretaxa_folga_percentual, usar_taxa_antecipacao_asaas';
+            $params[] = $dados['sobretaxa_folga_percentual'] ?? 1.00;
+            $params[] = $dados['usar_taxa_antecipacao_asaas'] ?? 0;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -232,6 +244,11 @@ class TenantPaymentCredentialsRepository
         if ($this->temColunaMaxParcelas() && array_key_exists('max_parcelas_cartao', $dados)) {
             $sql .= ', max_parcelas_cartao = ?';
             $params[] = $dados['max_parcelas_cartao'];
+        }
+        if ($this->temColunasRepasse() && array_key_exists('usar_taxa_antecipacao_asaas', $dados)) {
+            $sql .= ', sobretaxa_folga_percentual = ?, usar_taxa_antecipacao_asaas = ?';
+            $params[] = $dados['sobretaxa_folga_percentual'] ?? 1.00;
+            $params[] = $dados['usar_taxa_antecipacao_asaas'];
         }
         $sql .= ', updated_at = NOW()';
 

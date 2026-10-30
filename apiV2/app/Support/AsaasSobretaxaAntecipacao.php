@@ -22,8 +22,8 @@ final class AsaasSobretaxaAntecipacao
     /** Dias entre a confirmação e o crédito de cada parcela no Asaas (parcela k cai em ~k × 32 dias). */
     public const DIAS_POR_PARCELA = 32;
 
-    /** Folga sobre o valor do plano: a taxa varia com o dia do mês e a escola não pode receber menos. */
-    public const FOLGA_PERCENTUAL = 1.0;
+    /** Folga padrão sobre o valor do plano: a taxa varia com o dia do mês e a escola não pode receber menos. */
+    public const FOLGA_PADRAO = 1.0;
 
     /**
      * @param  array<string, mixed>  $repasse  saída de AsaasTarifaCartao (valor_plano, valor_cobrar, tarifa, …)
@@ -67,7 +67,8 @@ final class AsaasSobretaxaAntecipacao
         }
 
         // Líquido do cartão que, depois da antecipação, ainda deixa o plano + folga para a escola
-        $alvo = round($valorPlano * (1 + self::FOLGA_PERCENTUAL / 100), 2);
+        $folga = self::percentualValido($config['folga'] ?? self::FOLGA_PADRAO, self::FOLGA_PADRAO);
+        $alvo = round($valorPlano * (1 + $folga / 100), 2);
         $liquidoCartao = $alvo / (1 - $fator);
         $valorCobrar = max(
             $valorCobrarAsaas,
@@ -134,16 +135,17 @@ final class AsaasSobretaxaAntecipacao
     {
         $chave = $parcelas > 1 ? 'parcelada' : 'avista';
         $padrao = $parcelas > 1 ? self::PARCELADA_PADRAO : self::AVISTA_PADRAO;
+
+        // "Usar a taxa informada pelo Asaas": a da conta vale; o campo do painel só se o Asaas não informar
+        $oficial = self::taxaOficialConta($parcelas, $taxasConta);
+        if ($oficial !== null && ! empty($config['usar_taxa_asaas'])) {
+            return $oficial;
+        }
         if (array_key_exists($chave, $config) && is_numeric($config[$chave])) {
             return self::percentualValido($config[$chave], $padrao);
         }
 
-        $oficial = self::taxaOficialConta($parcelas, $taxasConta);
-        if ($oficial !== null) {
-            return $oficial;
-        }
-
-        return $padrao;
+        return $oficial ?? $padrao;
     }
 
     /**
