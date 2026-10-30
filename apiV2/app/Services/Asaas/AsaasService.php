@@ -37,6 +37,8 @@ class AsaasService
 
     private float $sobretaxaParceladaPercentual = AsaasSobretaxaAntecipacao::PARCELADA_PADRAO;
 
+    private int $maxParcelasCartao = AsaasTarifaCartao::MAX_PARCELAS_PADRAO;
+
     /** @var array<string, mixed>|null */
     private ?array $taxasContaCache = null;
 
@@ -261,8 +263,8 @@ class AsaasService
         if ($parcelas < 1) {
             $parcelas = 1;
         }
-        if ($parcelas > 12) {
-            $parcelas = 12;
+        if ($parcelas > $this->maxParcelasCartao) {
+            $parcelas = $this->maxParcelasCartao;
         }
         $descricao = (string) ($data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento');
         if ($billingType === 'CREDIT_CARD') {
@@ -290,7 +292,7 @@ class AsaasService
         ];
         if ($billingType === 'CREDIT_CARD' && $parcelas > 1) {
             $payloadPagamento['installmentCount'] = $parcelas;
-            $payloadPagamento['installmentValue'] = AsaasTarifaCartao::valorParcela($valorCobranca, $parcelas);
+            $payloadPagamento['installmentValue'] = $tarifaCartao['valor_parcela'] ?? AsaasTarifaCartao::valorParcela($valorCobranca, $parcelas);
         } else {
             $payloadPagamento['value'] = $valorCobranca;
         }
@@ -430,7 +432,7 @@ class AsaasService
     public function valorComTaxaCartaoRepassada(float $valorLiquidoDesejado, int $parcelas = 1, bool $refinar = true): array
     {
         $valorLiquidoDesejado = round($valorLiquidoDesejado, 2);
-        $parcelas = max(1, min(12, $parcelas));
+        $parcelas = max(1, min($this->maxParcelasCartao, $parcelas));
         $sim = $this->simularVenda($valorLiquidoDesejado, ['CREDIT_CARD'], $parcelas);
         $creditCard = is_array($sim['creditCard'] ?? null) ? $sim['creditCard'] : [];
         $repasse = AsaasTarifaCartao::aPartirDaSimulacao($valorLiquidoDesejado, $creditCard);
@@ -474,7 +476,7 @@ class AsaasService
         $valorLiquidoDesejado = round($valorLiquidoDesejado, 2);
         $opcoes = [];
         foreach (AsaasTarifaCartao::OPCOES_PARCELAS as $n) {
-            if (! AsaasTarifaCartao::cabeEmParcelas($valorLiquidoDesejado, $n)) {
+            if ($n > $this->maxParcelasCartao || ! AsaasTarifaCartao::cabeEmParcelas($valorLiquidoDesejado, $n)) {
                 continue;
             }
             try {
@@ -498,9 +500,27 @@ class AsaasService
      */
     private function anexarParcela(array $repasse, int $parcelas): array
     {
-        $total = (float) $repasse['valor_cobrar'];
+        $total = round((float) $repasse['valor_cobrar'], 2);
+        // Parcela para cima: o Asaas cobra parcela × N, e esse total não pode ficar abaixo do calculado
+        $parcela = $parcelas > 1 ? AsaasTarifaCartao::paraCima($total / $parcelas) : $total;
+        $cheio = round($parcela * $parcelas, 2);
+        if ($cheio > $total) {
+            if (isset($repasse['fator_antecipacao'])) {
+                $repasse = AsaasSobretaxaAntecipacao::comValorCobrar(
+                    $repasse,
+                    $cheio,
+                    round($total - (float) $repasse['sobretaxa'], 2),
+                    (float) ($repasse['fee_percentage'] ?? 0),
+                    (float) ($repasse['operation_fee'] ?? 0),
+                    (float) $repasse['fator_antecipacao'],
+                );
+            } else {
+                $repasse['valor_cobrar'] = $cheio;
+                $repasse['tarifa'] = round((float) $repasse['tarifa'] + ($cheio - $total), 2);
+            }
+        }
         $repasse['parcela_count'] = $parcelas;
-        $repasse['valor_parcela'] = AsaasTarifaCartao::valorParcela($total, $parcelas);
+        $repasse['valor_parcela'] = $parcela;
 
         return $repasse;
     }
@@ -934,6 +954,7 @@ class AsaasService
                 $this->sobretaxaParceladaPercentual = $v;
             }
         }
+        $this->maxParcelasCartao = AsaasTarifaCartao::maxParcelas($flags['max_parcelas_cartao'] ?? null);
     }
 
     /**

@@ -3,8 +3,12 @@
 namespace App\Support;
 
 /**
- * Acréscimo complementar da antecipação automática Asaas (D+2).
+ * Acréscimo complementar da antecipação automática Asaas, pago pelo aluno junto com a tarifa do cartão.
  * Não recalcula a tarifa de cartão — usa a que o POST /payments/simulate já devolveu.
+ *
+ * O Asaas antecipa cada parcela pelo prazo até ela cair na conta (~32 dias por parcela) e cobra a taxa
+ * mensal sobre o líquido dela; em 12x a última paga ~12,8 meses. Por isso o custo cresce com as parcelas:
+ * prazo médio = (N + 1) / 2 parcelas.
  *
  * Taxas comerciais padrão (editáveis na credencial):
  * 1,15% ao mês à vista · 1,6% ao mês no parcelado.
@@ -15,10 +19,16 @@ final class AsaasSobretaxaAntecipacao
 
     public const PARCELADA_PADRAO = 1.60;
 
+    /** Dias entre a confirmação e o crédito de cada parcela no Asaas (parcela k cai em ~k × 32 dias). */
+    public const DIAS_POR_PARCELA = 32;
+
+    /** Folga sobre o valor do plano: a taxa varia com o dia do mês e a escola não pode receber menos. */
+    public const FOLGA_PERCENTUAL = 1.0;
+
     /**
      * @param  array<string, mixed>  $repasse  saída de AsaasTarifaCartao (valor_plano, valor_cobrar, tarifa, …)
      * @param  array<string, mixed>  $config
-     * @param  array<string, mixed>  $creditCard  bloco creditCard da simulação (pode trazer taxa oficial)
+     * @param  array<string, mixed>  $creditCard  bloco creditCard da simulação (não usado; mantido pela assinatura)
      * @param  array<string, mixed>  $taxasConta  GET /myAccount/fees quando disponível
      * @return array<string, mixed>
      */
@@ -33,6 +43,7 @@ final class AsaasSobretaxaAntecipacao
         $valorCobrarAsaas = round((float) ($repasse['valor_cobrar'] ?? $valorPlano), 2);
         $tarifaAsaas = round((float) ($repasse['tarifa'] ?? max(0, $valorCobrarAsaas - $valorPlano)), 2);
         $feePct = (float) ($repasse['fee_percentage'] ?? 0);
+        $operationFee = (float) ($repasse['operation_fee'] ?? 0);
         $parcelas = max(1, $parcelas);
 
         $repasse['tarifa'] = $tarifaAsaas;
@@ -47,57 +58,70 @@ final class AsaasSobretaxaAntecipacao
         }
 
         $taxaMes = self::taxaMensal($parcelas, $config, $taxasConta);
-        $antecipacaoOficial = self::antecipacaoOficial($creditCard);
-        $baseAntecipacao = $valorCobrarAsaas > 0 ? $valorCobrarAsaas : $valorPlano;
-        $antecipacaoEstimada = $antecipacaoOficial !== null
-            ? $antecipacaoOficial
-            : AsaasTarifaCartao::paraCima($baseAntecipacao * $taxaMes / 100.0);
-
-        $netSimulado = isset($repasse['net_value_simulado']) && $repasse['net_value_simulado'] !== null
-            ? round((float) $repasse['net_value_simulado'], 2)
-            : null;
-
-        // Furo só conta como antecipação quando a simulação foi do valor a cobrar (já com tarifa).
-        // Simular o valor do plano faz (plano − líquido) ≈ tarifa do cartão — não somar de novo.
-        $buracoSimulado = $netSimulado !== null
-            ? AsaasTarifaCartao::paraCima($valorPlano - $netSimulado)
-            : 0.0;
-        $buracoEhTarifaCartao = $buracoSimulado > 0.001
-            && abs($buracoSimulado - $tarifaAsaas) < 0.05;
-
-        if ($antecipacaoOficial !== null) {
-            $antecipacao = $antecipacaoOficial;
-        } elseif ($buracoSimulado > 0.001 && ! $buracoEhTarifaCartao) {
-            $antecipacao = $buracoSimulado;
-        } else {
-            $antecipacao = $antecipacaoEstimada;
-        }
-
+        $fator = self::fatorAntecipacao($taxaMes, $parcelas);
         $repasse['antecipacao_habilitada'] = true;
-        $repasse['antecipacao_estimada'] = $antecipacao;
         $repasse['sobretaxa_percentual'] = $taxaMes;
 
-        if ($antecipacao <= 0.001) {
-            $repasse['liquido_estimado'] = $netSimulado ?? $valorPlano;
-
+        if ($fator <= 0 || $fator >= 0.9) {
             return $repasse;
         }
 
-        $operationFee = (float) ($repasse['operation_fee'] ?? 0);
-        $sobretaxa = self::sobretaxaParaCobrir($antecipacao, $feePct);
-        $valorCobrar = round($valorCobrarAsaas + $sobretaxa, 2);
-        $liquidoEstimado = self::liquidoEstimado($valorCobrar, $feePct, $operationFee, $antecipacao, $valorCobrarAsaas);
+        // Líquido do cartão que, depois da antecipação, ainda deixa o plano + folga para a escola
+        $alvo = round($valorPlano * (1 + self::FOLGA_PERCENTUAL / 100), 2);
+        $liquidoCartao = $alvo / (1 - $fator);
+        $valorCobrar = max(
+            $valorCobrarAsaas,
+            AsaasTarifaCartao::paraCima(AsaasTarifaCartao::valorParaLiquido($liquidoCartao, $feePct, $operationFee)),
+        );
 
-        if ($liquidoEstimado + 0.001 < $valorPlano) {
-            $falta = AsaasTarifaCartao::paraCima($valorPlano - $liquidoEstimado);
-            $sobretaxa = round($sobretaxa + self::sobretaxaParaCobrir($falta, $feePct), 2);
-            $valorCobrar = round($valorCobrarAsaas + $sobretaxa, 2);
-            $liquidoEstimado = self::liquidoEstimado($valorCobrar, $feePct, $operationFee, $antecipacao, $valorCobrarAsaas);
+        // Arredondamentos podem deixar o líquido centavos abaixo do alvo
+        for ($i = 0; $i < 10; $i++) {
+            $calculado = self::comValorCobrar($repasse, $valorCobrar, $valorCobrarAsaas, $feePct, $operationFee, $fator);
+            if ($calculado['liquido_estimado'] + 0.001 >= $alvo) {
+                break;
+            }
+            $valorCobrar = round($valorCobrar + 0.01, 2);
         }
 
-        $repasse['sobretaxa'] = $sobretaxa;
-        $repasse['valor_cobrar'] = $valorCobrar;
-        $repasse['liquido_estimado'] = $liquidoEstimado;
+        return $calculado;
+    }
+
+    /**
+     * Fração do líquido do cartão que fica com a antecipação: taxa mensal × prazo médio das parcelas.
+     */
+    public static function fatorAntecipacao(float $taxaMes, int $parcelas): float
+    {
+        $parcelas = max(1, $parcelas);
+        $mesesMedios = (self::DIAS_POR_PARCELA / 30) * ($parcelas + 1) / 2;
+
+        return max(0.0, $taxaMes / 100 * $mesesMedios);
+    }
+
+    /**
+     * Recalcula sobretaxa, antecipação e líquido para um valor cobrado (ex.: depois de arredondar a parcela).
+     *
+     * @param  array<string, mixed>  $repasse
+     * @return array<string, mixed>
+     */
+    public static function comValorCobrar(
+        array $repasse,
+        float $valorCobrar,
+        float $valorCobrarAsaas,
+        float $feePct,
+        float $operationFee,
+        float $fator,
+    ): array {
+        $rate = $feePct / 100.0;
+        $aposCartao = $rate > 0 && $rate < 0.99
+            ? round($valorCobrar * (1 - $rate) - $operationFee, 2)
+            : round($valorCobrar - $operationFee, 2);
+        $antecipacao = AsaasTarifaCartao::paraCima($aposCartao * $fator);
+
+        $repasse['valor_cobrar'] = round($valorCobrar, 2);
+        $repasse['sobretaxa'] = round(max(0, $valorCobrar - $valorCobrarAsaas), 2);
+        $repasse['antecipacao_estimada'] = $antecipacao;
+        $repasse['liquido_estimado'] = round($aposCartao - $antecipacao, 2);
+        $repasse['fator_antecipacao'] = $fator;
 
         return $repasse;
     }
@@ -123,24 +147,6 @@ final class AsaasSobretaxaAntecipacao
     }
 
     /**
-     * Valor de antecipação devolvido pela simulação, se a API expuser o campo.
-     *
-     * @param  array<string, mixed>  $creditCard
-     */
-    public static function antecipacaoOficial(array $creditCard): ?float
-    {
-        foreach (['anticipationFee', 'anticipationFeeValue', 'feeAnticipation', 'anticipationValue'] as $key) {
-            if (isset($creditCard[$key]) && is_numeric($creditCard[$key])) {
-                $v = round((float) $creditCard[$key], 2);
-
-                return $v > 0 ? $v : null;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * @param  array<string, mixed>  $taxasConta
      */
     public static function taxaOficialConta(int $parcelas, array $taxasConta): ?float
@@ -163,36 +169,6 @@ final class AsaasSobretaxaAntecipacao
         }
 
         return round($v, 2);
-    }
-
-    public static function sobretaxaParaCobrir(float $antecipacao, float $feePercentage): float
-    {
-        $antecipacao = AsaasTarifaCartao::paraCima($antecipacao);
-        $rate = $feePercentage / 100.0;
-        if ($rate > 0 && $rate < 0.99) {
-            return AsaasTarifaCartao::paraCima($antecipacao / (1 - $rate));
-        }
-
-        return $antecipacao;
-    }
-
-    private static function liquidoEstimado(
-        float $valorCobrar,
-        float $feePct,
-        float $operationFee,
-        float $antecipacaoNaCobrancaAsaas,
-        float $valorCobrarAsaas,
-    ): float {
-        $rate = $feePct / 100.0;
-        $antec = $antecipacaoNaCobrancaAsaas;
-        if ($valorCobrarAsaas > 0 && $valorCobrar > $valorCobrarAsaas && $antec > 0) {
-            $antec = AsaasTarifaCartao::paraCima($antec * ($valorCobrar / $valorCobrarAsaas));
-        }
-        $aposCartao = $rate > 0 && $rate < 0.99
-            ? round($valorCobrar * (1 - $rate) - $operationFee, 2)
-            : round($valorCobrar - $operationFee, 2);
-
-        return round($aposCartao - $antec, 2);
     }
 
     private static function percentualValido(mixed $valor, float $padrao): float

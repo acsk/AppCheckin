@@ -46,6 +46,7 @@ function formDe(provider, row) {
     enable_antecipacao_automatica: ligado(row?.enable_antecipacao_automatica),
     conciliar_somente_vinculados: row?.conciliar_somente_vinculados == null ? provider === 'mercadopago' : ligado(row.conciliar_somente_vinculados),
     enable_pix_recorrencia: ligado(row?.enable_pix_recorrencia),
+    max_parcelas_cartao: Number(row?.max_parcelas_cartao ?? 6),
     enable_sobretaxa_antecipacao: ligado(row?.enable_sobretaxa_antecipacao),
     sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
@@ -158,6 +159,7 @@ export default function PaymentCredentialsScreen() {
       enable_antecipacao_automatica: !!f.enable_antecipacao_automatica,
       conciliar_somente_vinculados: !!f.conciliar_somente_vinculados,
       enable_pix_recorrencia: provider === 'asaas' && !!f.enable_pix && !!f.enable_pix_recorrencia,
+      max_parcelas_cartao: Math.min(12, Math.max(1, Math.round(Number(f.max_parcelas_cartao) || 6))),
       enable_sobretaxa_antecipacao: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao,
       sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
       sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
@@ -374,6 +376,29 @@ export default function PaymentCredentialsScreen() {
               </div>
             </div>
 
+            {form.enable_credit_card ? (
+              <div className="ck-section">
+                <h3 className="ck-section__title">Parcelamento no cartão</h3>
+                <p className="ck-section__desc">
+                  Em quantas vezes o aluno pode dividir a compra no cartão. As taxas do cartão e da antecipação de
+                  cada parcela entram no valor cobrado do aluno, então quanto mais parcelas, mais caro fica para ele.
+                </p>
+                <TextField
+                  label="Máximo de parcelas"
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="12"
+                  inputMode="numeric"
+                  value={String(form.max_parcelas_cartao ?? 6)}
+                  onChange={(e) => atualizar(selecionado, {
+                    max_parcelas_cartao: e?.target ? e.target.value : e,
+                  })}
+                  hint="De 1 (só à vista) a 12. Padrão: 6x."
+                />
+              </div>
+            ) : null}
+
             {selecionado === 'asaas' ? (
               <div className="ck-section">
                 <h3 className="ck-section__title">Assinatura mensal (planos com fidelidade)</h3>
@@ -424,7 +449,7 @@ export default function PaymentCredentialsScreen() {
                   <>
                     <Switch
                       label="Repassar sobretaxa de antecipação"
-                      description="Soma a taxa de antecipação à tarifa de cartão que o Asaas já calcula, para o líquido da academia não ficar abaixo do valor do plano."
+                      description="O aluno paga a antecipação de cada parcela (calculada pelo prazo até ela cair na conta) mais uma folga de 1%, para a academia receber o valor cheio do plano."
                       checked={!!form.enable_sobretaxa_antecipacao}
                       onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
                     />

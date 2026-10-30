@@ -72,33 +72,6 @@ class AsaasSobretaxaAntecipacaoTest extends TestCase
         $this->assertLessThan($r['tarifa'], $r['sobretaxa']);
     }
 
-    public function test_usa_furo_da_simulacao_sem_somar_percentual_de_novo(): void
-    {
-        $base = $this->repasse70();
-        $base['net_value_simulado'] = 69.07;
-        $r = AsaasSobretaxaAntecipacao::aplicar($base, [
-            'habilitada' => true,
-            'avista' => 1.15,
-        ], 1, []);
-
-        $this->assertEqualsWithDelta(0.93, $r['antecipacao_estimada'], 0.001);
-        $this->assertGreaterThanOrEqual(70.0, $r['liquido_estimado']);
-    }
-
-    public function test_prioriza_antecipacao_oficial_da_simulacao(): void
-    {
-        $r = AsaasSobretaxaAntecipacao::aplicar($this->repasse70(), [
-            'habilitada' => true,
-            'avista' => 9.99,
-        ], 1, ['anticipationFee' => 0.93]);
-
-        $this->assertEqualsWithDelta(0.93, $r['antecipacao_estimada'], 0.001);
-        $this->assertGreaterThan(
-            0.05,
-            abs($r['antecipacao_estimada'] - AsaasTarifaCartao::paraCima(72.66 * 9.99 / 100))
-        );
-    }
-
     public function test_prioriza_taxa_oficial_da_conta(): void
     {
         $this->assertSame(1.15, AsaasSobretaxaAntecipacao::taxaOficialConta(1, [
@@ -161,5 +134,90 @@ class AsaasSobretaxaAntecipacaoTest extends TestCase
             $this->assertSame(round($cobrar - $plano, 2), $r['tarifa']);
             $this->assertGreaterThanOrEqual($plano, $r['liquido_estimado']);
         }
+    }
+
+    /** Caso real (matrícula 470): R$ 400 em 12x, cartão 3,99% + R$ 0,49, antecipação 1,6% ao mês. */
+    private function repasse400(): array
+    {
+        $cobrar = AsaasTarifaCartao::valorParaLiquido(400.0, 3.99, 0.49);
+
+        return [
+            'valor_plano' => 400.0,
+            'valor_cobrar' => $cobrar,
+            'tarifa' => round($cobrar - 400.0, 2),
+            'fee_percentage' => 3.99,
+            'operation_fee' => 0.49,
+            'net_value_simulado' => 400.0,
+        ];
+    }
+
+    /**
+     * Líquido como o Asaas calcula: cartão sobre o total, antecipação de cada parcela pelos dias até o crédito.
+     *
+     * @param  list<int>  $dias
+     */
+    private function liquidoAsaas(float $cobrado, int $parcelas, array $dias, float $taxaMes = 1.6): float
+    {
+        $liquidoCartao = $cobrado * (1 - 0.0399) - 0.49;
+        $porParcela = $liquidoCartao / $parcelas;
+        $antecipacao = 0.0;
+        foreach (array_slice($dias, 0, $parcelas) as $d) {
+            $antecipacao += $porParcela * $taxaMes / 100 * $d / 30;
+        }
+
+        return round($liquidoCartao - $antecipacao, 2);
+    }
+
+    public function test_doze_vezes_escola_recebe_o_plano_com_as_datas_reais_do_asaas(): void
+    {
+        // Dias até o crédito de cada parcela na matrícula 470 (confirmada em 29/10/2026)
+        $dias = [32, 64, 96, 130, 160, 193, 224, 256, 288, 320, 354, 384];
+        $hoje = 434.84;
+        $this->assertLessThan(380.0, $this->liquidoAsaas($hoje, 12, $dias));
+
+        $r = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'parcelada' => 1.6], 12);
+
+        $this->assertEqualsWithDelta(473.8, $r['valor_cobrar'], 0.5);
+        $this->assertGreaterThanOrEqual(400.0, $this->liquidoAsaas($r['valor_cobrar'], 12, $dias));
+        $this->assertGreaterThanOrEqual(404.0, $r['liquido_estimado']);
+    }
+
+    public function test_parcelas_diferentes_cobrem_o_plano_com_folga(): void
+    {
+        $anterior = 0.0;
+        foreach ([1, 2, 3, 6, 12] as $n) {
+            $r = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'avista' => 1.15, 'parcelada' => 1.6], $n);
+            $this->assertGreaterThanOrEqual(404.0, $r['liquido_estimado'], "{$n}x");
+            $this->assertGreaterThan($anterior, $r['valor_cobrar'], "{$n}x mais caro que menos parcelas");
+            $anterior = $r['valor_cobrar'];
+        }
+    }
+
+    public function test_fator_usa_prazo_medio_das_parcelas(): void
+    {
+        $this->assertEqualsWithDelta(0.016 * 32 / 30, AsaasSobretaxaAntecipacao::fatorAntecipacao(1.6, 1), 0.00001);
+        $this->assertEqualsWithDelta(0.016 * 32 / 30 * 1.5, AsaasSobretaxaAntecipacao::fatorAntecipacao(1.6, 2), 0.00001);
+        $this->assertEqualsWithDelta(0.016 * 32 / 30 * 6.5, AsaasSobretaxaAntecipacao::fatorAntecipacao(1.6, 12), 0.00001);
+    }
+
+    public function test_com_valor_cobrar_recalcula_depois_de_arredondar_a_parcela(): void
+    {
+        $r = AsaasSobretaxaAntecipacao::aplicar($this->repasse400(), ['habilitada' => true, 'parcelada' => 1.6], 12);
+        $parcela = AsaasTarifaCartao::paraCima($r['valor_cobrar'] / 12);
+        $cheio = round($parcela * 12, 2);
+        $r2 = AsaasSobretaxaAntecipacao::comValorCobrar($r, $cheio, 417.13, 3.99, 0.49, $r['fator_antecipacao']);
+
+        $this->assertSame($cheio, $r2['valor_cobrar']);
+        $this->assertEqualsWithDelta($cheio - 417.13, $r2['sobretaxa'], 0.001);
+        $this->assertGreaterThanOrEqual($r['liquido_estimado'], $r2['liquido_estimado']);
+    }
+
+    public function test_max_parcelas_padrao_e_limites(): void
+    {
+        $this->assertSame(6, AsaasTarifaCartao::maxParcelas(null));
+        $this->assertSame(6, AsaasTarifaCartao::maxParcelas('abc'));
+        $this->assertSame(6, AsaasTarifaCartao::maxParcelas(0));
+        $this->assertSame(1, AsaasTarifaCartao::maxParcelas('1'));
+        $this->assertSame(12, AsaasTarifaCartao::maxParcelas(18));
     }
 }

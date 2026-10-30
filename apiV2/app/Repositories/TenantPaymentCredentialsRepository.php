@@ -95,6 +95,11 @@ class TenantPaymentCredentialsRepository
             ->where('is_active', 1)->where('enable_pix', 1)->where('enable_pix_recorrencia', 1)->exists();
     }
 
+    private function temColunaMaxParcelas(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'max_parcelas_cartao');
+    }
+
     private function temColunaSomenteVinculados(): bool
     {
         return Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados');
@@ -109,6 +114,8 @@ class TenantPaymentCredentialsRepository
         $sql .= $this->temColunaAntecipacaoAutomatica() ? ', enable_antecipacao_automatica' : '';
 
         $sql .= $this->temColunaPixRecorrencia() ? ', enable_pix_recorrencia' : '';
+
+        $sql .= $this->temColunaMaxParcelas() ? ', max_parcelas_cartao' : '';
 
         return $sql.($this->temColunaSomenteVinculados() ? ', conciliar_somente_vinculados' : '');
     }
@@ -172,6 +179,10 @@ class TenantPaymentCredentialsRepository
             $cols .= ', enable_pix_recorrencia';
             $params[] = $dados['enable_pix_recorrencia'] ?? 0;
         }
+        if ($this->temColunaMaxParcelas()) {
+            $cols .= ', max_parcelas_cartao';
+            $params[] = $dados['max_parcelas_cartao'] ?? 6;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -217,6 +228,10 @@ class TenantPaymentCredentialsRepository
         if ($this->temColunaPixRecorrencia() && array_key_exists('enable_pix_recorrencia', $dados)) {
             $sql .= ', enable_pix_recorrencia = ?';
             $params[] = $dados['enable_pix_recorrencia'];
+        }
+        if ($this->temColunaMaxParcelas() && array_key_exists('max_parcelas_cartao', $dados)) {
+            $sql .= ', max_parcelas_cartao = ?';
+            $params[] = $dados['max_parcelas_cartao'];
         }
         $sql .= ', updated_at = NOW()';
 

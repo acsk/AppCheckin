@@ -8,6 +8,7 @@ use App\Services\Asaas\AsaasService;
 use App\Services\EncryptionService;
 use App\Services\MercadoPago\MercadoPagoService;
 use App\Support\AsaasApiKey;
+use App\Support\AsaasTarifaCartao;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -173,6 +174,7 @@ class AdminPaymentCredentialsService
                 'enable_antecipacao_automatica' => $sobretaxa['enable_antecipacao_automatica'],
                 'conciliar_somente_vinculados' => $this->somenteVinculadosDoBody($provider, $body, $existente),
                 'enable_pix_recorrencia' => $this->pixRecorrenciaDoBody($provider, $body, $existente),
+                'max_parcelas_cartao' => AsaasTarifaCartao::maxParcelas($body['max_parcelas_cartao'] ?? $existente['max_parcelas_cartao'] ?? null),
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -206,6 +208,7 @@ class AdminPaymentCredentialsService
                 $update['enable_antecipacao_automatica'] = $sobretaxa['enable_antecipacao_automatica'];
                 $update['conciliar_somente_vinculados'] = $dados['conciliar_somente_vinculados'];
                 $update['enable_pix_recorrencia'] = $dados['enable_pix_recorrencia'];
+                $update['max_parcelas_cartao'] = $dados['max_parcelas_cartao'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -419,6 +422,7 @@ class AdminPaymentCredentialsService
         $row['enable_sobretaxa_antecipacao'] = $this->boolish($row['enable_sobretaxa_antecipacao'] ?? false);
         $row['conciliar_somente_vinculados'] = $this->boolish($row['conciliar_somente_vinculados'] ?? $provider === 'mercadopago');
         $row['enable_pix_recorrencia'] = $this->boolish($row['enable_pix_recorrencia'] ?? false);
+        $row['max_parcelas_cartao'] = AsaasTarifaCartao::maxParcelas($row['max_parcelas_cartao'] ?? null);
         $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
@@ -446,6 +450,7 @@ class AdminPaymentCredentialsService
             'enable_antecipacao_automatica' => false,
             'conciliar_somente_vinculados' => $provider === 'mercadopago',
             'enable_pix_recorrencia' => false,
+            'max_parcelas_cartao' => AsaasTarifaCartao::MAX_PARCELAS_PADRAO,
             'enable_sobretaxa_antecipacao' => false,
             'sobretaxa_antecipacao_avista_percentual' => 1.15,
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,

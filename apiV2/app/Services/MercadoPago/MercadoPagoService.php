@@ -3,6 +3,7 @@
 namespace App\Services\MercadoPago;
 
 use App\Services\EncryptionService;
+use App\Support\AsaasTarifaCartao;
 use App\Support\MercadoPagoPagamento;
 use App\Support\ReferenciaExterna;
 use App\Models\Parametro;
@@ -55,6 +56,8 @@ class MercadoPagoService
      */
     /** true quando o token veio de tenant_payment_credentials (e não do fallback global do .env). */
     private bool $credencialDoTenant = false;
+
+    private int $maxParcelasCartao = AsaasTarifaCartao::MAX_PARCELAS_PADRAO;
 
     public function usaCredencialDoTenant(): bool
     {
@@ -147,6 +150,7 @@ class MercadoPagoService
             $this->enablePix = $this->flagCredencial($credentials['enable_pix'] ?? true);
             $this->enableBoleto = $this->flagCredencial($credentials['enable_boleto'] ?? true);
             $this->enableCreditCard = $this->flagCredencial($credentials['enable_credit_card'] ?? true);
+            $this->maxParcelasCartao = AsaasTarifaCartao::maxParcelas($credentials['max_parcelas_cartao'] ?? null);
             
             return !empty($this->accessToken);
             
@@ -402,7 +406,7 @@ class MercadoPagoService
                     $data['tenant_id'] ?? null,
                     isset($data['metodo_pagamento']) ? (string) $data['metodo_pagamento'] : null,
                 ),
-                'installments' => (int) ($data['max_parcelas'] ?? 12)
+                'installments' => min((int) ($data['max_parcelas'] ?? 12), $this->maxParcelasCartao)
             ],
             'statement_descriptor' => substr($data['academia_nome'] ?? 'ACADEMIA', 0, 22)
         ];

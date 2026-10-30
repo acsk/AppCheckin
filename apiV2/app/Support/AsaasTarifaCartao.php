@@ -84,6 +84,19 @@ final class AsaasTarifaCartao
     /** Parcelas simuladas no app (à vista + as mais usadas no cartão). */
     public const OPCOES_PARCELAS = [1, 2, 3, 4, 5, 6, 12];
 
+    /** Limite de parcelas no cartão quando a academia não configurou outro. */
+    public const MAX_PARCELAS_PADRAO = 6;
+
+    /** Limite configurado (1–12); vazio ou inválido vira o padrão. */
+    public static function maxParcelas(mixed $valor): int
+    {
+        if (! is_numeric($valor) || (int) $valor < 1) {
+            return self::MAX_PARCELAS_PADRAO;
+        }
+
+        return min(12, (int) $valor);
+    }
+
     /** Asaas costuma recusar parcela menor que R$ 5. */
     public const MIN_VALOR_PARCELA = 5.0;
 
