@@ -11,6 +11,15 @@ const SECTIONS = [
     label: 'Geral',
     items: [
       { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4], perm: 'financeiro.ver' },
+      {
+        // Novas telas do BI (Financeiro, Alunos, Frequência…) entram como filhos aqui
+        id: 'bi',
+        label: 'Inteligência de negócios',
+        icon: 'bar-chart',
+        children: [
+          { id: 'bi-visao-geral', label: 'Visão geral', path: '/bi', roles: [3], perm: 'bi.ver' },
+        ],
+      },
       { id: 'meu-plano', label: 'Plano do Check-in', path: '/meu-plano', icon: 'layers', roles: [3], perm: 'conta.gerenciar' },
       { id: 'minha-conta', label: 'Minha conta', path: '/minha-conta', icon: 'user', roles: [3, 5, 6], perm: '*' },
       { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },

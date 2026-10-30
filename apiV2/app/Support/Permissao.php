@@ -56,6 +56,9 @@ final class Permissao
     /** Respostas identificadas das enquetes (nunca as anônimas) */
     public const COMUNICACOES_RESPOSTAS = 'comunicacoes.respostas';
 
+    /** Inteligência de negócios: indicadores com valores financeiros */
+    public const BI_VER = 'bi.ver';
+
     /**
      * @var array<string, array{modulo: string, nome: string, descricao: string, sensivel?: bool}>
      */
@@ -80,6 +83,7 @@ final class Permissao
         self::COMUNICACOES_ENCERRAR => ['modulo' => 'Comunicação', 'nome' => 'Encerrar comunicações', 'descricao' => 'Encerrar antes do prazo ou cancelar (libera o check-in).'],
         self::COMUNICACOES_RELATORIOS => ['modulo' => 'Comunicação', 'nome' => 'Ver relatórios de comunicação', 'descricao' => 'Leituras, pendências e resultados das enquetes.'],
         self::COMUNICACOES_RESPOSTAS => ['modulo' => 'Comunicação', 'nome' => 'Ver respostas das enquetes', 'descricao' => 'Quem respondeu o quê (enquetes não anônimas).'],
+        self::BI_VER => ['modulo' => 'Inteligência de negócios', 'nome' => 'Ver indicadores', 'descricao' => 'Visão geral com alunos, receita, inadimplência e check-ins.'],
     ];
 
     /**
@@ -95,8 +99,9 @@ final class Permissao
             self::AULAS_GERENCIAR, self::CONFIGURACOES_EDITAR,
             self::COMUNICACOES_VER, self::COMUNICACOES_CRIAR, self::COMUNICACOES_EDITAR, self::COMUNICACOES_PUBLICAR,
             self::COMUNICACOES_ENCERRAR, self::COMUNICACOES_RELATORIOS, self::COMUNICACOES_RESPOSTAS,
+            self::BI_VER,
         ],
-        Papel::FINANCEIRO => [self::ALUNOS_VER, self::MATRICULAS_VER, self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR],
+        Papel::FINANCEIRO => [self::ALUNOS_VER, self::MATRICULAS_VER, self::FINANCEIRO_VER, self::FINANCEIRO_BAIXAR, self::BI_VER],
         Papel::COMERCIAL => [self::PROSPECCAO_USAR],
         Papel::PROFESSOR => [],
         Papel::ALUNO => [],

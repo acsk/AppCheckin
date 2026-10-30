@@ -120,7 +120,7 @@ class EquipeTest extends TestCase
             ->assertCreated()->assertJsonPath('reaproveitado', false);
 
         $id = $r->json('usuario_id');
-        $this->assertSame([P::ALUNOS_VER, P::MATRICULAS_VER, P::FINANCEIRO_VER, P::FINANCEIRO_BAIXAR], app(PermissaoService::class)->efetivas($this->escola, $id));
+        $this->assertSame([P::ALUNOS_VER, P::MATRICULAS_VER, P::FINANCEIRO_VER, P::FINANCEIRO_BAIXAR, P::BI_VER], app(PermissaoService::class)->efetivas($this->escola, $id));
     }
 
     public function test_professor_existente_vira_admin_no_mesmo_cadastro_e_sem_ocupar_vaga(): void

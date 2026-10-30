@@ -4,6 +4,9 @@
 /* StatTile */
 .ck-stat { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-5); border-radius: var(--radius-xl); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-md); min-width: 0; }
 .ck-stat.is-featured { background: var(--sidebar-bg); border-color: var(--sidebar-line); color: var(--sidebar-ink); }
+.ck-stat.is-click { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.ck-stat.is-click:hover { border-color: var(--line-strong); }
+.ck-stat.is-click:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .ck-stat__top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .ck-stat__label { font-size: 14px; line-height: 20px; font-weight: 600; color: var(--ink-muted); }
 .ck-stat.is-featured .ck-stat__label, .ck-stat.is-featured .ck-stat__vs { color: var(--sidebar-muted); }

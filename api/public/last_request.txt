@@ -14326,3 +14326,4 @@
 [2026-10-21 00:59:58] GET /v2/admin/payment-credentials
 [2026-10-21 00:59:58] GET /admin/payment-credentials
 [2026-10-24 18:40:49] GET /v2/app-config
+[2026-10-30 15:14:08] GET /v2/health

@@ -73,7 +73,8 @@ class PermissaoEfetivaTest extends TestCase
         $this->assertContains(P::FINANCEIRO_BAIXAR, $this->efetivas($admin));
         $this->assertNotContains(P::EQUIPE_GERENCIAR, $this->efetivas($admin), 'equipe é do principal');
         $this->assertNotContains(P::CONTA_GERENCIAR, $this->efetivas($admin), 'plano e CNPJ são do principal');
-        $this->assertSame([P::ALUNOS_VER, P::MATRICULAS_VER, P::FINANCEIRO_VER, P::FINANCEIRO_BAIXAR], $this->efetivas($fin));
+        $this->assertSame([P::ALUNOS_VER, P::MATRICULAS_VER, P::FINANCEIRO_VER, P::FINANCEIRO_BAIXAR, P::BI_VER], $this->efetivas($fin));
+        $this->assertContains(P::BI_VER, $this->efetivas($admin));
         $this->assertSame([P::PROSPECCAO_USAR], $this->efetivas($com), 'comercial sem valores financeiros');
         $this->assertSame([], $this->efetivas($prof), 'professor só no app');
         $this->assertSame([], $this->efetivas($aluno));

@@ -56,6 +56,9 @@ final class PermissaoRotas
         [self::LEITURA, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_VER],
         [null, '#^admin/recorrencias(/|$)#', Permissao::FINANCEIRO_BAIXAR],
 
+        // Inteligência de negócios
+        [self::LEITURA, '#^admin/bi(/|$)#', Permissao::BI_VER],
+
         // Financeiro
         [self::LEITURA, '#^admin/(dashboard|pagamentos-plano|contas-receber|creditos|financeiro|assinaturas|relatorios)(/|$)#', Permissao::FINANCEIRO_VER],
         [null, '#^admin/(pagamentos-plano|contas-receber|creditos|financeiro|assinaturas)(/|$)#', Permissao::FINANCEIRO_BAIXAR],

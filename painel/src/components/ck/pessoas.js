@@ -43,7 +43,10 @@ import { Sparkline } from './graficos';
   function StatTile(p) {
     var d = p.delta;
     var tone = d ? (d.value === 0 ? 'flat' : ((d.value > 0) === (d.goodWhenUp !== false) ? 'good' : 'bad')) : null;
-    return h('div', { className: cx('ck-stat', p.featured && 'is-featured', p.className) },
+    // Com onClick o card abre o detalhamento: vira botão para mouse e teclado
+    var click = p.onClick ? { role: 'button', tabIndex: 0, title: p.clickLabel, 'aria-label': p.clickLabel, onClick: p.onClick,
+      onKeyDown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); p.onClick(); } } } : {};
+    return h('div', Object.assign({ className: cx('ck-stat', p.featured && 'is-featured', p.onClick && 'is-click', p.className) }, click),
       h('div', { className: 'ck-stat__top' },
         h('span', { className: 'ck-stat__label' }, p.label),
         p.icon ? h('span', { className: 'ck-stat__icon', 'aria-hidden': true }, h(Icon, { name: p.icon, size: 16 })) : null),
