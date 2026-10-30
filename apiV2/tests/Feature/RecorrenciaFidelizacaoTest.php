@@ -772,6 +772,8 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $c = $this->contrato($cartao);
         $this->assertSame(['100.00', '5.00'], [$this->v($c->valor_mensal_vigente), $this->v($c->taxa_cartao_mensal)], 'contrato e regularização sem a taxa');
         $this->assertStringContainsString('taxa do cartão', $this->asaas->assinaturas['sub_1']['descricao']);
+        $cronograma = app(AdminRecorrenciaService::class)->detalhe(self::T, $cartao)['body']['cronograma'];
+        $this->assertSame('105.00', $this->v($cronograma[1]['valor']), 'mensalidade prevista mostra o que o cartão vai cobrar');
 
         // Fim da fidelidade (política mensal → 120): taxa recalculada sobre o novo valor
         $this->recuar($cartao, 70);

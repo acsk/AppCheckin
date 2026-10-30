@@ -150,13 +150,15 @@ class AdminRecorrenciaService
             $porNumero[(int) $x['numero']] = $x;
         }
         $ate = max((int) $c['fidelizacao_meses'], $porNumero ? max(array_keys($porNumero)) : 0);
+        // Prevista = o que o gateway vai cobrar: mensalidade + taxa do cartão repassada (como a já gerada)
+        $prevista = Calc::reais(Calc::centavos((string) $c['valor_mensal_vigente']) + Calc::centavos((string) ($c['taxa_cartao_mensal'] ?? '0')));
         $out = [];
         for ($n = 1; $n <= $ate; $n++) {
             $x = $porNumero[$n] ?? null;
             $out[] = [
                 'numero' => $n, 'na_fidelizacao' => $n <= (int) $c['fidelizacao_meses'],
                 'vencimento' => $x['vencimento'] ?? Calc::maisMeses((string) $c['inicio_em'], $n - 1),
-                'valor' => $x['valor'] ?? $c['valor_mensal_vigente'], 'status' => $x['status'] ?? 'prevista',
+                'valor' => $x['valor'] ?? $prevista, 'status' => $x['status'] ?? 'prevista',
                 'pago_em' => $x['pago_em'] ?? null, 'tentativas' => (int) ($x['tentativas'] ?? 0), 'gateway_payment_id' => $x['gateway_payment_id'] ?? null,
                 'url' => $x['url'] ?? null,
             ];
