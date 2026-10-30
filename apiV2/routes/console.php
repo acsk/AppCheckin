@@ -18,5 +18,10 @@ Schedule::command('asaas:sincronizar-matriculas')->everyFifteenMinutes()->withou
 Schedule::command('cobrancas:limpar-pendentes')->dailyAt('04:30')->withoutOverlapping();
 Schedule::command('recorrencia:processar')->dailyAt('05:45')->withoutOverlapping();
 
+// Status das matrículas (vencida/cancelada/pendente/ativa) sem esperar o aluno abrir o app.
+// Desligado até conferir `php artisan matriculas:atualizar-status --simular` (MATRICULAS_STATUS_AUTOMATICO=true)
+Schedule::command('matriculas:atualizar-status')->hourlyAt(10)->withoutOverlapping()
+    ->when(fn () => (bool) config('appcheckin.matriculas_status_automatico'));
+
 // Prospecção: oportunidades de recuperação (matrículas canceladas), recuperações e score do dia
 Schedule::command('prospeccao:sincronizar')->dailyAt('05:30')->withoutOverlapping();

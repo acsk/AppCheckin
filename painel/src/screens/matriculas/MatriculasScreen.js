@@ -5,6 +5,8 @@ import { MatriculasLista, Button } from '../../components/ck';
 import ExcluirMatriculaModal from '../../components/ck/ExcluirMatriculaModal';
 import { matriculaService } from '../../services/matriculaService';
 import { authService } from '../../services/authService';
+import { API_V2_BASE_URL } from '../../config/api';
+import { fotoUrl } from '../../utils/prospeccao';
 import { obterMensagemErro } from '../../utils/errorHandler';
 import { showError, showSuccess } from '../../utils/toast';
 
@@ -90,7 +92,7 @@ export default function MatriculasScreen() {
     deleteAction: !row.pagamento_confirmado ? undefined
       : !row.continuada_por && ['cancelada', 'vencida', 'finalizada'].includes(statusOf(row)) ? { label: 'Vincular à próxima matrícula', icon: 'repeat', danger: false }
         : null,
-    id: row.id, code: `#${row.id}`, student: { name: row.usuario_nome || 'Aluno', email: row.usuario_email || '' },
+    id: row.id, code: `#${row.id}`, student: { name: row.usuario_nome || 'Aluno', email: row.usuario_email || '', avatar: fotoUrl(row.foto_caminho, API_V2_BASE_URL) },
     modality: row.modalidade_nome || row.modalidade?.nome, plan: row.plano_nome, amount: Number(row.valor),
     modalityIcon: row.modalidade_icone || row.modalidade?.icone, modalityColor: row.modalidade_cor || row.modalidade?.cor,
     cycle: row.ciclo_nome || row.frequencia_nome,

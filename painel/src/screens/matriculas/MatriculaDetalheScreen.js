@@ -29,6 +29,8 @@ import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
 import { showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
+import { API_V2_BASE_URL } from '../../config/api';
+import { fotoUrl } from '../../utils/prospeccao';
 import descontoMatriculaService from '../../services/descontoMatriculaService';
 import {
   Matricula,
@@ -1198,7 +1200,7 @@ export default function MatriculaDetalheScreen() {
     status: statusDs[0],
     statusTone: statusDs[1],
     statusLabel: limiteEsgotado ? 'Limite esgotado' : statusDs[2],
-    student: { name: matricula.usuario_nome || matricula.aluno_nome || 'Aluno' },
+    student: { name: matricula.usuario_nome || matricula.aluno_nome || 'Aluno', avatar: fotoUrl(matricula.foto_caminho, API_V2_BASE_URL) },
     modality: matricula.modalidade_nome || matricula.plano_nome || 'Plano',
     modalityIcon: iconeModalidade,
     modalityColor: corModalidade,

@@ -1088,6 +1088,35 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
+  // A folha abriu sem código/QR (falha no provedor): pede o PIX da mesma matrícula de novo
+  const tentarPixNovamente = async () => {
+    const matriculaId = pixData?.matricula_id;
+    if (!matriculaId || !apiUrl) return;
+    setPixStatusMessage(null);
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) return;
+      const r = await solicitarPix({ apiUrl, token, matriculaId: Number(matriculaId), escolherGateway, onEscolherGateway, podeSandbox: podeSandboxPix });
+      if (r.cancelled) return;
+      const pix = r.json?.data?.pix || {};
+      if (!r.ok || (!pix.qr_code && !pix.qr_code_base64)) {
+        setPixStatusMessage(r.json?.message || "O provedor de pagamento ainda não respondeu.");
+        return;
+      }
+      setPixData((atual) => ({
+        ...atual,
+        matricula_id: Number(r.json.data?.matricula_id || matriculaId),
+        valor: Number(r.json.data?.valor || atual?.valor || 0),
+        qr_code: pix.qr_code || null,
+        qr_code_base64: pix.qr_code_base64 || null,
+        ticket_url: pix.ticket_url || null,
+        expires_at: pix.expires_at || null,
+      }));
+    } catch {
+      setPixStatusMessage("Sem comunicação com o servidor. Confira sua internet.");
+    }
+  };
+
   const revisarPagamento = async () => {
     const ciclo = plano?.ciclos?.find(c => c.id === selectedCicloId);
     if (!plano || !ciclo || !metodoSelecionado || comprando || pixLoading) return;
@@ -1637,6 +1666,7 @@ export default function PlanoDetalhesScreen() {
         }
         onCopy={copyToClipboard}
         onCheck={() => checkPixAprovacao(true)}
+        onRetry={tentarPixNovamente}
         onOpenBank={() => {
           if (pixData?.ticket_url) {
             Linking.openURL(pixData.ticket_url);

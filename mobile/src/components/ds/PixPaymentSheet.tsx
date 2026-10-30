@@ -30,6 +30,8 @@ type Props = {
   onOpenBank?: () => void;
   onDone?: () => void;
   onRenew?: () => void;
+  /** Provedor não devolveu código nem QR: pede o PIX de novo. */
+  onRetry?: () => void | Promise<void>;
   doneLabel?: string;
 };
 
@@ -53,7 +55,7 @@ const secondsUntil = (iso?: string | null) => {
 // Copia e cola primeiro; QR Code para outro aparelho. O conteúdo rola e as ações ficam fixas.
 export default function PixPaymentSheet({
   visible, amount, description, code, qrBase64, expiresAt, ticketUrl,
-  status = "waiting", notice, onClose, onCopy, onCheck, onOpenBank, onDone, onRenew,
+  status = "waiting", notice, onClose, onCopy, onCheck, onOpenBank, onDone, onRenew, onRetry,
   doneLabel = "Ver minha assinatura",
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -61,6 +63,7 @@ export default function PixPaymentSheet({
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const [left, setLeft] = useState<number | null>(() => secondsUntil(expiresAt));
+  const [retrying, setRetrying] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copyGeneration = useRef(0);
 
@@ -82,8 +85,20 @@ export default function PixPaymentSheet({
   }, [expiresAt, status, visible]);
 
   const st: PixStatus = status === "waiting" && left != null && left <= 0 ? "expired" : status;
-  const active = st === "waiting" || st === "checking";
+  // Falha de comunicação com o provedor: sem código, QR nem link não há como pagar, então nada de "Já paguei"
+  const semPix = (st === "waiting" || st === "checking") && !code && !qrBase64 && !(ticketUrl && onOpenBank);
+  const active = !semPix && (st === "waiting" || st === "checking");
   const qrSize = Math.max(72, Math.min(140, width - 88));
+
+  const retry = async () => {
+    if (!onRetry || retrying) return;
+    setRetrying(true);
+    try {
+      await onRetry();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const copy = async () => {
     if (!code || !active) return;
@@ -129,7 +144,16 @@ export default function PixPaymentSheet({
               ) : null}
             </View>
 
-            {st === "paid" || st === "expired" ? (
+            {semPix ? (
+              <View style={styles.done} accessibilityLiveRegion="polite">
+                <View style={[styles.doneMark, { backgroundColor: ds.dangerSoft }]}>
+                  <Feather name="wifi-off" size={32} color={ds.danger} />
+                </View>
+                <Text style={styles.doneTitle}>Não foi possível gerar o PIX</Text>
+                <Text style={styles.doneText}>Houve uma falha de comunicação com o provedor de pagamento. Nada foi cobrado. {onRetry ? "Tente novamente em instantes." : "Feche e tente novamente em instantes."}</Text>
+                {notice ? <Text style={[styles.doneText, { color: ds.danger }]}>{notice}</Text> : null}
+              </View>
+            ) : st === "paid" || st === "expired" ? (
               <View style={styles.done}>
                 <View style={[styles.doneMark, { backgroundColor: st === "paid" ? ds.success : ds.dangerSoft }]}>
                   <Feather name={st === "paid" ? "check" : "clock"} size={36} color={st === "paid" ? ds.onSuccess : ds.danger} />
@@ -188,7 +212,10 @@ export default function PixPaymentSheet({
           </ScrollView>
 
           <View style={[styles.actions, { paddingBottom: space[3] + insets.bottom }]}>
-            {st === "paid" ? (
+            {semPix ? <>
+              {onRetry ? <Button size="lg" block icon={retrying ? undefined : "refresh-cw"} loading={retrying} onPress={retry}>{retrying ? "Gerando PIX…" : "Tentar novamente"}</Button> : null}
+              <Button size="lg" block variant={onRetry ? "ghost" : "primary"} disabled={retrying} onPress={onClose}>Fechar</Button>
+            </> : st === "paid" ? (
               <Button size="lg" block onPress={onDone ?? onClose}>{doneLabel}</Button>
             ) : st === "expired" ? (
               <Button size="lg" block icon={onRenew ? "refresh-cw" : undefined} onPress={onRenew ?? onClose}>{onRenew ? "Gerar novo código" : "Fechar"}</Button>

@@ -159,6 +159,13 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        // Bloqueio é decisão do admin: só o "Desbloquear" do painel tira a matrícula desse status
+        $bloqueada = DB::table('matriculas as m')->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.tenant_id', $tenantId)->where('m.id', $matriculaId)->where('sm.codigo', 'bloqueado')->exists();
+        if ($bloqueada) {
+            return;
+        }
+
         // Plano com fidelização: cada mensalidade paga libera um mês (regra própria, não a do ciclo à vista)
         if (app(\App\Services\Recorrencia\RecorrenciaAcesso::class)->atualizar($tenantId, $matriculaId)) {
             return;

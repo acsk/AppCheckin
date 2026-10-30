@@ -997,7 +997,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
               return h('tr', { key: r.id, className: 'ck-ml__row', onClick: function (e) { if (!e.target.closest('button, a')) p.onOpen && p.onOpen(r); } },
                 h('td', { className: 'ck-ml__code' }, r.code),
                 h('td', null, h('div', { className: 'ck-ml__who' },
-                  h(Avatar, { name: titleCase(r.student.name), size: 'sm', decorative: true }),
+                  h(Avatar, { name: titleCase(r.student.name), src: r.student.avatar, size: 'sm', decorative: true }),
                   h('span', { style: { minWidth: 0 } },
                     h('a', { href: r.href || '#', className: 'ck-ml__name', onClick: function (e) { if (p.onOpen) { e.preventDefault(); p.onOpen(r); } } }, titleCase(r.student.name)),
                     h('span', { className: 'ck-mt-cell__sub' }, r.student.email)))),

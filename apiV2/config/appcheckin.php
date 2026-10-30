@@ -61,6 +61,9 @@ return [
     | O app instalado com versão menor mostra "Nova versão disponível" com o link do APK.
     | Se bloqueia ou só avisa: Super Admin → App mobile (app_versions.obrigatoria).
     */
+    // Recálculo de status das matrículas de hora em hora (matriculas:atualizar-status). Ligar depois do --simular.
+    'matriculas_status_automatico' => (bool) env('MATRICULAS_STATUS_AUTOMATICO', false),
+
     'android_release' => [
         'version' => env('APP_ANDROID_VERSION', ''),
         'apk_url' => env('APP_ANDROID_APK_URL', ''),

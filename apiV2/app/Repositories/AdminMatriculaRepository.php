@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -35,6 +36,7 @@ class AdminMatriculaRepository
                 'a.usuario_id',
                 'a.nome as usuario_nome',
                 'u.email as usuario_email',
+                Pessoa::col('foto_caminho'),
                 'm.plano_id',
                 'p.nome as plano_nome',
                 'm.valor',
@@ -128,6 +130,7 @@ class AdminMatriculaRepository
                 'a.nome as usuario_nome',
                 'u.email as usuario_email',
                 'a.usuario_id',
+                Pessoa::col('foto_caminho'),
                 'p.nome as plano_nome',
                 'p.valor as plano_valor_base',
                 'p.duracao_dias',
