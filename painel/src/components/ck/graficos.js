@@ -94,6 +94,62 @@ export function ColumnChart({ data = [], format = num, formatAxis, height = 200,
   );
 }
 
+/**
+ * Duas séries lado a lado por coluna (portado do BiGroupedBars do protótipo do BI): `a` em contorno,
+ * `b` cheia — ex.: previsto × recebido. Estilos `ck-bi-gb` em ck-graficos.css.
+ */
+export function GroupedColumnChart({ labels = [], tips, a, b, format = num, formatAxis, height = 220, ratioText, caption }) {
+  const [hv, setHv] = useState(null);
+  const fmtAxis = formatAxis || format;
+  const mx = niceMax(Math.max(...a.values, ...b.values, 1));
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * mx);
+  return (
+    <figure className="ck-cc ck-bi-gb" style={{ '--cc-h': `${height}px` }}>
+      <div className="ck-cc__plot">
+        <div className="ck-cc__axis" aria-hidden>{ticks.slice().reverse().map((t, i) => <span key={i}>{fmtAxis(t)}</span>)}</div>
+        <div className="ck-cc__area">
+          {ticks.map((t, i) => <span key={i} className="ck-cc__grid" style={{ bottom: `${(t / mx) * 100}%` }} aria-hidden />)}
+          <div className="ck-cc__cols">
+            {labels.map((l, i) => {
+              const va = a.values[i] || 0; const vb = b.values[i] || 0; const tip = (tips && tips[i]) || l;
+              return (
+                <div key={i} className={cx('ck-bi-gb__col', hv === i && 'is-hover')} tabIndex={0}
+                  aria-label={`${tip}: ${a.name} ${format(va)}, ${b.name} ${format(vb)}`}
+                  onMouseEnter={() => setHv(i)} onMouseLeave={() => setHv(null)} onFocus={() => setHv(i)} onBlur={() => setHv(null)}>
+                  <span className="ck-bi-gb__bar is-outline" style={{ height: `${(va / mx) * 100}%` }} />
+                  <span className="ck-bi-gb__bar is-fill" style={{ height: `${(vb / mx) * 100}%` }} />
+                  {hv === i ? (
+                    <span className="ck-tip" role="tooltip">
+                      <strong>{tip}</strong>
+                      <span className="ck-bi-tiprow"><i className="is-outline" />{a.name}: <b>{format(va)}</b></span>
+                      <span className="ck-bi-tiprow"><i className="is-accent" />{b.name}: <b>{format(vb)}</b></span>
+                      {va ? <span>{`${Math.round((vb / va) * 100)}% ${ratioText || `de ${a.name.toLowerCase()}`}`}</span> : null}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="ck-cc__labels" aria-hidden>
+        <span className="ck-cc__axisgap">{fmtAxis(mx)}</span>
+        <div>{labels.map((l, i) => <span key={i}>{l}</span>)}</div>
+      </div>
+      {caption ? <figcaption className="ck-sr">{caption}</figcaption> : null}
+    </figure>
+  );
+}
+
+/** Legenda curta das séries (`kind`: accent, muted, outline) */
+export function ChartLegend({ items = [] }) {
+  return (
+    <ul className="ck-bi-legend">
+      {items.map((x) => <li key={x.label}><i className={`is-${x.kind || 'accent'}`} aria-hidden />{x.label}</li>)}
+    </ul>
+  );
+}
+
 /** Lista de barras horizontais do design (`ck-bl`). Diferente do BarList de ./financeiro, que conta parcelas. */
 export function ChartBarList({ items = [], format = num, showShare = true }) {
   const mx = Math.max(...items.map((x) => x.value), 1);

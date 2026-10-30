@@ -13,7 +13,13 @@ export const buscarBiVisaoGeral = async (periodo: BiPeriodo): Promise<any> => {
 };
 
 /** Indicadores que abrem lista (BiVisaoGeralService::DETALHAVEIS) */
-export type BiIndicadorDetalhe = 'alunos_ativos' | 'novos_alunos' | 'saidas' | 'receita_recebida' | 'valor_vencido';
+export type BiIndicadorDetalhe = 'alunos_ativos' | 'novos_alunos' | 'saidas' | 'receita_recebida' | 'valor_vencido' | 'a_vencer';
+
+/** Financeiro: indicadores, receita por plano e forma, histórico mensal. GET /admin/bi/financeiro */
+export const buscarBiFinanceiro = async (periodo: BiPeriodo): Promise<any> => {
+  const response = await api.get('/admin/bi/financeiro', { params: { periodo } });
+  return response.data?.data;
+};
 
 /** Registros que compõem um indicador no período. GET /admin/bi/visao-geral/detalhe */
 export const buscarBiDetalhe = async (indicador: BiIndicadorDetalhe, periodo: BiPeriodo): Promise<any> => {
@@ -21,4 +27,4 @@ export const buscarBiDetalhe = async (indicador: BiIndicadorDetalhe, periodo: Bi
   return response.data?.data;
 };
 
-export default { buscarBiVisaoGeral, buscarBiDetalhe };
+export default { buscarBiVisaoGeral, buscarBiDetalhe, buscarBiFinanceiro };

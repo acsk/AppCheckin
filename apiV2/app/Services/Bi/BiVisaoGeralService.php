@@ -48,7 +48,7 @@ class BiVisaoGeralService
     }
 
     /** Indicadores que podem ser abertos em lista */
-    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'saidas', 'receita_recebida', 'valor_vencido'];
+    public const DETALHAVEIS = ['alunos_ativos', 'novos_alunos', 'saidas', 'receita_recebida', 'valor_vencido', 'a_vencer'];
 
     /** Teto de itens devolvidos no detalhamento (o total continua sendo o do período inteiro) */
     private const MAX_ITENS = 1000;
@@ -76,8 +76,9 @@ class BiVisaoGeralService
                 'saidas' => $this->repo->saidasLista($tenantId, $p->inicio, $p->fim),
                 'receita_recebida' => $this->repo->parcelasLista($tenantId, 'recebido', $p->inicio, $p->fim, $hoje),
                 'valor_vencido' => $this->repo->parcelasLista($tenantId, 'vencido', $p->inicio, $p->fim, $hoje),
+                'a_vencer' => $this->repo->parcelasLista($tenantId, 'a_vencer', $p->inicio, $p->fim, $hoje),
             };
-            $valores = in_array($indicador, ['receita_recebida', 'valor_vencido'], true);
+            $valores = in_array($indicador, ['receita_recebida', 'valor_vencido', 'a_vencer'], true);
 
             return ['status' => 200, 'body' => ['success' => true, 'data' => [
                 'indicador' => $indicador,

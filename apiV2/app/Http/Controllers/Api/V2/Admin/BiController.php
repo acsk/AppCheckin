@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V2\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Bi\BiFinanceiroService;
 use App\Services\Bi\BiVisaoGeralService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,7 +13,16 @@ class BiController extends Controller
 {
     public function __construct(
         private readonly BiVisaoGeralService $visaoGeral,
+        private readonly BiFinanceiroService $financeiro,
     ) {}
+
+    public function financeiro(Request $request): JsonResponse
+    {
+        $tenantId = $request->attributes->get('tenantId');
+        $result = $this->financeiro->financeiro($tenantId ? (int) $tenantId : null, $request->query('periodo'));
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
 
     public function visaoGeral(Request $request): JsonResponse
     {

@@ -13,6 +13,7 @@ const TITULOS = {
   saidas: ['Saídas', 'Cancelaram no período e não começaram outro plano em até 7 dias.'],
   receita_recebida: ['Receita recebida', 'Parcelas pagas no período, pela data do pagamento.'],
   valor_vencido: ['Valor vencido', 'Parcelas do período que já venceram e não foram pagas.'],
+  a_vencer: ['A vencer', 'Parcelas do período que vencem de hoje em diante e ainda não foram pagas.'],
 };
 
 /** Lista dos registros que compõem um indicador da Visão geral. `indicador` null = fechado. */

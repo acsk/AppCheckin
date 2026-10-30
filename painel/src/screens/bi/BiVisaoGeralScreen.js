@@ -1,25 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import LayoutBase from '../../components/LayoutBase';
-import { Button, Callout, Icon, PageHeader, SegmentedControl } from '../../components/ck';
+import { Button, Callout, PageHeader, SegmentedControl } from '../../components/ck';
 import { Panel, StatTile } from '../../components/ck/pessoas';
 import { ColumnChart, Meter, deltaObj } from '../../components/ck/graficos';
 import { fdate, money, moneyShort } from '../../components/ck/financeiro';
 import { buscarBiVisaoGeral } from '../../services/biService';
 import BiDetalheModal from './BiDetalheModal';
-
-const num = (v) => new Intl.NumberFormat('pt-BR').format(v || 0);
-const pct = (v) => (v == null ? '—' : `${String(v).replace('.', ',')}%`);
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-const mesCurto = (ym) => MESES[Number(ym.slice(5, 7)) - 1];
-const mesLongo = (ym) => `${MESES_LONGOS[Number(ym.slice(5, 7)) - 1]} de ${ym.slice(0, 4)}`;
-
-const PERIODOS = [
-  { value: 'mes', label: 'Este mês' },
-  { value: 'mes_anterior', label: 'Mês anterior' },
-  { value: '3m', label: '3 meses' },
-  { value: '12m', label: '12 meses' },
-];
+import { ComoCalculamos, Empty, PERIODOS, deltaPp, mesCurto, mesLongo, num, pct, textoVs, useBiCarga } from './biComum';
 
 // Fórmulas exibidas na tela; a fonte é App\Repositories\Bi\BiTenantRepository
 const COMO_CALCULAMOS = [
@@ -34,46 +21,14 @@ const COMO_CALCULAMOS = [
   ['Check-ins', 'Pelo dia da aula. Check-ins marcados como ausente não contam.'],
 ];
 
-function Empty({ icon, title, children }) {
-  return (
-    <div className="ck-mt-empty">
-      <span className="ck-mt-empty__icon" aria-hidden><Icon name={icon} size={20} /></span>
-      <strong>{title}</strong>
-      {children ? <p>{children}</p> : null}
-    </div>
-  );
-}
-
-/** Variação em pontos percentuais (para taxas) */
-function deltaPp(cur, prev, vs, goodWhenUp) {
-  if (cur == null || prev == null) return null;
-  const d = Math.round((cur - prev) * 10) / 10;
-  return { value: d, label: `${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d).toFixed(1).replace('.', ',')} p.p.`, vs, goodWhenUp };
-}
-
 export default function BiVisaoGeralScreen() {
   const [periodo, setPeriodo] = useState('mes');
-  const [dados, setDados] = useState(null);
-  const [erro, setErro] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [reload, setReload] = useState(0);
-  const [comoAberto, setComoAberto] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
-
-  useEffect(() => {
-    let ativo = true;
-    setLoading(true);
-    setErro('');
-    buscarBiVisaoGeral(periodo)
-      .then((d) => { if (ativo) setDados(d || null); })
-      .catch((e) => { if (ativo) setErro(e?.mensagemLimpa || e?.response?.data?.error || 'Não foi possível carregar os indicadores.'); })
-      .finally(() => { if (ativo) setLoading(false); });
-    return () => { ativo = false; };
-  }, [periodo, reload]);
+  const { dados, erro, loading, recarregar } = useBiCarga(buscarBiVisaoGeral, periodo);
 
   const ind = dados?.indicadores || {};
   const per = dados?.periodo;
-  const vs = per ? `vs ${fdate(per.anterior.inicio).slice(0, 5)} a ${fdate(per.anterior.fim).slice(0, 5)}` : '';
+  const vs = textoVs(per);
   const v = (x) => (loading && !dados ? '—' : x);
   const par = (k) => ind[k] || {};
   // Cards que abrem a lista do que compõe o número
@@ -102,7 +57,7 @@ export default function BiVisaoGeralScreen() {
         />
 
         {erro ? (
-          <Callout tone="warning" title="Os indicadores não carregaram" action={<Button size="sm" icon="refresh-cw" onClick={() => setReload((x) => x + 1)}>Tentar de novo</Button>}>
+          <Callout tone="warning" title="Os indicadores não carregaram" action={<Button size="sm" icon="refresh-cw" onClick={recarregar}>Tentar de novo</Button>}>
             {erro}
           </Callout>
         ) : null}
@@ -164,17 +119,7 @@ export default function BiVisaoGeralScreen() {
           ) : <Empty icon="activity" title="Nenhum check-in no período" />}
         </Panel>
 
-        <section className="ck-rp__how">
-          <button type="button" className="ck-rp__howbtn" aria-expanded={comoAberto} onClick={() => setComoAberto(!comoAberto)}>
-            <Icon name="chevron-down" size={16} className={comoAberto ? 'ck-ep__chev is-open' : 'ck-ep__chev'} />
-            Como os números são calculados
-          </button>
-          {comoAberto ? (
-            <dl>
-              {COMO_CALCULAMOS.map(([t, d]) => <div key={t}><dt>{t}</dt><dd>{d}</dd></div>)}
-            </dl>
-          ) : null}
-        </section>
+        <ComoCalculamos itens={COMO_CALCULAMOS} />
       </div>
 
       <BiDetalheModal indicador={detalhe} periodo={periodo} onClose={() => setDetalhe(null)} />
