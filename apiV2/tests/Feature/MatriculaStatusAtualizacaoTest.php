@@ -125,6 +125,32 @@ class MatriculaStatusAtualizacaoTest extends TestCase
         $this->assertSame(1, (int) DB::table('pagamentos_plano')->where('id', 2)->value('status_pagamento_id'));
     }
 
+    /** Caso real (parcela #46, matrícula 55): "Aguardando" com data_pagamento preenchida sobrevivia a toda migração. */
+    public function test_cancela_parcela_aberta_mesmo_com_data_pagamento_preenchida(): void
+    {
+        $this->registrarFuncoesSqlite(['CONCAT' => [fn (...$a) => implode('', $a), -1], 'NOW' => [fn () => date('Y-m-d H:i:s'), 0]]);
+        Schema::create('pagamentos_plano', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->integer('matricula_id');
+            $t->integer('status_pagamento_id');
+            $t->date('data_vencimento');
+            $t->date('data_pagamento')->nullable();
+            $t->text('observacoes')->nullable();
+            $t->timestamps();
+        });
+        DB::table('pagamentos_plano')->insert([
+            ['id' => 46, 'tenant_id' => self::T, 'matricula_id' => 55, 'status_pagamento_id' => 1, 'data_vencimento' => '2026-11-07', 'data_pagamento' => '2026-02-24', 'observacoes' => 'Assinatura recorrente - Primeiro pagamento'],
+            ['id' => 1543, 'tenant_id' => self::T, 'matricula_id' => 55, 'status_pagamento_id' => 2, 'data_vencimento' => '2026-10-31', 'data_pagamento' => '2026-10-31', 'observacoes' => '[MIGRACAO_CONFIRMADA]'],
+        ]);
+
+        $n = app(PagamentoPlanoService::class)->cancelarParcelasAbertas(self::T, 55, 'Cancelado por migração de plano confirmada');
+
+        $this->assertSame(1, $n);
+        $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('id', 46)->value('status_pagamento_id'));
+        $this->assertSame(2, (int) DB::table('pagamentos_plano')->where('id', 1543)->value('status_pagamento_id'), 'a paga não é tocada');
+    }
+
     public function test_so_academias_ativas(): void
     {
         [$s] = $this->servico();

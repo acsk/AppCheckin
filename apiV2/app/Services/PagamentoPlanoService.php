@@ -129,7 +129,12 @@ class PagamentoPlanoService
         return $resultado;
     }
 
-    /** $vencimentoAntesDe: só as parcelas que vencem antes dessa data (preserva a renovação do próximo ciclo). */
+    /**
+     * $vencimentoAntesDe: só as parcelas que vencem antes dessa data (preserva a renovação do próximo ciclo).
+     * Vale pelo status (Aguardando/Atrasado), mesmo com data_pagamento preenchida por engano — parcela
+     * assim (ex.: "Assinatura recorrente - Primeiro pagamento" de 02/2026) ficava órfã, seguia a matrícula
+     * pelas migrações e acabava vencendo e derrubando a matrícula paga.
+     */
     public function cancelarParcelasAbertas(int $tenantId, int $matriculaId, string $motivo, ?string $vencimentoAntesDe = null): int
     {
         $antes = $vencimentoAntesDe !== null ? ' AND data_vencimento < ?' : '';
@@ -140,7 +145,7 @@ class PagamentoPlanoService
                  observacoes = CONCAT(COALESCE(observacoes, ''), ?),
                  updated_at = NOW()
              WHERE tenant_id = ? AND matricula_id = ?
-               AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL{$antes}",
+               AND status_pagamento_id IN (1, 3){$antes}",
             array_merge([' ['.$motivo.']', $tenantId, $matriculaId], $vencimentoAntesDe !== null ? [$vencimentoAntesDe] : [])
         );
     }

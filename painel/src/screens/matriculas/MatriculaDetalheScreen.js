@@ -1240,11 +1240,12 @@ export default function MatriculaDetalheScreen() {
   };
 
   const numeroParcelaMap = buildNumeroParcelaMap(pagamentos);
+  // Mesma ordem da numeração (vencimento), da mais nova para a mais antiga; id desempata.
   const invoicesDs = [...pagamentos]
     .sort((a, b) => {
-      const idDiff = Number(getPagamentoId(b) || 0) - Number(getPagamentoId(a) || 0);
-      if (idDiff !== 0) return idDiff;
-      return String(b.data_vencimento || '').localeCompare(String(a.data_vencimento || ''));
+      const vencDiff = String(b.data_vencimento || '').localeCompare(String(a.data_vencimento || ''));
+      if (vencDiff !== 0) return vencDiff;
+      return Number(getPagamentoId(b) || 0) - Number(getPagamentoId(a) || 0);
     })
     .map((pg) => {
       const statusId = Number(pg.status_pagamento_id);

@@ -1011,10 +1011,12 @@ class PagamentoPlano
                 return null;
             }
 
-            // Verificar se já existe algum pagamento pendente para esta matrícula (Aguardando ou Atrasado)
+            // Verificar se já existe algum pagamento pendente para esta matrícula (Aguardando ou Atrasado).
+            // data_pagamento IS NULL: parcela aberta com data preenchida é inconsistente e não pode ser
+            // arrastada como "próxima cobrança" a cada baixa (caso #46: seguiu a matrícula por 2 migrações).
             $stmtPendente = $this->pdo->prepare("
                 SELECT id, data_vencimento FROM pagamentos_plano
-                WHERE matricula_id = ? AND status_pagamento_id IN (1, 3)
+                WHERE matricula_id = ? AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
                 ORDER BY data_vencimento ASC
                 LIMIT 1
             ");
