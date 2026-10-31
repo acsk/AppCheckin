@@ -161,14 +161,16 @@ function agrupar(linhas) {
 
 /**
  * Quanto a parcela rendeu frente à mensalidade: líquido que caiu na conta menos o valor do plano.
- * Pix e boleto costumam ficar abaixo (a taxa sai da academia); no cartão com acréscimo (tarifa_cartao,
- * já somado ao valor da parcela) o aluno paga a taxa e a sobra vira ganho.
+ * Pix e boleto costumam ficar abaixo (a taxa sai da academia); no cartão o aluno paga os acréscimos
+ * (tarifa do cartão e sobretaxa da antecipação, já somados ao valor da parcela) e a sobra vira ganho.
  */
 function resultadoDaTaxa(parcela, pays, t) {
   if (!parcela || !pays.length || pays.some((l) => l.liquido == null)) return { resultado: null };
-  const acrescimo = Number(parcela.acrescimo) || 0;
+  const tarifaCartao = Number(parcela.tarifa_cartao) || 0;
+  const sobretaxa = Number(parcela.sobretaxa_antecipacao) || 0;
+  const acrescimo = Number(parcela.acrescimo) || Math.round((tarifaCartao + sobretaxa) * 100) / 100;
   const mensalidade = Math.round((parcela.valor - acrescimo) * 100) / 100;
-  return { mensalidade, acrescimo, resultado: Math.round((t.net - mensalidade) * 100) / 100 };
+  return { mensalidade, acrescimo, tarifaCartao, sobretaxa, resultado: Math.round((t.net - mensalidade) * 100) / 100 };
 }
 
 /** Totais da faixa de resumo, sobre os grupos filtrados. */
@@ -176,7 +178,7 @@ function resumir(grupos) {
   const r = {
     gross: 0, fees: 0, net: 0, receivable: 0, payments: 0, semLiquido: 0, auto: 0, autoCount: 0, manual: 0, manualCount: 0, naoConferido: 0,
     taxa: {
-      parcelas: 0, mensalidades: 0, liquido: 0, taxas: 0, acrescimos: 0, resultado: 0, perdas: 0, perdaQtd: 0, ganhos: 0, ganhoQtd: 0,
+      parcelas: 0, mensalidades: 0, liquido: 0, taxas: 0, acrescimos: 0, tarifasCartao: 0, sobretaxas: 0, resultado: 0, perdas: 0, perdaQtd: 0, ganhos: 0, ganhoQtd: 0,
       // Ponte entre "Recebido no provedor" (pagamentos do período) e as parcelas comparadas.
       brutoComparado: 0, pagsComparados: 0, semLiquido: { qtd: 0, bruto: 0 }, foraPeriodo: { qtd: 0, bruto: 0 },
     },
@@ -195,6 +197,8 @@ function resumir(grupos) {
       x.liquido += g.t.net;
       x.taxas += g.t.fee;
       x.acrescimos += g.acrescimo;
+      x.tarifasCartao += g.tarifaCartao || 0;
+      x.sobretaxas += g.sobretaxa || 0;
       x.resultado += g.resultado;
       if (g.resultado < -0.004) { x.perdas += g.resultado; x.perdaQtd += 1; }
       if (g.resultado > 0.004) { x.ganhos += g.resultado; x.ganhoQtd += 1; }
@@ -242,6 +246,13 @@ function SituacaoBadge({ status, grupo }) {
   return <span title={st.texto}><Badge tone={st.tone} dot>{rotulo(status, grupo)}</Badge></span>;
 }
 
+/** "acréscimo 14,52 (cartão 5,93 + antecipação 8,59)" — só discrimina quando há sobretaxa. */
+function descreveAcrescimo(g) {
+  if (!g.acrescimo) return `plano ${num(g.mensalidade)}`;
+  const partes = g.sobretaxa > 0.004 ? ` (cartão ${num(g.tarifaCartao)} + antecipação ${num(g.sobretaxa)})` : '';
+  return `acréscimo ${num(g.acrescimo)}${partes}`;
+}
+
 function Resultado({ grupo: g }) {
   if (g.resultado == null) return <span className="ck-cb__dash">—</span>;
   const perda = g.resultado < -0.004;
@@ -249,7 +260,7 @@ function Resultado({ grupo: g }) {
   return (
     <>
       <span className={perda ? 'ck-cb__loss' : ganho ? 'ck-cb__gain' : 'ck-cb__dash'}>{perda || ganho ? `${ganho ? '+' : '−'}${num(Math.abs(g.resultado))}` : '0,00'}</span>
-      <span className="ck-cb__sub ck-cb__wrapsub">{g.acrescimo ? `acréscimo ${num(g.acrescimo)}` : `plano ${num(g.mensalidade)}`}</span>
+      <span className="ck-cb__sub ck-cb__wrapsub">{descreveAcrescimo(g)}</span>
     </>
   );
 }
@@ -379,11 +390,11 @@ export default function ConciliacaoBancariaScreen() {
   const exportCsv = () => {
     const rows = list.flatMap((g) => g.linhas);
     downloadCsv(`conciliacao_${from}_${to}.csv`, [
-      ['Data', 'Crédito', 'Provedor', 'ID no provedor', 'Forma', 'Tipo de baixa', 'Aluno', 'Matrícula', 'Bruto', 'Taxa', 'Líquido', 'Parcela Check-in', 'Valor no Check-in', 'Mensalidade', 'Acréscimo cobrado', 'Ganho/perda', 'Situação', 'Detalhe'],
+      ['Data', 'Crédito', 'Provedor', 'ID no provedor', 'Forma', 'Tipo de baixa', 'Aluno', 'Matrícula', 'Bruto', 'Taxa', 'Líquido', 'Parcela Check-in', 'Valor no Check-in', 'Mensalidade', 'Acréscimo cobrado', 'Tarifa do cartão', 'Sobretaxa antecipação', 'Ganho/perda', 'Situação', 'Detalhe'],
       ...rows.map((l) => [
         fdate(l.data), l.data_credito ? fdate(l.data_credito) : '', l.provedor_nome || '', l.payment_id || '', l.forma || '', l.baixa_nome || '', quem(l), l.matricula_id || '',
         num(l.origem === 'provedor' ? l.valor : null), num(l.taxa), num(l.liquido), l.parcela?.id || '', num(l.parcela?.valor),
-        ...(() => { const g = list.find((x) => x.linhas.includes(l)); return g?.resultado != null && g.linhas.find((y) => y.origem === 'provedor') === l ? [num(g.mensalidade), num(g.acrescimo), num(g.resultado)] : ['', '', '']; })(),
+        ...(() => { const g = list.find((x) => x.linhas.includes(l)); return g?.resultado != null && g.linhas.find((y) => y.origem === 'provedor') === l ? [num(g.mensalidade), num(g.acrescimo), num(g.tarifaCartao), num(g.sobretaxa), num(g.resultado)] : ['', '', '', '', '']; })(),
         l.status === 'manual' ? (l.baixa_nome || 'Baixa manual') : SITUACAO[l.status]?.label || l.status, l.motivo || l.nota || '',
       ]),
     ]);
@@ -478,12 +489,12 @@ export default function ConciliacaoBancariaScreen() {
           <section className="ck-cb__taxa" aria-label="Ganho ou perda com as taxas">
             <div className="ck-cb__taxahead">
               <h2>Taxas x mensalidade</h2>
-              <p>O líquido que caiu na conta comparado com o valor do plano. Pix e boleto ficam abaixo, porque a taxa sai da academia; o acréscimo no cartão compensa.</p>
+              <p>O líquido que caiu na conta comparado com o valor do plano. Pix e boleto ficam abaixo, porque a taxa sai da academia; no cartão o aluno paga a tarifa e a sobretaxa da antecipação, e isso compensa.</p>
             </div>
             <dl className="ck-cb__taxafacts">
               <div><dt>Mensalidades</dt><dd>{money(sm.taxa.mensalidades)}</dd><span>{plural(sm.taxa.parcelas, 'parcela recebida', 'parcelas recebidas')} no provedor</span></div>
               <div><dt>Taxas do provedor</dt><dd className="is-neg">{`−${money(sm.taxa.taxas)}`}</dd><span>descontadas no recebimento</span></div>
-              <div><dt>Acréscimos cobrados</dt><dd>{`+${money(sm.taxa.acrescimos)}`}</dd><span>repasse da taxa do cartão ao aluno</span></div>
+              <div><dt>Acréscimos cobrados</dt><dd>{`+${money(sm.taxa.acrescimos)}`}</dd><span>{sm.taxa.sobretaxas > 0.004 ? `cartão ${money(sm.taxa.tarifasCartao)} + antecipação ${money(sm.taxa.sobretaxas)}` : 'repasse da taxa do cartão ao aluno'}</span></div>
               <div className={cx('ck-cb__taxares', sm.taxa.resultado < -0.004 ? 'is-loss' : 'is-gain')}>
                 <dt>{sm.taxa.resultado < -0.004 ? 'Perda com taxas' : 'Ganho com taxas'}</dt>
                 <dd>{`${sm.taxa.resultado < -0.004 ? '−' : '+'}${money(Math.abs(sm.taxa.resultado))}`}</dd>

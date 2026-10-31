@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\Admin\ConciliacaoBancariaService as C;
+use App\Support\AsaasSobretaxaAntecipacao;
+use App\Support\AsaasTarifaCartao;
 use PHPUnit\Framework\TestCase;
 
 class ConciliacaoBancariaServiceTest extends TestCase
@@ -236,5 +238,106 @@ class ConciliacaoBancariaServiceTest extends TestCase
 
         $this->assertSame('sem_vinculo', $this->linha($r, 'mercadopago:123456')['status']);
         $this->assertSame('sem_recebimento', $this->linha($r, 'checkin:30')['status']);
+    }
+
+    /**
+     * Parcela como o app grava num cartão parcelado com antecipação automática: valor cobrado, tarifa do
+     * cartão e sobretaxa separadas (mesmo fluxo de AsaasService::valorComTaxaCartaoRepassada + anexarParcela).
+     *
+     * @return array{valor: float, parcela: float, tarifa_cartao: float, sobretaxa: float}
+     */
+    private function cobrancaDoApp(float $plano, int $parcelas, float $feePct, float $taxaMes): array
+    {
+        $cobrar = AsaasTarifaCartao::valorParaLiquido($plano, $feePct, 0.49);
+        $r = AsaasSobretaxaAntecipacao::aplicar([
+            'valor_plano' => $plano, 'valor_cobrar' => $cobrar, 'tarifa' => round($cobrar - $plano, 2),
+            'fee_percentage' => $feePct, 'operation_fee' => 0.49, 'net_value_simulado' => $plano,
+        ], ['habilitada' => true, 'avista' => 1.15, 'parcelada' => $taxaMes], $parcelas);
+        $total = round((float) $r['valor_cobrar'], 2);
+        $parcela = AsaasTarifaCartao::paraCima($total / $parcelas);
+        $cheio = round($parcela * $parcelas, 2);
+        if ($cheio > $total) {
+            $r = AsaasSobretaxaAntecipacao::comValorCobrar($r, $cheio, round($total - (float) $r['sobretaxa'], 2), $feePct, 0.49, (float) $r['fator_antecipacao']);
+        }
+
+        return ['valor' => $cheio, 'parcela' => $parcela, 'tarifa_cartao' => (float) $r['tarifa'], 'sobretaxa' => (float) $r['sobretaxa']];
+    }
+
+    /**
+     * Cobranças como o Asaas devolve num parcelamento: % sobre o total rateado, R$ 0,49 uma vez
+     * (taxa única por parcelamento) e, antecipada, o líquido da antecipação pelos dias até o crédito.
+     *
+     * @param  list<int>  $dias
+     * @return list<array<string, mixed>>
+     */
+    private function cobrancasDoAsaas(string $matRef, float $parcela, int $parcelas, float $feePct, float $taxaMes, array $dias): array
+    {
+        $lista = [];
+        for ($k = 0; $k < $parcelas; $k++) {
+            $liquidoCartao = round($parcela * (1 - $feePct / 100) - ($k === 0 ? 0.49 : 0), 2);
+            $liquidoAntecipado = round($liquidoCartao - $liquidoCartao * $taxaMes / 100 * $dias[$k] / 30, 2);
+            $lista[] = $this->asaas('pay_c'.($k + 1), $parcela, $liquidoAntecipado, [
+                'status' => 'CONFIRMED', 'billingType' => 'CREDIT_CARD', 'installment' => 'ins_x', 'installmentNumber' => $k + 1,
+                'externalReference' => $matRef, 'confirmedDate' => '2026-10-19', 'paymentDate' => null,
+                'anticipation' => ['status' => 'CREDITED', 'netValue' => $liquidoAntecipado],
+            ]);
+        }
+
+        return $lista;
+    }
+
+    public function test_cartao_4x_com_antecipacao_a_conciliacao_recompoe_o_plano_e_nao_fica_negativa(): void
+    {
+        // Plano R$ 150 em 4x: cartão 3,49% + R$ 0,49 (2 a 6x), antecipação 1,6% ao mês; crédito em 32/64/96/130 dias
+        $plano = 150.0;
+        $app = $this->cobrancaDoApp($plano, 4, 3.49, 1.6);
+        $asaas = $this->cobrancasDoAsaas('MAT-55-abc', $app['parcela'], 4, 3.49, 1.6, [32, 64, 96, 130]);
+        $liquidoReal = round(array_sum(array_column($asaas, 'liquido')), 2);
+
+        $this->assertGreaterThan(0, $app['sobretaxa'], 'o parcelado embute sobretaxa de antecipação');
+        $this->assertGreaterThanOrEqual($plano, $liquidoReal, 'o que cai na conta cobre o plano');
+
+        $r = C::montar($asaas, [$this->parcela(1543, 55, $app['valor'], 2, [
+            'valor_liquido' => $liquidoReal, 'tarifa_cartao' => $app['tarifa_cartao'], 'sobretaxa_antecipacao' => $app['sobretaxa'],
+            'forma_pagamento_nome' => 'Cartão', 'observacoes' => 'Pago via Asaas (Cartão) [Asaas pay_c1]',
+        ])], [], '2026-10-01', '2026-10-31');
+
+        $parcela = null;
+        $somaLiquido = 0.0;
+        foreach (['pay_c1', 'pay_c2', 'pay_c3', 'pay_c4'] as $id) {
+            $l = $this->linha($r, 'asaas:'.$id);
+            $this->assertSame('conciliado', $l['status'], $id);
+            $this->assertSame(1543, $l['parcela']['id'], $id.' aponta para a mesma parcela cheia');
+            $parcela = $l['parcela'];
+            $somaLiquido += $l['liquido'];
+        }
+
+        $this->assertSame($app['tarifa_cartao'], $parcela['tarifa_cartao']);
+        $this->assertSame($app['sobretaxa'], $parcela['sobretaxa_antecipacao']);
+        $this->assertEqualsWithDelta($app['tarifa_cartao'] + $app['sobretaxa'], $parcela['acrescimo'], 0.001, 'acréscimo = tarifa + sobretaxa');
+
+        // O que o painel mostra: mensalidade = valor − acréscimo; resultado = líquido real − mensalidade
+        $mensalidade = round($parcela['valor'] - $parcela['acrescimo'], 2);
+        $resultado = round($somaLiquido - $mensalidade, 2);
+        $this->assertEqualsWithDelta($plano, $mensalidade, 0.001, 'a mensalidade volta a ser o valor do plano');
+        $this->assertEqualsWithDelta($liquidoReal, $somaLiquido, 0.001, 'o líquido é o que o Asaas creditou');
+        $this->assertGreaterThanOrEqual(0, $resultado, 'escola não fica no negativo');
+        $this->assertLessThan($plano * 0.02, $resultado, 'sobra só a folga configurada');
+
+        // Antes da correção só a tarifa entrava no acréscimo e o resultado dava negativo
+        $this->assertLessThan(0, round($somaLiquido - ($parcela['valor'] - $parcela['tarifa_cartao']), 2));
+    }
+
+    public function test_acrescimo_sem_sobretaxa_continua_so_a_tarifa(): void
+    {
+        $r = C::montar(
+            [$this->asaas('pay_s', 72.66, 70.0, ['billingType' => 'CREDIT_CARD', 'externalReference' => 'MAT-9-k'])],
+            [$this->parcela(7, 9, 72.66, 2, ['tarifa_cartao' => '2.66', 'sobretaxa_antecipacao' => null, 'observacoes' => '[Asaas pay_s]'])],
+            [], '2026-10-01', '2026-10-31'
+        );
+        $p = $this->linha($r, 'asaas:pay_s')['parcela'];
+        $this->assertSame(2.66, $p['acrescimo']);
+        $this->assertSame(2.66, $p['tarifa_cartao']);
+        $this->assertSame(0.0, $p['sobretaxa_antecipacao']);
     }
 }

@@ -566,11 +566,18 @@ class ConciliacaoBancariaService
      */
     private static function resumoParcela(array $l): array
     {
+        // O valor da parcela já traz o que o aluno pagou a mais no cartão (tarifa + sobretaxa da antecipação);
+        // a mensalidade é valor − acrescimo, e o resultado compara o líquido real do provedor com ela.
+        $tarifaCartao = round((float) ($l['tarifa_cartao'] ?? 0), 2);
+        $sobretaxa = round((float) ($l['sobretaxa_antecipacao'] ?? 0), 2);
+
         return [
             'id' => (int) $l['id'],
             'valor' => (float) $l['valor'],
             'valor_liquido' => isset($l['valor_liquido']) ? (float) $l['valor_liquido'] : null,
-            'acrescimo' => round((float) ($l['tarifa_cartao'] ?? 0), 2),
+            'acrescimo' => round($tarifaCartao + $sobretaxa, 2),
+            'tarifa_cartao' => $tarifaCartao,
+            'sobretaxa_antecipacao' => $sobretaxa,
             'status_pagamento_id' => (int) $l['status_pagamento_id'],
             'data_pagamento' => $l['data_pagamento'] ? substr((string) $l['data_pagamento'], 0, 10) : null,
             'data_vencimento' => $l['data_vencimento'] ? substr((string) $l['data_vencimento'], 0, 10) : null,
@@ -781,8 +788,10 @@ class ConciliacaoBancariaService
     {
         // valor_liquido vem da migration SQL 071 (api/); banco sem ela segue sem comparar o líquido
         $liquido = Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : DB::raw('NULL as valor_liquido');
-        // tarifa_cartao: acréscimo cobrado do aluno para cobrir a taxa do cartão (o valor da parcela já o inclui)
+        // Acréscimos cobrados do aluno e já embutidos no valor da parcela: tarifa do cartão e sobretaxa da
+        // antecipação automática. Sem eles a mensalidade (valor do plano) não pode ser recomposta.
         $acrescimo = Schema::hasColumn('pagamentos_plano', 'tarifa_cartao') ? 'pp.tarifa_cartao' : DB::raw('NULL as tarifa_cartao');
+        $sobretaxa = Schema::hasColumn('pagamentos_plano', 'sobretaxa_antecipacao') ? 'pp.sobretaxa_antecipacao' : DB::raw('NULL as sobretaxa_antecipacao');
         $base = fn () => DB::table('pagamentos_plano as pp')
             ->leftJoin('alunos as a', 'a.id', '=', 'pp.aluno_id')
             ->leftJoin('planos as p', 'p.id', '=', 'pp.plano_id')
@@ -790,7 +799,7 @@ class ConciliacaoBancariaService
             ->leftJoin('tipos_baixa as tb', 'tb.id', '=', 'pp.tipo_baixa_id')
             ->where('pp.tenant_id', $tenantId)
             ->select([
-                'pp.id', 'pp.matricula_id', 'pp.valor', $liquido, $acrescimo, 'pp.status_pagamento_id', 'pp.data_pagamento',
+                'pp.id', 'pp.matricula_id', 'pp.valor', $liquido, $acrescimo, $sobretaxa, 'pp.status_pagamento_id', 'pp.data_pagamento',
                 'pp.data_vencimento', 'pp.tipo_baixa_id', 'pp.observacoes', 'a.nome as aluno_nome', 'p.nome as plano_nome',
                 'fp.nome as forma_pagamento_nome', 'tb.nome as tipo_baixa_nome',
             ]);

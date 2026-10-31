@@ -183,11 +183,16 @@ export function gerarPdfConciliacao({ grupos = [], resumo = {}, academia, inicio
     ['A receber em cartão', money(resumo.receivable), 'sub'],
     ...(resumo.taxa?.parcelas ? [
       ['Acréscimos cobrados no cartão', money(resumo.taxa.acrescimos), 'sub sep'],
+      ...(resumo.taxa.sobretaxas > 0.004 ? [
+        ['Tarifa do cartão', money(resumo.taxa.tarifasCartao), 'sub'],
+        ['Sobretaxa da antecipação', money(resumo.taxa.sobretaxas), 'sub'],
+      ] : []),
       [resumo.taxa.resultado < -0.004 ? 'Perda com taxas (líquido x plano)' : 'Ganho com taxas (líquido x plano)', `${resumo.taxa.resultado < -0.004 ? '-' : '+'}${money(Math.abs(resumo.taxa.resultado))}`, 'sub'],
     ] : []),
     ['Pendente de conferência', money(pendente), 'sub sep'],
   ];
-  const alturaTotais = 190;
+  // Cada linha do resumo ocupa ~15pt (sub) a 25pt (big/sep); folga para as linhas opcionais da antecipação
+  const alturaTotais = 190 + Math.max(0, resumoLinhas.length - 8) * 16;
   y = doc.lastAutoTable.finalY + 14;
   if (y + alturaTotais > H - MY) { doc.addPage(); y = MY; }
 
