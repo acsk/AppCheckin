@@ -51,20 +51,22 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
     // ---------------------------------------------------------------- calcularCreditoMigracao
 
-    public function test_upgrade_com_ciclo_vigente_gera_credito_valor_cheio_do_plano(): void
+    public function test_upgrade_com_ciclo_vigente_gera_credito_proporcional_como_o_downgrade(): void
     {
         $this->pagamentoPago(501);
 
         $credito = $this->service()->calcularCreditoMigracao($this->matricula(), self::TENANT, self::MATRICULA, 500.0);
 
-        $this->assertSame('valor_cheio_plano', $credito['tipo_credito']);
+        // 300 por 30 dias, 20 restantes: devolve só o que não foi consumido
+        $this->assertSame('proporcional', $credito['tipo_credito']);
         $this->assertTrue($credito['tem_credito']);
-        $this->assertSame(300.0, $credito['credito']);
-        $this->assertSame(0.0, $credito['valor_consumido']);
+        $this->assertSame(200.0, $credito['credito']);
+        $this->assertSame(100.0, $credito['valor_consumido']);
+        $this->assertSame(0.0, $credito['excedente_pago']);
         $this->assertSame(501, $credito['pagamento_origem_id']);
     }
 
-    public function test_upgrade_abate_soma_das_parcelas_pagas_do_ciclo(): void
+    public function test_upgrade_devolve_inteiro_so_o_que_foi_pago_alem_do_plano_no_ciclo(): void
     {
         $this->inserirPagamentoPago(601, 70.0, $this->dia(-1));
         $this->inserirPagamentoPago(602, 50.0, AcademyDateTime::today());
@@ -76,9 +78,44 @@ class MatriculaMigracaoRegrasTest extends TestCase
             120.0
         );
 
-        $this->assertSame('valor_pago_ciclo', $credito['tipo_credito']);
-        $this->assertSame(120.0, $credito['credito']);
+        // Proporcional de 70 (20/30 = 46,67) + 50 pagos além do plano (não consumidos)
+        $this->assertSame('proporcional', $credito['tipo_credito']);
+        $this->assertEqualsWithDelta(96.67, $credito['credito'], 0.001);
+        $this->assertSame(50.0, $credito['excedente_pago']);
         $this->assertSame(602, $credito['pagamento_origem_id']);
+    }
+
+    /** Caso real (matrícula 55): bimestral R$ 240 de 07/09 a 07/11, upgrade em 31/10 com 7 dias restantes. */
+    public function test_upgrade_no_fim_do_ciclo_nao_devolve_o_bimestre_inteiro(): void
+    {
+        DB::table('plano_ciclos')->insert(['id' => 75, 'plano_id' => 1, 'tenant_id' => self::TENANT, 'ativo' => 1, 'valor' => 240.0, 'meses' => 2, 'permite_recorrencia' => 0]);
+        $inicio = AcademyDateTime::now()->modify('+7 days')->modify('-2 months')->format('Y-m-d');
+        $this->inserirPagamentoPago(1192, 240.0, $inicio);
+        $matricula = $this->matricula(['valor' => 240.0, 'plano_ciclo_id' => 75, 'data_inicio' => $inicio, 'data_vencimento' => $this->dia(7), 'proxima_data_vencimento' => $this->dia(7)]);
+
+        $credito = $this->service()->calcularCreditoMigracao($matricula, self::TENANT, self::MATRICULA, 560.0);
+
+        $this->assertSame('proporcional', $credito['tipo_credito']);
+        $this->assertSame(7, $credito['dias_restantes']);
+        $this->assertEqualsWithDelta(240.0 / $credito['dias_totais'] * 7, $credito['credito'], 0.01);
+        $this->assertLessThan(30.0, $credito['credito'], 'antes devolvia os 240 inteiros');
+        $this->assertEqualsWithDelta(240.0 - $credito['credito'], $credito['valor_consumido'], 0.01);
+    }
+
+    public function test_renovacoes_sem_avancar_data_inicio_nao_viram_credito_acumulado(): void
+    {
+        // data_inicio do 1º ciclo (100 dias atrás) e 4 mensalidades pagas desde então; ciclo vigente = últimos 30 dias
+        foreach ([[901, -100], [902, -70], [903, -40], [904, -10]] as [$id, $offset]) {
+            $this->inserirPagamentoPago($id, 300.0, $this->dia($offset));
+        }
+        $matricula = $this->matricula(['data_inicio' => $this->dia(-100)]);
+
+        $credito = $this->service()->calcularCreditoMigracao($matricula, self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(30, $credito['dias_totais'], 'ciclo ancorado em vencimento − duração, não em data_inicio');
+        $this->assertSame(20, $credito['dias_restantes']);
+        $this->assertSame(200.0, $credito['credito'], 'e não 1.200 (soma das 4 mensalidades)');
+        $this->assertSame(0.0, $credito['excedente_pago']);
     }
 
     public function test_migrar_pendente_com_pagos_que_cobrem_o_plano_ativa_sem_cobrar_de_novo(): void
@@ -338,7 +375,8 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
         $mp = $this->mercadoPago();
         $mp->shouldReceive('criarPreferenciaPagamento')->once()
-            ->with(Mockery::on(fn ($d) => $d['valor'] === 200.0 && $d['matricula_id'] === self::MATRICULA))
+            // 500 − crédito proporcional 200 (300 × 20/30) = 300
+            ->with(Mockery::on(fn ($d) => $d['valor'] === 300.0 && $d['matricula_id'] === self::MATRICULA))
             ->andReturn(['id' => 'pref-1', 'init_point' => 'https://mp/checkout', 'external_reference' => 'MAT-30-x']);
 
         $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
@@ -359,7 +397,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(2, (int) DB::table('pagamentos_plano')->where('id', 501)->value('status_pagamento_id'));
 
         $novo = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
-        $this->assertEquals(200.0, $novo->valor);
+        $this->assertEquals(300.0, $novo->valor);
         $this->assertStringContainsString('[MIGRACAO_SIMULADA', (string) $novo->observacoes);
         $this->assertStringContainsString('pref-1', (string) $novo->observacoes);
 
@@ -893,9 +931,9 @@ class MatriculaMigracaoRegrasTest extends TestCase
     }
 
     /**
-     * Caso real (matrícula 55, parcela 1543): plano antigo com R$ 240 pagos, upgrade para R$ 560. A simulação
-     * cobra 320 + taxas do cartão em 4x = 364,44. Na confirmação o crédito tem de continuar 240 — a cobrança
-     * da própria migração (e as taxas embutidas nela) não é crédito do ciclo antigo.
+     * Caso real (matrícula 55, parcela 1543): plano antigo R$ 240 pago, upgrade para R$ 560. O crédito é o
+     * proporcional da simulação e tem de continuar igual na confirmação — a cobrança da própria migração
+     * (e as taxas embutidas nela) não é crédito do ciclo antigo.
      */
     public function test_confirmar_migracao_paga_no_cartao_nao_transforma_a_propria_cobranca_em_credito(): void
     {
@@ -912,16 +950,17 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
         $r = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
         $this->assertSame(200, $r['status'], json_encode($r['body']));
-        $this->assertEqualsWithDelta(240.0, (float) $r['body']['data']['credito']['valor'], 0.001, 'crédito da simulação é o que já foi pago');
+        // 240 por 30 dias, 20 restantes → 160 de crédito; cobra 400
+        $this->assertEqualsWithDelta(160.0, (float) $r['body']['data']['credito']['valor'], 0.001);
 
         $parcela = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
-        $this->assertEqualsWithDelta(320.0, (float) $parcela->valor, 0.001, 'cobra só a diferença');
+        $this->assertEqualsWithDelta(400.0, (float) $parcela->valor, 0.001, 'cobra só a diferença');
 
-        // Checkout no cartão em 4x: o Asaas cobra 364,44 (4 × 91,11) com a tarifa e a sobretaxa embutidas; depois paga
+        // Checkout no cartão em 4x: o Asaas cobra 455,56 com a tarifa e a sobretaxa embutidas; depois paga
         DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
-            'valor' => 364.44, 'tarifa_cartao' => 11.50, 'sobretaxa_antecipacao' => 32.94,
+            'valor' => 455.56, 'tarifa_cartao' => 15.10, 'sobretaxa_antecipacao' => 40.46,
             'status_pagamento_id' => 2, 'data_pagamento' => AcademyDateTime::today(),
-            'observacoes' => $parcela->observacoes.' [Valor cobrado R$ 364,44] [Asaas pay_1d9n1buyq8vxy7xl]',
+            'observacoes' => $parcela->observacoes.' [Valor cobrado R$ 455,56] [Asaas pay_1d9n1buyq8vxy7xl]',
         ]);
 
         $this->service()->confirmarSeHouverSimulacaoPaga(self::TENANT, self::MATRICULA);
@@ -933,11 +972,119 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $creditos = DB::table('creditos_aluno')->get();
         $this->assertCount(1, $creditos);
         $credito = (array) $creditos[0];
-        $this->assertEqualsWithDelta(240.0, (float) $credito['valor'], 0.001, 'não vira 604,44 (240 + 364,44)');
-        $this->assertEqualsWithDelta(240.0, (float) $credito['valor_utilizado'], 0.001);
+        $this->assertEqualsWithDelta(160.0, (float) $credito['valor'], 0.001, 'igual à simulação; não soma a cobrança paga (455,56)');
+        $this->assertEqualsWithDelta(160.0, (float) $credito['valor_utilizado'], 0.001);
         $this->assertSame(2, (int) $credito['status_credito_id'], 'utilizado por inteiro: saldo zero para a aluna');
-        $this->assertEqualsWithDelta(0.0, (float) $credito['valor'] - (float) $credito['valor_utilizado'], 0.001, 'sem os 44,44 de taxas voltando como crédito');
-        $this->assertEqualsWithDelta(240.0, (float) $this->row('pagamentos_plano', (int) $parcela->id)['credito_aplicado'], 0.001);
+        $this->assertEqualsWithDelta(160.0, (float) $this->row('pagamentos_plano', (int) $parcela->id)['credito_aplicado'], 0.001);
+    }
+
+    public function test_checkins_esgotados_zeram_o_credito_mesmo_com_dias_sobrando(): void
+    {
+        // 3x por semana em 30 dias = 12 check-ins; usou os 12 nos primeiros 10 dias
+        DB::table('planos')->where('id', 1)->update(['checkins_semanais' => 3]);
+        DB::table('turmas')->insert(['id' => 1, 'tenant_id' => self::TENANT, 'modalidade_id' => 1]);
+        $this->pagamentoPago(501);
+        for ($i = 0; $i < 12; $i++) {
+            DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-9 + (int) floor($i * 0.8)), 'presente' => $i % 2 ? 1 : null]);
+        }
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(), self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(12, $credito['checkins_direito']);
+        $this->assertSame(12, $credito['checkins_usados']);
+        $this->assertSame(20, $credito['dias_restantes'], 'ainda há dias, mas o direito do ciclo acabou');
+        $this->assertSame(0.0, $credito['credito']);
+        $this->assertSame('sem_credito', $credito['tipo_credito']);
+        $this->assertSame(300.0, $credito['valor_consumido']);
+    }
+
+    public function test_pendente_por_limite_de_checkins_esgotado_nao_recebe_credito_do_que_pagou(): void
+    {
+        // Antes: pendente com pagamento caía em "crédito dos pagamentos já quitados" e devolvia os 300 inteiros
+        $this->aptidaoApta(geraCredito: false);
+        DB::table('planos')->where('id', 1)->update(['checkins_semanais' => 3]);
+        DB::table('turmas')->insert(['id' => 1, 'tenant_id' => self::TENANT, 'modalidade_id' => 1]);
+        $this->pagamentoPago(501);
+        for ($i = 0; $i < 12; $i++) {
+            DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-($i % 10)), 'presente' => 1]);
+        }
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(['status_id' => 12, 'status_codigo' => 'pendente']), self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(0.0, $credito['credito']);
+        $this->assertSame('sem_credito', $credito['tipo_credito']);
+        $this->assertSame(12, $credito['checkins_usados']);
+    }
+
+    public function test_pendente_aguardando_ativacao_sem_checkins_recebe_tudo_que_pagou(): void
+    {
+        $this->aptidaoApta(geraCredito: false);
+        $this->pagamentoPago(501);
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(['status_id' => 12, 'status_codigo' => 'pendente']), self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(300.0, $credito['credito'], 'sem acesso e sem check-ins, nada foi consumido');
+        $this->assertSame(0.0, $credito['fracao_tempo']);
+    }
+
+    /** Caso real (matrícula 55): pendente com pagamento e ciclo já vencido recebia os 240 pagos de volta. */
+    public function test_pendente_com_ciclo_vencido_nao_gera_credito_do_que_pagou(): void
+    {
+        $this->aptidaoApta(geraCredito: false);
+        $this->inserirPagamentoPago(1192, 240.0, $this->dia(-40));
+        $matricula = $this->matricula([
+            'valor' => 240.0,
+            'status_id' => 12,
+            'status_codigo' => 'pendente',
+            'data_inicio' => $this->dia(-40),
+            'data_vencimento' => $this->dia(-1),
+            'proxima_data_vencimento' => $this->dia(7),
+        ]);
+
+        $credito = $this->service()->calcularCreditoMigracao($matricula, self::TENANT, self::MATRICULA, 560.0);
+
+        $this->assertSame(0.0, $credito['credito']);
+        $this->assertSame('sem_credito', $credito['tipo_credito']);
+        $this->assertNull($credito['pagamento_origem_id']);
+    }
+
+    public function test_pendente_que_frequentou_o_ciclo_consome_pelo_tempo(): void
+    {
+        $this->aptidaoApta(geraCredito: false);
+        DB::table('planos')->where('id', 1)->update(['checkins_semanais' => 3]);
+        DB::table('turmas')->insert(['id' => 1, 'tenant_id' => self::TENANT, 'modalidade_id' => 1]);
+        $this->pagamentoPago(501);
+        // 2 de 12 check-ins (17%), mas 10 de 30 dias decorridos (33%): o tempo define o consumo
+        DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-8), 'presente' => 1]);
+        DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-3), 'presente' => 1]);
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(['status_id' => 12, 'status_codigo' => 'pendente']), self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(200.0, $credito['credito'], 'e não 250 (só check-ins) nem 300 (tudo)');
+        $this->assertGreaterThan(0.0, $credito['fracao_tempo']);
+    }
+
+    public function test_consumo_e_o_maior_entre_tempo_e_checkins_e_ignora_faltas_e_outra_modalidade(): void
+    {
+        // 10 de 30 dias (33%) mas 9 de 12 check-ins (75%): vale o check-in → crédito 25% de 300 = 75
+        DB::table('planos')->where('id', 1)->update(['checkins_semanais' => 3]);
+        DB::table('turmas')->insert([['id' => 1, 'tenant_id' => self::TENANT, 'modalidade_id' => 1], ['id' => 2, 'tenant_id' => self::TENANT, 'modalidade_id' => 9]]);
+        $this->pagamentoPago(501);
+        for ($i = 0; $i < 9; $i++) {
+            DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-$i), 'presente' => 1]);
+        }
+        DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-2), 'presente' => 0]); // falta marcada
+        DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 2, 'data_checkin_date' => $this->dia(-2), 'presente' => 1]); // outra modalidade
+        DB::table('checkins')->insert(['tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'turma_id' => 1, 'data_checkin_date' => $this->dia(-20), 'presente' => 1]); // ciclo anterior
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(), self::TENANT, self::MATRICULA, 500.0);
+
+        $this->assertSame(9, $credito['checkins_usados']);
+        $this->assertEqualsWithDelta(0.3333, $credito['fracao_tempo'], 0.001);
+        $this->assertEqualsWithDelta(0.75, $credito['fracao_checkins'], 0.001);
+        $this->assertSame(75.0, $credito['credito']);
+        $this->assertSame(225.0, $credito['valor_consumido']);
+        $this->assertStringContainsString('9 de 12 check-ins usados', $credito['motivo']);
     }
 
     public function test_soma_do_ciclo_ignora_taxas_do_cartao_e_migracao_nao_confirmada(): void
@@ -1087,7 +1234,9 @@ class MatriculaMigracaoRegrasTest extends TestCase
             'CREATE TABLE alunos (id INTEGER PRIMARY KEY, usuario_id INTEGER)',
             'CREATE TABLE tenants (id INTEGER PRIMARY KEY, nome TEXT)',
             'CREATE TABLE modalidades (id INTEGER PRIMARY KEY, nome TEXT)',
-            'CREATE TABLE planos (id INTEGER PRIMARY KEY, tenant_id INTEGER, nome TEXT, valor REAL, duracao_dias INTEGER, modalidade_id INTEGER, ativo INTEGER)',
+            'CREATE TABLE planos (id INTEGER PRIMARY KEY, tenant_id INTEGER, nome TEXT, valor REAL, duracao_dias INTEGER, modalidade_id INTEGER, ativo INTEGER, checkins_semanais INTEGER)',
+            'CREATE TABLE turmas (id INTEGER PRIMARY KEY, tenant_id INTEGER, modalidade_id INTEGER)',
+            'CREATE TABLE checkins (id INTEGER PRIMARY KEY, tenant_id INTEGER, aluno_id INTEGER, turma_id INTEGER, data_checkin_date TEXT, created_at TEXT, presente INTEGER)',
             'CREATE TABLE assinatura_frequencias (id INTEGER PRIMARY KEY, nome TEXT, codigo TEXT, meses INTEGER)',
             'CREATE TABLE plano_ciclos (id INTEGER PRIMARY KEY, plano_id INTEGER, tenant_id INTEGER, ativo INTEGER, valor REAL, meses INTEGER, permite_recorrencia INTEGER, assinatura_frequencia_id INTEGER)',
             'CREATE TABLE parametros (id INTEGER PRIMARY KEY, codigo TEXT, valor_padrao TEXT, tipo_valor TEXT, ativo INTEGER)',

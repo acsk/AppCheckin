@@ -22,6 +22,9 @@ export type MigracaoSimulacao = {
     valor_formatado: string;
     valor_consumido_formatado?: string;
     dias_restantes?: number;
+    checkins_usados?: number;
+    checkins_direito?: number;
+    base_consumo?: "tempo" | "checkins";
     tipo?: string;
     motivo?: string;
   };
@@ -81,12 +84,16 @@ export default function MigracaoPlanoSheet({
   }
   const temCredito = !!sim?.credito?.valor_formatado && sim.credito.tipo !== "sem_credito";
   if (temCredito) {
+    const c = sim!.credito!;
+    const porCheckins = c.base_consumo === "checkins" && (c.checkins_direito ?? 0) > 0;
     rows.push({
       label: "Crédito do plano atual",
-      hint: sim?.credito?.dias_restantes
-        ? `${sim.credito.dias_restantes} ${sim.credito.dias_restantes === 1 ? "dia" : "dias"} que você não usou`
-        : null,
-      value: `− ${sim!.credito!.valor_formatado}`,
+      hint: porCheckins
+        ? `${Math.max(0, (c.checkins_direito ?? 0) - (c.checkins_usados ?? 0))} de ${c.checkins_direito} check-ins que você não usou`
+        : c.dias_restantes
+          ? `${c.dias_restantes} ${c.dias_restantes === 1 ? "dia" : "dias"} que você não usou`
+          : null,
+      value: `− ${c.valor_formatado}`,
       tone: "credit",
     });
   }

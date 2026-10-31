@@ -12,6 +12,7 @@ use App\Support\ReferenciaExterna;
 use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use PDO;
 
 /**
@@ -683,6 +684,10 @@ class MatriculaMigracaoService
                 'dias_restantes' => (int) $credito['dias_restantes'],
                 'dias_usados' => (int) $credito['dias_usados'],
                 'dias_totais' => (int) $credito['dias_totais'],
+                'checkins_usados' => (int) ($credito['checkins_usados'] ?? 0),
+                'checkins_direito' => (int) ($credito['checkins_direito'] ?? 0),
+                // O que definiu o consumo: 'checkins' quando os check-ins pesaram mais que o tempo
+                'base_consumo' => ((float) ($credito['fracao_checkins'] ?? 0)) > ((float) ($credito['fracao_tempo'] ?? 0)) ? 'checkins' : 'tempo',
                 'motivo' => $credito['motivo'],
             ],
             'valor_parcela' => $valorParcela,
@@ -899,42 +904,25 @@ class MatriculaMigracaoService
     }
 
     /**
-     * Upgrade: crédito do valor cheio do plano atual (paga só a diferença — igual painel "abater_plano").
-     * Downgrade: proporcional aos dias restantes do ciclo vigente (data_vencimento, não proxima_data_vencimento).
-     * Cancelada/vencida/atrasada/limite de check-ins esgotado: crédito zero.
+     * Crédito proporcional aos dias restantes do ciclo vigente, para upgrade e downgrade (mesma régua do
+     * cancelamento). O que foi consumido não volta; o que foi pago além do valor do plano no ciclo (ex.:
+     * pagamento duplicado) volta inteiro. Cancelada/vencida/atrasada/limite de check-ins esgotado: zero.
+     * Pendente com pagamento: o pago vira crédito (o ciclo não começou a ser consumido).
      *
      * @return array<string, mixed>
      */
     public function calcularCreditoMigracao(array $matricula, int $tenantId, int $matriculaId, ?float $valorNovo = null): array
     {
         $valorCicloAtual = (float) $matricula['valor'];
-        $planoNome = (string) ($matricula['plano_nome'] ?? 'plano atual');
         $dataInicioCiclo = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
         $pagoCiclo = $this->pagamentosPlano->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $dataInicioCiclo);
 
         $aptidao = $this->avaliarAptidaoMigracao($matricula, $tenantId);
-        if (! $aptidao['gera_credito']) {
-            $pendenteComPago = strtolower(trim((string) ($matricula['status_codigo'] ?? ''))) === 'pendente'
-                && $pagoCiclo > self::FLOAT_EPSILON;
-            if ($pendenteComPago) {
-                return [
-                    'tipo_credito' => 'valor_pago_ciclo',
-                    'tem_credito' => true,
-                    'valor_plano_atual' => $valorCicloAtual,
-                    'valor_consumido' => 0.0,
-                    'credito' => $pagoCiclo,
-                    'dias_totais' => 0,
-                    'dias_restantes' => 0,
-                    'dias_usados' => 0,
-                    'pagamento_origem_id' => $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId),
-                    'motivo' => sprintf(
-                        'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
-                        number_format($pagoCiclo, 2, ',', '.')
-                    ),
-                    'aptidao' => $aptidao,
-                ];
-            }
-
+        // Pendente com pagamento (aguardando ativação ou parada por limite de check-ins): passa pela mesma
+        // régua de consumo abaixo — quem não começou recebe tudo, quem esgotou os check-ins não recebe nada.
+        $pendenteComPago = strtolower(trim((string) ($matricula['status_codigo'] ?? ''))) === 'pendente'
+            && $pagoCiclo > self::FLOAT_EPSILON;
+        if (! $aptidao['gera_credito'] && ! $pendenteComPago) {
             return [
                 'tipo_credito' => 'sem_credito',
                 'tem_credito' => false,
@@ -958,6 +946,23 @@ class MatriculaMigracaoService
         $hoje = AcademyDateTime::today();
 
         if ($dataInicio === null || $dataVencimentoStr === null) {
+            if ($pendenteComPago) {
+                // Matrícula que nunca foi ativada (sem datas de ciclo): nada foi consumido, o pago volta inteiro
+                return [
+                    'tipo_credito' => 'valor_pago_ciclo',
+                    'tem_credito' => true,
+                    'valor_plano_atual' => $valorCicloAtual,
+                    'valor_consumido' => 0.0,
+                    'credito' => $pagoCiclo,
+                    'dias_totais' => 0,
+                    'dias_restantes' => 0,
+                    'dias_usados' => 0,
+                    'pagamento_origem_id' => $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId),
+                    'motivo' => sprintf('Crédito dos pagamentos já quitados neste ciclo (R$ %s)', number_format($pagoCiclo, 2, ',', '.')),
+                    'aptidao' => $aptidao,
+                ];
+            }
+
             return [
                 'tipo_credito' => 'sem_credito',
                 'tem_credito' => false,
@@ -973,7 +978,11 @@ class MatriculaMigracaoService
             ];
         }
 
-        $base = self::calcularCreditoProporcional($valorCicloAtual, $dataInicio, $dataVencimentoStr, $hoje);
+        // Ciclo vigente: começa em data_inicio, mas renovações não avançam data_inicio — então o início
+        // é ancorado em vencimento − duração do ciclo (nunca antes de data_inicio). Sem isso o proporcional
+        // diluiria o valor por vários ciclos e a soma "pago no ciclo" traria mensalidades antigas.
+        $inicioCiclo = $this->inicioDoCicloVigente($matricula, $tenantId, $dataInicio, $dataVencimentoStr);
+        $base = self::calcularCreditoProporcional($valorCicloAtual, $inicioCiclo, $dataVencimentoStr, $hoje);
 
         // Ciclo sem dias restantes: sem crédito (upgrade inclusive).
         if ($base['dias_restantes'] <= 0 || $dataVencimentoStr <= $hoje) {
@@ -988,67 +997,117 @@ class MatriculaMigracaoService
             ]);
         }
 
-        // Upgrade com ciclo ainda vigente: crédito do valor cheio do plano atual.
-        if ($valorNovo !== null && $valorNovo > $valorCicloAtual) {
-            $creditoUpgrade = round(max($valorCicloAtual, $pagoCiclo), 2);
-            $pagamentoOrigemId = $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId);
-            $usouPagoCiclo = $pagoCiclo > $valorCicloAtual + self::FLOAT_EPSILON;
+        $pagoNoCicloVigente = $this->pagamentosPlano->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $inicioCiclo);
+        $excedente = round(max(0.0, $pagoNoCicloVigente - $valorCicloAtual), 2);
 
-            return [
-                'tipo_credito' => $usouPagoCiclo ? 'valor_pago_ciclo' : 'valor_cheio_plano',
-                'tem_credito' => $creditoUpgrade > 0,
-                'valor_plano_atual' => $valorCicloAtual,
-                'valor_consumido' => 0.0,
-                'credito' => $creditoUpgrade,
-                'dias_totais' => (int) $base['dias_totais'],
-                'dias_restantes' => (int) $base['dias_restantes'],
-                'dias_usados' => (int) $base['dias_usados'],
-                'pagamento_origem_id' => $pagamentoOrigemId,
-                'motivo' => $usouPagoCiclo
-                    ? sprintf(
-                        'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
-                        number_format($pagoCiclo, 2, ',', '.')
-                    )
-                    : sprintf(
-                        'Crédito do plano atual (%s — R$%s)',
-                        $planoNome,
-                        number_format($valorCicloAtual, 2, ',', '.')
-                    ),
-                'aptidao' => $aptidao,
-            ];
-        }
-
-        $creditoProporcional = (float) $base['credito'];
-        if ($pagoCiclo > $creditoProporcional + self::FLOAT_EPSILON) {
-            return [
-                'tipo_credito' => 'valor_pago_ciclo',
-                'tem_credito' => true,
-                'valor_plano_atual' => $valorCicloAtual,
-                'valor_consumido' => 0.0,
-                'credito' => $pagoCiclo,
-                'dias_totais' => (int) $base['dias_totais'],
-                'dias_restantes' => (int) $base['dias_restantes'],
-                'dias_usados' => (int) $base['dias_usados'],
-                'pagamento_origem_id' => $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId),
-                'motivo' => sprintf(
-                    'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
-                    number_format($pagoCiclo, 2, ',', '.')
-                ),
-                'aptidao' => $aptidao,
-            ];
-        }
+        // Consumo do ciclo = o maior entre tempo decorrido e check-ins usados: quem já usou os check-ins do
+        // período não tem saldo a devolver, mesmo com dias sobrando.
+        $diasTotais = (int) $base['dias_totais'];
+        $checkins = $this->consumoPorCheckins($matricula, $tenantId, $inicioCiclo, $hoje, $diasTotais);
+        // Pendente sem nenhum check-in no ciclo não teve acesso: o tempo não consome. Com check-ins ela usou o
+        // plano (ex.: matrícula 55, pendente frequentando) e o tempo decorrido conta como para a ativa.
+        $semUsoPendente = $pendenteComPago && $checkins['usados'] === 0;
+        $fracaoTempo = $semUsoPendente ? 0.0 : ($diasTotais > 0 ? min(1.0, (int) $base['dias_usados'] / $diasTotais) : 1.0);
+        $fracaoConsumida = max($fracaoTempo, $checkins['fracao']);
+        $naoConsumido = round($valorCicloAtual * (1 - $fracaoConsumida), 2);
+        $credito = round(max(0.0, $naoConsumido) + $excedente, 2);
 
         $motivo = sprintf(
-            'Crédito proporcional (%d dias restantes de R$%s)',
+            'Crédito proporcional (%d de %d dias restantes',
             $base['dias_restantes'],
-            number_format($valorCicloAtual, 2, ',', '.')
+            $diasTotais
         );
+        if ($checkins['direito'] > 0) {
+            $motivo .= sprintf('; %d de %d check-ins usados', $checkins['usados'], $checkins['direito']);
+        }
+        $motivo .= sprintf(' de R$%s)', number_format($valorCicloAtual, 2, ',', '.'));
+        if ($excedente > 0) {
+            $motivo .= sprintf(' + R$%s pagos além do plano neste ciclo', number_format($excedente, 2, ',', '.'));
+        }
 
         return array_merge($base, [
-            'pagamento_origem_id' => null,
+            'tipo_credito' => $credito > 0 ? 'proporcional' : 'sem_credito',
+            'tem_credito' => $credito > 0,
+            'credito' => $credito,
+            'valor_consumido' => round($valorCicloAtual - max(0.0, $naoConsumido), 2),
+            'excedente_pago' => $excedente,
+            'checkins_direito' => $checkins['direito'],
+            'checkins_usados' => $checkins['usados'],
+            'fracao_tempo' => round($fracaoTempo, 4),
+            'fracao_checkins' => round($checkins['fracao'], 4),
+            'pagamento_origem_id' => $credito > 0 ? $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId) : null,
             'motivo' => $motivo,
             'aptidao' => $aptidao,
         ]);
+    }
+
+    /**
+     * Check-ins do ciclo vigente frente ao direito do plano (checkins_semanais × semanas do ciclo), na
+     * modalidade do plano, sem contar faltas marcadas — mesma contagem do limite mensal de reposição.
+     *
+     * @param  array<string, mixed>  $matricula
+     * @return array{direito: int, usados: int, fracao: float}
+     */
+    private function consumoPorCheckins(array $matricula, int $tenantId, string $inicioCiclo, string $hoje, int $diasTotais): array
+    {
+        $vazio = ['direito' => 0, 'usados' => 0, 'fracao' => 0.0];
+        if ($diasTotais <= 0 || ! Schema::hasTable('checkins') || ! Schema::hasColumn('planos', 'checkins_semanais')) {
+            return $vazio;
+        }
+
+        $plano = DB::table('planos')->where('id', (int) ($matricula['plano_id'] ?? 0))->first(['checkins_semanais', 'modalidade_id']);
+        $semanais = (int) ($plano->checkins_semanais ?? 0);
+        if ($semanais <= 0) {
+            return $vazio;
+        }
+        $direito = (int) floor($semanais * $diasTotais / 7);
+        if ($direito <= 0) {
+            return $vazio;
+        }
+
+        $q = DB::table('checkins as c')
+            ->where('c.tenant_id', $tenantId)
+            ->where('c.aluno_id', (int) ($matricula['aluno_id'] ?? 0))
+            ->whereBetween(DB::raw('COALESCE(c.data_checkin_date, DATE(c.created_at))'), [$inicioCiclo, $hoje])
+            ->where(fn ($w) => $w->whereNull('c.presente')->orWhere('c.presente', 1));
+        $modalidadeId = isset($plano->modalidade_id) ? (int) $plano->modalidade_id : 0;
+        if ($modalidadeId > 0 && Schema::hasTable('turmas')) {
+            $q->join('turmas as t', 't.id', '=', 'c.turma_id')->where('t.modalidade_id', $modalidadeId);
+        }
+        $usados = (int) $q->count();
+
+        return ['direito' => $direito, 'usados' => $usados, 'fracao' => min(1.0, $usados / $direito)];
+    }
+
+    /**
+     * Início do ciclo que está sendo consumido: o maior entre data_inicio e (vencimento − duração do ciclo).
+     * Duração pelo plano_ciclo (meses) ou pela duracao_dias do plano; sem nenhum dos dois, data_inicio.
+     *
+     * @param  array<string, mixed>  $matricula
+     */
+    private function inicioDoCicloVigente(array $matricula, int $tenantId, string $dataInicio, string $dataVencimento): string
+    {
+        $venc = AcademyDateTime::fromDbDate($dataVencimento);
+        if ($venc === null) {
+            return $dataInicio;
+        }
+
+        $meses = 0;
+        $cicloId = (int) ($matricula['plano_ciclo_id'] ?? 0);
+        if ($cicloId > 0) {
+            $meses = (int) (DB::table('plano_ciclos')->where('id', $cicloId)->value('meses') ?? 0);
+        }
+        $dias = 0;
+        if ($meses <= 0) {
+            $dias = (int) (DB::table('planos')->where('id', (int) ($matricula['plano_id'] ?? 0))->value('duracao_dias') ?? 0);
+        }
+        if ($meses <= 0 && $dias <= 0) {
+            return $dataInicio;
+        }
+
+        $calculado = (clone $venc)->modify($meses > 0 ? "-{$meses} months" : "-{$dias} days")->format('Y-m-d');
+
+        return max($dataInicio, $calculado);
     }
 
     private function buscarUltimoPagamentoPagoId(int $matriculaId, int $tenantId): ?int
