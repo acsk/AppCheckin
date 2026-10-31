@@ -150,7 +150,7 @@ class AdminRecorrenciaService
             $porNumero[(int) $x['numero']] = $x;
         }
         $ate = max((int) $c['fidelizacao_meses'], $porNumero ? max(array_keys($porNumero)) : 0);
-        // Prevista = o que o gateway vai cobrar: mensalidade + taxa do cartão repassada (como a já gerada)
+        // Prevista = o que o gateway vai cobrar: mensalidade + taxas repassadas (cartão e sobretaxa da assinatura)
         $prevista = Calc::reais(Calc::centavos((string) $c['valor_mensal_vigente']) + Calc::centavos((string) ($c['taxa_cartao_mensal'] ?? '0')));
         $out = [];
         for ($n = 1; $n <= $ate; $n++) {

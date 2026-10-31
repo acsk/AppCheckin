@@ -30,20 +30,21 @@ class MobileRecorrenciaService
     }
 
     /**
-     * Assinatura no cartão: taxa do cartão por mês, que o aluno vê antes de assinar (uma linha só).
+     * Taxas por mês da assinatura, que o aluno vê antes de assinar (um valor só, sem a composição).
+     * `taxa_cartao` fica por compatibilidade com versões antigas do app.
      *
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function taxaCartao(int $tenantId, int $cicloId): array
+    public function taxaCartao(int $tenantId, int $cicloId, string $metodo = 'cartao'): array
     {
         $ciclo = DB::table('plano_ciclos')->where('id', $cicloId)->where('tenant_id', $tenantId)->where('ativo', 1)->where('cobranca_mensal', 1)->first(['valor', 'meses']);
         if (! $ciclo) {
             return $this->erro('Assinatura não disponível para este ciclo.', 404);
         }
         $mensal = Calc::reais(intdiv(Calc::centavos((string) $ciclo->valor), max(1, (int) $ciclo->meses)));
-        $taxa = $this->recorrencia->taxaCartao($tenantId, $mensal);
+        $taxa = $this->recorrencia->taxas($tenantId, $metodo === 'pix' ? 'pix' : 'cartao', $mensal);
 
-        return $this->ok(['valor_mensal' => $mensal, 'taxa_cartao' => $taxa, 'total_mensal' => Calc::reais(Calc::centavos($mensal) + Calc::centavos($taxa))]);
+        return $this->ok(['valor_mensal' => $mensal, 'taxas' => $taxa, 'taxa_cartao' => $taxa, 'total_mensal' => Calc::reais(Calc::centavos($mensal) + Calc::centavos($taxa))]);
     }
 
     /** @return array{status: int, body: array<string, mixed>} */
@@ -116,7 +117,7 @@ class MobileRecorrenciaService
         return [
             'id' => (int) $c['id'], 'plano_nome' => $c['plano_nome'], 'modalidade_nome' => $c['modalidade_nome'],
             'status' => $c['status'], 'status_nome' => AdminRecorrenciaService::STATUS[$c['status']] ?? $c['status'],
-            'valor_mensal' => $c['valor_mensal_vigente'], 'taxa_cartao' => $c['taxa_cartao_mensal'] ?? '0.00', 'valor_mensal_contratado' => $c['valor_mensal_contratado'], 'valor_mensal_referencia' => $c['valor_mensal_referencia'],
+            'valor_mensal' => $c['valor_mensal_vigente'], 'taxas' => $c['taxa_cartao_mensal'] ?? '0.00', 'taxa_cartao' => $c['taxa_cartao_mensal'] ?? '0.00', 'valor_mensal_contratado' => $c['valor_mensal_contratado'], 'valor_mensal_referencia' => $c['valor_mensal_referencia'],
             'metodo' => $c['metodo'], 'inicio_em' => $c['inicio_em'], 'proxima_cobranca_em' => $vivo ? $c['proxima_cobranca_em'] : null,
             'acesso_ate' => $this->acesso->acessoAte((int) $c['id']),
             'fidelizacao_meses' => (int) $c['fidelizacao_meses'], 'em_fidelizacao' => (bool) $c['em_fidelizacao'],

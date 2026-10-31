@@ -177,7 +177,7 @@ class AdminPaymentCredentialsService
                 'conciliar_somente_vinculados' => $this->somenteVinculadosDoBody($provider, $body, $existente),
                 'enable_pix_recorrencia' => $this->pixRecorrenciaDoBody($provider, $body, $existente),
                 'max_parcelas_cartao' => AsaasTarifaCartao::maxParcelas($body['max_parcelas_cartao'] ?? $existente['max_parcelas_cartao'] ?? null),
-            ];
+            ] + $this->sobretaxaRecorrenciaDoBody($provider, $body, $existente);
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
                 $update = [
@@ -213,6 +213,8 @@ class AdminPaymentCredentialsService
                 $update['conciliar_somente_vinculados'] = $dados['conciliar_somente_vinculados'];
                 $update['enable_pix_recorrencia'] = $dados['enable_pix_recorrencia'];
                 $update['max_parcelas_cartao'] = $dados['max_parcelas_cartao'];
+                $update['sobretaxa_recorrencia_percentual'] = $dados['sobretaxa_recorrencia_percentual'];
+                $update['sobretaxa_recorrencia_fixa'] = $dados['sobretaxa_recorrencia_fixa'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -431,6 +433,8 @@ class AdminPaymentCredentialsService
         $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
         $row['sobretaxa_folga_percentual'] = round((float) ($row['sobretaxa_folga_percentual'] ?? 1.00), 2);
         $row['usar_taxa_antecipacao_asaas'] = $this->boolish($row['usar_taxa_antecipacao_asaas'] ?? false);
+        $row['sobretaxa_recorrencia_percentual'] = round((float) ($row['sobretaxa_recorrencia_percentual'] ?? 0), 2);
+        $row['sobretaxa_recorrencia_fixa'] = round((float) ($row['sobretaxa_recorrencia_fixa'] ?? 0), 2);
         $row['taxa_antecipacao_asaas_avista'] ??= null;
         $row['taxa_antecipacao_asaas_parcelada'] ??= null;
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
@@ -464,6 +468,8 @@ class AdminPaymentCredentialsService
             'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
             'sobretaxa_folga_percentual' => 1.00,
             'usar_taxa_antecipacao_asaas' => false,
+            'sobretaxa_recorrencia_percentual' => 0.0,
+            'sobretaxa_recorrencia_fixa' => 0.0,
             'taxa_antecipacao_asaas_avista' => null,
             'taxa_antecipacao_asaas_parcelada' => null,
             'has_token_test' => false,
@@ -504,6 +510,30 @@ class AdminPaymentCredentialsService
             ),
             'usar_taxa_antecipacao_asaas' => $habilitada
                 && $this->boolish($body['usar_taxa_antecipacao_asaas'] ?? $existente['usar_taxa_antecipacao_asaas'] ?? false) ? 1 : 0,
+        ];
+    }
+
+    /**
+     * Sobretaxa da assinatura: só no Asaas (gateway da recorrência). Percentual 0–30%, fixa até R$ 999,99.
+     *
+     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>|null  $existente
+     * @return array{sobretaxa_recorrencia_percentual: float, sobretaxa_recorrencia_fixa: float}
+     */
+    private function sobretaxaRecorrenciaDoBody(string $provider, array $body, ?array $existente): array
+    {
+        if ($provider !== 'asaas') {
+            return ['sobretaxa_recorrencia_percentual' => 0.0, 'sobretaxa_recorrencia_fixa' => 0.0];
+        }
+        $fixa = $body['sobretaxa_recorrencia_fixa'] ?? $existente['sobretaxa_recorrencia_fixa'] ?? 0;
+        $fixa = is_numeric($fixa) ? round((float) $fixa, 2) : 0.0;
+
+        return [
+            'sobretaxa_recorrencia_percentual' => $this->percentualOuPadrao(
+                $body['sobretaxa_recorrencia_percentual'] ?? $existente['sobretaxa_recorrencia_percentual'] ?? 0,
+                0.0
+            ),
+            'sobretaxa_recorrencia_fixa' => $fixa < 0 || $fixa > 999.99 ? 0.0 : $fixa,
         ];
     }
 

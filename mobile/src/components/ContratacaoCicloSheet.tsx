@@ -62,8 +62,8 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
   const [pix, setPix] = useState<{ contratoId: number; pagamento: NonNullable<PagamentoAberto> } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState(false);
-  // Cartão: taxa do cartão por mês (tarifa + antecipação), mostrada numa linha só
-  const [taxa, setTaxa] = useState<{ taxa_cartao: string; total_mensal: string } | null>(null);
+  // Taxas da assinatura por mês, num valor só (o aluno não vê a composição)
+  const [taxa, setTaxa] = useState<{ taxas?: string; taxa_cartao: string; total_mensal: string } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -79,14 +79,15 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
 
   useEffect(() => {
     setTaxa(null);
-    if (!visible || modo !== "assinatura" || metodo !== "cartao") return;
+    if (!visible || modo !== "assinatura") return;
     let vivo = true;
-    chamarRecorrencia("GET", `/taxa-cartao?plano_ciclo_id=${ciclo.id}`)
+    chamarRecorrencia("GET", `/taxa-cartao?plano_ciclo_id=${ciclo.id}&metodo=${metodo}`)
       .then(({ ok, json }) => { if (vivo && ok && json?.data) setTaxa(json.data); })
       .catch(() => {});
     return () => { vivo = false; };
   }, [visible, modo, metodo, ciclo.id]);
-  const comTaxa = metodo === "cartao" && taxa && Number(taxa.taxa_cartao) > 0 ? taxa : null;
+  const valorTaxas = taxa ? taxa.taxas ?? taxa.taxa_cartao : null;
+  const comTaxa = taxa && Number(valorTaxas) > 0 ? { taxas: String(valorTaxas), total_mensal: taxa.total_mensal } : null;
   const mensalCobrado = comTaxa ? brl(comTaxa.total_mensal) : oferta ? brl(oferta.valor_mensal) : ciclo.valor_mensal_formatado;
 
   const fidelidade = oferta?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses;
@@ -230,7 +231,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
             </Pressable>
             {revisaoDireta ? <View style={styles.resumo}>
               <Text style={styles.resumoTitulo}>{metodo === 'pix' ? 'PIX mensal' : 'Cartão de crédito'} · {brl(oferta.valor_mensal)}/mês</Text>
-              {comTaxa ? <Text style={styles.meta}>Taxa do cartão: {brl(comTaxa.taxa_cartao)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
+              {comTaxa ? <Text style={styles.meta}>Taxas: {brl(comTaxa.taxas)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
               <Text style={styles.meta}>{metodo === 'pix' ? 'Um novo PIX a cada mês. Não há débito automático.' : 'A primeira mensalidade é paga no site seguro do provedor. As seguintes são debitadas mensalmente no mesmo cartão.'}</Text>
             </View> : null}
             <Pressable style={styles.aceite} onPress={() => { setAceite(!aceite); setErro(null); }} accessibilityRole="checkbox" accessibilityState={{ checked: aceite }}>
@@ -248,7 +249,7 @@ export default function ContratacaoCicloSheet({ visible, planoId, ciclo, assinat
               <Text style={styles.meta}>{modo === "avista" ? `${acesso}, pagamento único` : `${semFidelidade ? "Sem fidelidade" : `Fidelidade de ${fidelidade} meses`} · termos aceitos`}</Text>
             </View>
             <PaymentMethodOptions opcoes={modo === "avista" ? metodosAvista : metodosAssinatura} value={metodo} onChange={setMetodo} />
-            {modo === "assinatura" && comTaxa ? <Text style={styles.meta}>Taxa do cartão: {brl(comTaxa.taxa_cartao)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
+            {modo === "assinatura" && comTaxa ? <Text style={styles.meta}>Taxas: {brl(comTaxa.taxas)}/mês · total {brl(comTaxa.total_mensal)}/mês</Text> : null}
             {modo === "assinatura" ? (
               <Text style={styles.meta}>{metodo === "cartao"
                 ? `Você paga a 1ª mensalidade em seguida; as próximas são debitadas no mesmo cartão, uma por mês.${metodosAssinatura.includes("pix") ? "" : " Para pagar por PIX, volte e escolha À vista."}`

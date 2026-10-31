@@ -105,6 +105,30 @@ class TenantPaymentCredentialsRepository
         return Schema::hasColumn('tenant_payment_credentials', 'usar_taxa_antecipacao_asaas');
     }
 
+    private function temColunasSobretaxaRecorrencia(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'sobretaxa_recorrencia_percentual');
+    }
+
+    /**
+     * Sobretaxa da assinatura configurada na credencial Asaas (gateway da recorrência).
+     *
+     * @return array{percentual: float, fixa: float}
+     */
+    public function sobretaxaRecorrencia(int $tenantId): array
+    {
+        if (! $this->temColunasSobretaxaRecorrencia()) {
+            return ['percentual' => 0.0, 'fixa' => 0.0];
+        }
+        $row = DB::table('tenant_payment_credentials')->where('tenant_id', $tenantId)->where('provider', 'asaas')
+            ->first(['sobretaxa_recorrencia_percentual', 'sobretaxa_recorrencia_fixa']);
+
+        return [
+            'percentual' => max(0.0, (float) ($row->sobretaxa_recorrencia_percentual ?? 0)),
+            'fixa' => max(0.0, (float) ($row->sobretaxa_recorrencia_fixa ?? 0)),
+        ];
+    }
+
     private function temColunaSomenteVinculados(): bool
     {
         return Schema::hasColumn('tenant_payment_credentials', 'conciliar_somente_vinculados');
@@ -123,6 +147,8 @@ class TenantPaymentCredentialsRepository
         $sql .= $this->temColunaMaxParcelas() ? ', max_parcelas_cartao' : '';
 
         $sql .= $this->temColunasRepasse() ? ', sobretaxa_folga_percentual, usar_taxa_antecipacao_asaas' : '';
+
+        $sql .= $this->temColunasSobretaxaRecorrencia() ? ', sobretaxa_recorrencia_percentual, sobretaxa_recorrencia_fixa' : '';
 
         return $sql.($this->temColunaSomenteVinculados() ? ', conciliar_somente_vinculados' : '');
     }
@@ -195,6 +221,11 @@ class TenantPaymentCredentialsRepository
             $params[] = $dados['sobretaxa_folga_percentual'] ?? 1.00;
             $params[] = $dados['usar_taxa_antecipacao_asaas'] ?? 0;
         }
+        if ($this->temColunasSobretaxaRecorrencia()) {
+            $cols .= ', sobretaxa_recorrencia_percentual, sobretaxa_recorrencia_fixa';
+            $params[] = $dados['sobretaxa_recorrencia_percentual'] ?? 0;
+            $params[] = $dados['sobretaxa_recorrencia_fixa'] ?? 0;
+        }
         $placeholders = implode(', ', array_fill(0, count($params), '?'));
         DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
@@ -249,6 +280,11 @@ class TenantPaymentCredentialsRepository
             $sql .= ', sobretaxa_folga_percentual = ?, usar_taxa_antecipacao_asaas = ?';
             $params[] = $dados['sobretaxa_folga_percentual'] ?? 1.00;
             $params[] = $dados['usar_taxa_antecipacao_asaas'];
+        }
+        if ($this->temColunasSobretaxaRecorrencia() && array_key_exists('sobretaxa_recorrencia_percentual', $dados)) {
+            $sql .= ', sobretaxa_recorrencia_percentual = ?, sobretaxa_recorrencia_fixa = ?';
+            $params[] = $dados['sobretaxa_recorrencia_percentual'];
+            $params[] = $dados['sobretaxa_recorrencia_fixa'] ?? 0;
         }
         $sql .= ', updated_at = NOW()';
 

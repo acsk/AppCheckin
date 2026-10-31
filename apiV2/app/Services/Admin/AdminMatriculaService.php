@@ -176,12 +176,7 @@ class AdminMatriculaService
         $pagamentos = PagamentoPlanoService::anexarNumeroParcela(
             $this->matriculas->listarPagamentosResumo($id)
         );
-        // Mensalidade da assinatura em aberto: o provedor cobra e dá baixa sozinho
-        $automaticas = CobrancaAssinatura::emAberto(array_column($pagamentos, 'id'));
-        foreach ($pagamentos as &$pg) {
-            $pg['cobranca_automatica'] = isset($automaticas[(int) ($pg['id'] ?? 0)]);
-        }
-        unset($pg);
+        $pagamentos = $this->marcarCobrancaAutomatica($pagamentos);
         $matricula['pagamentos'] = $pagamentos;
         $matricula['total_pagamentos'] = (float) array_sum(array_map(
             static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 ? 0.0 : (float) ($p['valor'] ?? 0),
@@ -245,6 +240,23 @@ class AdminMatriculaService
     }
 
     /**
+     * Mensalidade da assinatura em aberto: o provedor cobra e dá baixa sozinho (sem "Dar baixa" no painel).
+     *
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return list<array<string, mixed>>
+     */
+    private function marcarCobrancaAutomatica(array $pagamentos): array
+    {
+        $automaticas = CobrancaAssinatura::emAberto(array_column($pagamentos, 'id'));
+        foreach ($pagamentos as &$pg) {
+            $pg['cobranca_automatica'] = isset($automaticas[(int) ($pg['id'] ?? 0)]);
+        }
+        unset($pg);
+
+        return $pagamentos;
+    }
+
+    /**
      * @return array{status: int, body: array<string, mixed>}
      */
     public function pagamentos(int $id, int $tenantId): array
@@ -253,7 +265,7 @@ class AdminMatriculaService
             return $this->error('Matrícula não encontrada', 404);
         }
 
-        $pagamentos = $this->matriculas->listarPagamentosCompletos($id, $tenantId);
+        $pagamentos = $this->marcarCobrancaAutomatica($this->matriculas->listarPagamentosCompletos($id, $tenantId));
 
         return [
             'status' => 200,

@@ -764,14 +764,14 @@ class RecorrenciaFidelizacaoTest extends TestCase
     public function test_assinatura_no_cartao_repassa_a_taxa_do_cartao(): void
     {
         $this->asaas->taxaPct = 5.0;
-        $this->assertSame(['valor_mensal' => '100.00', 'taxa_cartao' => '5.00', 'total_mensal' => '105.00'],
+        $this->assertSame(['valor_mensal' => '100.00', 'taxas' => '5.00', 'taxa_cartao' => '5.00', 'total_mensal' => '105.00'],
             app(MobileRecorrenciaService::class)->taxaCartao(self::T, 50)['body']['data']);
 
         $cartao = $this->contratar(50);
         $this->assertSame(105.0, (float) $this->asaas->assinaturas['sub_1']['valor'], 'Asaas cobra mensalidade + taxa');
         $c = $this->contrato($cartao);
         $this->assertSame(['100.00', '5.00'], [$this->v($c->valor_mensal_vigente), $this->v($c->taxa_cartao_mensal)], 'contrato e regularização sem a taxa');
-        $this->assertStringContainsString('taxa do cartão', $this->asaas->assinaturas['sub_1']['descricao']);
+        $this->assertStringContainsString('+ taxas R$', $this->asaas->assinaturas['sub_1']['descricao']);
         $cronograma = app(AdminRecorrenciaService::class)->detalhe(self::T, $cartao)['body']['cronograma'];
         $this->assertSame('105.00', $this->v($cronograma[1]['valor']), 'mensalidade prevista mostra o que o cartão vai cobrar');
 
@@ -781,6 +781,38 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->webhook($cartao, 2);
         $this->assertContains(['atualizar_proximas', 'sub_1', '126.00'], $this->asaas->chamadas);
         $this->assertSame('6.00', $this->v($this->contrato($cartao)->taxa_cartao_mensal));
+    }
+
+    public function test_sobretaxa_da_assinatura_entra_nas_taxas_sem_aparecer_separada(): void
+    {
+        Schema::create('tenant_payment_credentials', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->string('provider');
+            $t->boolean('is_active')->default(true);
+            $t->boolean('enable_pix')->default(true);
+            $t->boolean('enable_pix_recorrencia')->default(true);
+            $t->decimal('sobretaxa_recorrencia_percentual', 5, 2)->default(0);
+            $t->decimal('sobretaxa_recorrencia_fixa', 10, 2)->default(0);
+        });
+        DB::table('tenant_payment_credentials')->insert([
+            'tenant_id' => self::T, 'provider' => 'asaas', 'sobretaxa_recorrencia_percentual' => 10, 'sobretaxa_recorrencia_fixa' => 1,
+        ]);
+        $this->asaas->taxaPct = 5.0;
+
+        // 100 + 10% + R$ 1 = 111; o cartão (5%) incide sobre os 111 para a academia receber a sobretaxa inteira
+        $cartao = app(MobileRecorrenciaService::class)->taxaCartao(self::T, 50)['body']['data'];
+        $this->assertSame(['100.00', '16.55', '116.55'], [$cartao['valor_mensal'], $cartao['taxas'], $cartao['total_mensal']]);
+        $this->assertArrayNotHasKey('sobretaxa', $cartao, 'o aluno só vê o total de taxas');
+        $pix = app(MobileRecorrenciaService::class)->taxaCartao(self::T, 50, 'pix')['body']['data'];
+        $this->assertSame(['11.00', '111.00'], [$pix['taxas'], $pix['total_mensal']], 'no PIX só a sobretaxa');
+
+        $id = $this->contratar(50);
+        $this->assertSame(116.55, (float) $this->asaas->assinaturas['sub_1']['valor']);
+        $this->assertStringContainsString('+ taxas R$', $this->asaas->assinaturas['sub_1']['descricao']);
+        $this->assertStringNotContainsString('sobretaxa', mb_strtolower($this->asaas->assinaturas['sub_1']['descricao']));
+        $c = $this->contrato($id);
+        $this->assertSame(['100.00', '16.55'], [$this->v($c->valor_mensal_vigente), $this->v($c->taxa_cartao_mensal)], 'regularização segue sem as taxas');
     }
 
     public function test_calculo_em_centavos(): void

@@ -67,6 +67,8 @@ function formDe(provider, row) {
     sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
     sobretaxa_folga_percentual: Number(row?.sobretaxa_folga_percentual ?? 1),
     usar_taxa_antecipacao_asaas: ligado(row?.usar_taxa_antecipacao_asaas),
+    sobretaxa_recorrencia_percentual: Number(row?.sobretaxa_recorrencia_percentual ?? 0),
+    sobretaxa_recorrencia_fixa: Number(row?.sobretaxa_recorrencia_fixa ?? 0),
     access_token_test: '',
     public_key_test: '',
     access_token_prod: '',
@@ -184,6 +186,8 @@ export default function PaymentCredentialsScreen() {
         ? Number(f.sobretaxa_folga_percentual)
         : 1,
       usar_taxa_antecipacao_asaas: !!f.enable_antecipacao_automatica && !!f.enable_sobretaxa_antecipacao && !!f.usar_taxa_antecipacao_asaas,
+      sobretaxa_recorrencia_percentual: Math.max(0, Number(String(f.sobretaxa_recorrencia_percentual ?? '').replace(',', '.')) || 0),
+      sobretaxa_recorrencia_fixa: Math.max(0, Number(String(f.sobretaxa_recorrencia_fixa ?? '').replace(',', '.')) || 0),
     };
     ['access_token_test', 'public_key_test', 'access_token_prod', 'public_key_prod', 'webhook_secret'].forEach((k) => {
       if (f[k].trim()) dados[k] = f[k].trim();
@@ -437,6 +441,31 @@ export default function PaymentCredentialsScreen() {
                   checked={!!form.enable_pix && !!form.enable_pix_recorrencia}
                   disabled={!form.enable_pix}
                   onChange={(v) => atualizar(selecionado, { enable_pix_recorrencia: v })}
+                />
+                <TextField
+                  label="Sobretaxa da assinatura (%)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="30"
+                  inputMode="decimal"
+                  value={String(form.sobretaxa_recorrencia_percentual ?? 0)}
+                  onChange={(e) => atualizar(selecionado, {
+                    sobretaxa_recorrencia_percentual: e?.target ? e.target.value : e,
+                  })}
+                  hint="Percentual sobre a mensalidade, de 0 a 30%. 0 = sem sobretaxa."
+                />
+                <TextField
+                  label="Sobretaxa fixa da assinatura (R$)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  inputMode="decimal"
+                  value={String(form.sobretaxa_recorrencia_fixa ?? 0)}
+                  onChange={(e) => atualizar(selecionado, {
+                    sobretaxa_recorrencia_fixa: e?.target ? e.target.value : e,
+                  })}
+                  hint="Valor somado a cada mensalidade. O aluno vê só o total de taxas por mês (com a do cartão), sem a composição. Vale para novas assinaturas e nos reajustes."
                 />
               </div>
             ) : null}

@@ -24,7 +24,7 @@ class MobileRecorrenciaController extends Controller
 
     public function taxaCartao(Request $request): JsonResponse
     {
-        return $this->comTenant($request, fn (int $t) => $this->service->taxaCartao($t, (int) $request->query('plano_ciclo_id', 0)));
+        return $this->comTenant($request, fn (int $t) => $this->service->taxaCartao($t, (int) $request->query('plano_ciclo_id', 0), (string) $request->query('metodo', 'cartao')));
     }
 
     public function contratar(Request $request): JsonResponse

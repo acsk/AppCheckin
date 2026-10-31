@@ -53,30 +53,45 @@ class RecorrenciaService
     }
 
     /**
-     * Taxa do cartão repassada ao aluno na mensalidade: tarifa do Asaas + sobretaxa de antecipação à vista
-     * das Configurações de pagamento (a mesma conta do checkout à vista). Sem simulação, sem taxa.
+     * Taxas da mensalidade que o aluno paga, num valor só (ele nunca vê a composição):
+     * sobretaxa da assinatura (Configurações de pagamento) + no cartão, a tarifa do Asaas e a sobretaxa de
+     * antecipação à vista calculadas sobre mensalidade + sobretaxa, para a academia receber as duas inteiras.
      */
-    public function taxaCartao(int $tenantId, string $valorMensal): string
+    public function taxas(int $tenantId, string $metodo, string $valorMensal): string
     {
-        try {
-            $r = $this->asaas($tenantId)->valorComTaxaCartaoRepassada((float) $valorMensal, 1);
-
-            return Calc::reais(max(0, Calc::centavos(number_format((float) $r['valor_cobrar'], 2, '.', '')) - Calc::centavos($valorMensal)));
-        } catch (\Throwable $e) {
-            Log::warning('Recorrência: taxa do cartão não simulada', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
-
+        if (! $this->temTaxaCartao()) {
             return '0.00';
         }
+        $base = Calc::centavos($valorMensal) + $this->sobretaxaRecorrencia($tenantId, $valorMensal);
+        $total = $base;
+        if ($metodo === 'cartao') {
+            try {
+                $r = $this->asaas($tenantId)->valorComTaxaCartaoRepassada($base / 100, 1);
+                $total = max($base, Calc::centavos(number_format((float) $r['valor_cobrar'], 2, '.', '')));
+            } catch (\Throwable $e) {
+                Log::warning('Recorrência: taxa do cartão não simulada', ['tenant_id' => $tenantId, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return Calc::reais(max(0, $total - Calc::centavos($valorMensal)));
+    }
+
+    /** Sobretaxa da assinatura em centavos: percentual sobre a mensalidade + valor fixo. */
+    private function sobretaxaRecorrencia(int $tenantId, string $valorMensal): int
+    {
+        $cfg = app(\App\Repositories\TenantPaymentCredentialsRepository::class)->sobretaxaRecorrencia($tenantId);
+
+        return (int) round(Calc::centavos($valorMensal) * $cfg['percentual'] / 100) + (int) round($cfg['fixa'] * 100);
     }
 
     /**
-     * O que o Asaas cobra por mês: mensalidade + taxa do cartão (recalculada sobre o valor).
+     * O que o Asaas cobra por mês: mensalidade + taxas (recalculadas sobre o valor).
      *
-     * @return array{0: string, 1: string} [valor no gateway, taxa]
+     * @return array{0: string, 1: string} [valor no gateway, taxas]
      */
     private function valorNoGateway(int $tenantId, string $metodo, string $mensal): array
     {
-        $taxa = $metodo === 'cartao' && $this->temTaxaCartao() ? $this->taxaCartao($tenantId, $mensal) : '0.00';
+        $taxa = $this->taxas($tenantId, $metodo, $mensal);
 
         return [Calc::reais(Calc::centavos($mensal) + Calc::centavos($taxa)), $taxa];
     }
@@ -299,7 +314,7 @@ class RecorrenciaService
                 'contrato_id' => $contratoId, 'valor' => $valorGateway,
                 'billing_type' => ['cartao' => 'CREDIT_CARD', 'pix' => 'PIX'][$metodo],
                 'proximo_vencimento' => $hoje,
-                'descricao' => "{$plano->nome} · ".($oferta['fidelizacao_meses'] > 0 ? "fidelização {$oferta['fidelizacao_meses']} meses" : 'assinatura mensal').' · '.Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês'.(Calc::centavos($taxa) > 0 ? ' + taxa do cartão '.Calc::brl(Calc::centavos($taxa)) : ''),
+                'descricao' => "{$plano->nome} · ".($oferta['fidelizacao_meses'] > 0 ? "fidelização {$oferta['fidelizacao_meses']} meses" : 'assinatura mensal').' · '.Calc::brl(Calc::centavos($oferta['valor_mensal'])).'/mês'.(Calc::centavos($taxa) > 0 ? ' + taxas '.Calc::brl(Calc::centavos($taxa)) : ''),
                 // Política "encerrar": o próprio Asaas para depois da última mensalidade da fidelização
                 'max_pagamentos' => $oferta['politica_renovacao'] === 'encerrar' ? $oferta['fidelizacao_meses'] : null,
                 'cliente' => ['name' => (string) $aluno->nome, 'cpfCnpj' => (string) $aluno->cpf, 'email' => $aluno->email, 'mobilePhone' => $aluno->telefone],
