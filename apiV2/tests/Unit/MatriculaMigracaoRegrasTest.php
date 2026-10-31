@@ -1010,6 +1010,35 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertStringContainsString('crédito aplicado R$ 160,00', (string) DB::table('historico_planos')->value('observacoes'));
     }
 
+    /** Caso real (matrícula 189): #1460 do plano 1x virou o crédito #25 e seguia somado como pago no plano 2x. */
+    public function test_pagamento_que_virou_credito_nao_conta_de_novo_como_pago_no_ciclo(): void
+    {
+        $this->inserirPagamentoPago(1460, 70.0, $this->dia(-1));
+        $this->inserirPagamentoPago(1463, 50.0, $this->dia(-1));
+        DB::table('creditos_aluno')->insert(['id' => 25, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_origem_id' => self::MATRICULA, 'pagamento_origem_id' => 1460, 'valor' => 70.0, 'valor_utilizado' => 70.0, 'status_credito_id' => 2]);
+        $somar = fn () => (new PagamentoPlanoService)->somarPagamentosPagosNoCiclo(self::TENANT, self::MATRICULA, $this->dia(-1));
+
+        $this->assertEqualsWithDelta(50.0, $somar(), 0.001, 'e não 120');
+
+        // Crédito cancelado: o dinheiro não virou saldo, o pagamento volta a contar
+        DB::table('creditos_aluno')->where('id', 25)->update(['status_credito_id' => 3]);
+        $this->assertEqualsWithDelta(120.0, $somar(), 0.001);
+    }
+
+    /** Caso real (crédito #28): a origem apontava para a própria cobrança da migração (#1543), e não para a #1192. */
+    public function test_origem_do_credito_ignora_a_cobranca_da_migracao_em_confirmacao(): void
+    {
+        $this->inserirPagamentoPago(1192, 240.0, $this->dia(-5));
+        DB::table('pagamentos_plano')->insert([
+            'id' => 1543, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_id' => self::MATRICULA, 'plano_id' => 2,
+            'valor' => 364.44, 'data_vencimento' => AcademyDateTime::today(), 'data_pagamento' => AcademyDateTime::today(), 'status_pagamento_id' => 2,
+            'observacoes' => 'Simulação de migração [MIGRACAO_SIMULADA plano_id=2 plano_ciclo_id=null]',
+        ]);
+        $origem = new \ReflectionMethod(MatriculaMigracaoService::class, 'buscarUltimoPagamentoPagoId');
+
+        $this->assertSame(1192, $origem->invoke($this->service(), self::MATRICULA, self::TENANT));
+    }
+
     public function test_somar_meses_nao_estoura_o_fim_do_mes(): void
     {
         $somar = new \ReflectionMethod(MatriculaMigracaoService::class, 'somarMesesSemEstouro');

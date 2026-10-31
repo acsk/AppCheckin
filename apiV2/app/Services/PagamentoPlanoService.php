@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Admin\AdminCreditoAlunoService;
 use App\Support\AcademyDateTime;
 use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,14 @@ class PagamentoPlanoService
                     ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%')
                     ->orWhere('observacoes', 'like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_CONFIRMADA.'%');
             });
+        // Pagamento cujo saldo virou crédito na migração pertence ao ciclo antigo: contá-lo de novo somaria
+        // o mesmo dinheiro duas vezes (matrícula 189: #1460 virou o crédito #25 e seguia como pago no ciclo).
+        if (Schema::hasTable('creditos_aluno')) {
+            $q->whereNotExists(fn ($c) => $c->from('creditos_aluno')
+                ->whereColumn('creditos_aluno.pagamento_origem_id', 'pagamentos_plano.id')
+                ->whereColumn('creditos_aluno.matricula_origem_id', 'pagamentos_plano.matricula_id')
+                ->where('creditos_aluno.status_credito_id', '!=', AdminCreditoAlunoService::STATUS_CANCELADO));
+        }
 
         $inicio = AcademyDateTime::dateOnly($dataInicio);
         if ($inicio !== null) {
@@ -289,6 +298,7 @@ class PagamentoPlanoService
                 'm.data_vencimento',
                 'm.data_inicio',
                 'm.valor',
+                'm.data_cancelamento',
                 'sm.codigo as status_codigo',
                 'p.duracao_dias',
             ]);
@@ -304,6 +314,16 @@ class PagamentoPlanoService
         $statusAtual = (string) ($matriculaMeta->status_codigo ?? '');
 
         if ($ehDiariaAvulsa && in_array($statusAtual, ['cancelada', 'concluida', 'finalizada'], true)) {
+            return;
+        }
+
+        // Cancelamento feito no ciclo atual (admin/app, com ou sem crédito) é definitivo: o período pago ainda
+        // correndo reativaria a matrícula e o aluno ficaria com o plano e o crédito do cancelamento (matrícula 189).
+        // Cancelamento de ciclo anterior (matrícula reaproveitada numa nova compra) não trava.
+        $dataCancelamento = AcademyDateTime::dateOnly($matriculaMeta->data_cancelamento ?? null);
+        $inicioCiclo = AcademyDateTime::dateOnly($matriculaMeta->data_inicio ?? null);
+        if ($statusAtual === 'cancelada' && $dataCancelamento !== null
+            && ($inicioCiclo === null || $dataCancelamento >= $inicioCiclo)) {
             return;
         }
 

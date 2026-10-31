@@ -1116,10 +1116,18 @@ class MatriculaMigracaoService
             SELECT id
             FROM pagamentos_plano
             WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = ?
+              AND (observacoes IS NULL OR observacoes NOT LIKE ? OR observacoes LIKE ?)
             ORDER BY data_vencimento DESC
             LIMIT 1
         ');
-        $stmt->execute([$matriculaId, $tenantId, StatusPagamentoPlano::PAGO]);
+        // A cobrança da migração em confirmação já está paga, mas não é a origem do crédito (crédito #28 → #1543)
+        $stmt->execute([
+            $matriculaId,
+            $tenantId,
+            StatusPagamentoPlano::PAGO,
+            '%'.self::TAG_MIGRACAO_SIMULADA.'%',
+            '%'.self::TAG_MIGRACAO_CONFIRMADA.'%',
+        ]);
         $id = $stmt->fetchColumn();
 
         return $id ? (int) $id : null;
