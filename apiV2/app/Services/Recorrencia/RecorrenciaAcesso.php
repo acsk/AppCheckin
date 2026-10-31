@@ -27,6 +27,13 @@ class RecorrenciaAcesso
         if ($contratos->isEmpty()) {
             return false;
         }
+        // Contrato encerrado e a matrícula reaproveitada numa compra avulsa (a assinatura grava 'recorrente'):
+        // o ciclo novo segue a regra do plano à vista. Antes o contrato cancelado seguia mandando e a compra
+        // paga deixava a matrícula cancelada (matrícula 359).
+        $tipoCobranca = DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->value('tipo_cobranca');
+        if ($tipoCobranca === 'avulso' && in_array((string) $contratos->first()->status, ['cancelado', 'encerrado'], true)) {
+            return false;
+        }
         $ids = $contratos->pluck('id')->all();
 
         // Baixa manual no painel (parcela paga) também conta como mensalidade paga

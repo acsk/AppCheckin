@@ -551,6 +551,22 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertSame(404, $this->svc()->contratar(self::OUTRA, self::ANA[0], ['plano_ciclo_id' => 50, 'metodo' => 'cartao', 'termos_hash' => 'x'])['status']);
     }
 
+    /** Caso real (matrícula 359): desistiu da assinatura antes de pagar e comprou o plano avulso na mesma matrícula. */
+    public function test_compra_avulsa_depois_do_contrato_cancelado_sai_da_regra_da_recorrencia(): void
+    {
+        $id = $this->contratar(50);
+        app(MobileRecorrenciaService::class)->cancelar(self::T, self::ANA[0], $id, 'desisti');
+        $this->assertSame('cancelado', $this->contrato($id)->status, 'sem mensalidade paga, cancela na hora');
+        $matriculaId = (int) $this->contrato($id)->matricula_id;
+
+        $acesso = app(RecorrenciaAcesso::class);
+        $this->assertTrue($acesso->atualizar(self::T, $matriculaId), 'ainda da assinatura: o contrato decide');
+
+        // A compra avulsa reaproveita a matrícula (MobileCompraPlanoService grava tipo_cobranca = avulso)
+        DB::table('matriculas')->where('id', $matriculaId)->update(['tipo_cobranca' => 'avulso']);
+        $this->assertFalse($acesso->atualizar(self::T, $matriculaId), 'o ciclo avulso segue a regra do plano à vista');
+    }
+
     public function test_cancelamento_no_prazo_de_arrependimento_sem_regularizacao(): void
     {
         $id = $this->contratar(50);
