@@ -531,9 +531,7 @@ export default function MatriculaDetalheScreen() {
     if (formAlterarPlano.plano_ciclo_id) {
       payload.plano_ciclo_id = Number(formAlterarPlano.plano_ciclo_id);
     }
-    if (formAlterarPlano.tipo_credito === 'abater_plano') {
-      payload.abater_plano_anterior = true;
-    } else if (formAlterarPlano.tipo_credito === 'abater') {
+    if (formAlterarPlano.tipo_credito === 'abater') {
       payload.abater_pagamento_anterior = true;
     } else if (formAlterarPlano.tipo_credito === 'manual') {
       const creditoVal = parseFloat(formAlterarPlano.credito);
@@ -1892,7 +1890,6 @@ export default function MatriculaDetalheScreen() {
                   .filter((p) => Number(p.status_pagamento_id) === 2)
                   .sort((a, b) => new Date(b.data_pagamento || b.data_vencimento) - new Date(a.data_pagamento || a.data_vencimento))[0];
                 const valorUltimoPago = ultimoPagamentoPago ? parseFloat(ultimoPagamentoPago.valor || 0) : 0;
-                const valorPlanoAtual = parseFloat(matricula?.valor || 0);
 
                 const cicloSelecionado = ciclosAlteracao.find(
                   (c) => c.id.toString() === formAlterarPlano.plano_ciclo_id
@@ -1904,9 +1901,7 @@ export default function MatriculaDetalheScreen() {
                 const geraCredito = previaAlteracao?.aptidao?.gera_credito !== false && !isMatriculaCancelada;
                 const creditoEstimado = previaAlteracao?.credito?.gerado != null
                   ? parseFloat(previaAlteracao.credito.gerado || 0)
-                  : formAlterarPlano.tipo_credito === 'abater_plano'
-                    ? valorPlanoAtual
-                    : formAlterarPlano.tipo_credito === 'abater'
+                  : formAlterarPlano.tipo_credito === 'abater'
                     ? valorUltimoPago
                     : formAlterarPlano.tipo_credito === 'manual'
                     ? parseFloat(formAlterarPlano.credito) || 0
@@ -1926,9 +1921,6 @@ export default function MatriculaDetalheScreen() {
 
                 const opcoes = [
                   { key: 'nenhum', label: 'Sem crédito', icon: 'x-circle' },
-                  ...(valorPlanoAtual > 0 && ultimoPagamentoPago && geraCredito
-                    ? [{ key: 'abater_plano', label: `Valor cheio do plano (${formatCurrency(valorPlanoAtual)})`, icon: 'dollar-sign' }]
-                    : []),
                   ...(ultimoPagamentoPago && geraCredito
                     ? [{
                         key: 'abater',
@@ -1974,18 +1966,10 @@ export default function MatriculaDetalheScreen() {
                       })}
                     </View>
 
-                    {formAlterarPlano.tipo_credito === 'abater_plano' && (
-                      <View className="mt-1 px-1">
-                        <Text className="text-[10px] text-slate-400">
-                          Crédito de {formatCurrency(valorPlanoAtual)} (valor cheio do plano/ciclo atual) será aplicado na primeira parcela.
-                        </Text>
-                      </View>
-                    )}
-
                     {formAlterarPlano.tipo_credito === 'abater' && ultimoPagamentoPago && (
                       <View className="mt-1 px-1">
                         <Text className="text-[10px] text-slate-400">
-                          Crédito proporcional será calculado com base nos dias restantes. Último pagamento: {formatCurrency(valorUltimoPago)}.
+                          Crédito proporcional ao uso: o maior entre dias decorridos e check-ins feitos no ciclo vigente. Último pagamento: {formatCurrency(valorUltimoPago)}.
                         </Text>
                       </View>
                     )}
@@ -2080,9 +2064,7 @@ export default function MatriculaDetalheScreen() {
                         {creditoEstimado > 0 && (
                           <View className="mt-1 flex-row items-center justify-between">
                             <Text className="text-xs text-slate-600">
-                              {formAlterarPlano.tipo_credito === 'abater_plano'
-                                ? 'Crédito (plano anterior)'
-                                : formAlterarPlano.tipo_credito === 'abater'
+                              {formAlterarPlano.tipo_credito === 'abater'
                                 ? 'Crédito (proporcional)'
                                 : 'Crédito manual'}
                             </Text>

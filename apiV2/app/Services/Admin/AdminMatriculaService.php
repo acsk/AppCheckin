@@ -7,6 +7,7 @@ use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
 use App\Services\MatriculaEncadeamentoService;
 use App\Services\MatriculaMigracaoAptidaoService;
+use App\Services\MatriculaMigracaoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use App\Support\CobrancaAssinatura;
@@ -1454,32 +1455,17 @@ class AdminMatriculaService
 
         $usarCreditoExistente = ! empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
 
-        if ($podeGerarCreditoMigracao && ! empty($data['abater_plano_anterior'])) {
-            $tipoCredito = 'plano_atual';
-            $creditoValor = $valorAtual;
-            if ($creditoValor > 0) {
-                $creditoGerado = true;
-                $creditoMotivo = $creditoMotivo ?? ('Crédito do plano anterior ('.$matricula['plano_nome'].' - R$'.number_format($creditoValor, 2, ',', '.').')');
-            }
-        } elseif ($podeGerarCreditoMigracao && ! empty($data['abater_pagamento_anterior'])) {
+        // "Valor cheio do plano" (abater_plano_anterior) devolvia o plano inteiro mesmo usado (matrícula 55):
+        // as duas opções seguem a régua da migração do app — só ciclo vigente, proporcional ao uso.
+        if ($podeGerarCreditoMigracao && (! empty($data['abater_plano_anterior']) || ! empty($data['abater_pagamento_anterior']))) {
             $tipoCredito = 'proporcional';
-            $hoje = AcademyDateTime::now();
-            $vencimentoAtualStr = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
-            $inicioAtualStr = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
-            $datasValidas = $vencimentoAtualStr !== null && $inicioAtualStr !== null;
-            $dataVencimentoAtual = AcademyDateTime::parse($vencimentoAtualStr ?? AcademyDateTime::today());
-            $dataInicioAtual = AcademyDateTime::parse($inicioAtualStr ?? AcademyDateTime::today());
-            $diasTotais = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
-            $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
-            if ($datasValidas && $diasRestantes > 0 && $hoje <= $dataVencimentoAtual && $dataInicioAtual < $dataVencimentoAtual) {
-                $creditoValor = round(($valorAtual / $diasTotais) * $diasRestantes, 2);
-            } else {
-                $creditoValor = 0.0;
-                $diasRestantes = 0;
-            }
+            $proporcional = $this->creditoProporcionalAoUso($matricula, $tenantId);
+            $creditoValor = (float) $proporcional['credito'];
+            $diasTotais = (int) $proporcional['dias_totais'];
+            $diasRestantes = $creditoValor > 0 ? (int) $proporcional['dias_restantes'] : 0;
             if ($creditoValor > 0) {
                 $creditoGerado = true;
-                $creditoMotivo = $creditoMotivo ?? ("Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$".number_format($valorAtual, 2, ',', '.').')');
+                $creditoMotivo = $creditoMotivo ?? $proporcional['motivo'];
             }
         } elseif ($podeGerarCreditoMigracao && isset($data['credito'])) {
             $tipoCredito = 'manual';
@@ -1789,18 +1775,16 @@ class AdminMatriculaService
      * @param  array<string, mixed>  $matricula
      * @return array{0: \DateTime, 1: \DateTime, 2: bool}
      */
-    private function datasCicloParaCredito(array $matricula): array
+    /**
+     * Crédito do ciclo vigente pela régua da migração do app: só com plano vigente, em dia e pago, proporcional
+     * ao uso (o maior entre tempo decorrido e check-ins). Cancelada/vencida/atrasada ou ciclo encerrado: zero.
+     *
+     * @param  array<string, mixed>  $matricula
+     * @return array<string, mixed>
+     */
+    private function creditoProporcionalAoUso(array $matricula, int $tenantId): array
     {
-        $inicio = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null)
-            ?? AcademyDateTime::dateOnly($matricula['created_at'] ?? null);
-        $vencimento = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null)
-            ?? AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null);
-
-        return [
-            AcademyDateTime::parse($inicio ?? AcademyDateTime::today()),
-            AcademyDateTime::parse($vencimento ?? AcademyDateTime::today()),
-            $inicio !== null && $vencimento !== null,
-        ];
+        return app(MatriculaMigracaoService::class)->calcularCreditoMigracao($matricula, $tenantId, (int) $matricula['id']);
     }
 
     /**
@@ -1881,17 +1865,11 @@ class AdminMatriculaService
             ->where('status_pagamento_id', 2)
             ->count() > 0;
 
-        $hoje = AcademyDateTime::todayStart();
-        [$dataInicio, $dataVencimento, $datasValidas] = $this->datasCicloParaCredito($matricula);
-
-        $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
-        $diasUtilizados = max(0, (int) $dataInicio->diff($hoje)->days);
-        $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
-
-        $valorProporcional = 0.0;
-        if ($datasValidas && $temPagamento && $hoje <= $dataVencimento && $diasRestantes > 0 && $dataInicio < $dataVencimento) {
-            $valorProporcional = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
-        }
+        $proporcional = $this->creditoProporcionalAoUso($matricula, $tenantId);
+        $diasTotais = (int) $proporcional['dias_totais'];
+        $diasUtilizados = (int) $proporcional['dias_usados'];
+        $diasRestantes = (int) $proporcional['dias_restantes'];
+        $valorProporcional = (float) $proporcional['credito'];
 
         $parcelasPendentes = (int) DB::table('pagamentos_plano')
             ->where('matricula_id', $id)
@@ -1915,6 +1893,9 @@ class AdminMatriculaService
                 'dias_restantes' => $diasRestantes,
                 'tem_pagamento_pago' => $temPagamento,
                 'valor_proporcional_credito' => $valorProporcional,
+                'motivo_credito' => $proporcional['motivo'],
+                'checkins_usados' => (int) ($proporcional['checkins_usados'] ?? 0),
+                'checkins_direito' => (int) ($proporcional['checkins_direito'] ?? 0),
                 'parcelas_pendentes' => $parcelasPendentes,
                 'saldo_creditos_atual' => $saldoAtual,
             ],
@@ -1956,31 +1937,24 @@ class AdminMatriculaService
         $gerarCredito = ! empty($data['gerar_credito']);
         $motivoCancelamento = $data['motivo_cancelamento'] ?? 'Cancelado para alteração de plano';
         $motivoCodigo = MotivoCancelamento::escolhivel($data['motivo_codigo'] ?? null) ? (string) $data['motivo_codigo'] : MotivoCancelamento::TROCA_PLANO;
-        $valorPlano = (float) $matricula['valor'];
         $creditoValor = 0.0;
         $creditoInfo = null;
 
         if ($gerarCredito) {
-            $temPagamento = (int) DB::table('pagamentos_plano')
-                ->where('matricula_id', $id)
-                ->where('tenant_id', $tenantId)
-                ->where('status_pagamento_id', 2)
-                ->count() > 0;
-
-            if ($temPagamento) {
-                $hoje = AcademyDateTime::todayStart();
-                [$dataInicio, $dataVencimento, $datasValidas] = $this->datasCicloParaCredito($matricula);
-                $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
-                $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
-
-                if ($datasValidas && $hoje <= $dataVencimento && $diasRestantes > 0 && $dataInicio < $dataVencimento) {
-                    $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
-                }
-            }
+            $creditoValor = (float) $this->creditoProporcionalAoUso($matricula, $tenantId)['credito'];
         }
 
         try {
             DB::beginTransaction();
+
+            // Dois cancelamentos simultâneos (clique duplo, duas abas) gerariam dois créditos: revalida com trava
+            $statusAgora = DB::table('matriculas as m')->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+                ->where('m.id', $id)->where('m.tenant_id', $tenantId)->lockForUpdate()->value('sm.codigo');
+            if ($statusAgora === 'cancelada') {
+                DB::rollBack();
+
+                return $this->error('Matrícula já está cancelada', 400);
+            }
 
             $parcelasCanceladas = DB::update('
                 UPDATE pagamentos_plano

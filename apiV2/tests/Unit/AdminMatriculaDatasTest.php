@@ -3,21 +3,11 @@
 namespace Tests\Unit;
 
 use App\Services\Admin\AdminMatriculaService;
-use App\Support\AcademyDateTime;
 use Tests\TestCase;
 
-/** Datas vindas do banco em formato inesperado não podem gerar exceção (500) nem crédito. */
+/** Datas em formato inesperado são rejeitadas (422) sem gravar. Crédito com data inválida: MatriculaMigracaoRegrasTest. */
 class AdminMatriculaDatasTest extends TestCase
 {
-
-    private function datasCiclo(array $matricula): array
-    {
-        $service = (new \ReflectionClass(AdminMatriculaService::class))->newInstanceWithoutConstructor();
-        $metodo = new \ReflectionMethod($service, 'datasCicloParaCredito');
-        $metodo->setAccessible(true);
-
-        return $metodo->invoke($service, $matricula);
-    }
 
     /**
      * @return array<string, array{array<string, string>}>
@@ -57,43 +47,5 @@ class AdminMatriculaDatasTest extends TestCase
 
         $this->assertSame(422, $result['status']);
         $this->assertSame('Formato de data inválido. Use YYYY-MM-DD', $result['body']['error']);
-    }
-
-    public function test_datas_validas_com_hora(): void
-    {
-        [$inicio, $venc, $validas] = $this->datasCiclo([
-            'data_inicio' => '2026-09-01 00:00:00',
-            'data_vencimento' => '2026-10-01 00:00:00',
-        ]);
-
-        $this->assertTrue($validas);
-        $this->assertSame('2026-09-01', $inicio->format('Y-m-d'));
-        $this->assertSame('2026-10-01', $venc->format('Y-m-d'));
-    }
-
-    public function test_usa_fallbacks_created_at_e_proxima_data(): void
-    {
-        [$inicio, $venc, $validas] = $this->datasCiclo([
-            'data_inicio' => null,
-            'created_at' => '2026-09-05 14:00:00',
-            'data_vencimento' => '0000-00-00',
-            'proxima_data_vencimento' => '2026-10-05',
-        ]);
-
-        $this->assertTrue($validas);
-        $this->assertSame('2026-09-05', $inicio->format('Y-m-d'));
-        $this->assertSame('2026-10-05', $venc->format('Y-m-d'));
-    }
-
-    public function test_datas_invalidas_nao_lancam_e_bloqueiam_credito(): void
-    {
-        [$inicio, $venc, $validas] = $this->datasCiclo([
-            'data_inicio' => 'lixo',
-            'data_vencimento' => '0000-00-00 00:00:00',
-        ]);
-
-        $this->assertFalse($validas);
-        $this->assertSame(AcademyDateTime::today(), $inicio->format('Y-m-d'));
-        $this->assertSame(AcademyDateTime::today(), $venc->format('Y-m-d'));
     }
 }
