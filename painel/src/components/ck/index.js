@@ -552,7 +552,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
               h('td', null, h(Badge, { tone: st[0], dot: true }, st[1])),
               h('td', { className: 'ck-mt-actions' },
                 due && i.canSettle !== false ? h(Button, { size: 'sm', variant: 'secondary', icon: 'check-circle', onClick: function () { p.onSettle && p.onSettle(i); } }, 'Dar baixa') : null,
-                due && i.canSettle === false && i.settleNote ? h(Badge, { tone: 'info', icon: 'package' }, i.settleNote) : null,
+                due && i.canSettle === false && i.settleNote ? h(Badge, { tone: 'info', icon: i.settleIcon || 'package' }, i.settleNote) : null,
                 // locked: baixa automática do provedor, só dá para ver os detalhes
                 // refunded: estorno registrado, a parcela não muda mais (o motivo fica no título da linha)
                 p.menu === false || (i.refunded && !i.canRefund) ? null : h(ActionMenu, { label: 'Ações da parcela ' + i.number, items: i.locked ? [

@@ -1259,6 +1259,8 @@ export default function MatriculaDetalheScreen() {
               ? 'atrasado'
               : 'aguardando';
       const pacoteSemBaixaIndividual = Boolean(pg.pacote_contrato_id);
+      // Mensalidade da assinatura em aberto: o provedor cobra e dá baixa sozinho
+      const cobrancaAutomatica = Boolean(pg.cobranca_automatica) && statusId !== 2;
       return {
         raw: pg,
         id: `#${getPagamentoId(pg) ?? '-'}`,
@@ -1269,7 +1271,7 @@ export default function MatriculaDetalheScreen() {
         method: pg.forma_pagamento_nome || undefined,
         // Baixa automática: mostra quem recebeu (ex.: Asaas) em vez de "integração"
         channel: isBaixaAutomatica(pg) ? `pelo ${provedorDaBaixa(pg)}` : (pg.tipo_baixa_nome ? String(pg.tipo_baixa_nome).toLowerCase() : undefined),
-        locked: isBaixaAutomatica(pg),
+        locked: isBaixaAutomatica(pg) || cobrancaAutomatica,
         amount: parseFloat(pg.valor || 0),
         net:
           pg.valor_liquido != null && pg.valor_liquido !== ''
@@ -1283,8 +1285,9 @@ export default function MatriculaDetalheScreen() {
         refundDate: isoDia(pg.data_estorno),
         refundNote: pg.motivo_estorno || undefined,
         canRefund: statusId === 2 && !isBaixaAutomatica(pg) && !pacoteSemBaixaIndividual,
-        canSettle: !pacoteSemBaixaIndividual,
-        settleNote: pacoteSemBaixaIndividual ? 'Baixa só no pacote' : undefined,
+        canSettle: !pacoteSemBaixaIndividual && !cobrancaAutomatica,
+        settleNote: cobrancaAutomatica ? 'Cobrança automática' : pacoteSemBaixaIndividual ? 'Baixa só no pacote' : undefined,
+        settleIcon: cobrancaAutomatica ? 'repeat' : undefined,
       };
     });
   const countsDs = {

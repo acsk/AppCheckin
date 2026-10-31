@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Services\Admin\AdminPagamentoPlanoService;
 use App\Services\Asaas\AsaasWebhookService;
 use App\Services\PagamentoPlanoService;
+use App\Support\CobrancaAssinatura;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -64,5 +65,27 @@ class PagamentoBaixaAutomaticaTest extends TestCase
 
         $this->assertNull($bloqueio->invoke($service, ['status_pagamento_id' => 2, 'tipo_baixa_id' => 1]), 'baixa manual continua editável');
         $this->assertNull($bloqueio->invoke($service, ['status_pagamento_id' => 1, 'tipo_baixa_id' => null]), 'parcela em aberto continua editável');
+    }
+
+    public function test_mensalidade_da_assinatura_em_aberto_nao_aceita_baixa_manual(): void
+    {
+        $this->requireSqlite();
+        Schema::create('recorrencia_cobrancas', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('pagamento_plano_id')->nullable();
+            $t->string('gateway_payment_id')->nullable();
+            $t->string('status');
+        });
+        DB::table('recorrencia_cobrancas')->insert([
+            ['pagamento_plano_id' => 10, 'gateway_payment_id' => 'pay_a', 'status' => 'pendente'],
+            ['pagamento_plano_id' => 11, 'gateway_payment_id' => 'pay_b', 'status' => 'vencida'],
+            ['pagamento_plano_id' => 12, 'gateway_payment_id' => 'pay_c', 'status' => 'paga'],
+            ['pagamento_plano_id' => 13, 'gateway_payment_id' => 'pay_d', 'status' => 'cancelada'],
+        ]);
+
+        $this->assertSame([10 => true, 11 => true], CobrancaAssinatura::emAberto([10, 11, 12, 13, 99]));
+        $this->assertSame('COBRANCA_AUTOMATICA', CobrancaAssinatura::bloqueio(10)['body']['code']);
+        $this->assertNull(CobrancaAssinatura::bloqueio(13), 'assinatura cancelada: a parcela volta a ser manual');
+        $this->assertNull(CobrancaAssinatura::bloqueio(99), 'parcela avulsa continua com baixa manual');
     }
 }

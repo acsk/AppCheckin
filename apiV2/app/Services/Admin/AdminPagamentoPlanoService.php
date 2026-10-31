@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
+use App\Support\CobrancaAssinatura;
 use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -338,6 +339,11 @@ class AdminPagamentoPlanoService
                 DB::rollBack();
 
                 return $this->erro('Esta parcela foi estornada e não pode ser confirmada de novo.', 422);
+            }
+            if ($bloqueio = CobrancaAssinatura::bloqueio($pagamentoId)) {
+                DB::rollBack();
+
+                return $bloqueio;
             }
 
             if (empty($data['forcar'])) {
@@ -1032,7 +1038,7 @@ class AdminPagamentoPlanoService
             ]];
         }
 
-        return $this->bloqueioBaixaAutomatica($pagamento);
+        return $this->bloqueioBaixaAutomatica($pagamento) ?? CobrancaAssinatura::bloqueio((int) ($pagamento['id'] ?? 0));
     }
 
     /**

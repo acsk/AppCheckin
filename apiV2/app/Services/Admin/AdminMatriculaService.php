@@ -9,6 +9,7 @@ use App\Services\MatriculaEncadeamentoService;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
+use App\Support\CobrancaAssinatura;
 use App\Support\MotivoCancelamento;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -175,6 +176,12 @@ class AdminMatriculaService
         $pagamentos = PagamentoPlanoService::anexarNumeroParcela(
             $this->matriculas->listarPagamentosResumo($id)
         );
+        // Mensalidade da assinatura em aberto: o provedor cobra e dá baixa sozinho
+        $automaticas = CobrancaAssinatura::emAberto(array_column($pagamentos, 'id'));
+        foreach ($pagamentos as &$pg) {
+            $pg['cobranca_automatica'] = isset($automaticas[(int) ($pg['id'] ?? 0)]);
+        }
+        unset($pg);
         $matricula['pagamentos'] = $pagamentos;
         $matricula['total_pagamentos'] = (float) array_sum(array_map(
             static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 ? 0.0 : (float) ($p['valor'] ?? 0),
@@ -927,6 +934,9 @@ class AdminMatriculaService
 
         if ((int) $pagamento['status_pagamento_id'] === 2) {
             return $this->error('Pagamento já está marcado como pago', 400);
+        }
+        if ($bloqueio = CobrancaAssinatura::bloqueio($pagamentoId)) {
+            return $bloqueio;
         }
 
         $dataVencimento = $data['data_vencimento'] ?? null;

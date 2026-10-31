@@ -24,7 +24,7 @@ export function isBaixaAutomatica(pg) {
 /** Quem deu a baixa, pelo que ficou registrado na parcela. */
 export function provedorDaBaixa(pg) {
   const obs = String(pg?.observacoes || '');
-  if (/\[Asaas pay_|via Asaas/i.test(obs)) return 'Asaas';
+  if (/[[(]Asaas pay_|via Asaas/i.test(obs)) return 'Asaas';
   if (/Mercado Pago|Payment #/i.test(obs)) return 'Mercado Pago';
   return 'provedor';
 }
@@ -65,7 +65,9 @@ function CopyId({ value }) {
  */
 export function EditarPagamentoModal({ open, payment, context, saving, onSave, onCancel }) {
   const pg = payment || {};
-  const readOnly = isBaixaAutomatica(pg);
+  // Mensalidade da assinatura ainda em aberto: o provedor cobra e dá baixa sozinho
+  const assinatura = Boolean(pg.cobranca_automatica) && Number(pg.status_pagamento_id) !== 2;
+  const readOnly = isBaixaAutomatica(pg) || assinatura;
   const provedor = provedorDaBaixa(pg);
   const [init] = useState(() => ({
     discount: moneyInput(pg.desconto || 0), reason: pg.motivo_desconto || '', due: String(pg.data_vencimento || '').slice(0, 10),
@@ -119,7 +121,11 @@ export function EditarPagamentoModal({ open, payment, context, saving, onSave, o
       )}
     >
       <div className="ck-ep">
-        {readOnly ? (
+        {assinatura ? (
+          <Callout tone="info" icon="repeat" title={`Cobrança automática pelo ${provedor}`}>
+            {`Esta mensalidade é cobrada pela assinatura no ${provedor} e recebe baixa sozinha quando o pagamento é confirmado. Dar baixa aqui não impede a cobrança no cartão.`}
+          </Callout>
+        ) : readOnly ? (
           <Callout tone="info" icon="lock" title={`Baixa automática pelo ${provedor}`}>
             {`Esta parcela foi paga e confirmada pelo ${provedor}, por isso só pode ser consultada. Para estornar ou corrigir, faça no ${provedor}.`}
           </Callout>
