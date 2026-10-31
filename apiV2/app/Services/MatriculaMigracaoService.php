@@ -290,7 +290,7 @@ class MatriculaMigracaoService
         $duracaoDias = (int) $ctx['duracao_dias'];
 
         if ($duracaoMeses > 1) {
-            $proximaDataVencimento->modify("+{$duracaoMeses} months");
+            self::somarMesesSemEstouro($proximaDataVencimento, $duracaoMeses);
         } else {
             $proximaDataVencimento->modify("+{$duracaoDias} days");
         }
@@ -1288,8 +1288,24 @@ class MatriculaMigracaoService
         $novoCiclo = $ctx['novo_ciclo'];
         $valorNovo = (float) $ctx['valor_novo'];
         $creditoInfo = $ctx['credito'];
-        $creditoValor = (float) $creditoInfo['credito'];
-        $creditoAplicado = $creditoValor > 0 ? round(min($creditoValor, $valorNovo), 2) : 0.0;
+        // O crédito já foi decidido na simulação: o que a aluna pagou pelo plano (sem tarifa/sobretaxa) cobre o
+        // resto. Recalcular aqui deu R$ 604,44 na matrícula 55 contra R$ 240 cobrados — nunca mais que o prometido.
+        $pagoPeloPlano = (float) ($pagamentoPago['valor'] ?? 0)
+            - (float) ($pagamentoPago['tarifa_cartao'] ?? 0)
+            - (float) ($pagamentoPago['sobretaxa_antecipacao'] ?? 0);
+        $creditoPrometido = round(max(0.0, $valorNovo - $pagoPeloPlano), 2);
+        $creditoRecalculado = (float) $creditoInfo['credito'];
+        if (abs($creditoRecalculado - $creditoPrometido) > 1.0) {
+            Log::warning('Migração confirmada com crédito recalculado diferente do cobrado na simulação', [
+                'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
+                'pagamento_id' => $pagamentoPago['id'] ?? null,
+                'credito_recalculado' => $creditoRecalculado,
+                'credito_cobrado' => $creditoPrometido,
+            ]);
+        }
+        $creditoValor = $creditoPrometido;
+        $creditoAplicado = $creditoPrometido;
         $motivo = $ctx['motivo'];
         $agora = AcademyDateTime::now();
         $dataInicioObj = AcademyDateTime::todayStart();
@@ -1298,7 +1314,7 @@ class MatriculaMigracaoService
         $duracaoMeses = (int) $ctx['duracao_meses'];
         $duracaoDias = (int) $ctx['duracao_dias'];
         if ($duracaoMeses > 1) {
-            $proximaDataVencimento->modify("+{$duracaoMeses} months");
+            self::somarMesesSemEstouro($proximaDataVencimento, $duracaoMeses);
         } else {
             $proximaDataVencimento->modify("+{$duracaoDias} days");
         }
@@ -1910,6 +1926,16 @@ class MatriculaMigracaoService
 
             return null;
         }
+    }
+
+    /**
+     * Soma meses sem estourar o fim do mês: 31/10 + 6 meses = 30/04 (o modify do PHP dá 01/05).
+     */
+    private static function somarMesesSemEstouro(\DateTime $data, int $meses): void
+    {
+        $dia = (int) $data->format('d');
+        $data->modify('first day of this month')->modify("+{$meses} months");
+        $data->setDate((int) $data->format('Y'), (int) $data->format('m'), min($dia, (int) $data->format('t')));
     }
 
     /**

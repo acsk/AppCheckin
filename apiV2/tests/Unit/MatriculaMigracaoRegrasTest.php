@@ -978,6 +978,48 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertEqualsWithDelta(160.0, (float) $this->row('pagamentos_plano', (int) $parcela->id)['credito_aplicado'], 0.001);
     }
 
+    public function test_confirmar_migracao_nunca_aplica_mais_credito_do_que_a_simulacao_cobrou(): void
+    {
+        $m = $this->matricula(['valor' => 240.0]);
+        unset($m['plano_nome'], $m['status_codigo']);
+        $m['updated_at'] = AcademyDateTime::nowFormatted();
+        DB::table('matriculas')->insert($m);
+        DB::table('planos')->where('id', 1)->update(['valor' => 240.0]);
+        $this->inserirPlano(2, 560.0);
+        $this->inserirPagamentoPago(1192, 240.0, $this->dia(-5));
+        $this->mercadoPago()->shouldReceive('criarPreferenciaPagamento')->once()
+            ->andReturn(['id' => 'pref-ana', 'init_point' => 'https://mp/checkout']);
+
+        $r = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
+        $this->assertSame(200, $r['status'], json_encode($r['body']));
+        $parcela = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
+        $this->assertEqualsWithDelta(400.0, (float) $parcela->valor, 0.001);
+
+        // Entre a simulação e o pagamento entra outra parcela paga no ciclo antigo: o recálculo daria mais crédito
+        $this->inserirPagamentoPago(1200, 240.0, $this->dia(-1));
+        DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
+            'status_pagamento_id' => 2, 'data_pagamento' => AcademyDateTime::today(),
+        ]);
+
+        $this->service()->confirmarSeHouverSimulacaoPaga(self::TENANT, self::MATRICULA);
+
+        $credito = (array) DB::table('creditos_aluno')->first();
+        $this->assertEqualsWithDelta(160.0, (float) $credito['valor'], 0.001, 'o que a simulação cobrou: 560 − 400');
+        $this->assertEqualsWithDelta(160.0, (float) $credito['valor_utilizado'], 0.001);
+        $this->assertSame(1, DB::table('creditos_aluno')->count());
+        $this->assertStringContainsString('crédito aplicado R$ 160,00', (string) DB::table('historico_planos')->value('observacoes'));
+    }
+
+    public function test_somar_meses_nao_estoura_o_fim_do_mes(): void
+    {
+        $somar = new \ReflectionMethod(MatriculaMigracaoService::class, 'somarMesesSemEstouro');
+        foreach ([['2026-10-31', 6, '2027-04-30'], ['2026-08-31', 6, '2027-02-28'], ['2026-09-07', 2, '2026-11-07']] as [$de, $meses, $esperado]) {
+            $data = new \DateTime($de);
+            $somar->invoke(null, $data, $meses);
+            $this->assertSame($esperado, $data->format('Y-m-d'));
+        }
+    }
+
     public function test_checkins_esgotados_zeram_o_credito_mesmo_com_dias_sobrando(): void
     {
         // 3x por semana em 30 dias = 12 check-ins; usou os 12 nos primeiros 10 dias
