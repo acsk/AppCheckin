@@ -16,13 +16,22 @@ class PagamentoPlanoService
 
     /**
      * Soma parcelas pagas do ciclo vigente (a partir de data_inicio da matrícula).
+     *
+     * Conta só o que foi pago pelo plano: a tarifa do cartão e a sobretaxa da antecipação embutidas no
+     * valor da parcela são repasse ao provedor, não crédito do aluno. A cobrança de uma migração ainda
+     * não confirmada é pagamento do plano novo e fica de fora (senão vira crédito do ciclo antigo).
      */
     public function somarPagamentosPagosNoCiclo(int $tenantId, int $matriculaId, ?string $dataInicio): float
     {
         $q = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
-            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO);
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
+            ->where(function ($migracao) {
+                $migracao->whereNull('observacoes')
+                    ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%')
+                    ->orWhere('observacoes', 'like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_CONFIRMADA.'%');
+            });
 
         $inicio = AcademyDateTime::dateOnly($dataInicio);
         if ($inicio !== null) {
@@ -35,7 +44,23 @@ class PagamentoPlanoService
             });
         }
 
-        return round((float) $q->sum('valor'), 2);
+        return round((float) $q->sum(DB::raw($this->expressaoValorPagoDoPlano())), 2);
+    }
+
+    /**
+     * Quanto da parcela foi pago pelo plano: valor menos tarifa do cartão e sobretaxa da antecipação
+     * (acréscimos repassados ao aluno para cobrir o provedor). Banco sem as colunas soma o valor cheio.
+     */
+    private function expressaoValorPagoDoPlano(): string
+    {
+        $descontos = [];
+        foreach (['tarifa_cartao', 'sobretaxa_antecipacao'] as $coluna) {
+            if (Schema::hasColumn('pagamentos_plano', $coluna)) {
+                $descontos[] = 'COALESCE('.$coluna.', 0)';
+            }
+        }
+
+        return $descontos === [] ? 'valor' : 'valor - '.implode(' - ', $descontos);
     }
 
     /**
@@ -55,7 +80,7 @@ class PagamentoPlanoService
             ->where('matricula_id', $matriculaId)
             ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
             ->whereDate('data_vencimento', '>=', $vencimento)
-            ->sum('valor'), 2);
+            ->sum(DB::raw($this->expressaoValorPagoDoPlano())), 2);
     }
 
     /**

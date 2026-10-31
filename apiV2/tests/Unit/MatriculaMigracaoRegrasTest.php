@@ -892,6 +892,81 @@ class MatriculaMigracaoRegrasTest extends TestCase
         ));
     }
 
+    /**
+     * Caso real (matrícula 55, parcela 1543): plano antigo com R$ 240 pagos, upgrade para R$ 560. A simulação
+     * cobra 320 + taxas do cartão em 4x = 364,44. Na confirmação o crédito tem de continuar 240 — a cobrança
+     * da própria migração (e as taxas embutidas nela) não é crédito do ciclo antigo.
+     */
+    public function test_confirmar_migracao_paga_no_cartao_nao_transforma_a_propria_cobranca_em_credito(): void
+    {
+        $m = $this->matricula(['valor' => 240.0]);
+        unset($m['plano_nome'], $m['status_codigo']);
+        $m['updated_at'] = AcademyDateTime::nowFormatted();
+        DB::table('matriculas')->insert($m);
+        DB::table('planos')->where('id', 1)->update(['valor' => 240.0]);
+        $this->inserirPlano(2, 560.0);
+        $this->inserirPagamentoPago(1192, 240.0, $this->dia(-5));
+        $mp = $this->mercadoPago();
+        $mp->shouldReceive('criarPreferenciaPagamento')->once()
+            ->andReturn(['id' => 'pref-ana', 'init_point' => 'https://mp/checkout']);
+
+        $r = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
+        $this->assertSame(200, $r['status'], json_encode($r['body']));
+        $this->assertEqualsWithDelta(240.0, (float) $r['body']['data']['credito']['valor'], 0.001, 'crédito da simulação é o que já foi pago');
+
+        $parcela = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
+        $this->assertEqualsWithDelta(320.0, (float) $parcela->valor, 0.001, 'cobra só a diferença');
+
+        // Checkout no cartão em 4x: o Asaas cobra 364,44 (4 × 91,11) com a tarifa e a sobretaxa embutidas; depois paga
+        DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
+            'valor' => 364.44, 'tarifa_cartao' => 11.50, 'sobretaxa_antecipacao' => 32.94,
+            'status_pagamento_id' => 2, 'data_pagamento' => AcademyDateTime::today(),
+            'observacoes' => $parcela->observacoes.' [Valor cobrado R$ 364,44] [Asaas pay_1d9n1buyq8vxy7xl]',
+        ]);
+
+        $this->service()->confirmarSeHouverSimulacaoPaga(self::TENANT, self::MATRICULA);
+
+        $matricula = $this->row('matriculas', self::MATRICULA);
+        $this->assertSame(2, (int) $matricula['plano_id']);
+        $this->assertEqualsWithDelta(560.0, (float) $matricula['valor'], 0.001);
+
+        $creditos = DB::table('creditos_aluno')->get();
+        $this->assertCount(1, $creditos);
+        $credito = (array) $creditos[0];
+        $this->assertEqualsWithDelta(240.0, (float) $credito['valor'], 0.001, 'não vira 604,44 (240 + 364,44)');
+        $this->assertEqualsWithDelta(240.0, (float) $credito['valor_utilizado'], 0.001);
+        $this->assertSame(2, (int) $credito['status_credito_id'], 'utilizado por inteiro: saldo zero para a aluna');
+        $this->assertEqualsWithDelta(0.0, (float) $credito['valor'] - (float) $credito['valor_utilizado'], 0.001, 'sem os 44,44 de taxas voltando como crédito');
+        $this->assertEqualsWithDelta(240.0, (float) $this->row('pagamentos_plano', (int) $parcela->id)['credito_aplicado'], 0.001);
+    }
+
+    public function test_soma_do_ciclo_ignora_taxas_do_cartao_e_migracao_nao_confirmada(): void
+    {
+        $this->inserirMatricula();
+        // Pago no plano: 364,44 cobrados, dos quais 44,44 são tarifa + sobretaxa
+        DB::table('pagamentos_plano')->insert([
+            'id' => 1, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_id' => self::MATRICULA, 'plano_id' => 1,
+            'valor' => 364.44, 'tarifa_cartao' => 11.50, 'sobretaxa_antecipacao' => 32.94, 'status_pagamento_id' => 2,
+            'data_vencimento' => $this->dia(-5), 'data_pagamento' => $this->dia(-5),
+        ]);
+        // Cobrança de migração paga e ainda não confirmada: é do plano novo
+        DB::table('pagamentos_plano')->insert([
+            'id' => 2, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_id' => self::MATRICULA, 'plano_id' => 2,
+            'valor' => 100.0, 'status_pagamento_id' => 2, 'data_vencimento' => $this->dia(0), 'data_pagamento' => $this->dia(0),
+            'observacoes' => 'Simulação de migração [MIGRACAO_SIMULADA plano_id=2 plano_ciclo_id=null]',
+        ]);
+        // Confirmada já pertence ao ciclo (data_inicio é redefinida na troca)
+        DB::table('pagamentos_plano')->insert([
+            'id' => 3, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_id' => self::MATRICULA, 'plano_id' => 2,
+            'valor' => 50.0, 'status_pagamento_id' => 2, 'data_vencimento' => $this->dia(0), 'data_pagamento' => $this->dia(0),
+            'observacoes' => '[MIGRACAO_SIMULADA plano_id=2 plano_ciclo_id=null] [MIGRACAO_CONFIRMADA]',
+        ]);
+
+        $soma = (new PagamentoPlanoService)->somarPagamentosPagosNoCiclo(self::TENANT, self::MATRICULA, $this->dia(-10));
+
+        $this->assertEqualsWithDelta(320.0 + 50.0, $soma, 0.001);
+    }
+
     // ---------------------------------------------------------------- helpers
 
     /** Acesso a método privado de MatriculaMigracaoService (padrão repetido nos testes acima). */
@@ -1022,7 +1097,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
             'CREATE TABLE matriculas (id INTEGER PRIMARY KEY, tenant_id INTEGER, aluno_id INTEGER, plano_id INTEGER, plano_ciclo_id INTEGER, plano_anterior_id INTEGER, valor REAL, data_inicio TEXT, data_vencimento TEXT, proxima_data_vencimento TEXT, dia_vencimento INTEGER, status_id INTEGER, motivo_id INTEGER, observacoes TEXT, cancelado_por INTEGER, data_cancelamento TEXT, motivo_cancelamento TEXT, updated_at TEXT)',
             'CREATE TABLE historico_planos (id INTEGER PRIMARY KEY, usuario_id INTEGER, plano_anterior_id INTEGER, plano_novo_id INTEGER, data_inicio TEXT, data_vencimento TEXT, valor_pago REAL, motivo TEXT, observacoes TEXT, criado_por INTEGER)',
             'CREATE TABLE creditos_aluno (id INTEGER PRIMARY KEY, tenant_id INTEGER, aluno_id INTEGER, matricula_origem_id INTEGER, pagamento_origem_id INTEGER, valor REAL, valor_utilizado REAL DEFAULT 0, status_credito_id INTEGER DEFAULT 1, motivo TEXT, criado_por INTEGER, updated_at TEXT)',
-            'CREATE TABLE pagamentos_plano (id INTEGER PRIMARY KEY, tenant_id INTEGER, aluno_id INTEGER, matricula_id INTEGER, plano_id INTEGER, valor REAL, credito_id INTEGER, credito_aplicado REAL, data_vencimento TEXT, status_pagamento_id INTEGER, data_pagamento TEXT, observacoes TEXT, criado_por INTEGER, created_at TEXT, updated_at TEXT)',
+            'CREATE TABLE pagamentos_plano (id INTEGER PRIMARY KEY, tenant_id INTEGER, aluno_id INTEGER, matricula_id INTEGER, plano_id INTEGER, valor REAL, tarifa_cartao REAL, sobretaxa_antecipacao REAL, credito_id INTEGER, credito_aplicado REAL, data_vencimento TEXT, status_pagamento_id INTEGER, data_pagamento TEXT, observacoes TEXT, criado_por INTEGER, created_at TEXT, updated_at TEXT)',
             'CREATE TABLE assinatura_status (id INTEGER PRIMARY KEY, codigo TEXT)',
             'CREATE TABLE assinatura_gateways (id INTEGER PRIMARY KEY, codigo TEXT)',
             'CREATE TABLE metodos_pagamento (id INTEGER PRIMARY KEY, codigo TEXT)',
