@@ -497,8 +497,16 @@ class MobileAssinaturaService
 
             if ($isPendente) {
                 // Só conta pago deste ciclo: na troca de plano pelo painel a matrícula volta a pendente com a
-                // parcela nova em aberto, e os pagos do plano anterior escondiam o "Pagar agora" (matrícula 189)
+                // parcela nova em aberto. O início da matrícula não basta para identificar o ciclo da parcela:
+                // uma mensalidade anterior paga também pode ser posterior à data de início (matrícula 236).
                 $inicioCiclo = (string) ($assinatura['inicio_ciclo'] ?? '');
+                $vencimentosAbertos = array_values(array_filter(array_map(
+                    static fn ($p) => (string) ($p['data_vencimento'] ?? ''),
+                    $abertosVencidos,
+                )));
+                if ($vencimentosAbertos !== []) {
+                    $inicioCiclo = max($inicioCiclo, min($vencimentosAbertos));
+                }
                 $pagosCiclo = $inicioCiclo === '' ? $pagos : array_values(array_filter($pagos,
                     static fn ($p) => (string) ($p['data_pagamento'] ?? $p['data_vencimento'] ?? '') >= $inicioCiclo));
                 if ($pagosCiclo === [] && $pagos !== [] && $abertosVencidos !== []) {

@@ -46,6 +46,21 @@ class TrocaPlanoPainelNoAppTest extends TestCase
         $this->assertSame([1546, 1463], array_column($r[0]['pagamentos'], 'id'), 'a parcela nova aparece primeiro');
     }
 
+    public function test_pendente_com_mensalidade_vencida_e_pagamento_do_mes_anterior_pode_pagar(): void
+    {
+        $assinatura = $this->assinatura([
+            ['id' => 1313, 'status_pagamento_id' => 2, 'status' => 'Pago', 'data_pagamento' => '2026-09-29', 'data_vencimento' => '2026-09-29'],
+            ['id' => 1314, 'status_pagamento_id' => 3, 'status' => 'Atrasado', 'data_pagamento' => null, 'data_vencimento' => '2026-10-29'],
+        ]);
+        $assinatura['inicio_ciclo'] = '2026-09-29';
+
+        $r = $this->sanitizar([$assinatura]);
+
+        $this->assertCount(1, $r);
+        $this->assertTrue($r[0]['pode_pagar']);
+        $this->assertSame([1314, 1313], array_column($r[0]['pagamentos'], 'id'));
+    }
+
     public function test_pendente_com_pago_do_proprio_ciclo_segue_aguardando_ativacao(): void
     {
         $r = $this->sanitizar([$this->assinatura([
