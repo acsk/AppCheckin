@@ -61,6 +61,17 @@ class TrocaPlanoPainelNoAppTest extends TestCase
         $this->assertSame([1314, 1313], array_column($r[0]['pagamentos'], 'id'));
     }
 
+    public function test_pendente_com_parcela_vencida_sem_historico_pode_pagar(): void
+    {
+        $r = $this->sanitizar([$this->assinatura([
+            ['id' => 1701, 'status_pagamento_id' => 3, 'status' => 'Atrasado', 'data_pagamento' => null, 'data_vencimento' => '2026-10-29'],
+        ])]);
+
+        $this->assertCount(1, $r);
+        $this->assertTrue($r[0]['pode_pagar']);
+        $this->assertSame([1701], array_column($r[0]['pagamentos'], 'id'));
+    }
+
     public function test_pendente_com_pago_do_proprio_ciclo_segue_aguardando_ativacao(): void
     {
         $r = $this->sanitizar([$this->assinatura([

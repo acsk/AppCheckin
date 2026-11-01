@@ -509,7 +509,7 @@ class MobileAssinaturaService
                 }
                 $pagosCiclo = $inicioCiclo === '' ? $pagos : array_values(array_filter($pagos,
                     static fn ($p) => (string) ($p['data_pagamento'] ?? $p['data_vencimento'] ?? '') >= $inicioCiclo));
-                if ($pagosCiclo === [] && $pagos !== [] && $abertosVencidos !== []) {
+                if ($pagosCiclo === [] && $abertosVencidos !== []) {
                     $assinatura['pagamentos'] = array_merge($abertosVencidos, $pagos);
                     // Sem link: o app gera o PIX da parcela em aberto (MobilePagamentoService::gerarPix)
                     $assinatura['pode_pagar'] = true;
