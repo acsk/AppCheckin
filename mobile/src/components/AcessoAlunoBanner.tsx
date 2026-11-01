@@ -17,7 +17,7 @@ function horaLocal(v: string): string {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-/** Faixa do "ver app como aluno" (aberto pelo painel): avisa que é só visualização e encerra o acesso. */
+/** Faixa do acesso assistido aberto pelo painel; as ações têm efeito real na conta do aluno. */
 export default function AcessoAlunoBanner() {
   const [acesso, setAcesso] = useState<Acesso | null>(null);
   const [saindo, setSaindo] = useState(false);
@@ -49,8 +49,8 @@ export default function AcessoAlunoBanner() {
     <View style={styles.faixa} accessibilityRole="alert">
       <Feather name="eye" size={16} color={ds.onBrand} />
       <Text style={styles.texto} numberOfLines={2}>
-        Visualizando como <Text style={styles.forte}>{acesso.nome}</Text>
-        {acesso.academia ? ` · ${acesso.academia}` : ""} · só leitura{ate ? ` · até ${ate}` : ""}
+        Acesso como <Text style={styles.forte}>{acesso.nome}</Text>
+        {acesso.academia ? ` · ${acesso.academia}` : ""} · ações afetam a conta{ate ? ` · até ${ate}` : ""}
       </Text>
       <Pressable style={styles.sair} onPress={() => void sair()} disabled={saindo} accessibilityRole="button">
         <Text style={styles.sairTexto}>{saindo ? "Saindo…" : "Sair"}</Text>

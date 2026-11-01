@@ -26,8 +26,8 @@ function lerSessao(): Sessao | null {
 }
 
 /**
- * "Ver app como aluno" (só app web): troca a sessão deste navegador pela do aluno, em modo
- * visualização, e recarrega o app. A faixa AcessoAlunoBanner mostra o modo e o botão Sair.
+ * "Ver app como aluno" (só app web): troca a sessão deste navegador pela do aluno em acesso
+ * assistido e recarrega o app. As ações feitas durante a sessão afetam a conta do aluno.
  */
 export default function AcessoAlunoScreen() {
   const [erro, setErro] = useState("");

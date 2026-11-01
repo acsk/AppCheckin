@@ -81,15 +81,16 @@ class JwtAuthenticate
             $usuario['tenant_id'] = $resolvedTenantId;
         }
 
-        // "Ver app como aluno": token do aluno, só leitura, conferido a cada requisição
+        // "Ver app como aluno": token do aluno, conferido a cada requisição.
         $acessoAluno = null;
         if (! empty($payload['acesso_aluno_id'])) {
             $acessoAluno = app(AcessoAlunoService::class)->sessaoValida((int) $payload['acesso_aluno_id'], $userId, (int) $resolvedTenantId);
             if (! $acessoAluno) {
                 return ApiError::json('A visualização como aluno terminou. Abra de novo pelo painel.', 'ACESSO_ALUNO_ENCERRADO', 401);
             }
-            if (! in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true) && ! in_array($request->path(), AcessoAlunoService::ESCRITAS_LIVRES, true)) {
-                return ApiError::json('Modo visualização: as ações do aluno estão bloqueadas.', 'MODO_VISUALIZACAO', 403);
+            // A troca de tenant emite um token comum sem acesso_aluno_id e escaparia da sessão assistida.
+            if ($request->path() === 'v2/auth/select-tenant') {
+                return ApiError::json('Não é possível trocar de academia durante o acesso assistido.', 'ACESSO_ALUNO_TROCA_TENANT_BLOQUEADA', 403);
             }
             $usuario['papel_id'] = Papel::ALUNO;
         }

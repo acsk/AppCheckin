@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Tests\Concerns\CnpjCompartilhadoSchema;
 use Tests\TestCase;
 
-/** "Ver app como aluno": admin/super admin abre o app como o aluno, só leitura. */
+/** "Ver app como aluno": admin/super admin abre o app com a identidade e as ações do aluno. */
 class AcessoAlunoTest extends TestCase
 {
     use CnpjCompartilhadoSchema;
@@ -55,18 +55,22 @@ class AcessoAlunoTest extends TestCase
             ->assertJsonPath('user.id', $this->alunoUsuario)
             ->assertJsonPath('user.papel_id', Papel::ALUNO)
             ->assertJsonPath('tenants.0.tenant.id', $this->escola)
-            ->assertJsonPath('acesso.somente_leitura', true);
+            ->assertJsonPath('acesso.somente_leitura', false);
         $this->assertSame([Papel::ALUNO], array_column($r->json('tenants.0.papeis'), 'id'));
         $this->assertDatabaseHas('acessos_aluno', ['aluno_id' => $this->alunoId, 'operador_usuario_id' => $this->admin, 'motivo' => self::MOTIVO, 'encerrado_em' => null]);
     }
 
-    public function test_token_do_acesso_le_mas_nao_escreve_e_encerrar_corta_na_hora(): void
+    public function test_token_do_acesso_permite_acoes_do_aluno_mas_nao_trocar_tenant_e_encerrar_corta_na_hora(): void
     {
         $auth = ['Authorization' => 'Bearer '.$this->abrir($this->auth($this->admin, $this->escola))->json('token')];
 
         $this->getJson('/v2/auth/tenants', $auth)->assertOk();
         $this->postJson('/v2/auth/select-tenant', ['tenant_id' => $this->escola], $auth)
-            ->assertForbidden()->assertJsonPath('code', 'MODO_VISUALIZACAO');
+            ->assertForbidden()->assertJsonPath('code', 'ACESSO_ALUNO_TROCA_TENANT_BLOQUEADA');
+
+        $acao = $this->postJson('/v2/mobile/pagamento/parcela', [], $auth);
+        $this->assertNotSame('MODO_VISUALIZACAO', $acao->json('code'));
+        $this->getJson('/v2/auth/tenants', $auth)->assertOk();
 
         $this->postJson('/v2/suporte/aluno/encerrar', [], $auth)->assertOk();
         $this->getJson('/v2/auth/tenants', $auth)->assertUnauthorized()->assertJsonPath('code', 'ACESSO_ALUNO_ENCERRADO');

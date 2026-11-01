@@ -10,16 +10,13 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * "Ver app como aluno": o admin da academia (ou o super admin no "acessar como academia") recebe um
- * token de 1h do aluno com acesso_aluno_id. A API confere a sessão a cada requisição e só aceita
- * leitura (JwtAuthenticate); encerrar, expirar ou perder o papel de admin corta o acesso na hora.
+ * token de 1h do aluno com acesso_aluno_id. A API confere a sessão a cada requisição;
+ * encerrar, expirar ou perder o papel de admin corta o acesso na hora.
  */
 class AcessoAlunoService
 {
     /** Duração máxima de um acesso (segundos) */
     public const DURACAO = 3600;
-
-    /** Escritas permitidas durante o acesso (o resto responde MODO_VISUALIZACAO) */
-    public const ESCRITAS_LIVRES = ['v2/suporte/aluno/encerrar', 'v2/auth/logout'];
 
     public function __construct(
         private readonly AlunoRepository $alunos,
@@ -83,7 +80,7 @@ class AcessoAlunoService
                 'foto_base64' => null, 'papel_id' => Papel::ALUNO, 'papeis' => $papelAluno,
             ],
             'tenants' => $tenants,
-            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toIso8601String(), 'somente_leitura' => true],
+            'acesso' => ['id' => $acessoId, 'expira_em' => $expira->toIso8601String(), 'somente_leitura' => false],
         ]];
     }
 
