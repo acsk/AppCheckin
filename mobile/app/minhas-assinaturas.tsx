@@ -4,6 +4,8 @@ import { postComRetryGateway, solicitarPix, usuarioPodeVerSandboxPagamento } fro
 import DsModal from "@/src/components/ds/Modal";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import type { MetodoPagamentoOpcao } from "@/src/utils/metodosPagamento";
+import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
+import { simularTaxaCartao, type TaxaCartaoSimulacao } from "@/src/utils/taxaCartao";
 import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
@@ -12,6 +14,7 @@ import {
   criarCardsAssinaturas,
   isPagamentoPago,
   podePagarAssinatura,
+  valorExibidoAssinatura,
   type PagamentoAssinatura,
 } from "@/src/utils/assinaturaFinanceiro";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -220,12 +223,79 @@ export default function MinhasAssinaturasScreen() {
     }).format(numeric);
   };
 
-  // Parcela em aberto sem link (renovação, troca de plano feita pela academia): o aluno escolhe PIX ou cartão
+  // Parcela aberta: o aluno escolhe o meio antes de usar qualquer checkout anterior.
   const [escolhaPagamento, setEscolhaPagamento] = useState<Assinatura | null>(null);
   const [metodoEscolhido, setMetodoEscolhido] = useState<MetodoPagamentoOpcao | null>("pix");
   const [gerandoPagamento, setGerandoPagamento] = useState(false);
+  const [simulacaoTaxaCartao, setSimulacaoTaxaCartao] = useState<TaxaCartaoSimulacao | null>(null);
+  const [simulandoTaxaCartao, setSimulandoTaxaCartao] = useState(false);
+  const [erroTaxaCartao, setErroTaxaCartao] = useState<string | null>(null);
+  const [repetirSimulacaoTaxa, setRepetirSimulacaoTaxa] = useState(0);
+  const [confirmacaoCartao, setConfirmacaoCartao] = useState<Assinatura | null>(null);
 
-  const pagarComCartao = async (assinatura: Assinatura) => {
+  useEffect(() => {
+    if (!escolhaPagamento || metodoEscolhido !== "cartao") {
+      if (!confirmacaoCartao) {
+        setSimulacaoTaxaCartao(null);
+        setSimulandoTaxaCartao(false);
+        setErroTaxaCartao(null);
+      }
+      return;
+    }
+
+    let cancelada = false;
+    const simular = async () => {
+      setSimulacaoTaxaCartao(null);
+      setErroTaxaCartao(null);
+      setSimulandoTaxaCartao(true);
+      try {
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          throw new Error("Faça login novamente para calcular o valor no cartão.");
+        }
+        const resultado = await simularTaxaCartao({
+          apiUrl: getApiUrlRuntime(),
+          token,
+          valor: Number(escolhaPagamento.valor),
+          escolherGateway,
+          podeSandbox: isUserAdmin,
+        });
+        if (resultado.cancelled) return;
+        if (!resultado.ok) {
+          throw new Error(
+            resultado.json?.message ||
+              resultado.json?.error ||
+              "Não foi possível calcular o valor no cartão.",
+          );
+        }
+        const simulacao = resultado.json?.data as TaxaCartaoSimulacao | undefined;
+        if (!simulacao) {
+          throw new Error("A simulação não retornou o valor do cartão.");
+        }
+        if (!cancelada) setSimulacaoTaxaCartao(simulacao);
+      } catch (erro) {
+        if (!cancelada) {
+          setErroTaxaCartao(
+            erro instanceof Error
+              ? erro.message
+              : "Não foi possível calcular o valor no cartão.",
+          );
+        }
+      } finally {
+        if (!cancelada) setSimulandoTaxaCartao(false);
+      }
+    };
+
+    void simular();
+    return () => {
+      cancelada = true;
+    };
+  }, [escolhaPagamento, metodoEscolhido, repetirSimulacaoTaxa, escolherGateway, isUserAdmin, confirmacaoCartao]);
+
+  const pagarComCartao = async (
+    assinatura: Assinatura,
+    simulacao: TaxaCartaoSimulacao,
+  ) => {
     const token = await AsyncStorage.getItem("@appcheckin:token");
     if (!token) {
       showErrorModal("⚠️ Sessão expirada", "Faça login novamente para pagar.", "error");
@@ -234,7 +304,12 @@ export default function MinhasAssinaturasScreen() {
     const r = await postComRetryGateway({
       url: `${getApiUrlRuntime()}/mobile/pagamento/parcela`,
       token,
-      body: { matricula_id: Number(assinatura.matricula_id), metodo_pagamento: "cartao" },
+      body: {
+        matricula_id: Number(assinatura.matricula_id),
+        metodo_pagamento: "cartao",
+        installment_count: simulacao.parcela_count ?? 1,
+        ...(simulacao.provider ? { gateway: simulacao.provider } : {}),
+      },
       escolherGateway,
       podeSandbox: isUserAdmin,
     });
@@ -254,19 +329,51 @@ export default function MinhasAssinaturasScreen() {
   const confirmarMetodoPagamento = async () => {
     const assinatura = escolhaPagamento;
     if (!assinatura || !metodoEscolhido) return;
+    if (metodoEscolhido === "cartao") {
+      if (simulandoTaxaCartao) return;
+      if (!simulacaoTaxaCartao) {
+        setRepetirSimulacaoTaxa((tentativa) => tentativa + 1);
+        return;
+      }
+      if (simulacaoTaxaCartao.aplica_repasse) {
+        setConfirmacaoCartao(assinatura);
+        setEscolhaPagamento(null);
+        return;
+      }
+    }
+
     setGerandoPagamento(true);
     try {
-      if (metodoEscolhido === "cartao") await pagarComCartao(assinatura);
-      else await pagarComPix(assinatura);
+      if (metodoEscolhido === "cartao" && simulacaoTaxaCartao) {
+        await pagarComCartao(assinatura, simulacaoTaxaCartao);
+      } else {
+        await pagarComPix(assinatura);
+      }
     } finally {
       setGerandoPagamento(false);
       setEscolhaPagamento(null);
     }
   };
 
+  const confirmarPagamentoCartao = async (simulacao: TaxaCartaoSimulacao) => {
+    const assinatura = confirmacaoCartao;
+    if (!assinatura) return;
+    setGerandoPagamento(true);
+    try {
+      await pagarComCartao(assinatura, simulacao);
+    } finally {
+      setGerandoPagamento(false);
+      setConfirmacaoCartao(null);
+    }
+  };
+
   const handlePagarAssinatura = async (assinatura: Assinatura) => {
-    if (assinatura.pode_pagar && !assinatura.payment_url && assinatura.matricula_id) {
+    const temParcelaAberta = (assinatura.pagamentos ?? []).some(
+      (pagamento) => !isPagamentoPago(pagamento),
+    );
+    if (assinatura.pode_pagar && assinatura.matricula_id && temParcelaAberta) {
       setMetodoEscolhido("pix");
+      setSimulacaoTaxaCartao(null);
       setEscolhaPagamento(assinatura);
       return;
     }
@@ -732,11 +839,17 @@ export default function MinhasAssinaturasScreen() {
     const statusBadgeLabel = aguardandoAsaas
       ? gatewayPagamento?.status_label || "Aguardando"
       : assinatura.status.nome;
-    const valorExibido = formatCurrency(assinatura.valor);
     const isPagamentoPendente =
       !isCancelada &&
       !aguardandoAsaas &&
       ((isPendente && !temPagamentoPago) || (!isAtiva && temPagamentoAberto));
+    const valorExibido = formatCurrency(
+      valorExibidoAssinatura(
+        assinatura.valor,
+        pagamentos,
+        isPagamentoPendente && temPagamentoAberto,
+      ),
+    );
     const temPagamentoAguardandoComPlanoAtivo =
       isAtiva && temPagamentoAberto && !aguardandoAsaas;
     const podeAtualizarPagamento =
@@ -1327,12 +1440,35 @@ export default function MinhasAssinaturasScreen() {
         variant="dialog"
         icon="credit-card"
         title={`Pagar ${escolhaPagamento?.plano?.nome ?? "plano"}`}
-        description={escolhaPagamento ? `Valor: ${formatCurrency(escolhaPagamento.valor)}. No cartão, a taxa aparece antes de confirmar.` : undefined}
+        description={
+          !escolhaPagamento
+            ? undefined
+            : metodoEscolhido === "cartao"
+              ? simulandoTaxaCartao
+                ? "Calculando o valor para pagamento com cartão..."
+                : erroTaxaCartao
+                  ? erroTaxaCartao
+                  : simulacaoTaxaCartao
+                    ? `Valor no cartão: ${simulacaoTaxaCartao.rotulo_parcela || formatCurrency(simulacaoTaxaCartao.valor_cobrar)}.`
+                    : "O valor do cartão será calculado antes de continuar."
+              : `Valor no PIX: ${formatCurrency(escolhaPagamento.valor)}.`
+        }
         primary={{
-          label: metodoEscolhido === "cartao" ? "Pagar com cartão" : "Gerar PIX",
+          label: simulandoTaxaCartao
+            ? "Calculando valor"
+            : metodoEscolhido === "cartao"
+              ? erroTaxaCartao
+                ? "Tentar novamente"
+                : simulacaoTaxaCartao?.aplica_repasse
+                  ? "Conferir taxas e parcelas"
+                  : simulacaoTaxaCartao
+                    ? "Pagar com cartão"
+                    : "Calcular valor"
+              : "Gerar PIX",
           icon: metodoEscolhido === "cartao" ? "credit-card" : "zap",
           onPress: () => void confirmarMetodoPagamento(),
           loading: gerandoPagamento,
+          disabled: simulandoTaxaCartao,
         }}
         onClose={() => setEscolhaPagamento(null)}
       >
@@ -1341,6 +1477,17 @@ export default function MinhasAssinaturasScreen() {
           <PaymentMethodOptions opcoes={["pix", "cartao"]} value={metodoEscolhido} onChange={setMetodoEscolhido} compact />
         </View>
       </DsModal>
+      <TaxaCartaoConfirmSheet
+        visible={!!confirmacaoCartao}
+        simulacao={simulacaoTaxaCartao}
+        tituloPlano={confirmacaoCartao?.plano?.nome}
+        loading={gerandoPagamento}
+        detalharTaxas={isUserAdmin}
+        onClose={() => {
+          if (!gerandoPagamento) setConfirmacaoCartao(null);
+        }}
+        onConfirm={(simulacao) => void confirmarPagamentoCartao(simulacao)}
+      />
     </SafeAreaView>
   );
 }

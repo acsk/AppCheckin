@@ -20,6 +20,24 @@ export function isPagamentoPago(pagamento: PagamentoAssinatura): boolean {
   );
 }
 
+export function valorExibidoAssinatura(
+  valorPlano: number,
+  pagamentos: readonly PagamentoAssinatura[],
+  priorizarParcelaAberta: boolean,
+): number {
+  if (!priorizarParcelaAberta) return valorPlano;
+
+  const parcelaAberta = pagamentos
+    .filter((pagamento) => !isPagamentoPago(pagamento))
+    .sort((a, b) => {
+      const vencimentoA = String(a.data_vencimento || "");
+      const vencimentoB = String(b.data_vencimento || "");
+      return vencimentoA.localeCompare(vencimentoB) || a.id - b.id;
+    })[0];
+
+  return parcelaAberta?.valor ?? valorPlano;
+}
+
 export function pagamentosVisiveis(
   pagamentos: readonly PagamentoAssinatura[] | null | undefined,
   hojeIso: string,

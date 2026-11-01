@@ -4,6 +4,7 @@ import {
   criarCardsAssinaturas,
   pagamentosVisiveis,
   podePagarAssinatura,
+  valorExibidoAssinatura,
 } from "../src/utils/assinaturaFinanceiro.ts";
 
 const hoje = "2026-10-07";
@@ -125,14 +126,14 @@ test("mantém assinatura ativa sem pagamentos e esconde pendente sem fatura", ()
   );
 });
 
-test("checkout pendente precisa de link; status pago numérico dispensa data", () => {
+test("pendente com parcela aberta pode pagar sem link; status pago dispensa data", () => {
   const aberta = { id: 1, valor: 360, status_pagamento_id: 1 };
   const pendente = {
     ...assinatura,
     status: { codigo: "pendente" },
     pode_pagar: true,
   };
-  assert.equal(podePagarAssinatura(pendente, [aberta]), false);
+  assert.equal(podePagarAssinatura(pendente, [aberta]), true);
   assert.equal(
     podePagarAssinatura({ ...pendente, payment_url: "https://example.com" }, [aberta]),
     true,
@@ -159,5 +160,37 @@ test("desempata histórico pelo id e mantém cobranças abertas sem data", () =>
   assert.equal(
     pagamentosVisiveis([{ id: 3, valor: 360, status_pagamento_id: 3 }], hoje).length,
     1,
+  );
+});
+
+test("mostra no cabeçalho o valor efetivo da parcela aberta durante a pendência", () => {
+  const parcelaAtual = {
+    id: 1546,
+    valor: 142.16,
+    data_vencimento: "2026-10-31",
+    status_pagamento_id: 3,
+  };
+  assert.equal(
+    valorExibidoAssinatura(134.19, [pixAnterior, parcelaAtual], true),
+    142.16,
+  );
+  assert.equal(
+    valorExibidoAssinatura(134.19, [pixAnterior, parcelaAtual], false),
+    134.19,
+  );
+});
+
+test("prioriza a primeira parcela aberta pelo mesmo critério do fluxo de pagamento", () => {
+  assert.equal(
+    valorExibidoAssinatura(
+      134.19,
+      [
+        { id: 20, valor: 82, data_vencimento: "2026-11-02", status_pagamento_id: 1 },
+        { id: 22, valor: 91, data_vencimento: "2026-10-31", status_pagamento_id: 3 },
+        { id: 21, valor: 75, data_vencimento: "2026-10-31", status_pagamento_id: 1 },
+      ],
+      true,
+    ),
+    75,
   );
 });

@@ -15,7 +15,110 @@ voltavam a ficar ativas sozinhas.
 | Quando a migração paga é confirmada, vale **o crédito que a simulação cobrou**, nunca um recálculo. Se o recálculo der diferente, fica só um aviso no log | `MatriculaMigracaoService::aplicarTrocaAposPagamento` |
 | Matrícula **cancelada no ciclo atual** (`data_cancelamento >= data_inicio`) não é reativada pelo recálculo de status, mesmo com o período pago correndo | `PagamentoPlanoService::atualizarStatusMatricula` |
 | Contrato de recorrência cancelado ou encerrado + matrícula reaproveitada numa compra avulsa: o status segue a regra do plano avulso | `RecorrenciaAcesso::atualizar` |
-| **Simulação de migração não é dívida**: não é marcada como "Atrasado", não bloqueia a troca de plano e fica fora do total e do pendente no detalhe da matrícula. O painel mostra o status "Simulação de troca", sem "Dar baixa", porque a baixa aplicaria a troca | `marcarAtrasados`, `temParcelaAbertaAtrasada`, `MatriculaMigracaoAptidaoService::temParcelaAtrasada`, `AdminMatriculaService::show` (`simulacao_troca`) |
+{
+    "success": true,
+    "assinaturas": [
+        {
+            "id": 227,
+            "matricula_id": 189,
+            "modalidade_id": 3,
+            "status": {
+                "id": 1,
+                "codigo": "pendente",
+                "nome": "Pendente",
+                "cor": "#FFA500"
+            },
+            "cancelamento": {
+                "cancelado_por_id": null,
+                "cancelado_por_codigo": null,
+                "cancelado_por_nome": null
+            },
+            "valor": 134.19,
+            "tipo_cobranca": "avulso",
+            "recorrente": false,
+            "data_inicio": "2026-10-31",
+            "data_fim": "2026-10-17",
+            "proxima_cobranca": "2026-10-31",
+            "ultima_cobranca": "2026-10-16",
+            "mp_preapproval_id": null,
+            "preference_id": "pay_lm73ffney2j8wio1",
+            "external_reference": "MAT-189-1793498591859bcfb8",
+            "ciclo": {
+                "nome": "Quadrimestral",
+                "meses": 4
+            },
+            "gateway": {
+                "nome": "Asaas"
+            },
+            "plano": {
+                "nome": "1x por Semana",
+                "modalidade": "Natação"
+            },
+            "pode_pagar": true,
+            "pagamento_gateway": {
+                "provedor": "asaas",
+                "status": "PENDING",
+                "status_label": "Aguardando",
+                "billing_type": "CREDIT_CARD",
+                "data": null,
+                "data_formatada": null,
+                "aguardando_ativacao": false,
+                "mensagem": "Pagamento Aguardando no Asaas. Aguarde a ativação da matrícula."
+            },
+            "inicio_ciclo": "2026-10-31",
+            "payment_url": "https:\/\/www.asaas.com\/i\/lm73ffney2j8wio1",
+            "pagamentos": [
+                {
+                    "id": 1546,
+                    "valor": 142.16,
+                    "valor_liquido": null,
+                    "desconto_provedor": 0,
+                    "data_vencimento": "2026-10-31",
+                    "data_pagamento": null,
+                    "status": "Atrasado",
+                    "status_pagamento_id": 3,
+                    "forma_pagamento": null,
+                    "baixado_por_nome": null,
+                    "criado_por_nome": "ANDRE CABRAL SILVA",
+                    "tipo_baixa_nome": null,
+                    "origem": null
+                },
+                {
+                    "id": 1463,
+                    "valor": 54.18,
+                    "valor_liquido": 51.39,
+                    "desconto_provedor": 2.79,
+                    "data_vencimento": "2026-10-16",
+                    "data_pagamento": "2026-10-16",
+                    "status": "Pago",
+                    "status_pagamento_id": 2,
+                    "forma_pagamento": "Cartão",
+                    "baixado_por_nome": null,
+                    "criado_por_nome": "ANDRE CABRAL SILVA",
+                    "tipo_baixa_nome": "Integração",
+                    "origem": "asaas"
+                },
+                {
+                    "id": 1460,
+                    "valor": 72.66,
+                    "valor_liquido": 69.07,
+                    "desconto_provedor": 3.59,
+                    "data_vencimento": "2026-10-17",
+                    "data_pagamento": "2026-10-16",
+                    "status": "Pago",
+                    "status_pagamento_id": 2,
+                    "forma_pagamento": "Cartão",
+                    "baixado_por_nome": null,
+                    "criado_por_nome": "ANDRE CABRAL SILVA",
+                    "tipo_baixa_nome": "Integração",
+                    "origem": "asaas"
+                }
+            ]
+        }
+    ],
+    "total": 1,
+    "pacotes": []
+}| **Simulação de migração não é dívida**: não é marcada como "Atrasado", não bloqueia a troca de plano e fica fora do total e do pendente no detalhe da matrícula. O painel mostra o status "Simulação de troca", sem "Dar baixa", porque a baixa aplicaria a troca | `marcarAtrasados`, `temParcelaAbertaAtrasada`, `MatriculaMigracaoAptidaoService::temParcelaAtrasada`, `AdminMatriculaService::show` (`simulacao_troca`) |
 | Troca de plano pelo painel atualiza a assinatura que o app lê (plano, valor da parcela, status pendente, sem a cobrança antiga). O app mostra a parcela nova com "Pagar agora" (pagos de ciclo anterior não contam), e o PIX cobra **a parcela em aberto**, sem substituí-la (antes cobrava o valor cheio do plano e perdia o crédito abatido). No "Pagar agora" o aluno **escolhe PIX ou cartão** (`POST /mobile/pagamento/parcela`); o cartão vai pelo checkout do provedor, com a tarifa calculada sempre sobre o valor do plano. PIX salvo de cobrança cancelada (ex.: simulação substituída) não é reaproveitado | `AdminMatriculaService::sincronizarAssinaturaAposAlterarPlano`, `MobileAssinaturaService::sanitizarAssinaturasFinanceiroMobile`, `MobilePagamentoService::gerarPix` |
 | Vencimento de ciclo em meses não estoura o fim do mês (31/10 + 6 meses = 30/04) | `MatriculaMigracaoService::somarMesesSemEstouro` |
 | Cancelar com crédito confere o status de novo, com trava, dentro da transação: dois cancelamentos simultâneos não geram dois créditos | `AdminMatriculaService::cancelarComCredito` |
