@@ -1059,6 +1059,9 @@ class AdminMatriculaRepository
             ->whereIn('status_pagamento_id', [1, 3])
             ->whereNull('data_pagamento')
             ->where('data_vencimento', '<', DB::raw('CURDATE()'))
+            // Simulação de migração abandonada não é débito (parcela #1531 bloqueava a troca no painel)
+            ->where(fn ($q) => $q->whereNull('observacoes')
+                ->orWhere('observacoes', 'not like', '%'.\App\Services\MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
             ->exists();
     }
 

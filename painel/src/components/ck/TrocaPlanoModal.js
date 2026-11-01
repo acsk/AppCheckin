@@ -39,23 +39,23 @@ export default function TrocaPlanoModal({
   const plan = plans.find((item) => String(item.id) === String(form.plano_id));
   const cycle = cycles.find((item) => String(item.id) === String(form.plano_ciclo_id));
   const paid = payments.some((item) => Number(item.status_pagamento_id) === 2);
-  const currentValue = number(matricula?.valor);
   const availableBalance = Math.max(0, number(balance?.saldo_total));
   const geraCredito = preview?.aptidao?.gera_credito !== false && !cancelled;
   const proportionalCredit = number(preview?.credito?.tipo === 'proporcional' ? preview.credito.gerado : 0);
-  const generatedCredit = form.tipo_credito === 'abater_plano' ? currentValue
-    : form.tipo_credito === 'abater' ? proportionalCredit
+  const generatedCredit = form.tipo_credito === 'abater' ? proportionalCredit
     : form.tipo_credito === 'manual' ? Math.max(0, number(form.credito)) : 0;
   const existingCredit = form.usar_credito_existente ? availableBalance : 0;
   const amountReady = !!plan && !loadingCycles && (!cycles.length || !!cycle);
+  // Valores só da simulação da API: sem ela (erro, atraso) nada de estimativa local de crédito ou parcela
+  const previewOk = amountReady && !!preview?.success;
   const amount = preview?.valor_plano_novo != null && amountReady ? number(preview.valor_plano_novo)
     : amountReady ? number(cycle ? cycle.valor : plan.valor) : 0;
-  const usedGenerated = number(preview?.credito?.gerado != null && amountReady ? Math.min(amount, preview.credito.gerado) : Math.min(amount, generatedCredit));
-  const usedExisting = number(preview?.credito?.existente != null && amountReady
-    ? Math.min(preview.credito.existente, Math.max(0, amount - usedGenerated))
-    : Math.min(Math.max(0, amount - usedGenerated), existingCredit));
-  const total = preview?.valor_parcela != null && amountReady ? number(preview.valor_parcela) : Math.max(0, amount - generatedCredit - existingCredit);
-  const remaining = preview?.credito?.restante != null && amountReady ? number(preview.credito.restante) : Math.max(0, generatedCredit + existingCredit - amount);
+  const usedGenerated = previewOk ? number(Math.min(amount, preview?.credito?.gerado ?? generatedCredit)) : 0;
+  const usedExisting = previewOk
+    ? number(Math.min(preview?.credito?.existente ?? existingCredit, Math.max(0, amount - usedGenerated)))
+    : 0;
+  const total = previewOk ? number(preview.valor_parcela ?? Math.max(0, amount - usedGenerated - usedExisting)) : null;
+  const remaining = previewOk ? number(preview?.credito?.restante ?? 0) : 0;
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(form.data_inicio) &&
     !Number.isNaN(Date.parse(`${form.data_inicio}T12:00:00`)) &&
     new Date(`${form.data_inicio}T12:00:00Z`).toISOString().slice(0, 10) === form.data_inicio;
@@ -63,7 +63,6 @@ export default function TrocaPlanoModal({
     (form.tipo_credito !== 'manual' || (number(form.credito) > 0 && /^\d+(?:[.,]\d{1,2})?$/.test(form.credito)));
   const options = [
     { key: 'nenhum', icon: 'ban', title: 'Sem novo crédito', detail: 'Apenas o saldo existente, se marcado abaixo.' },
-    ...(currentValue > 0 && paid && geraCredito ? [{ key: 'abater_plano', icon: 'wallet', title: 'Valor do plano atual', detail: `${money(currentValue)} de crédito na primeira parcela.` }] : []),
     ...(paid && geraCredito ? [{ key: 'abater', icon: 'clock', title: 'Crédito proporcional', detail: preview?.credito?.tipo === 'proporcional' && preview.credito.gerado > 0 ? `${money(preview.credito.gerado)} pelos ${preview.credito.dias_restantes} dias restantes.` : 'Calculado pelos dias restantes do plano atual.' }] : []),
     { key: 'manual', icon: 'pencil', title: 'Crédito manual', detail: 'Informe um valor e o motivo do ajuste.' },
   ];
@@ -175,13 +174,13 @@ export default function TrocaPlanoModal({
             <p className="ck-tp__summarycycle">{loadingCycles ? 'Carregando ciclos…' : cycle ? cycleLabel(cycle) : plan && !cycles.length ? 'Cobrança única' : 'Escolha um ciclo de pagamento'}</p>
             <dl>
               <div><dt>Valor {cycle ? 'do ciclo' : 'do plano'}</dt><dd>{amountReady ? money(amount) : '—'}</dd></div>
-              {usedGenerated > 0 && amountReady ? <div className="ck-tp__deduction"><dt>{form.tipo_credito === 'manual' ? 'Crédito manual' : form.tipo_credito === 'abater' ? 'Crédito proporcional' : 'Crédito do plano atual'}</dt><dd>− {money(usedGenerated)}</dd></div> : null}
-              {existingCredit > 0 && amountReady ? <div className="ck-tp__deduction"><dt>Saldo de créditos</dt><dd>− {money(usedExisting)}</dd></div> : null}
+              {usedGenerated > 0 ? <div className="ck-tp__deduction"><dt>{form.tipo_credito === 'manual' ? 'Crédito manual' : 'Crédito proporcional'}</dt><dd>− {money(usedGenerated)}</dd></div> : null}
+              {existingCredit > 0 && previewOk ? <div className="ck-tp__deduction"><dt>Saldo de créditos</dt><dd>− {money(usedExisting)}</dd></div> : null}
             </dl>
             <div className="ck-tp__total" aria-live="polite" aria-atomic="true">
               <span>Primeira parcela</span>
-              <strong>{!amountReady || loadingPreview ? 'R$ —' : money(total)}</strong>
-              <span>{loadingPreview ? 'Calculando a troca…' : preview?.success ? 'Prévia da troca nesta matrícula, sem cancelar.' : 'Selecione o plano para simular a troca.'}</span>
+              <strong>{total == null || loadingPreview ? 'R$ —' : money(total)}</strong>
+              <span>{loadingPreview ? 'Calculando a troca…' : previewOk ? 'Prévia da troca nesta matrícula, sem cancelar.' : error && amountReady ? 'Sem simulação: resolva o aviso acima.' : 'Selecione o plano para simular a troca.'}</span>
             </div>
             {amountReady && remaining > 0 ? <p className="ck-tp__remaining"><Icon name="wallet" size={16} />{money(remaining)} permanecerá como crédito do aluno.</p> : null}
             {!amountReady ? <p className="ck-tp__summaryhint">Selecione o plano e o ciclo para conferir os valores.</p> : null}

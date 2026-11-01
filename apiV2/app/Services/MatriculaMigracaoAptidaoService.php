@@ -24,6 +24,8 @@ class MatriculaMigracaoAptidaoService
             ->whereIn('status_pagamento_id', StatusPagamentoPlano::EM_ABERTO)
             ->whereNull('data_pagamento')
             ->where('data_vencimento', '<', DB::raw('CURDATE()'))
+            ->where(fn ($q) => $q->whereNull('observacoes')
+                ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
             ->exists();
 
         if (! $atrasada) {

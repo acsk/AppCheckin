@@ -671,8 +671,10 @@ class PagamentoPlanoService
              WHERE tenant_id = ?
              AND status_pagamento_id = 1
              AND data_vencimento < CURDATE()
-             AND data_pagamento IS NULL",
-            [$tenantId]
+             AND data_pagamento IS NULL
+             AND (observacoes IS NULL OR observacoes NOT LIKE ?)",
+            // Simulação de migração não é dívida: o plano atual segue até ela ser paga (parcela #1531)
+            [$tenantId, '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%']
         );
 
         $idsAvulso = DB::select(
@@ -684,9 +686,10 @@ class PagamentoPlanoService
               AND m.tipo_cobranca = \'avulso\'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
+              AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE ?)
               AND '.self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id').'
             ',
-            [$tenantId]
+            [$tenantId, '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%']
         );
 
         $marcadosAvulso = $this->atualizarStatusPorIds(
