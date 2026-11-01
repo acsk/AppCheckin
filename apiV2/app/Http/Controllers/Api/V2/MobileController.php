@@ -21,6 +21,7 @@ use App\Services\Mobile\MobileWodService;
 use App\Support\AcademyDateTime;
 use App\Support\MobileResponse;
 use App\Support\PaymentSandboxAccess;
+use App\Support\TrocaPlanoApp;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -488,6 +489,11 @@ class MobileController extends Controller
 
     public function simularMigracaoPlano(Request $request): JsonResponse
     {
+        if (! TrocaPlanoApp::permitida($this->tenantId($request))) {
+            $b = TrocaPlanoApp::bloqueio();
+
+            return response()->json($b['body'], $b['status'], [], JSON_UNESCAPED_UNICODE);
+        }
         try {
             $data = $request->all();
             $result = $this->migracao->simular(
@@ -507,6 +513,11 @@ class MobileController extends Controller
 
     public function migrarPlano(Request $request): JsonResponse
     {
+        if (! TrocaPlanoApp::permitida($this->tenantId($request))) {
+            $b = TrocaPlanoApp::bloqueio();
+
+            return response()->json($b['body'], $b['status'], [], JSON_UNESCAPED_UNICODE);
+        }
         try {
             $result = $this->migracao->migrar(
                 $this->userId($request),
@@ -629,6 +640,11 @@ class MobileController extends Controller
 
     public function cancelarAssinatura(Request $request, int $id): JsonResponse
     {
+        if (! TrocaPlanoApp::permitida($this->tenantId($request))) {
+            $b = TrocaPlanoApp::bloqueio();
+
+            return response()->json($b['body'], $b['status'], [], JSON_UNESCAPED_UNICODE);
+        }
         try {
             $result = $this->assinaturas->cancelar(
                 $this->userId($request),

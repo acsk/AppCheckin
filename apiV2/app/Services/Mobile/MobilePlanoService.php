@@ -6,6 +6,7 @@ use App\Repositories\PlanoRepository;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\PlanoCicloFormatter;
+use App\Support\TrocaPlanoApp;
 use Illuminate\Support\Facades\DB;
 
 class MobilePlanoService
@@ -91,14 +92,16 @@ class MobilePlanoService
             $habilitarBoleto,
         );
 
+        $alunoIdCredito = (int) (DB::table('alunos')->where('usuario_id', $userId)->value('id') ?? 0);
         $migracao = $this->migracao;
-        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade, $tenantId, $migracao) {
+        $trocaPlanoApp = TrocaPlanoApp::permitida($tenantId);
+        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade, $tenantId, $migracao, $trocaPlanoApp) {
             $planoId = (int) $plano['id'];
             $isPlanoAtual = $planoAtualId && $planoId === $planoAtualId;
             $modalidadeId = (int) $plano['modalidade_id'];
             $matriculaModalidade = $matriculasPorModalidade[$modalidadeId] ?? null;
             $podeMigrar = false;
-            if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
+            if ($trocaPlanoApp && $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
                 $aptidao = $migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
                 $podeMigrar = ! empty($aptidao['apto']);
             }
@@ -165,6 +168,11 @@ class MobilePlanoService
                     'plano_atual_id' => $planoAtualId,
                     'matricula_ativa' => $matriculaAtivaResumo,
                     'pix_gateways' => $pixGateways,
+                    // Desligado: trocar/cancelar plano é com a academia (TrocaPlanoApp::MENSAGEM)
+                    'troca_plano_app' => $trocaPlanoApp,
+                    'troca_plano_mensagem' => $trocaPlanoApp ? null : TrocaPlanoApp::MENSAGEM,
+                    // Abatido obrigatoriamente na próxima compra
+                    'credito_disponivel' => $alunoIdCredito ? app(\App\Services\PagamentoPlanoService::class)->saldoCreditoAluno($tenantId, $alunoIdCredito) : 0.0,
                 ],
             ],
         ];

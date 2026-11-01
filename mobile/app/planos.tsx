@@ -96,6 +96,8 @@ interface ApiResponse {
   data?: {
     planos: Plan[];
     total: number;
+    /** Crédito gerado pela academia: abatido automaticamente na próxima compra */
+    credito_disponivel?: number;
   };
   error?: string;
 }
@@ -384,6 +386,22 @@ export default function PlanosScreen() {
     };
   }, [apiUrl]);
 
+  const [creditoDisponivel, setCreditoDisponivel] = React.useState(0);
+
+  /** Respostas que não abrem pagamento: troca pela academia e plano pago inteiro com crédito. */
+  const tratarRespostaSemPagamento = (resposta: any): boolean => {
+    if (resposta?.code === "TROCA_PLANO_PELA_ACADEMIA") {
+      showErrorModal("Troca de plano", resposta.message, "warning");
+      return true;
+    }
+    if (resposta?.success && resposta.data?.pago_com_credito) {
+      showErrorModal("✅ Plano ativado", resposta.message || "Plano ativado com o seu crédito.", "success");
+      if (apiUrl) fetchPlanos(apiUrl, { silent: true });
+      return true;
+    }
+    return false;
+  };
+
   const showErrorModal = (
     title: string,
     message: string,
@@ -445,6 +463,7 @@ export default function PlanosScreen() {
 
 
       if (data.success && data.data?.planos) {
+        setCreditoDisponivel(Number(data.data.credito_disponivel || 0));
         const user = await authService.getCurrentUser();
         const admin = isAdminUser(user);
         setPodeSandboxPix(admin);
@@ -793,6 +812,11 @@ export default function PlanosScreen() {
         }
         const matriculaData = compraResult.json;
 
+        if (tratarRespostaSemPagamento(matriculaData)) {
+          setComprando(false);
+          setPlanoComprando(null);
+          return;
+        }
 
         if (!compraResult.ok) {
           console.error("❌ Erro ao criar matrícula:", matriculaData);
@@ -951,6 +975,12 @@ export default function PlanosScreen() {
           return;
         }
         const matriculaData = compraResult.json;
+
+        if (tratarRespostaSemPagamento(matriculaData)) {
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
 
         if (!compraResult.ok) {
           if (matriculaData?.code === "MIGRACAO_NECESSARIA") {
@@ -1596,6 +1626,15 @@ export default function PlanosScreen() {
           <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={selectedPlanoId ? 1 : 0} />
         }
       />
+
+      {creditoDisponivel > 0 && !error ? (
+        <View style={{ marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: "#ecfdf5", flexDirection: "row", gap: 8, alignItems: "center" }}>
+          <Feather name="gift" size={18} color="#047857" />
+          <Text style={{ flex: 1, fontSize: 13, color: "#065f46" }}>
+            Você tem {formatCurrency(creditoDisponivel)} de crédito. Ele será abatido automaticamente do valor do novo plano.
+          </Text>
+        </View>
+      ) : null}
 
       {error ? (
         <View style={styles.errorContainer}>

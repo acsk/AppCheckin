@@ -36,6 +36,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
+import { useParametro } from "@/src/hooks/useConfigRemota";
 import { ds } from "@/src/components/ds/tokens";
 import MinhaAssinaturaFidelidade from "@/src/components/MinhaAssinaturaFidelidade";
 interface StatusAssinatura {
@@ -157,6 +158,8 @@ export default function MinhasAssinaturasScreen() {
   // Verificar autenticação - se não autenticado, redireciona
   useProtectedRoute();
   const { escolherGateway } = useGatewayPicker();
+  // Desligado: cancelar o plano é pedido à academia (a API também recusa)
+  const trocaPlanoApp = useParametro("troca_plano_app");
 
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
@@ -866,7 +869,12 @@ export default function MinhasAssinaturasScreen() {
                 {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
               </Button>
             )}
-            {!isAvulso && (isAtiva || isPendente) && (
+            {!isAvulso && (isAtiva || isPendente) && !trocaPlanoApp && (
+              <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: "center" }}>
+                Para cancelar ou trocar de plano, fale com a academia.
+              </Text>
+            )}
+            {!isAvulso && (isAtiva || isPendente) && trocaPlanoApp && (
               <Button
                 variant="danger"
                 block

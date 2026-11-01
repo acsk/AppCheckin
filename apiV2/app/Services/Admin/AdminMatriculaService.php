@@ -1833,7 +1833,7 @@ class AdminMatriculaService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function simularCancelamento(int $id, int $tenantId): array
+    public function simularCancelamento(int $id, int $tenantId, ?int $adminId = null): array
     {
 
         $matricula = DB::selectOne('
@@ -1894,6 +1894,8 @@ class AdminMatriculaService
                 'tem_pagamento_pago' => $temPagamento,
                 'valor_proporcional_credito' => $valorProporcional,
                 'motivo_credito' => $proporcional['motivo'],
+                // Quem vai ficar registrado como autor do cancelamento e do crédito
+                'responsavel' => $adminId ? ['id' => $adminId, 'nome' => DB::table('usuarios')->where('id', $adminId)->value('nome')] : null,
                 'checkins_usados' => (int) ($proporcional['checkins_usados'] ?? 0),
                 'checkins_direito' => (int) ($proporcional['checkins_direito'] ?? 0),
                 'parcelas_pendentes' => $parcelasPendentes,
@@ -2002,6 +2004,8 @@ class AdminMatriculaService
                         'id' => $creditoId,
                         'valor' => $creditoValor,
                         'motivo' => $motivoCredito,
+                        'criado_por' => $adminId,
+                        'criado_por_nome' => $adminId ? DB::table('usuarios')->where('id', $adminId)->value('nome') : null,
                     ];
                 }
             }

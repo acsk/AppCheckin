@@ -68,8 +68,80 @@ class PagamentoPlanoService
                 $descontos[] = 'COALESCE('.$coluna.', 0)';
             }
         }
+        // Crédito abatido na parcela também paga o plano (a parcela cobra só a diferença)
+        $credito = Schema::hasColumn('pagamentos_plano', 'credito_aplicado') ? ' + COALESCE(credito_aplicado, 0)' : '';
 
-        return $descontos === [] ? 'valor' : 'valor - '.implode(' - ', $descontos);
+        return ($descontos === [] ? 'valor' : 'valor - '.implode(' - ', $descontos)).$credito;
+    }
+
+    /** Saldo de crédito ativo do aluno na academia (valor − utilizado). */
+    public function saldoCreditoAluno(int $tenantId, int $alunoId): float
+    {
+        if (! Schema::hasTable('creditos_aluno')) {
+            return 0.0;
+        }
+
+        return round((float) DB::table('creditos_aluno')->where('tenant_id', $tenantId)->where('aluno_id', $alunoId)
+            ->where('status_credito_id', AdminCreditoAlunoService::STATUS_ATIVO)
+            ->sum(DB::raw('valor - COALESCE(valor_utilizado, 0)')), 2);
+    }
+
+    /**
+     * Parcela paga com crédito reservado (compra pelo app): consome os créditos ativos do aluno, do mais antigo
+     * ao mais novo, e grava o consumido em credito_aplicado/credito_id. Idempotente: zera a reserva.
+     */
+    public function consumirCreditoReservado(int $tenantId, int $matriculaId): void
+    {
+        if (! Schema::hasColumn('pagamentos_plano', 'credito_reservado') || ! Schema::hasTable('creditos_aluno')) {
+            return;
+        }
+        $parcelas = DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)->where('credito_reservado', '>', 0)
+            ->get(['id', 'aluno_id', 'credito_reservado']);
+        foreach ($parcelas as $parcela) {
+            DB::transaction(function () use ($tenantId, $parcela): void {
+                $reservado = (float) DB::table('pagamentos_plano')->where('id', $parcela->id)->lockForUpdate()->value('credito_reservado');
+                if ($reservado <= self::FLOAT_EPSILON) {
+                    return;
+                }
+                $creditos = DB::table('creditos_aluno')->where('tenant_id', $tenantId)->where('aluno_id', (int) $parcela->aluno_id)
+                    ->where('status_credito_id', AdminCreditoAlunoService::STATUS_ATIVO)
+                    ->orderBy('id')->lockForUpdate()->get(['id', 'valor', 'valor_utilizado']);
+                $restante = $reservado;
+                $primeiro = null;
+                foreach ($creditos as $c) {
+                    if ($restante <= self::FLOAT_EPSILON) {
+                        break;
+                    }
+                    $saldo = (float) $c->valor - (float) $c->valor_utilizado;
+                    $usar = round(min($saldo, $restante), 2);
+                    if ($usar <= 0) {
+                        continue;
+                    }
+                    $utilizado = round((float) $c->valor_utilizado + $usar, 2);
+                    DB::table('creditos_aluno')->where('id', $c->id)->update([
+                        'valor_utilizado' => $utilizado,
+                        'status_credito_id' => $utilizado + self::FLOAT_EPSILON >= (float) $c->valor ? AdminCreditoAlunoService::STATUS_UTILIZADO : AdminCreditoAlunoService::STATUS_ATIVO,
+                        'updated_at' => now(),
+                    ]);
+                    $primeiro ??= (int) $c->id;
+                    $restante = round($restante - $usar, 2);
+                }
+                $consumido = round($reservado - $restante, 2);
+                if ($restante > self::FLOAT_EPSILON) {
+                    // Saldo usado em outro lugar entre a compra e o pagamento: registra só o que existia
+                    \Illuminate\Support\Facades\Log::warning('Crédito reservado maior que o saldo do aluno no pagamento', [
+                        'tenant_id' => $tenantId, 'pagamento_id' => $parcela->id, 'reservado' => $reservado, 'consumido' => $consumido,
+                    ]);
+                }
+                DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
+                    'credito_reservado' => null,
+                    'credito_aplicado' => $consumido > 0 ? $consumido : null,
+                    'credito_id' => $primeiro,
+                    'updated_at' => now(),
+                ]);
+            });
+        }
     }
 
     /**
@@ -274,6 +346,8 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        $this->consumirCreditoReservado($tenantId, $matriculaId);
+
         // Bloqueio é decisão do admin: só o "Desbloquear" do painel tira a matrícula desse status
         $bloqueada = DB::table('matriculas as m')->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('m.tenant_id', $tenantId)->where('m.id', $matriculaId)->where('sm.codigo', 'bloqueado')->exists();

@@ -119,6 +119,7 @@ class AdminMatriculaRepository
             ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->leftJoin('modalidades as modalidade', 'p.modalidade_id', '=', 'modalidade.id')
             ->leftJoin('usuarios as admin_criou', 'm.criado_por', '=', 'admin_criou.id')
+            ->leftJoin('usuarios as admin_cancelou', 'm.cancelado_por', '=', 'admin_cancelou.id')
             ->leftJoin('plano_ciclos as pc', 'pc.id', '=', 'm.plano_ciclo_id')
             ->leftJoin('assinatura_frequencias as af', 'af.id', '=', 'pc.assinatura_frequencia_id')
             ->leftJoin('pacote_contratos as pct', 'pct.id', '=', 'm.pacote_contrato_id')
@@ -141,6 +142,7 @@ class AdminMatriculaRepository
                 'sm.codigo as status_codigo',
                 'sm.nome as status_nome',
                 'admin_criou.nome as criado_por_nome',
+                'admin_cancelou.nome as cancelado_por_nome',
                 'pc.id as ciclo_id',
                 'pc.meses as ciclo_meses',
                 'pc.valor as ciclo_valor',
@@ -606,12 +608,13 @@ class AdminMatriculaRepository
 
             $ativos = DB::table('creditos_aluno as ca')
                 ->join('status_creditos_aluno as sca', 'sca.id', '=', 'ca.status_credito_id')
+                ->leftJoin('usuarios as autor', 'autor.id', '=', 'ca.criado_por')
                 ->where('ca.tenant_id', $tenantId)
                 ->where('ca.aluno_id', $alunoId)
                 ->where('ca.status_credito_id', 1)
                 ->whereRaw('(ca.valor - ca.valor_utilizado) > 0')
                 ->orderBy('ca.created_at')
-                ->selectRaw('ca.*, sca.codigo as status, sca.nome as status_nome, (ca.valor - ca.valor_utilizado) as saldo')
+                ->selectRaw('ca.*, sca.codigo as status, sca.nome as status_nome, (ca.valor - ca.valor_utilizado) as saldo, autor.nome as criado_por_nome')
                 ->get()
                 ->map(fn ($r) => (array) $r)
                 ->all();

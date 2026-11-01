@@ -11,9 +11,12 @@ use App\Services\MercadoPago\MercadoPagoService;
 use App\Services\CobrancaAnteriorService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Support\AcademyDateTime;
 use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
 use App\Support\MobilePagamentoMetodos;
+use App\Support\StatusPagamentoPlano;
+use App\Support\TrocaPlanoApp;
 use DateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -212,6 +215,10 @@ class MobileCompraPlanoService
                 : null;
             $mesmoPlanoCiclo = (int) $matriculaAtiva['plano_id'] === $planoId
                 && ($cicloAtivoId ?? 0) === ($planoCicloId ?? 0);
+
+            if (! $mesmoPlanoCiclo && ! TrocaPlanoApp::permitida($tenantId)) {
+                return TrocaPlanoApp::bloqueio(['matricula_id' => (int) $matriculaAtiva['id']]);
+            }
 
             if (! $mesmoPlanoCiclo) {
                 return [
@@ -475,7 +482,25 @@ class MobileCompraPlanoService
                 ]);
             }
 
-            $this->pagamentosPlano->garantirParcelaPendenteUnica(
+            // Crédito do aluno (gerado pela academia no cancelamento) é abatido sempre: cobra só a diferença
+            $valorPlano = $valorCompra;
+            $creditoAplicado = 0.0;
+            $saldoCredito = $this->pagamentosPlano->saldoCreditoAluno($tenantId, $alunoId);
+            if ($saldoCredito > 0.001) {
+                $creditoAplicado = round(min($saldoCredito, $valorPlano), 2);
+                $restante = round($valorPlano - $creditoAplicado, 2);
+                if ($restante > 0.001 && $restante < 0.50) {
+                    // Abaixo do mínimo do provedor: cobra R$ 0,50 e o resto do crédito fica para depois
+                    $creditoAplicado = round($valorPlano - 0.50, 2);
+                }
+                $valorCompra = round($valorPlano - $creditoAplicado, 2);
+            }
+
+            if ($creditoAplicado > 0 && $valorCompra <= 0.001) {
+                return $this->ativarComCredito($tenantId, $alunoId, $matriculaId, $planoId, $plano, $planoCicloId, $cicloNome, $duracaoMeses, $valorPlano, $dataInicio, $proximaDataVencimento, $diaVencimento, $userId);
+            }
+
+            $parcelaId = $this->pagamentosPlano->garantirParcelaPendenteUnica(
                 $tenantId,
                 $alunoId,
                 $matriculaId,
@@ -485,6 +510,10 @@ class MobileCompraPlanoService
                 $userId,
                 PagamentoPlanoService::obsAguardando($provider)
             );
+            if ($creditoAplicado > 0 && $parcelaId > 0) {
+                DB::table('pagamentos_plano')->where('id', $parcelaId)->where('tenant_id', $tenantId)
+                    ->whereIn('status_pagamento_id', [1, 3])->update(['credito_reservado' => $creditoAplicado, 'updated_at' => now()]);
+            }
             // Cobranças da escolha anterior (ex.: Pix do mensal): lidas antes de gerar a nova, que sobrescreve a assinatura
             $idsAnteriores = $this->cobrancasAnteriores->idsEmAberto($tenantId, $matriculaId);
 
@@ -620,6 +649,8 @@ class MobileCompraPlanoService
                     'modalidade' => $plano['modalidade_nome'],
                     'valor' => $valorCompra,
                     'valor_formatado' => 'R$ '.number_format($valorCompra, 2, ',', '.'),
+                    'valor_plano' => $valorPlano,
+                    'credito_aplicado' => $creditoAplicado,
                     'tarifa_cartao' => $tarifaCartao,
                     'status' => 'pendente',
                     'data_inicio' => $dataInicio,
@@ -1035,6 +1066,64 @@ class MobileCompraPlanoService
         } catch (\Throwable $e) {
             Log::warning('comprarPlano v2: erro ao cancelar pendentes órfãs: '.$e->getMessage());
         }
+    }
+
+    /**
+     * Crédito cobre o plano inteiro: parcela paga com crédito (valor zero) e matrícula ativada na hora, sem provedor.
+     *
+     * @param  array<string, mixed>  $plano
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function ativarComCredito(
+        int $tenantId,
+        int $alunoId,
+        int $matriculaId,
+        int $planoId,
+        array $plano,
+        ?int $planoCicloId,
+        string $cicloNome,
+        int $duracaoMeses,
+        float $valorPlano,
+        string $dataInicio,
+        \DateTime $proximaDataVencimento,
+        int $diaVencimento,
+        int $userId,
+    ): array {
+        $this->pagamentosPlano->cancelarParcelasAbertas($tenantId, $matriculaId, 'Substituída por nova cobrança');
+        DB::table('pagamentos_plano')->insert([
+            'tenant_id' => $tenantId, 'aluno_id' => $alunoId, 'matricula_id' => $matriculaId, 'plano_id' => $planoId,
+            'valor' => 0, 'credito_reservado' => $valorPlano, 'data_vencimento' => $dataInicio,
+            'data_pagamento' => AcademyDateTime::today(), 'status_pagamento_id' => StatusPagamentoPlano::PAGO,
+            'observacoes' => sprintf('Pago com crédito do aluno (R$ %s)', number_format($valorPlano, 2, ',', '.')),
+            'criado_por' => $userId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+        $status = (string) (DB::table('matriculas as m')->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $matriculaId)->value('sm.codigo') ?? 'ativa');
+
+        return ['status' => 200, 'body' => [
+            'success' => true,
+            'message' => 'Plano ativado com o seu crédito. Nada a pagar.',
+            'data' => [
+                'matricula_id' => $matriculaId,
+                'plano_id' => $planoId,
+                'plano_ciclo_id' => $planoCicloId,
+                'plano_nome' => $plano['nome'],
+                'ciclo_nome' => $cicloNome,
+                'duracao_meses' => $duracaoMeses,
+                'modalidade' => $plano['modalidade_nome'],
+                'valor' => 0.0,
+                'valor_formatado' => 'R$ 0,00',
+                'valor_plano' => $valorPlano,
+                'credito_aplicado' => $valorPlano,
+                'pago_com_credito' => true,
+                'status' => $status,
+                'data_inicio' => $dataInicio,
+                'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+                'dia_vencimento' => $diaVencimento,
+                'payment_url' => null,
+            ],
+        ]];
     }
 
     private function erro(int $status, string $code, string $message): array

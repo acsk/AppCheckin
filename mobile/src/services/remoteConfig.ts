@@ -31,6 +31,8 @@ export type Parametros = {
   checkin_exigir_matricula_ativa: boolean;
   ranking_limite_home: number;
   aviso_home: string;
+  /** Desligado (padrão): trocar e cancelar plano é com a academia; o crédito gerado lá é abatido na compra. */
+  troca_plano_app: boolean;
 };
 
 export type Atualizacao = {
@@ -66,7 +68,7 @@ export const PADROES: ConfigRemota = {
     comunicacao: true,
     grupos_whatsapp: true,
   },
-  parametros: { checkin_exigir_matricula_ativa: true, ranking_limite_home: 15, aviso_home: "" },
+  parametros: { checkin_exigir_matricula_ativa: true, ranking_limite_home: 15, aviso_home: "", troca_plano_app: false },
   atualizacao: { obrigatoria: false },
 };
 
@@ -110,6 +112,7 @@ export function normalizar(bruto: unknown): ConfigRemota | null {
       checkin_exigir_matricula_ativa: typeof p.checkin_exigir_matricula_ativa === 'boolean' ? p.checkin_exigir_matricula_ativa : true,
       ranking_limite_home: Number.isInteger(limite) && limite >= 1 && limite <= 100 ? limite : PADROES.parametros.ranking_limite_home,
       aviso_home: typeof p.aviso_home === "string" ? p.aviso_home : "",
+      troca_plano_app: p.troca_plano_app === true,
     },
     atualizacao: r.atualizacao && typeof r.atualizacao === "object" ? { ...PADROES.atualizacao, ...r.atualizacao } : PADROES.atualizacao,
   };

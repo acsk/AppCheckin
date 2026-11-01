@@ -238,6 +238,19 @@ export default function PlanoDetalhesScreen() {
     setErrorModalVisible(true);
   };
 
+  /** Respostas que não abrem pagamento: troca pela academia e plano pago inteiro com crédito. */
+  const tratarRespostaSemPagamento = (resposta: any): boolean => {
+    if (resposta?.code === "TROCA_PLANO_PELA_ACADEMIA") {
+      showErrorModal("Troca de plano", resposta.message, "warning");
+      return true;
+    }
+    if (resposta?.success && resposta.data?.pago_com_credito) {
+      showErrorModal("✅ Plano ativado", resposta.message || "Plano ativado com o seu crédito.", "success");
+      return true;
+    }
+    return false;
+  };
+
   const formatCurrency = (value: number) => {
     try {
       return new Intl.NumberFormat("pt-BR", {
@@ -872,6 +885,7 @@ export default function PlanoDetalhesScreen() {
       }
       const data = compraResult.json;
 
+      if (tratarRespostaSemPagamento(data)) return;
 
       if (!compraResult.ok) {
         if (data?.code === "MIGRACAO_NECESSARIA") {
@@ -992,6 +1006,8 @@ export default function PlanoDetalhesScreen() {
         return;
       }
       const data = compraResult.json;
+
+      if (tratarRespostaSemPagamento(data)) return;
 
       if (!compraResult.ok) {
         if (data?.code === "MIGRACAO_NECESSARIA") {

@@ -258,7 +258,8 @@ class MatriculaController extends Controller
             return $tenantId;
         }
 
-        $result = $this->service->simularCancelamento($id, $tenantId);
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->simularCancelamento($id, $tenantId, $adminId !== null ? (int) $adminId : null);
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }

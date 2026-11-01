@@ -37,6 +37,9 @@ final class AppConfigCatalogo
             'descricao' => 'De 1 a 100. O pódio continua mostrando os três campeões.'],
         'aviso_home' => ['nome' => 'Aviso na tela inicial', 'modulo' => 'Início', 'tipo' => 'texto', 'max' => 280, 'padrao' => '', 'escopo' => 'tenant',
             'descricao' => 'Mensagem curta no topo da Home. Vazio = sem aviso.'],
+        // Padrão desligado de propósito (exceção à regra do cabeçalho): troca de plano e crédito ficam com a academia
+        'troca_plano_app' => ['nome' => 'Trocar ou cancelar plano pelo app', 'modulo' => 'Planos', 'tipo' => 'booleano', 'padrao' => false, 'escopo' => 'tenant',
+            'descricao' => 'Ligado, o aluno migra de plano (com crédito proporcional) e cancela o plano pelo app. Desligado, ele pede o cancelamento à academia; o admin cancela no painel, com ou sem crédito, e o aluno contrata o novo plano pelo app com o crédito abatido.'],
         'cache_ttl_segundos' => ['nome' => 'Intervalo de atualização da configuração', 'modulo' => 'Sistema', 'tipo' => 'inteiro', 'min' => 60, 'max' => 86400, 'padrao' => 300, 'escopo' => 'global',
             'descricao' => 'Em segundos. O app busca a configuração de novo depois desse tempo (e sempre ao abrir).'],
     ];

@@ -27,7 +27,7 @@ class V2AdminMatriculaExtrasRoutesTest extends TestCase
         $service = Mockery::mock(\App\Services\Admin\AdminMatriculaService::class);
         $service->shouldReceive('simularCancelamento')
             ->once()
-            ->with(1, 3)
+            ->with(1, 3, Mockery::type('int'))
             ->andReturn([
                 'status' => 200,
                 'body' => ['matricula_id' => 1, 'valor_proporcional_credito' => 50.0],

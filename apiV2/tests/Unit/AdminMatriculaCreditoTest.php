@@ -123,6 +123,8 @@ class AdminMatriculaCreditoTest extends TestCase
             $t->timestamp('updated_at')->nullable();
         });
         Schema::create('pagamentos_plano', fn (Blueprint $t) => [$t->increments('id'), $t->integer('tenant_id'), $t->integer('matricula_id'), $t->integer('status_pagamento_id'), $t->text('observacoes')->nullable(), $t->timestamp('updated_at')->nullable()]);
+        Schema::create('usuarios', fn (Blueprint $t) => [$t->increments('id'), $t->string('nome')]);
+        DB::table('usuarios')->insert(['id' => 1, 'nome' => 'ADMIN DA ACADEMIA']);
         DB::table('status_matricula')->insert([['id' => 1, 'codigo' => 'ativa'], ['id' => 4, 'codigo' => 'cancelada']]);
         DB::table('planos')->insert(['id' => 9, 'nome' => '3x por Semana', 'valor' => 150, 'duracao_dias' => 30]);
         DB::table('matriculas')->insert([
@@ -140,6 +142,7 @@ class AdminMatriculaCreditoTest extends TestCase
 
         $this->assertSame(200, $r['status'], json_encode($r['body']));
         $this->assertEqualsWithDelta(10.0, (float) $r['body']['credito_gerado']['valor'], 0.001);
+        $this->assertSame('ADMIN DA ACADEMIA', $r['body']['credito_gerado']['criado_por_nome'], 'autor do cancelamento e do crédito');
         $this->assertSame(4, (int) DB::table('matriculas')->where('id', 55)->value('status_id'));
     }
 }

@@ -50,6 +50,7 @@ export default function MatriculaDetalheScreen() {
 
   const [loading, setLoading] = useState(true);
   const [matricula, setMatricula] = useState(null);
+  const [creditosAluno, setCreditosAluno] = useState(null);
   const [outrasMatriculas, setOutrasMatriculas] = useState([]);
   const [pagamentos, setPagamentos] = useState([]);
   const [mostrarCancelados, setMostrarCancelados] = useState(false);
@@ -167,6 +168,7 @@ export default function MatriculaDetalheScreen() {
       const pagamentosDaMatricula = responseMatricula?.pagamentos || dadosMatricula?.pagamentos || [];
       console.log('📌 Pagamentos da matrícula:', pagamentosDaMatricula);
       setMatricula(dadosMatricula);
+      setCreditosAluno(responseMatricula?.creditos || null);
       setOutrasMatriculas(responseMatricula?.outras_matriculas || []);
       setAjustePlano(responseMatricula?.ajuste_plano || null);
 
@@ -1373,9 +1375,22 @@ export default function MatriculaDetalheScreen() {
       </>
     ) : null;
 
+  const creditosAtivos = creditosAluno?.creditos_ativos || [];
   const avisosMatricula =
-    limiteEsgotado || isMatriculaBloqueada || (isPacote && isMatriculaRenovavel) ? (
+    limiteEsgotado || isMatriculaBloqueada || (isPacote && isMatriculaRenovavel) || isMatriculaCancelada || creditosAtivos.length > 0 ? (
       <>
+        {isMatriculaCancelada ? (
+          <CkCallout tone="neutral" icon="ban" title={`Cancelada${matricula.data_cancelamento ? ` em ${formatDate(matricula.data_cancelamento)}` : ''}`}>
+            {matricula.cancelado_por_nome ? `Por ${matricula.cancelado_por_nome}` : 'Pelo app ou automaticamente pelo sistema'}
+            {matricula.motivo_cancelamento ? ` · ${matricula.motivo_cancelamento}` : ''}
+          </CkCallout>
+        ) : null}
+        {creditosAtivos.length > 0 ? (
+          <CkCallout tone="success" icon="gift" title={`Crédito disponível: ${formatCurrency(parseFloat(creditosAluno.saldo_total || 0))}`}>
+            {creditosAtivos.map((c) => `${formatCurrency(parseFloat(c.saldo || 0))} gerado por ${c.criado_por_nome || 'sistema'} em ${formatDate(c.created_at)}`).join(' · ')}
+            . Abatido automaticamente quando o aluno contratar o novo plano pelo app.
+          </CkCallout>
+        ) : null}
         {limiteEsgotado ? (
           <CkCallout tone="warning" icon="alert-triangle" title="Limite de check-ins do ciclo esgotado">
             O período pago segue até {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}, mas o
