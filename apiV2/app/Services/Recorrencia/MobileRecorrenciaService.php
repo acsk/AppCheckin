@@ -24,9 +24,15 @@ class MobileRecorrenciaService
     ) {}
 
     /** @return array{status: int, body: array<string, mixed>} */
-    public function ofertas(int $tenantId, int $planoId): array
+    public function ofertas(int $tenantId, int $planoId, int $usuarioId = 0): array
     {
-        return $this->ok(['ofertas' => $this->recorrencia->ofertas($tenantId, $planoId)]);
+        $modalidadeId = (int) (DB::table('planos')->where('id', $planoId)->where('tenant_id', $tenantId)->value('modalidade_id') ?? 0);
+
+        return $this->ok([
+            'ofertas' => $this->recorrencia->ofertas($tenantId, $planoId),
+            // O app trava a assinatura antes da revisão (null = pode assinar)
+            'bloqueio' => $usuarioId > 0 ? $this->recorrencia->bloqueioAssinatura($tenantId, $usuarioId, $modalidadeId) : null,
+        ]);
     }
 
     /**

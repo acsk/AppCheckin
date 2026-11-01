@@ -551,6 +551,23 @@ class RecorrenciaFidelizacaoTest extends TestCase
         $this->assertSame(404, $this->svc()->contratar(self::OUTRA, self::ANA[0], ['plano_ciclo_id' => 50, 'metodo' => 'cartao', 'termos_hash' => 'x'])['status']);
     }
 
+    /** Caso real (matrícula 189): plano 2x ativo e o app abria a revisão da assinatura de outro plano da modalidade. */
+    public function test_ofertas_trazem_o_bloqueio_de_plano_ativo_em_outro_plano_da_modalidade(): void
+    {
+        DB::table('planos')->insert(['id' => 8, 'tenant_id' => self::T, 'modalidade_id' => 1, 'nome' => 'Natação 1x', 'valor' => '70.00']);
+        $vence = AcademyDateTime::todayStart()->modify('+17 days')->format('Y-m-d');
+        DB::table('matriculas')->insert(['id' => 189, 'tenant_id' => self::T, 'aluno_id' => self::ANA[1], 'plano_id' => 8, 'status_id' => 1,
+            'data_inicio' => AcademyDateTime::today(), 'data_vencimento' => $vence, 'proxima_data_vencimento' => $vence]);
+
+        $r = app(MobileRecorrenciaService::class)->ofertas(self::T, 7, self::ANA[0]);
+
+        $this->assertNotEmpty($r['body']['data']['ofertas']);
+        $this->assertSame('MATRICULA_ATIVA_EXISTENTE', $r['body']['data']['bloqueio']['code']);
+        $this->assertSame(\App\Support\TrocaPlanoApp::MENSAGEM, $r['body']['data']['bloqueio']['message'], 'troca pelo app desligada: é com a academia');
+        $this->assertSame($vence, $r['body']['data']['bloqueio']['disponivel_em']);
+        $this->assertNull(app(MobileRecorrenciaService::class)->ofertas(self::T, 7, self::BIA[0])['body']['data']['bloqueio'], 'sem plano ativo: pode assinar');
+    }
+
     /** Caso real (matrícula 359): desistiu da assinatura antes de pagar e comprou o plano avulso na mesma matrícula. */
     public function test_compra_avulsa_depois_do_contrato_cancelado_sai_da_regra_da_recorrencia(): void
     {

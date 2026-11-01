@@ -40,6 +40,11 @@ do catálogo. Liga-se na tela de configuração do app do super admin.
      passar pelo provedor;
    - se sobrar menos de R$ 0,50 para cobrar, cobra-se R$ 0,50 e o restante do crédito fica para depois.
 
+Assinar plano com fidelização tendo um plano ativo na modalidade também é troca de plano. As ofertas
+(`GET /mobile/recorrencia/ofertas`) trazem `bloqueio` (código, mensagem e `disponivel_em`), e o app desabilita
+"Revisar e assinar" antes de abrir a revisão. Com o parâmetro desligado, a mensagem é a da troca pela academia.
+Código: `RecorrenciaService::bloqueioAssinatura`, que segue as mesmas regras de `contratar()`.
+
 **Ligado:** o comportamento anterior. Migração pelo app com crédito proporcional e cancelamento pelo app.
 
 Não entram no parâmetro: o cancelamento da **assinatura com fidelização** (os termos aceitos prometem o

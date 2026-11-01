@@ -131,6 +131,8 @@ export default function PlanoDetalhesScreen() {
   const [contratacaoAberta, setContratacaoAberta] = useState(false);
   const [modoCobranca, setModoCobranca] = useState<'avista' | 'assinatura'>('avista');
   const [ofertas, setOfertas] = useState<Oferta[]>([]);
+  // Plano ativo nesta modalidade (de qualquer plano) ou assinatura viva: a API diz antes da revisão
+  const [bloqueioAssinatura, setBloqueioAssinatura] = useState<{ code: string; message: string; disponivel_em?: string | null } | null>(null);
   const [carregandoOfertas, setCarregandoOfertas] = useState(false);
   const [tentativaOfertas, setTentativaOfertas] = useState(0);
   const [creditoPrevia, setCreditoPrevia] = useState<MigracaoSimulacao | null>(null);
@@ -141,11 +143,16 @@ export default function PlanoDetalhesScreen() {
   useEffect(() => { setModoCobranca('avista'); }, [selectedCicloId]);
   useEffect(() => {
     setOfertas([]);
+    setBloqueioAssinatura(null);
     if (!plano?.id || !plano.ciclos?.some(c => c.cobranca_mensal)) return;
     let ativo = true;
     setCarregandoOfertas(true);
     chamarRecorrencia('GET', `/ofertas?plano_id=${plano.id}`)
-      .then(({ ok, json }) => { if (ativo) setOfertas(ok ? json?.data?.ofertas || [] : []); })
+      .then(({ ok, json }) => {
+        if (!ativo) return;
+        setOfertas(ok ? json?.data?.ofertas || [] : []);
+        setBloqueioAssinatura(ok ? json?.data?.bloqueio || null : null);
+      })
       .catch(() => { if (ativo) setOfertas([]); })
       .finally(() => { if (ativo) setCarregandoOfertas(false); });
     return () => { ativo = false; };
@@ -1136,7 +1143,11 @@ export default function PlanoDetalhesScreen() {
   const revisarPagamento = async () => {
     const ciclo = plano?.ciclos?.find(c => c.id === selectedCicloId);
     if (!plano || !ciclo || !metodoSelecionado || comprando || pixLoading) return;
-    if (modoCobranca === 'assinatura') { setContratacaoAberta(true); return; }
+    if (modoCobranca === 'assinatura') {
+      if (bloqueioAssinatura) { showErrorModal("Assinatura indisponível", bloqueioAssinatura.message, "warning"); return; }
+      setContratacaoAberta(true);
+      return;
+    }
     setComprando(true);
     try {
       if (precisaRevisaoMigracao(plano, ciclo.id)) { await abrirConfirmacaoMigracao(metodoSelecionado); return; }
@@ -1409,7 +1420,7 @@ export default function PlanoDetalhesScreen() {
                   {selectedCicloId === ciclo.id && ciclo.cobranca_mensal ? <>
                     <CicloPaymentModes value={modoCobranca} onChange={setModoCobranca} total={ciclo.valor_formatado} mensal={ciclo.valor_mensal_formatado} meses={ciclo.meses}
                       fidelidadeMeses={ciclo.meses <= 1 ? 0 : ofertaSelecionada?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses}
-                      bloqueio={assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
+                      bloqueio={bloqueioAssinatura ? bloqueioAssinatura.message : assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
                     {!carregandoOfertas && !ofertaSelecionada ? <Button size="sm" variant="ghost" onPress={() => setTentativaOfertas(v => v + 1)}>Consultar assinatura novamente</Button> : null}
                   </> : null}
                   </PlanOption>
@@ -1498,7 +1509,7 @@ export default function PlanoDetalhesScreen() {
                       : "credit-card"
             }
             loading={comprando || pixLoading}
-            disabled={!canBuy || (modoCobranca === "assinatura" && (!ofertaSelecionada || !!assinaturaDisponivelEm))}
+            disabled={!canBuy || (modoCobranca === "assinatura" && (!ofertaSelecionada || !!assinaturaDisponivelEm || !!bloqueioAssinatura))}
             onPress={() => void revisarPagamento()}
           >
             {comprando || pixLoading
@@ -1519,7 +1530,8 @@ export default function PlanoDetalhesScreen() {
           revisaoDireta ofertaInicial={ofertaSelecionada} metodoInicial={metodoSelecionado}
           planoId={plano.id}
           ciclo={selectedCiclo}
-          assinaturaDisponivelEm={assinaturaDisponivelEm}
+          assinaturaDisponivelEm={assinaturaDisponivelEm
+            ?? (bloqueioAssinatura ? (bloqueioAssinatura.disponivel_em || "").slice(0, 10).split("-").reverse().join("/") || "quando o plano atual vencer" : null)}
           metodosAvista={opcoesMetodo}
           rotuloAvista={(m) => rotuloPagarMetodo(m, podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar")}
           onPagarAvista={(m) => {

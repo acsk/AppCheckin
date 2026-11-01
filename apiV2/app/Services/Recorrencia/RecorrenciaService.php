@@ -8,6 +8,7 @@ use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
 use App\Support\Pessoa;
 use App\Support\RecorrenciaCalculo as Calc;
+use App\Support\TrocaPlanoApp;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -103,6 +104,51 @@ class RecorrenciaService
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * Por que o aluno não pode assinar nesta modalidade agora (null = pode). Mesmas regras de contratar(), para o
+     * app travar antes de abrir a revisão (antes só travava no plano atual e deixava assinar outro plano).
+     *
+     * @return array{code: string, message: string, disponivel_em: ?string}|null
+     */
+    public function bloqueioAssinatura(int $tenantId, int $usuarioId, int $modalidadeId): ?array
+    {
+        $alunoId = (int) (DB::table('alunos')->where('usuario_id', $usuarioId)->value('id') ?? 0);
+        if ($alunoId <= 0 || $modalidadeId <= 0) {
+            return null;
+        }
+        $existente = DB::table('contratos_recorrencia as c')->join('planos as p', 'p.id', '=', 'c.plano_id')
+            ->where('c.tenant_id', $tenantId)->where('c.aluno_id', $alunoId)->where('p.modalidade_id', $modalidadeId)
+            ->whereIn('c.status', self::ATIVOS)->orderByDesc('c.id')->first(['c.status', 'c.matricula_id']);
+        if ($existente && $existente->status !== 'pendente_ativacao') {
+            return ['code' => 'ASSINATURA_EXISTENTE', 'message' => 'Você já tem uma assinatura ativa nesta modalidade.', 'disponivel_em' => null];
+        }
+        $ativa = $this->matriculaAtivaNaModalidade($tenantId, $alunoId, $modalidadeId, $existente ? (int) $existente->matricula_id : null);
+
+        return $ativa ? ['code' => 'MATRICULA_ATIVA_EXISTENTE', 'message' => $this->mensagemPlanoAtivo($tenantId, $ativa->vencimento), 'disponivel_em' => $ativa->vencimento] : null;
+    }
+
+    private function matriculaAtivaNaModalidade(int $tenantId, int $alunoId, int $modalidadeId, ?int $ignorarMatriculaId): ?object
+    {
+        $hoje = AcademyDateTime::today();
+
+        return DB::table('matriculas as m')->join('planos as p', 'p.id', '=', 'm.plano_id')->join('status_matricula as s', 's.id', '=', 'm.status_id')
+            ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $alunoId)->where('p.modalidade_id', $modalidadeId)
+            ->where('s.codigo', 'ativa')->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [$hoje])
+            ->when($ignorarMatriculaId, fn ($q) => $q->where('m.id', '<>', $ignorarMatriculaId))
+            ->first(['m.id', DB::raw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) as vencimento')]);
+    }
+
+    private function mensagemPlanoAtivo(int $tenantId, ?string $vencimento): string
+    {
+        // Assinar outro plano com o atual vigente é troca de plano: com troca_plano_app desligado, só pela academia
+        if (! TrocaPlanoApp::permitida($tenantId)) {
+            return TrocaPlanoApp::MENSAGEM;
+        }
+        $ate = $vencimento ? ' (até '.implode('/', array_reverse(explode('-', substr($vencimento, 0, 10)))).')' : '';
+
+        return "Você já tem um plano ativo nesta modalidade{$ate}. A assinatura com fidelidade pode ser feita quando ele vencer.";
+    }
+
     public function ofertas(int $tenantId, int $planoId): array
     {
         $plano = DB::table('planos as p')->leftJoin('modalidades as m', 'm.id', '=', 'p.modalidade_id')
@@ -255,13 +301,9 @@ class RecorrenciaService
             return $this->ok(['contrato_id' => (int) $existente->id, 'retomado' => true] + $this->pagamentoAberto($tenantId, (int) $existente->id));
         }
         $hoje = AcademyDateTime::today();
-        $ativa = DB::table('matriculas as m')->join('planos as p', 'p.id', '=', 'm.plano_id')->join('status_matricula as s', 's.id', '=', 'm.status_id')
-            ->where('m.tenant_id', $tenantId)->where('m.aluno_id', $aluno->id)->where('p.modalidade_id', $plano->modalidade_id)
-            ->where('s.codigo', 'ativa')->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [$hoje])
-            ->when($existente, fn ($q) => $q->where('m.id', '<>', $existente->matricula_id))
-            ->value('m.id');
+        $ativa = $this->matriculaAtivaNaModalidade($tenantId, (int) $aluno->id, (int) $plano->modalidade_id, $existente ? (int) $existente->matricula_id : null);
         if ($ativa) {
-            return $this->erro('Você já tem um plano ativo nesta modalidade. A assinatura com fidelidade pode ser feita quando ele vencer.', 409, 'MATRICULA_ATIVA_EXISTENTE');
+            return $this->erro($this->mensagemPlanoAtivo($tenantId, $ativa->vencimento), 409, 'MATRICULA_ATIVA_EXISTENTE');
         }
 
         // Contrato substituído: a assinatura antiga não pode continuar cobrando no Asaas
