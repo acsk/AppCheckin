@@ -57,6 +57,29 @@ class TrocaPlanoPainelNoAppTest extends TestCase
         $this->assertSame([1600], array_column($r[0]['pagamentos'], 'id'));
     }
 
+    /** pay_ytve63…: PIX da simulação #1531, cancelada na troca. Reaproveitá-lo devolvia um PIX vencido de R$ 53,16. */
+    public function test_pix_de_cobranca_cancelada_nao_e_reaproveitado_e_parcela_volta_ao_valor_do_plano(): void
+    {
+        $this->requireSqlite();
+        Schema::create('pagamentos_plano', function (Blueprint $t) {
+            $t->increments('id');
+            foreach (['tenant_id', 'matricula_id', 'status_pagamento_id'] as $c) {
+                $t->integer($c)->nullable();
+            }
+            $t->text('observacoes')->nullable();
+        });
+        DB::table('pagamentos_plano')->insert(['tenant_id' => 3, 'matricula_id' => 189, 'status_pagamento_id' => 4,
+            'observacoes' => '[MIGRACAO_SIMULADA plano_id=10 plano_ciclo_id=68] [Asaas pay_ytve63gaaviktizu] [Cancelado por alteração de plano]']);
+        $svc = (new \ReflectionClass(\App\Services\Mobile\MobilePagamentoService::class))->newInstanceWithoutConstructor();
+        $cancelada = new \ReflectionMethod($svc, 'pixDeCobrancaCancelada');
+        $base = new \ReflectionMethod($svc, 'valorBaseParcela');
+
+        $this->assertTrue($cancelada->invoke($svc, 3, 189, 'pay_ytve63gaaviktizu'));
+        $this->assertFalse($cancelada->invoke($svc, 3, 189, 'pay_novo'));
+        // Tentativa no cartão embutiu a tarifa: PIX e nova tentativa partem do valor do plano (sem taxa sobre taxa)
+        $this->assertSame(134.19, $base->invoke($svc, (object) ['valor' => 151.33, 'tarifa_cartao' => 5.12, 'sobretaxa_antecipacao' => 12.02]));
+    }
+
     public function test_alterar_plano_atualiza_a_assinatura_que_o_app_le(): void
     {
         $this->requireSqlite();

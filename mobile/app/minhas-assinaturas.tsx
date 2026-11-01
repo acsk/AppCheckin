@@ -1,6 +1,9 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
-import { solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import { postComRetryGateway, solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import DsModal from "@/src/components/ds/Modal";
+import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
+import type { MetodoPagamentoOpcao } from "@/src/utils/metodosPagamento";
 import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
@@ -217,70 +220,118 @@ export default function MinhasAssinaturasScreen() {
     }).format(numeric);
   };
 
+  // Parcela em aberto sem link (renovação, troca de plano feita pela academia): o aluno escolhe PIX ou cartão
+  const [escolhaPagamento, setEscolhaPagamento] = useState<Assinatura | null>(null);
+  const [metodoEscolhido, setMetodoEscolhido] = useState<MetodoPagamentoOpcao | null>("pix");
+  const [gerandoPagamento, setGerandoPagamento] = useState(false);
+
+  const pagarComCartao = async (assinatura: Assinatura) => {
+    const token = await AsyncStorage.getItem("@appcheckin:token");
+    if (!token) {
+      showErrorModal("⚠️ Sessão expirada", "Faça login novamente para pagar.", "error");
+      return;
+    }
+    const r = await postComRetryGateway({
+      url: `${getApiUrlRuntime()}/mobile/pagamento/parcela`,
+      token,
+      body: { matricula_id: Number(assinatura.matricula_id), metodo_pagamento: "cartao" },
+      escolherGateway,
+      podeSandbox: isUserAdmin,
+    });
+    if (!r.ok) {
+      if ((r as any).cancelled) return;
+      showErrorModal("⚠️ Não foi possível gerar o pagamento", r.json?.error || r.json?.message || "Tente novamente em instantes.", "error");
+      return;
+    }
+    const url = r.json?.data?.payment_url;
+    if (url) {
+      await Linking.openURL(String(url));
+      return;
+    }
+    showErrorModal("⚠️ Pagamento indisponível", "Link de pagamento não encontrado.", "warning");
+  };
+
+  const confirmarMetodoPagamento = async () => {
+    const assinatura = escolhaPagamento;
+    if (!assinatura || !metodoEscolhido) return;
+    setGerandoPagamento(true);
+    try {
+      if (metodoEscolhido === "cartao") await pagarComCartao(assinatura);
+      else await pagarComPix(assinatura);
+    } finally {
+      setGerandoPagamento(false);
+      setEscolhaPagamento(null);
+    }
+  };
+
   const handlePagarAssinatura = async (assinatura: Assinatura) => {
-    // Renovação de matrícula ativa: gera PIX sob demanda
-    if (
-      assinatura.pode_pagar &&
-      !assinatura.payment_url &&
-      assinatura.matricula_id
-    ) {
-      try {
-        const token = await AsyncStorage.getItem("@appcheckin:token");
-        if (!token) {
-          showErrorModal(
-            "⚠️ Sessão expirada",
-            "Faça login novamente para pagar.",
-            "error",
-          );
-          return;
-        }
-        const apiUrl = getApiUrlRuntime();
-        const pixResult = await solicitarPix({
-          apiUrl,
-          token,
-          matriculaId: Number(assinatura.matricula_id),
-          escolherGateway,
-          podeSandbox: isUserAdmin,
-        });
-        const pixJson = pixResult.json;
-        if (!pixResult.ok) {
-          if (pixResult.cancelled) {
-            return;
-          }
-          showErrorModal(
-            "⚠️ Não foi possível gerar o pagamento",
-            pixJson.error ||
-              pixJson.message ||
-              "Tente novamente em instantes.",
-            "error",
-          );
-          return;
-        }
-        const ticketUrl =
-          pixJson.data?.pix?.ticket_url || pixJson.data?.payment_url;
-        if (ticketUrl) {
-          const supported = await Linking.canOpenURL(ticketUrl);
-          if (supported) {
-            await Linking.openURL(ticketUrl);
-            return;
-          }
-        }
+    if (assinatura.pode_pagar && !assinatura.payment_url && assinatura.matricula_id) {
+      setMetodoEscolhido("pix");
+      setEscolhaPagamento(assinatura);
+      return;
+    }
+    await abrirLinkPagamento(assinatura);
+  };
+
+  const pagarComPix = async (assinatura: Assinatura) => {
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
         showErrorModal(
-          "✅ PIX gerado",
-          "Abra Minhas Assinaturas novamente ou use o QR Code no comprovante.",
-          "success",
-        );
-        return;
-      } catch (e) {
-        showErrorModal(
-          "⚠️ Erro ao gerar pagamento",
-          "Tente novamente em instantes.",
+          "⚠️ Sessão expirada",
+          "Faça login novamente para pagar.",
           "error",
         );
         return;
       }
+      const apiUrl = getApiUrlRuntime();
+      const pixResult = await solicitarPix({
+        apiUrl,
+        token,
+        matriculaId: Number(assinatura.matricula_id),
+        escolherGateway,
+        podeSandbox: isUserAdmin,
+      });
+      const pixJson = pixResult.json;
+      if (!pixResult.ok) {
+        if (pixResult.cancelled) {
+          return;
+        }
+        showErrorModal(
+          "⚠️ Não foi possível gerar o pagamento",
+          pixJson.error ||
+            pixJson.message ||
+            "Tente novamente em instantes.",
+          "error",
+        );
+        return;
+      }
+      const ticketUrl =
+        pixJson.data?.pix?.ticket_url || pixJson.data?.payment_url;
+      if (ticketUrl) {
+        const supported = await Linking.canOpenURL(ticketUrl);
+        if (supported) {
+          await Linking.openURL(ticketUrl);
+          return;
+        }
+      }
+      showErrorModal(
+        "✅ PIX gerado",
+        "Abra Minhas Assinaturas novamente ou use o QR Code no comprovante.",
+        "success",
+      );
+      return;
+    } catch (e) {
+      showErrorModal(
+        "⚠️ Erro ao gerar pagamento",
+        "Tente novamente em instantes.",
+        "error",
+      );
+      return;
     }
+  };
 
+  const abrirLinkPagamento = async (assinatura: Assinatura) => {
     if (!assinatura.payment_url) {
       showErrorModal(
         "⚠️ Pagamento indisponível",
@@ -1271,6 +1322,25 @@ export default function MinhasAssinaturasScreen() {
         </View>
       </Modal>
       {pagamentoPacote.elemento}
+      <DsModal
+        visible={!!escolhaPagamento}
+        variant="dialog"
+        icon="credit-card"
+        title={`Pagar ${escolhaPagamento?.plano?.nome ?? "plano"}`}
+        description={escolhaPagamento ? `Valor: ${formatCurrency(escolhaPagamento.valor)}. No cartão, a taxa aparece antes de confirmar.` : undefined}
+        primary={{
+          label: metodoEscolhido === "cartao" ? "Pagar com cartão" : "Gerar PIX",
+          icon: metodoEscolhido === "cartao" ? "credit-card" : "zap",
+          onPress: () => void confirmarMetodoPagamento(),
+          loading: gerandoPagamento,
+        }}
+        onClose={() => setEscolhaPagamento(null)}
+      >
+        <View style={{ gap: 8 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textSecondary }}>Forma de pagamento</Text>
+          <PaymentMethodOptions opcoes={["pix", "cartao"]} value={metodoEscolhido} onChange={setMetodoEscolhido} compact />
+        </View>
+      </DsModal>
     </SafeAreaView>
   );
 }

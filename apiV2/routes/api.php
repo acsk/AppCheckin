@@ -136,6 +136,7 @@ Route::prefix('v2')->group(function () {
             Route::post('/simular-migracao', [MobileController::class, 'simularMigracaoPlano']);
             Route::post('/migrar-plano', [MobileController::class, 'migrarPlano'])->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
             Route::post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix'])->middleware('funcionalidade:pagamentos');
+            Route::post('/pagamento/parcela', [MobileController::class, 'pagarParcela'])->middleware('funcionalidade:pagamentos');
             Route::post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
             Route::get('/pagamento/reabrir/{matriculaId}', [MobileController::class, 'reabrirPagamentoPendente'])->middleware('funcionalidade:pagamentos');
             Route::get('/assinaturas', [MobileController::class, 'minhasAssinaturas']);

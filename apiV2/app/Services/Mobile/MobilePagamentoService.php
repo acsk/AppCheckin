@@ -360,11 +360,20 @@ class MobilePagamentoService
                 ->where(fn ($q) => $q->whereNull('observacoes')
                     ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
                 ->orderBy('data_vencimento')->orderBy('id')
-                ->first(['id', 'valor']);
-            $valorCobrar = $parcelaAberta ? (float) $parcelaAberta->valor : (float) $matricula['valor'];
+                ->first(['id', 'valor', 'tarifa_cartao', 'sobretaxa_antecipacao']);
+            $valorCobrar = (float) $matricula['valor'];
+            if ($parcelaAberta) {
+                // PIX não tem tarifa de cartão: volta a parcela ao valor do plano se uma tentativa no cartão a aumentou
+                $valorCobrar = $this->valorBaseParcela($parcelaAberta);
+                if (abs($valorCobrar - (float) $parcelaAberta->valor) > 0.001) {
+                    DB::table('pagamentos_plano')->where('id', $parcelaAberta->id)
+                        ->update(['valor' => $valorCobrar, 'tarifa_cartao' => 0, 'sobretaxa_antecipacao' => 0, 'updated_at' => now()]);
+                }
+            }
 
             $pixSalvo = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
-            if ($pixSalvo && ! empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()) {
+            if ($pixSalvo && ! empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()
+                && ! $this->pixDeCobrancaCancelada($tenantId, $matriculaId, (string) ($pixSalvo['payment_id'] ?? ''))) {
                 $gatewaySalvo = PaymentPixGateway::inferir(
                     $pixSalvo['payment_id'] ?? null,
                     $pixSalvo['ticket_url'] ?? null
@@ -503,6 +512,126 @@ class MobilePagamentoService
                 : null,
             'status' => $pixData['status'] ?? 'pending',
         ]);
+    }
+
+    /** Valor da parcela sem a tarifa do cartão e a sobretaxa embutidas numa tentativa anterior. */
+    private function valorBaseParcela(object $parcela): float
+    {
+        return round((float) $parcela->valor - (float) ($parcela->tarifa_cartao ?? 0) - (float) ($parcela->sobretaxa_antecipacao ?? 0), 2);
+    }
+
+    /**
+     * PIX salvo de uma cobrança já cancelada (ex.: simulação de troca de plano substituída no painel): reaproveitá-lo
+     * devolvia ao aluno um PIX vencido de outro valor e ele não conseguia pagar (matrícula 189, pay_ytve63…).
+     */
+    private function pixDeCobrancaCancelada(int $tenantId, int $matriculaId, string $paymentId): bool
+    {
+        return $paymentId !== '' && DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', 4)->where('observacoes', 'like', '%'.$paymentId.'%')->exists();
+    }
+
+    /**
+     * Paga a parcela do plano já em aberto (ex.: troca de plano feita no painel) no meio que o aluno escolher:
+     * PIX (mesmo fluxo de gerarPix) ou cartão pelo checkout do provedor, com a tarifa do cartão embutida.
+     *
+     * @param  array<string, mixed>  $body  matricula_id, metodo_pagamento (pix|cartao), gateway, installment_count
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function pagarParcela(int $userId, ?int $tenantId, array $body, bool $podeSandbox = false): array
+    {
+        $metodo = strtolower((string) ($body['metodo_pagamento'] ?? $body['metodo'] ?? 'pix'));
+        if (! in_array($metodo, ['cartao', 'credit_card', 'card', 'checkout'], true)) {
+            return $this->gerarPix($userId, $tenantId, $body, $podeSandbox);
+        }
+        if (! $tenantId) {
+            return ['status' => 400, 'body' => ['success' => false, 'error' => 'Nenhum tenant selecionado']];
+        }
+        $matriculaId = (int) ($body['matricula_id'] ?? 0);
+        $matricula = DB::table('matriculas as m')
+            ->join('alunos as a', 'a.id', '=', 'm.aluno_id')->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
+            ->where('m.id', $matriculaId)->where('m.tenant_id', $tenantId)->where('u.id', $userId)
+            ->first(['m.id', 'm.plano_id', 'm.tipo_cobranca', 'p.nome as plano_nome', 'md.nome as modalidade_nome', 'a.id as aluno_id',
+                'u.nome as aluno_nome', 'u.email as aluno_email', 'u.telefone as aluno_telefone', 'u.cpf as aluno_cpf']);
+        if (! $matricula) {
+            return ['status' => 404, 'body' => ['success' => false, 'error' => 'Matrícula não encontrada']];
+        }
+        if (($matricula->tipo_cobranca ?? '') === 'recorrente') {
+            return ['status' => 403, 'body' => ['success' => false, 'error' => 'Assinatura com fidelidade é paga pela própria assinatura.']];
+        }
+        $parcela = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])->whereNull('data_pagamento')->where('valor', '>', 0)
+            ->where(fn ($q) => $q->whereNull('observacoes')
+                ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
+            ->orderBy('data_vencimento')->orderBy('id')
+            ->first(['id', 'valor', 'tarifa_cartao', 'sobretaxa_antecipacao']);
+        if (! $parcela) {
+            return ['status' => 422, 'body' => ['success' => false, 'code' => 'NADA_A_PAGAR', 'error' => 'Não há parcela em aberto nesta matrícula.']];
+        }
+
+        $escolha = $this->gateways->resolverMetodo($tenantId, $podeSandbox, 'checkout',
+            isset($body['gateway']) ? (string) $body['gateway'] : (isset($body['provider']) ? (string) $body['provider'] : null));
+        if (! ($escolha['ok'] ?? false)) {
+            return ['status' => (int) ($escolha['status'] ?? 400), 'body' => ['success' => false, 'code' => $escolha['code'] ?? 'SEM_GATEWAY',
+                'error' => $escolha['error'] ?? 'Pagamento com cartão indisponível.', 'gateways' => $escolha['gateways'] ?? []]];
+        }
+        $provider = (string) $escolha['provider'];
+        $gateway = $escolha['instance'];
+        $valorPlano = $this->valorBaseParcela($parcela);
+        $dados = [
+            'tenant_id' => $tenantId, 'matricula_id' => $matriculaId, 'aluno_id' => (int) $matricula->aluno_id, 'usuario_id' => $userId,
+            'aluno_nome' => $matricula->aluno_nome, 'aluno_email' => $matricula->aluno_email,
+            'aluno_telefone' => $matricula->aluno_telefone ?? '', 'aluno_cpf' => $matricula->aluno_cpf,
+            'plano_nome' => $matricula->plano_nome, 'descricao' => "{$matricula->plano_nome} - {$matricula->modalidade_nome}",
+            'valor' => $valorPlano, 'max_parcelas' => 12,
+            'installment_count' => (int) ($body['installment_count'] ?? $body['parcelas'] ?? 1),
+            'academia_nome' => DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia',
+            'metodo_pagamento' => 'cartao', 'billing_type' => 'CREDIT_CARD',
+        ];
+        $cobrancasAnteriores = app(\App\Services\CobrancaAnteriorService::class);
+        $anteriores = $cobrancasAnteriores->idsEmAberto($tenantId, $matriculaId);
+        try {
+            if ($gateway instanceof AsaasService) {
+                $cobranca = $gateway->criarCobrancaCheckout($dados);
+                $paymentUrl = $cobranca['ticket_url'] ?? null;
+            } else {
+                $cobranca = $gateway->criarPreferenciaPagamento($dados);
+                $paymentUrl = $cobranca['init_point'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('pagarParcela: falha ao gerar cobrança', ['tenant_id' => $tenantId, 'matricula_id' => $matriculaId, 'error' => $e->getMessage()]);
+
+            return ['status' => 400, 'body' => ['success' => false, 'error' => 'Não foi possível gerar o pagamento: '.$e->getMessage()]];
+        }
+        $paymentId = (string) ($cobranca['id'] ?? '');
+        if ($paymentId === '' || ! $paymentUrl) {
+            return ['status' => 502, 'body' => ['success' => false, 'error' => 'O meio de pagamento não confirmou a cobrança. Tente de novo.']];
+        }
+
+        // Tarifa do cartão embutida: a parcela passa a valer o cobrado (sempre a partir do valor do plano)
+        $valorCobrado = (float) ($cobranca['valor'] ?? $valorPlano);
+        $tarifaPayload = null;
+        DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
+            'valor' => round(max($valorCobrado, $valorPlano), 2),
+            'tarifa_cartao' => $valorCobrado > $valorPlano + 0.001 ? (float) ($cobranca['tarifa_cartao']['tarifa'] ?? ($valorCobrado - $valorPlano)) : 0,
+            'sobretaxa_antecipacao' => $valorCobrado > $valorPlano + 0.001 ? (float) ($cobranca['tarifa_cartao']['sobretaxa'] ?? 0) : 0,
+            'updated_at' => now(),
+        ]);
+        if (! empty($cobranca['tarifa_cartao']) && is_array($cobranca['tarifa_cartao'])) {
+            $tarifaPayload = self::payloadTaxaCartao($provider, $valorPlano, $cobranca['tarifa_cartao']);
+        }
+        DB::table('assinaturas')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)->orderByDesc('id')->limit(1)->update([
+            'gateway_preference_id' => $paymentId, 'payment_url' => $paymentUrl, 'status_gateway' => 'pending',
+            'external_reference' => $cobranca['external_reference'] ?? ReferenciaExterna::matricula($matriculaId), 'atualizado_em' => now(),
+        ]);
+        $canceladas = $anteriores !== [] ? ($cobrancasAnteriores->cancelar($tenantId, $anteriores, [$paymentId])['canceladas'] ?? []) : [];
+
+        return ['status' => 200, 'body' => ['success' => true, 'data' => [
+            'matricula_id' => $matriculaId, 'valor' => round(max($valorCobrado, $valorPlano), 2), 'valor_plano' => $valorPlano,
+            'gateway' => $provider, 'metodo_pagamento' => 'cartao', 'payment_url' => $paymentUrl, 'preference_id' => $paymentId,
+            'tarifa_cartao' => $tarifaPayload, 'aviso' => \App\Services\CobrancaAnteriorService::aviso($canceladas),
+        ]]];
     }
 
     /**
