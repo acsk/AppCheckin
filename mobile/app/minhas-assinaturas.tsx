@@ -97,6 +97,7 @@ interface Assinatura {
   plano: PlanoAssinatura;
   payment_url?: string | null;
   pode_pagar?: boolean;
+  pode_cancelar?: boolean;
   pode_renovar?: boolean;
   motivo_pode_pagar?: string | null;
   pagamentos?: PagamentoAssinatura[] | null;
@@ -854,6 +855,7 @@ export default function MinhasAssinaturasScreen() {
       isAtiva && temPagamentoAberto && !aguardandoAsaas;
     const podeAtualizarPagamento =
       !isCancelada && (isPendente || isPagamentoPendente || aguardandoAsaas);
+    const podeCancelar = assinatura.pode_cancelar !== false;
 
     const statusCodigo = assinatura.status.codigo.toLowerCase();
     const statusTone = aguardandoAsaas
@@ -1011,7 +1013,7 @@ export default function MinhasAssinaturasScreen() {
 
         {(podeAtualizarPagamento ||
           podePagar ||
-          (!isAvulso && (isAtiva || isPendente))) && (
+          (!isAvulso && (isAtiva || isPendente) && (!trocaPlanoApp || podeCancelar))) && (
           <View style={styles.actionStack}>
             {podeAtualizarPagamento && (
               <Button
@@ -1038,7 +1040,7 @@ export default function MinhasAssinaturasScreen() {
                 Para cancelar ou trocar de plano, fale com a academia.
               </Text>
             )}
-            {!isAvulso && (isAtiva || isPendente) && trocaPlanoApp && (
+            {!isAvulso && (isAtiva || isPendente) && trocaPlanoApp && podeCancelar && (
               <Button
                 variant="danger"
                 block

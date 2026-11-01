@@ -12,14 +12,18 @@ class AdminAlunoRepository
 {
     /**
      * Aluno (alias a) com pagamento em dia: matrícula ativa cujo acesso pago alcança hoje e sem
-     * parcela pendente/atrasada já vencida. Vale para qualquer ciclo (mensal, trimestral...).
+     * parcela pendente/atrasada já vencida dentro da matrícula atual. Débitos anteriores à matrícula
+     * não tornam pendente o plano atual.
      * Um ? = tenant_id.
      */
     private const EM_DIA_SQL = "EXISTS (SELECT 1 FROM matriculas m JOIN status_matricula sm ON sm.id = m.status_id
         WHERE m.aluno_id = a.id AND m.tenant_id = ? AND sm.codigo = 'ativa'
         AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
         AND NOT EXISTS (SELECT 1 FROM pagamentos_plano pp WHERE pp.matricula_id = m.id
-            AND pp.status_pagamento_id IN (1, 3) AND pp.data_vencimento < CURDATE()))";
+            AND pp.tenant_id = m.tenant_id
+            AND pp.status_pagamento_id IN (1, 3)
+            AND pp.data_vencimento < CURDATE()
+            AND pp.data_vencimento >= m.data_inicio))";
 
     public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
     {

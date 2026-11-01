@@ -280,6 +280,101 @@ class MobileAssinaturaService
             $assinaturas[] = $item;
         }
 
+        // Matrículas baixadas manualmente podem não ter uma linha em `assinaturas`.
+        // Ainda assim, o app deve mostrar seu plano e o histórico financeiro da matrícula ativa.
+        $matriculasSemAssinatura = DB::table('matriculas as m')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
+            ->leftJoin('plano_ciclos as pc', function ($join) {
+                $join->on('pc.id', '=', 'm.plano_ciclo_id')
+                    ->on('pc.tenant_id', '=', 'm.tenant_id');
+            })
+            ->leftJoin('assinatura_frequencias as f', 'f.id', '=', 'pc.assinatura_frequencia_id')
+            ->where('m.aluno_id', $alunoId)
+            ->where('m.tenant_id', $tenantId)
+            ->where('sm.codigo', 'ativa')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('assinaturas as a')
+                    ->whereColumn('a.matricula_id', 'm.id')
+                    ->whereColumn('a.tenant_id', 'm.tenant_id');
+            })
+            ->select([
+                'm.id as matricula_id',
+                'm.plano_id',
+                'm.plano_ciclo_id',
+                'm.status_id',
+                'm.valor',
+                'm.tipo_cobranca',
+                'm.data_inicio',
+                'm.data_vencimento',
+                'm.proxima_data_vencimento',
+                'm.created_at',
+                'p.nome as plano_nome',
+                'p.modalidade_id',
+                'p.checkins_semanais',
+                'mo.nome as modalidade_nome',
+                'f.nome as ciclo_nome',
+                'f.meses as ciclo_meses',
+                DB::raw('(
+                    SELECT MAX(DATE(pp.data_pagamento))
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = m.id
+                      AND pp.tenant_id = m.tenant_id
+                      AND pp.status_pagamento_id = 2
+                      AND pp.data_pagamento IS NOT NULL
+                ) as ultima_cobranca'),
+            ])
+            ->orderByDesc('m.created_at')
+            ->get();
+
+        $dataCorteAbertosPorMatricula = [];
+        foreach ($matriculasSemAssinatura as $matricula) {
+            $matriculaId = (int) $matricula->matricula_id;
+            $dataInicio = (string) ($matricula->data_inicio ?? '');
+            $dataCorteAbertosPorMatricula[$matriculaId] = $dataInicio;
+            $assinaturas[] = [
+                'id' => -$matriculaId,
+                'matricula_id' => $matriculaId,
+                'modalidade_id' => $matricula->modalidade_id !== null ? (int) $matricula->modalidade_id : null,
+                'status' => [
+                    'id' => (int) $matricula->status_id,
+                    'codigo' => 'ativa',
+                    'nome' => 'Ativa',
+                    'cor' => '#16A34A',
+                ],
+                'cancelamento' => [
+                    'cancelado_por_id' => null,
+                    'cancelado_por_codigo' => null,
+                    'cancelado_por_nome' => null,
+                ],
+                'valor' => (float) $matricula->valor,
+                'tipo_cobranca' => $matricula->tipo_cobranca ?? 'avulso',
+                'recorrente' => ($matricula->tipo_cobranca ?? 'avulso') === 'recorrente',
+                'data_inicio' => $matricula->data_inicio,
+                'data_fim' => $matricula->data_vencimento,
+                'proxima_cobranca' => $matricula->proxima_data_vencimento ?? $matricula->data_vencimento,
+                'ultima_cobranca' => $matricula->ultima_cobranca,
+                'mp_preapproval_id' => null,
+                'preference_id' => null,
+                'external_reference' => null,
+                'ciclo' => [
+                    'nome' => $matricula->ciclo_nome ?? 'Mensal',
+                    'meses' => (int) ($matricula->ciclo_meses ?? 1),
+                ],
+                'gateway' => ['nome' => 'Manual'],
+                'plano' => [
+                    'nome' => (string) $matricula->plano_nome,
+                    'modalidade' => (string) ($matricula->modalidade_nome ?? ''),
+                ],
+                'pode_pagar' => false,
+                'pode_cancelar' => false,
+                'pagamento_gateway' => null,
+                'inicio_ciclo' => $matricula->data_inicio,
+            ];
+        }
+
         // Histórico de pagamentos (manual + MP) por matrícula
         $matriculaIds = array_values(array_unique(array_filter(array_map(
             static fn ($a) => (int) ($a['matricula_id'] ?? 0),
@@ -332,6 +427,15 @@ class MobileAssinaturaService
 
                 // Parcela futura em aberto não vira card no mobile (só proxima_cobranca).
                 if (in_array($statusPagamentoId, [1, 3], true) && is_string($vencimento) && $vencimento > $hoje) {
+                    continue;
+                }
+                $dataCorteAberto = $dataCorteAbertosPorMatricula[$mid] ?? null;
+                if (
+                    in_array($statusPagamentoId, [1, 3], true)
+                    && is_string($vencimento)
+                    && is_string($dataCorteAberto)
+                    && $vencimento < $dataCorteAberto
+                ) {
                     continue;
                 }
 
