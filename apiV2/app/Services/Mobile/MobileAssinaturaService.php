@@ -552,6 +552,24 @@ class MobileAssinaturaService
 
             $assinatura['pagamentos'] = $visiveis;
 
+            $canceladaPeloAluno = in_array(
+                strtolower((string) ($assinatura['cancelamento']['cancelado_por_codigo'] ?? '')),
+                ['usuario', 'aluno'],
+                true,
+            );
+            $tipoCobranca = strtolower((string) ($assinatura['tipo_cobranca'] ?? ''));
+            if (
+                $abertosVencidos !== []
+                && $tipoCobranca === 'avulso'
+                && ! in_array($codigo, ['cancelada', 'cancelled', 'expirada', 'expired'], true)
+                && ! $canceladaPeloAluno
+                && (int) ($assinatura['matricula_id'] ?? 0) > 0
+            ) {
+                // Quitação de parcela vencida não é renovação: pode ocorrer mesmo se a assinatura
+                // já aparece como paga, como na matrícula 236.
+                $assinatura['pode_pagar'] = true;
+            }
+
             if ($abertosVencidos === [] && empty($assinatura['pode_renovar'])) {
                 $assinatura['pode_pagar'] = false;
                 unset($assinatura['payment_url']);
