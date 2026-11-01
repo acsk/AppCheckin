@@ -107,6 +107,27 @@ class AsaasPagamentoStatusTest extends TestCase
         $this->assertSame('pay_cartao_abc', $id);
     }
 
+    /** Matrícula 189: o PIX da simulação cancelada (pay_ytve63…) aparecia como status "Vencida" da parcela nova. */
+    public function test_cobranca_de_parcela_cancelada_nao_e_o_status_principal(): void
+    {
+        $this->requireSqlite();
+        Schema::create('pagamentos_plano', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('tenant_id');
+            $table->unsignedInteger('matricula_id');
+            $table->unsignedInteger('status_pagamento_id');
+            $table->text('observacoes')->nullable();
+        });
+        DB::table('pagamentos_plano')->insert([
+            ['tenant_id' => 3, 'matricula_id' => 189, 'status_pagamento_id' => 4, 'observacoes' => '[MIGRACAO_SIMULADA plano_id=10 plano_ciclo_id=68] [Asaas pay_ytve63gaaviktizu] [Cancelado por alteração de plano]'],
+            ['tenant_id' => 3, 'matricula_id' => 189, 'status_pagamento_id' => 1, 'observacoes' => 'Aguardando pagamento [Asaas pay_parcela_nova]'],
+        ]);
+
+        $ids = (new \ReflectionMethod(AsaasPagamentoSync::class, 'idsDeParcelasCanceladas'))->invoke(new AsaasPagamentoSync(), 3, 189);
+
+        $this->assertSame(['pay_ytve63gaaviktizu'], $ids);
+    }
+
     public function test_payment_ids_priorizam_cartao_atual_sobre_pix_antigo(): void
     {
         $this->requireSqlite();

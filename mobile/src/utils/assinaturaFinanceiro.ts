@@ -49,6 +49,7 @@ interface AssinaturaFinanceiro {
   pode_pagar?: boolean;
   pode_renovar?: boolean;
   payment_url?: string | null;
+  matricula_id?: number | null;
   pagamento_gateway?: { aguardando_ativacao?: boolean } | null;
 }
 
@@ -79,7 +80,8 @@ export function podePagarAssinatura(
   // Histórico quitado não bloqueia a renovação autorizada pelo backend.
   return (
     !!assinatura.pode_pagar &&
-    (!pendente || !!assinatura.payment_url) &&
+    // Pendente sem link (troca de plano feita pela academia): o app gera a cobrança no meio que o aluno escolher
+    (!pendente || !!assinatura.payment_url || (!!assinatura.matricula_id && pagamentos.some((p) => !isPagamentoPago(p)))) &&
     (pagamentos.some((p) => !isPagamentoPago(p)) ||
       !!assinatura.pode_renovar ||
       !pagamentos.some(isPagamentoPago))

@@ -108,15 +108,36 @@ class AsaasPagamentoSync
             return [];
         }
 
+        // Cobrança de parcela cancelada (ex.: simulação de troca substituída no painel) ainda é conferida, mas não
+        // é o status que o aluno vê: ela mostrava "Vencida" no lugar da parcela nova (matrícula 189, pay_ytve63…)
+        $canceladas = $this->idsDeParcelasCanceladas($tenantId, $matriculaId);
         $principal = [];
-        foreach ($ids as $index => $paymentId) {
+        foreach ($ids as $paymentId) {
             $snapshot = $this->sincronizarPagamento($tenantId, $matriculaId, $paymentId);
-            if ($index === 0) {
+            if ($principal === [] && ! in_array($paymentId, $canceladas, true)) {
                 $principal = $snapshot;
             }
         }
 
         return $principal;
+    }
+
+    /** @return list<string> */
+    private function idsDeParcelasCanceladas(int $tenantId, int $matriculaId): array
+    {
+        if (! Schema::hasTable('pagamentos_plano')) {
+            return [];
+        }
+        $ids = [];
+        $obs = DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', 4)->whereNotNull('observacoes')->pluck('observacoes');
+        foreach ($obs as $texto) {
+            if (preg_match_all('/pay_[a-zA-Z0-9]+/', (string) $texto, $m) > 0) {
+                $ids = array_merge($ids, $m[0]);
+            }
+        }
+
+        return array_values(array_unique($ids));
     }
 
     /**
