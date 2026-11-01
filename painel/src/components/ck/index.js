@@ -427,7 +427,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
   function fdate(iso) { if (!iso) return '—'; var a = String(iso).split('-'); return a[2] + '/' + a[1] + '/' + a[0]; }
   function dayDiff(a, b) { return Math.round((pd(b) - pd(a)) / 86400000); }
   var ENROLL_STATUS = { pendente: ['warning', 'Pagamento pendente'], ativa: ['success', 'Ativa'], bloqueada: ['danger', 'Bloqueada'], cancelada: ['neutral', 'Cancelada'] };
-  var INV_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'], estornado: ['neutral', 'Estornado'] };
+  var INV_STATUS = { aguardando: ['warning', 'Aguardando'], pago: ['success', 'Pago'], atrasado: ['danger', 'Atrasado'], cancelado: ['neutral', 'Cancelado'], estornado: ['neutral', 'Estornado'], simulacao: ['info', 'Simulação de troca'] };
 
   function MtPlanCard(p) {
     var e = p.enrollment, today = p.today;

@@ -178,9 +178,13 @@ class AdminMatriculaService
             $this->matriculas->listarPagamentosResumo($id)
         );
         $pagamentos = $this->marcarCobrancaAutomatica($pagamentos);
+        // Simulação de troca de plano em aberto não é cobrança do plano: fica fora dos totais (parcela #1531)
+        $pagamentos = array_map(static fn ($p) => $p + ['simulacao_troca' => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+            && empty($p['data_pagamento'])
+            && str_contains((string) ($p['observacoes'] ?? ''), MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA)], $pagamentos);
         $matricula['pagamentos'] = $pagamentos;
         $matricula['total_pagamentos'] = (float) array_sum(array_map(
-            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 ? 0.0 : (float) ($p['valor'] ?? 0),
+            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 || $p['simulacao_troca'] ? 0.0 : (float) ($p['valor'] ?? 0),
             $pagamentos
         ));
         $matricula['total_pago'] = (float) array_sum(array_map(
@@ -188,7 +192,7 @@ class AdminMatriculaService
             $pagamentos
         ));
         $matricula['total_pendente'] = (float) array_sum(array_map(
-            static fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+            static fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true) && ! $p['simulacao_troca']
                 ? (float) ($p['valor'] ?? 0)
                 : 0.0,
             $pagamentos

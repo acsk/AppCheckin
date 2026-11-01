@@ -388,6 +388,31 @@ class AdminMatriculaServiceTest extends TestCase
         $this->assertSame($limiteDetalhe, $result['body']['matricula']['limite_ciclo']);
     }
 
+    /** Caso real (matrícula 189): a simulação #1531, abandonada, aparecia como R$ 53,16 pendente e atrasado. */
+    public function test_show_simulacao_de_troca_em_aberto_fica_fora_dos_totais(): void
+    {
+        $adminRepo = Mockery::mock(AdminMatriculaRepository::class);
+        $pagamentosPlano = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentosPlano->shouldReceive('marcarAtrasados')->once()->with(3);
+        $adminRepo->shouldReceive('findDetalhe')->once()->with(189, 3)->andReturn([
+            'id' => 189, 'aluno_id' => 72, 'status_codigo' => 'ativa', 'plano_ciclo_id' => null, 'pacote_contrato_id' => null,
+        ]);
+        $adminRepo->shouldReceive('listarPagamentosResumo')->once()->with(189)->andReturn([
+            ['id' => 1463, 'valor' => 54.18, 'status_pagamento_id' => 2, 'data_pagamento' => '2026-10-16', 'observacoes' => '[MIGRACAO_SIMULADA plano_id=8 plano_ciclo_id=50] [MIGRACAO_CONFIRMADA]'],
+            ['id' => 1531, 'valor' => 53.16, 'status_pagamento_id' => 3, 'data_pagamento' => null, 'observacoes' => 'Simulação de migração [MIGRACAO_SIMULADA plano_id=10 plano_ciclo_id=68]'],
+            ['id' => 1600, 'valor' => 120, 'status_pagamento_id' => 1, 'data_pagamento' => null, 'observacoes' => 'Aguardando pagamento'],
+        ]);
+        $adminRepo->shouldReceive('creditosAluno')->once()->with(3, 72)->andReturn(['saldo_total' => 0.0, 'creditos_ativos' => []]);
+        $adminRepo->shouldReceive('listarOutrasMatriculasDoAluno')->once()->andReturn([]);
+
+        $body = $this->makeService($adminRepo, $pagamentosPlano)->show(189, 3)['body'];
+
+        $this->assertEqualsWithDelta(120.0, $body['total_pendente'], 0.001, 'só a mensalidade; a simulação não é dívida');
+        $this->assertEqualsWithDelta(174.18, $body['total'], 0.001);
+        $simulacoes = array_column($body['pagamentos'], 'simulacao_troca', 'id');
+        $this->assertSame([1463 => false, 1531 => true, 1600 => false], $simulacoes);
+    }
+
     public function test_show_motivo_status_aguardando_renovacao_sem_limite_checkins(): void
     {
         $adminRepo = Mockery::mock(AdminMatriculaRepository::class);

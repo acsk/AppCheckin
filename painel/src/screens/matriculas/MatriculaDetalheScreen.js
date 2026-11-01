@@ -863,10 +863,15 @@ export default function MatriculaDetalheScreen() {
     return vencimento <= hoje;
   };
 
+  // Cobrança de troca de plano iniciada e não paga ([MIGRACAO_SIMULADA]): não é dívida do plano atual
+  const isSimulacaoTroca = (pagamento) => Boolean(pagamento?.simulacao_troca)
+    || ([1, 3].includes(Number(pagamento?.status_pagamento_id)) && !pagamento?.data_pagamento
+      && String(pagamento?.observacoes || '').includes('[MIGRACAO_SIMULADA'));
+
   const calcularResumo = () => {
     const getStatusId = (pagamento) => Number(pagamento.status_pagamento_id);
-    // Excluir pagamentos cancelados (status 4) do total
-    const pagamentosAtivos = pagamentos.filter((p) => getStatusId(p) !== 4);
+    // Excluir cancelados (status 4) e simulações de troca em aberto: nenhum dos dois é cobrança do plano
+    const pagamentosAtivos = pagamentos.filter((p) => getStatusId(p) !== 4 && !isSimulacaoTroca(p));
 
     const total = pagamentosAtivos.reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
@@ -876,7 +881,7 @@ export default function MatriculaDetalheScreen() {
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
     // Atrasado = status 3 OU aguardando vencido
-    const atrasado = pagamentos
+    const atrasado = pagamentosAtivos
       .filter((p) => {
         const statusId = getStatusId(p);
         if (statusId === 3) return true;
@@ -885,7 +890,7 @@ export default function MatriculaDetalheScreen() {
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
     // Aguardando = status 1 e ainda não venceu
-    const aguardando = pagamentos
+    const aguardando = pagamentosAtivos
       .filter((p) => getStatusId(p) === 1 && !isVencido(p.data_vencimento))
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
@@ -921,6 +926,7 @@ export default function MatriculaDetalheScreen() {
   }
 
   const pagamentosPendentes = pagamentos.filter((p) => {
+    if (isSimulacaoTroca(p)) return false;
     const statusId = Number(p.status_pagamento_id);
     if (statusId === 3) return true;
     return statusId === 1 && isVencido(p.data_vencimento);
@@ -1176,7 +1182,7 @@ export default function MatriculaDetalheScreen() {
     matricula.proxima_data_vencimento ||
     ultimoPagamentoPago?.data_vencimento;
   const proximaParcelaAberta = [...pagamentos]
-    .filter((p) => [1, 3].includes(Number(p.status_pagamento_id)) && !p.data_pagamento && p.data_vencimento)
+    .filter((p) => [1, 3].includes(Number(p.status_pagamento_id)) && !p.data_pagamento && p.data_vencimento && !isSimulacaoTroca(p))
     .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)))[0];
   const proximoVencimentoExibicao =
     proximaParcelaAberta?.data_vencimento ||
@@ -1249,8 +1255,10 @@ export default function MatriculaDetalheScreen() {
     })
     .map((pg) => {
       const statusId = Number(pg.status_pagamento_id);
-      const status =
-        statusId === 2
+      // Simulação de troca de plano não paga: o plano atual segue; dar baixa aplicaria a troca
+      const status = isSimulacaoTroca(pg)
+        ? 'simulacao'
+        : statusId === 2
           ? 'pago'
           : statusId === 5
             ? 'estornado'

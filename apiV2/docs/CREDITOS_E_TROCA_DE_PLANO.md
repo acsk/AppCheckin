@@ -15,7 +15,7 @@ voltavam a ficar ativas sozinhas.
 | Quando a migração paga é confirmada, vale **o crédito que a simulação cobrou**, nunca um recálculo. Se o recálculo der diferente, fica só um aviso no log | `MatriculaMigracaoService::aplicarTrocaAposPagamento` |
 | Matrícula **cancelada no ciclo atual** (`data_cancelamento >= data_inicio`) não é reativada pelo recálculo de status, mesmo com o período pago correndo | `PagamentoPlanoService::atualizarStatusMatricula` |
 | Contrato de recorrência cancelado ou encerrado + matrícula reaproveitada numa compra avulsa: o status segue a regra do plano avulso | `RecorrenciaAcesso::atualizar` |
-| **Simulação de migração não é dívida**: não é marcada como "Atrasado" e não bloqueia a troca de plano | `marcarAtrasados`, `temParcelaAbertaAtrasada`, `MatriculaMigracaoAptidaoService::temParcelaAtrasada` |
+| **Simulação de migração não é dívida**: não é marcada como "Atrasado", não bloqueia a troca de plano e fica fora do total e do pendente no detalhe da matrícula. O painel mostra o status "Simulação de troca", sem "Dar baixa", porque a baixa aplicaria a troca | `marcarAtrasados`, `temParcelaAbertaAtrasada`, `MatriculaMigracaoAptidaoService::temParcelaAtrasada`, `AdminMatriculaService::show` (`simulacao_troca`) |
 | Vencimento de ciclo em meses não estoura o fim do mês (31/10 + 6 meses = 30/04) | `MatriculaMigracaoService::somarMesesSemEstouro` |
 | Cancelar com crédito confere o status de novo, com trava, dentro da transação: dois cancelamentos simultâneos não geram dois créditos | `AdminMatriculaService::cancelarComCredito` |
 
