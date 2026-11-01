@@ -5,6 +5,7 @@ namespace App\Services\Mobile;
 use App\Support\ReferenciaExterna;
 use App\Repositories\MatriculaRepository;
 use App\Services\Asaas\AsaasService;
+use App\Services\MatriculaMigracaoService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
@@ -351,6 +352,17 @@ class MobilePagamentoService
             }
             $provider = (string) $escolha['provider'];
 
+            // Parcela do plano já em aberto (ex.: troca de plano feita no painel, com crédito abatido): o PIX cobra
+            // ela, sem substituir — senão cobraria o valor cheio do plano e perderia o crédito (matrícula 189).
+            $parcelaAberta = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])->whereNull('data_pagamento')->where('valor', '>', 0)
+                ->where(fn ($q) => $q->whereNull('observacoes')
+                    ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
+                ->orderBy('data_vencimento')->orderBy('id')
+                ->first(['id', 'valor']);
+            $valorCobrar = $parcelaAberta ? (float) $parcelaAberta->valor : (float) $matricula['valor'];
+
             $pixSalvo = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
             if ($pixSalvo && ! empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()) {
                 $gatewaySalvo = PaymentPixGateway::inferir(
@@ -364,7 +376,7 @@ class MobilePagamentoService
                             'success' => true,
                             'data' => [
                                 'matricula_id' => $matriculaId,
-                                'valor' => (float) $matricula['valor'],
+                                'valor' => $valorCobrar,
                                 'gateway' => $provider,
                                 'pix' => $this->formatPixPayload($pixSalvo),
                             ],
@@ -373,25 +385,28 @@ class MobilePagamentoService
                 }
             }
 
-            // Renovação com o ciclo pago encerrado: reajuste pendente passa a valer neste ciclo novo
-            if (in_array($matricula['status_codigo'] ?? '', ['ativa', 'vencida'], true)) {
-                $reajustado = app(\App\Services\ReajustePrecoService::class)->iniciarCicloNovo($tenantId, $matriculaId);
-                if ($reajustado !== null) {
-                    $matricula['valor'] = $reajustado;
+            if (! $parcelaAberta) {
+                // Renovação com o ciclo pago encerrado: reajuste pendente passa a valer neste ciclo novo
+                if (in_array($matricula['status_codigo'] ?? '', ['ativa', 'vencida'], true)) {
+                    $reajustado = app(\App\Services\ReajustePrecoService::class)->iniciarCicloNovo($tenantId, $matriculaId);
+                    if ($reajustado !== null) {
+                        $matricula['valor'] = $reajustado;
+                    }
                 }
-            }
+                $valorCobrar = (float) $matricula['valor'];
 
-            $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
-            $this->pagamentosPlano->garantirParcelaPendenteUnica(
-                $tenantId,
-                (int) $matricula['aluno_id'],
-                $matriculaId,
-                (int) $matricula['plano_id'],
-                (float) $matricula['valor'],
-                $dataVencParcela,
-                $userId,
-                PagamentoPlanoService::obsAguardando($provider)
-            );
+                $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+                $this->pagamentosPlano->garantirParcelaPendenteUnica(
+                    $tenantId,
+                    (int) $matricula['aluno_id'],
+                    $matriculaId,
+                    (int) $matricula['plano_id'],
+                    $valorCobrar,
+                    $dataVencParcela,
+                    $userId,
+                    PagamentoPlanoService::obsAguardando($provider)
+                );
+            }
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
 
@@ -406,7 +421,7 @@ class MobilePagamentoService
                 'aluno_cpf' => $matricula['aluno_cpf'],
                 'plano_nome' => $matricula['plano_nome'],
                 'descricao' => "{$matricula['plano_nome']} - {$matricula['modalidade_nome']}",
-                'valor' => (float) $matricula['valor'],
+                'valor' => $valorCobrar,
                 'academia_nome' => $academiaNome,
             ];
 
@@ -428,7 +443,7 @@ class MobilePagamentoService
                     'success' => true,
                         'data' => [
                             'matricula_id' => $matriculaId,
-                            'valor' => (float) $matricula['valor'],
+                            'valor' => $valorCobrar,
                             'gateway' => $provider,
                             'pix' => [
                             'payment_id' => $pixData['id'] ?? null,

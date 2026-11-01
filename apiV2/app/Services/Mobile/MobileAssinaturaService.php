@@ -198,6 +198,8 @@ class MobileAssinaturaService
                 ],
                 'pode_pagar' => false,
                 'pagamento_gateway' => $pagamentoGateway,
+                // Início do ciclo da matrícula: pagamento antes dele é de ciclo anterior (troca de plano no painel)
+                'inicio_ciclo' => $row['matricula_data_inicio'] ?? null,
             ];
 
             $asaasJaPago = is_array($pagamentoGateway)
@@ -494,6 +496,18 @@ class MobileAssinaturaService
             }
 
             if ($isPendente) {
+                // Só conta pago deste ciclo: na troca de plano pelo painel a matrícula volta a pendente com a
+                // parcela nova em aberto, e os pagos do plano anterior escondiam o "Pagar agora" (matrícula 189)
+                $inicioCiclo = (string) ($assinatura['inicio_ciclo'] ?? '');
+                $pagosCiclo = $inicioCiclo === '' ? $pagos : array_values(array_filter($pagos,
+                    static fn ($p) => (string) ($p['data_pagamento'] ?? $p['data_vencimento'] ?? '') >= $inicioCiclo));
+                if ($pagosCiclo === [] && $pagos !== [] && $abertosVencidos !== []) {
+                    $assinatura['pagamentos'] = array_merge($abertosVencidos, $pagos);
+                    // Sem link: o app gera o PIX da parcela em aberto (MobilePagamentoService::gerarPix)
+                    $assinatura['pode_pagar'] = true;
+                    $resultado[] = $assinatura;
+                    continue;
+                }
                 if ($temPago) {
                     $assinatura['pagamentos'] = $pagos;
                     $assinatura['pode_pagar'] = false;

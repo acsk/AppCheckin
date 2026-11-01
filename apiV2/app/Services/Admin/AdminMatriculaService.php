@@ -1313,6 +1313,7 @@ class AdminMatriculaService
             return $this->error('Erro ao alterar plano: '.$e->getMessage(), 500);
         }
 
+        $this->sincronizarAssinaturaAposAlterarPlano($tenantId, $id, (int) $novoPlanoId, $novoCicloId ? (int) $novoCicloId : null, (float) $valorParcela, (string) $dataInicio, (bool) $planoGratuito);
         $matriculaAtualizada = $this->matriculas->findAposAlterarPlano($id);
         $saldoFinal = $this->matriculas->creditosAluno($tenantId, $alunoId)['saldo_total'];
 
@@ -1339,6 +1340,36 @@ class AdminMatriculaService
                 'motivo' => $motivo,
             ],
         ];
+    }
+
+    /**
+     * O app lista a matrícula pela tabela assinaturas: sem atualizar, ele seguia mostrando plano, valor e cobrança
+     * anteriores (matrícula 189: plano da simulação cancelada e R$ 53,16) e não oferecia pagar a parcela nova.
+     * A cobrança antiga sai; o app gera o PIX da parcela aberta.
+     */
+    private function sincronizarAssinaturaAposAlterarPlano(int $tenantId, int $matriculaId, int $planoId, ?int $cicloId, float $valorParcela, string $dataInicio, bool $planoGratuito): void
+    {
+        try {
+            $assinaturaId = DB::table('assinaturas')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)->orderByDesc('id')->value('id');
+            if (! $assinaturaId) {
+                return;
+            }
+            $campos = [
+                'plano_id' => $planoId, 'valor' => $valorParcela, 'gateway_preference_id' => null, 'payment_url' => null,
+                'status_gateway' => null, 'data_inicio' => $dataInicio, 'proxima_cobranca' => $dataInicio, 'atualizado_em' => now(),
+            ];
+            $statusId = DB::table('assinatura_status')->where('codigo', $planoGratuito ? 'ativa' : 'pendente')->value('id');
+            if ($statusId) {
+                $campos['status_id'] = (int) $statusId;
+            }
+            $frequenciaId = $cicloId ? DB::table('plano_ciclos')->where('id', $cicloId)->value('assinatura_frequencia_id') : null;
+            if ($frequenciaId) {
+                $campos['frequencia_id'] = (int) $frequenciaId;
+            }
+            DB::table('assinaturas')->where('id', $assinaturaId)->update($campos);
+        } catch (\Throwable $e) {
+            Log::warning('Assinatura não sincronizada após alterar plano', ['matricula_id' => $matriculaId, 'message' => $e->getMessage()]);
+        }
     }
 
     /**
