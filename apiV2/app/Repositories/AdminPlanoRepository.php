@@ -80,7 +80,7 @@ class AdminPlanoRepository
         $row = DB::table('planos')
             ->where('id', $id)
             ->where('tenant_id', $tenantId)
-            ->first(['id', 'nome', 'valor']);
+            ->first(['id', 'nome', 'valor', 'duracao_dias']);
 
         return $row ? (array) $row : null;
     }

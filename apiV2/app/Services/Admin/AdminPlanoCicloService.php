@@ -111,7 +111,7 @@ class AdminPlanoCicloService
             }
 
             $meses = (int) $tipo['meses'];
-            $valorMensalBase = $this->ehMensal($tipo['codigo'] ?? null)
+            $valorMensalBase = $this->ehCicloBase($tipo['codigo'] ?? null, isset($plano['duracao_dias']) ? (int) $plano['duracao_dias'] : null)
                 ? (float) $data['valor']
                 : (float) $plano['valor'];
             $valorTotalSemDesconto = $valorMensalBase * $meses;
@@ -167,7 +167,7 @@ class AdminPlanoCicloService
             if ($meses < 1) {
                 $meses = 1;
             }
-            $valorMensalBase = $this->ehMensal($ciclo['tipo_codigo'] ?? null)
+            $valorMensalBase = $this->ehCicloBase($ciclo['tipo_codigo'] ?? null, isset($ciclo['plano_duracao_dias']) ? (int) $ciclo['plano_duracao_dias'] : null)
                 ? $valor
                 : (float) ($ciclo['plano_valor'] ?? 0);
             $valorTotalSemDesconto = $valorMensalBase * $meses;
@@ -533,9 +533,20 @@ class AdminPlanoCicloService
     }
 
     /** O ciclo Mensal é a base do plano (diário, semanal e quinzenal também têm meses = 1). */
-    private function ehMensal(?string $codigo): bool
+    /** Duração do plano (dias) de cada frequência curta; as demais são o ciclo mensal ou múltiplos dele. */
+    private const DIAS_FREQUENCIA_CURTA = ['diario' => 1, 'semanal' => 7, 'quinzenal' => 15];
+
+    /**
+     * Ciclo que define planos.valor: o do mesmo período do plano. Plano de 1 dia (Diária) tem o ciclo diário como
+     * base; antes só o mensal contava e o Diária ficou em R$ 20 com o ciclo a R$ 25, que o app mostrava.
+     */
+    private function ehCicloBase(?string $codigo, ?int $duracaoDias): bool
     {
-        return $codigo === 'mensal';
+        if (isset(self::DIAS_FREQUENCIA_CURTA[$codigo])) {
+            return $duracaoDias === self::DIAS_FREQUENCIA_CURTA[$codigo];
+        }
+
+        return $codigo === 'mensal' && ! in_array($duracaoDias, self::DIAS_FREQUENCIA_CURTA, true);
     }
 
     /**
