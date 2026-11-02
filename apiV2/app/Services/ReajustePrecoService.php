@@ -48,7 +48,7 @@ class ReajustePrecoService
             ->when(Schema::hasTable('contratos_recorrencia'), fn ($q) => $q->whereNotExists(
                 fn ($c) => $c->selectRaw('1')->from('contratos_recorrencia as cr')->whereColumn('cr.matricula_id', 'm.id')
             ))
-            ->get(['m.id', 'm.valor']);
+            ->get(['m.id', 'm.valor', 's.codigo as status_codigo']);
 
         $temOriginal = Schema::hasColumn('pagamentos_plano', 'valor_original');
         foreach ($matriculas as $m) {
@@ -74,9 +74,66 @@ class ReajustePrecoService
                 ));
                 $r['parcelas']++;
             }
+
+            // Vencida: o ciclo pago acabou, a parcela em aberto (mesmo vencida) já é a renovação no preço novo
+            if ($m->status_codigo === 'vencida' && ! $voltou) {
+                $r['parcelas'] += $this->aplicarNaRenovacaoEmAberto($tenantId, (int) $m->id);
+            }
         }
 
         return $r;
+    }
+
+    /**
+     * Ciclo pago encerrado (matrícula vencida ou acesso até hoje) com reajuste pendente: a parcela em aberto é a
+     * renovação, então cobra o preço novo, mesmo já vencida (antes só as a vencer eram reajustadas e a matrícula
+     * 236 seguia cobrando R$ 70 com o ciclo a R$ 80). O preço novo vira o valor da matrícula. Cobrança antiga no
+     * preço velho deixa de ser reaproveitada: o próximo PIX/checkout sai no valor novo e cancela a anterior.
+     *
+     * @return int parcelas reajustadas
+     */
+    public function aplicarNaRenovacaoEmAberto(int $tenantId, int $matriculaId): int
+    {
+        $novo = $this->valorRenovacao($tenantId, $matriculaId);
+        if ($novo === null || $novo <= 0) {
+            return 0;
+        }
+        $m = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
+            ->where('m.id', $matriculaId)->where('m.tenant_id', $tenantId)
+            ->first(['m.valor', 'm.data_vencimento', 'm.proxima_data_vencimento', 's.codigo']);
+        $acessoAte = $m ? substr((string) ($m->data_vencimento ?? $m->proxima_data_vencimento ?? ''), 0, 10) : '';
+        if (! $m || ! ($m->codigo === 'vencida' || ($m->codigo === 'ativa' && $acessoAte !== '' && $acessoAte <= now()->toDateString()))) {
+            return 0;
+        }
+
+        $anterior = (int) round((float) $m->valor * 100);
+        $temOriginal = Schema::hasColumn('pagamentos_plano', 'valor_original');
+        $parcelas = DB::table('pagamentos_plano')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])->whereNull('data_pagamento')
+            ->whereRaw('ROUND('.($temOriginal ? 'COALESCE(valor_original, valor)' : 'valor').' * 100) = ?', [$anterior])
+            ->where(fn ($q) => $q->whereNull('observacoes')
+                ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
+            ->get(['id', 'desconto']);
+        foreach ($parcelas as $p) {
+            DB::table('pagamentos_plano')->where('id', $p->id)->update(array_merge(
+                ['valor' => round(max(0, $novo - (float) ($p->desconto ?? 0)), 2), 'updated_at' => now()],
+                $temOriginal ? ['valor_original' => $novo] : [],
+            ));
+        }
+        if ($parcelas->isNotEmpty()) {
+            if (Schema::hasTable('pagamentos_pix')) {
+                DB::table('pagamentos_pix')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+                    ->whereNotIn('status', ['approved', 'cancelled', 'canceled', 'rejected', 'refunded'])
+                    ->update(['expires_at' => now()]);
+            }
+            // O link no preço velho sai; a referência fica para a cobrança nova cancelar a antiga no provedor
+            DB::table('assinaturas')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)
+                ->where(fn ($q) => $q->whereNull('status_gateway')->orWhere('status_gateway', '<>', 'approved'))
+                ->update(['payment_url' => null, 'valor' => $novo, 'atualizado_em' => now()]);
+        }
+        $this->iniciarCicloNovo($tenantId, $matriculaId);
+
+        return $parcelas->count();
     }
 
     /** Preço do próximo ciclo da matrícula, quando há reajuste pendente. */

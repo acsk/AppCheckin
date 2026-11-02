@@ -120,6 +120,7 @@ voltavam a ficar ativas sozinhas.
     "pacotes": []
 }| **Simulação de migração não é dívida**: não é marcada como "Atrasado", não bloqueia a troca de plano e fica fora do total e do pendente no detalhe da matrícula. O painel mostra o status "Simulação de troca", sem "Dar baixa", porque a baixa aplicaria a troca | `marcarAtrasados`, `temParcelaAbertaAtrasada`, `MatriculaMigracaoAptidaoService::temParcelaAtrasada`, `AdminMatriculaService::show` (`simulacao_troca`) |
 | Troca de plano pelo painel atualiza a assinatura que o app lê (plano, valor da parcela, status pendente, sem a cobrança antiga). O app mostra a parcela nova com "Pagar agora" (pagos de ciclo anterior não contam), e o PIX cobra **a parcela em aberto**, sem substituí-la (antes cobrava o valor cheio do plano e perdia o crédito abatido). No "Pagar agora" o aluno **escolhe PIX ou cartão** (`POST /mobile/pagamento/parcela`); o cartão vai pelo checkout do provedor, com a tarifa calculada sempre sobre o valor do plano. PIX salvo de cobrança cancelada (ex.: simulação substituída) não é reaproveitado | `AdminMatriculaService::sincronizarAssinaturaAposAlterarPlano`, `MobileAssinaturaService::sanitizarAssinaturasFinanceiroMobile`, `MobilePagamentoService::gerarPix` |
+| **Reajuste de preço do ciclo**: com o ciclo pago encerrado (matrícula vencida, ou ativa com o acesso acabando hoje), a parcela em aberto é a renovação e passa ao preço novo, **mesmo já vencida**; o preço novo vira o valor da matrícula, e o PIX/link no preço velho deixa de ser usado (a cobrança nova cancela a antiga). Vale no reajuste, ao gerar o PIX e no comando `reajuste:aplicar-renovacoes` (de hora em hora, `--simular` só lista) | `ReajustePrecoService::aplicarNaRenovacaoEmAberto` |
 | Vencimento de ciclo em meses não estoura o fim do mês (31/10 + 6 meses = 30/04) | `MatriculaMigracaoService::somarMesesSemEstouro` |
 | Cancelar com crédito confere o status de novo, com trava, dentro da transação: dois cancelamentos simultâneos não geram dois créditos | `AdminMatriculaService::cancelarComCredito` |
 
@@ -178,7 +179,9 @@ WHERE id = 189 AND tenant_id = 3 AND aluno_id = 72 AND status_id = 1 AND data_ca
 2. Publicar a API e o `painel/dist` (já buildado nos commits).
 3. Build novo do app: aviso de crédito na lista de planos, mensagem da troca pela academia, "Plano ativado"
    quando o crédito cobre tudo e botão de cancelar escondido. O bloqueio já vale antes, pela API.
-4. A limpeza diária (`cobrancas:limpar-pendentes`, 04:30) encerra as simulações de migração com mais de
+4. Matrículas que venceram antes do reajuste de 01/11: `php artisan reajuste:aplicar-renovacoes --simular`
+   para conferir e depois sem `--simular` (o agendamento de hora em hora também resolve).
+5. A limpeza diária (`cobrancas:limpar-pendentes`, 04:30) encerra as simulações de migração com mais de
    3 dias. Para não esperar, rode-a logo após o deploy.
 
 ## Pontos em aberto

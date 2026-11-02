@@ -352,6 +352,12 @@ class MobilePagamentoService
             }
             $provider = (string) $escolha['provider'];
 
+            // Ciclo encerrado com reajuste pendente: a parcela em aberto passa ao preço novo antes de cobrar
+            if (in_array($matricula['status_codigo'] ?? '', ['ativa', 'vencida'], true)) {
+                app(\App\Services\ReajustePrecoService::class)->aplicarNaRenovacaoEmAberto($tenantId, $matriculaId);
+                $matricula['valor'] = (float) (DB::table('matriculas')->where('id', $matriculaId)->value('valor') ?? $matricula['valor']);
+            }
+
             // Parcela do plano já em aberto (ex.: troca de plano feita no painel, com crédito abatido): o PIX cobra
             // ela, sem substituir — senão cobraria o valor cheio do plano e perderia o crédito (matrícula 189).
             $parcelaAberta = DB::table('pagamentos_plano')
