@@ -198,3 +198,15 @@
 .ck-cm__check input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--primary); }
 .ck-cm__check > span { display: grid; gap: 2px; font-size: 14px; line-height: 20px; }
 .ck-cm__check > span > span { color: var(--ink-muted); }
+
+/* Baixa em duplicidade */
+.ck-bd { display: grid; gap: var(--space-4); }
+.ck-bd__group { display: grid; gap: var(--space-2); }
+.ck-bd__label { font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-muted); }
+.ck-bd__list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.ck-bd__list li { display: flex; gap: var(--space-3); align-items: baseline; justify-content: space-between; padding: var(--space-3); font-size: 14px; line-height: 20px; }
+.ck-bd__list li + li { border-top: 1px solid var(--line); }
+.ck-bd__list li > span { display: grid; gap: 2px; min-width: 0; }
+.ck-bd__list small { color: var(--ink-muted); font-size: 13px; }
+.ck-bd__list strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ck-bd__list--atual { border-color: var(--warning); background: var(--warning-soft); }

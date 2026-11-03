@@ -967,6 +967,10 @@ class AdminMatriculaService
             return $this->error('data_vencimento inválida', 400);
         }
 
+        if (empty($data['confirmar_duplicidade']) && ($duplicidade = $this->baixaEmDuplicidade($pagamento, (string) $dataVencimento, $tenantId))) {
+            return $duplicidade;
+        }
+
         $dataPagamento = ! empty($data['data_pagamento']) ? $data['data_pagamento'] : null;
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
@@ -1074,6 +1078,52 @@ class AdminMatriculaService
                 'message' => 'Baixa realizada com sucesso',
                 'pagamento' => $pagamentoAtualizado,
                 'proxima_parcela' => $proximaParcela,
+            ],
+        ];
+    }
+
+    public const CODIGO_BAIXA_DUPLICADA = 'BAIXA_PERIODO_JA_PAGO';
+
+    /**
+     * Caso real (matrícula 164): a 1312 (venc. 01/11) e a 1551 (venc. 03/11) foram baixadas em 40 s e cada baixa
+     * gerou uma parcela de 03/12. Outra parcela paga com vencimento a menos de meio ciclo desta indica o mesmo
+     * período pago duas vezes: devolve o resumo para o painel pedir confirmação (reenvio com confirmar_duplicidade).
+     *
+     * @param  array<string, mixed>  $pagamento
+     * @return array{status: int, body: array<string, mixed>}|null
+     */
+    private function baixaEmDuplicidade(array $pagamento, string $dataVencimento, int $tenantId): ?array
+    {
+        $meses = (int) ($pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? 0);
+        $janelaDias = intdiv($meses > 0 ? $meses * 30 : max(1, (int) ($pagamento['duracao_dias'] ?? 30)), 2);
+        $vencimento = AcademyDateTime::parse($dataVencimento);
+
+        $parcelas = $this->matriculas->parcelasParaConferirBaixa(
+            $tenantId,
+            (int) $pagamento['matricula_id'],
+            (int) $pagamento['id'],
+            (clone $vencimento)->modify("-{$janelaDias} days")->format('Y-m-d'),
+            (clone $vencimento)->modify("+{$janelaDias} days")->format('Y-m-d'),
+        );
+        if ($parcelas['pagas'] === []) {
+            return null;
+        }
+
+        return [
+            'status' => 409,
+            'body' => [
+                'error' => 'Já existe parcela paga para este período. Confira o resumo antes de confirmar a baixa.',
+                'code' => self::CODIGO_BAIXA_DUPLICADA,
+                'resumo' => [
+                    'parcela' => [
+                        'id' => (int) $pagamento['id'],
+                        'valor' => (float) $pagamento['valor'],
+                        'data_vencimento' => $vencimento->format('Y-m-d'),
+                    ],
+                    'janela_dias' => $janelaDias,
+                    'pagas' => $parcelas['pagas'],
+                    'em_aberto' => $parcelas['em_aberto'],
+                ],
             ],
         ];
     }

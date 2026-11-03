@@ -123,6 +123,7 @@ voltavam a ficar ativas sozinhas.
 | **Reajuste de preço do ciclo**: com o ciclo pago encerrado (matrícula vencida, ou ativa com o acesso acabando hoje), a parcela em aberto é a renovação e passa ao preço novo, **mesmo já vencida**; o preço novo vira o valor da matrícula, e o PIX/link no preço velho deixa de ser usado (a cobrança nova cancela a antiga). Vale no reajuste, ao gerar o PIX e no comando `reajuste:aplicar-renovacoes` (de hora em hora, `--simular` só lista) | `ReajustePrecoService::aplicarNaRenovacaoEmAberto` |
 | Vencimento de ciclo em meses não estoura o fim do mês (31/10 + 6 meses = 30/04) | `MatriculaMigracaoService::somarMesesSemEstouro` |
 | Cancelar com crédito confere o status de novo, com trava, dentro da transação: dois cancelamentos simultâneos não geram dois créditos | `AdminMatriculaService::cancelarComCredito` |
+| **Baixa em duplicidade**: se já existe outra parcela paga da matrícula com vencimento a menos de meio ciclo (15 dias no mensal), a baixa manual devolve 409 `BAIXA_PERIODO_JA_PAGO` com o resumo (parcela atual, pagas no período, em aberto). O painel mostra o resumo num modal e só registra com "Registrar mesmo assim" (`confirmar_duplicidade`). Simulações de troca não contam | `AdminMatriculaService::baixaEmDuplicidade`, `AdminMatriculaRepository::parcelasParaConferirBaixa`, `painel/src/components/BaixaPagamentoForm.js` |
 
 ## Troca de plano pela academia (parâmetro `troca_plano_app`)
 
@@ -164,6 +165,7 @@ Código: `app/Support/TrocaPlanoApp.php`, `MobileCompraPlanoService::ativarComCr
 |---|---|---|
 | 55 (ANA PAULA FERREIRA) | Upgrade no fim do bimestre: a simulação deu R$ 240 de crédito (o certo eram R$ 27,54) e a confirmação recalculou R$ 604,44, contando a própria cobrança da migração | Dados corrigidos: parcela #1545 de R$ 212,46 criada, pagamento #46 de volta para Pago, vencimento em 30/04/2027, origem do crédito #28 → #1192 |
 | 359 (ARTHUR MARCELINO) | Desistiu da assinatura com fidelização e comprou o plano avulso na mesma matrícula; o contrato cancelado deixava a matrícula cancelada mesmo com o pagamento feito | Corrigido no código (`RecorrenciaAcesso`). O status volta ao normal no próximo recálculo depois do deploy |
+| 164 (MARIA BEATRIZ) | Em 03/11, em 40 s: parcela #1551 (venc. 03/11) criada, baixa da #1312 (venc. 01/11) e baixa da #1551. O mesmo mês ficou pago duas vezes e cada baixa gerou uma parcela de 03/12 (#1552 e #1553) | Corrigido no código (confirmação da baixa em duplicidade). Os dados aguardam a academia confirmar se o aluno pagou uma ou duas vezes |
 | 189 (sandbox) | Cancelada pelo admin e reativada pelo recálculo de status; crédito do cancelamento ativo junto com o plano; simulação #1531 bloqueava a troca como "atraso" | Correções no código. Falta voltar o status para cancelada (SQL abaixo) |
 
 ```sql
@@ -199,7 +201,7 @@ WHERE id = 189 AND tenant_id = 3 AND aluno_id = 72 AND status_id = 1 AND data_ca
 ## Testes
 
 `tests/Unit/MatriculaMigracaoRegrasTest.php`, `CreditoCompraAppTest.php`, `AdminMatriculaCreditoTest.php`,
-`PagamentoPlanoStatusCanceladaTest.php`, `SimulacaoMigracaoNaoEhDebitoTest.php` e
+`PagamentoPlanoStatusCanceladaTest.php`, `SimulacaoMigracaoNaoEhDebitoTest.php`, `BaixaDuplicadaTest.php` e
 `tests/Feature/RecorrenciaFidelizacaoTest.php` (compra avulsa depois de contrato cancelado).
 
 ```bash

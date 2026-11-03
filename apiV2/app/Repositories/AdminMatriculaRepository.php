@@ -1002,6 +1002,30 @@ class AdminMatriculaRepository
     }
 
     /**
+     * Outras parcelas da matrícula (sem simulações de troca) para conferir baixa em duplicidade:
+     * pagas com vencimento dentro da janela e todas as em aberto.
+     *
+     * @return array{pagas: list<array<string, mixed>>, em_aberto: list<array<string, mixed>>}
+     */
+    public function parcelasParaConferirBaixa(int $tenantId, int $matriculaId, int $excetoId, string $de, string $ate): array
+    {
+        $base = fn () => DB::table('pagamentos_plano as pp')
+            ->leftJoin('usuarios as ub', 'ub.id', '=', 'pp.baixado_por')
+            ->where('pp.tenant_id', $tenantId)->where('pp.matricula_id', $matriculaId)->where('pp.id', '<>', $excetoId)
+            ->where(fn ($q) => $q->whereNull('pp.observacoes')
+                ->orWhere('pp.observacoes', 'not like', '%'.\App\Services\MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%'))
+            ->orderBy('pp.data_vencimento')->orderBy('pp.id')
+            ->select(['pp.id', 'pp.valor', 'pp.data_vencimento', 'pp.data_pagamento', 'pp.status_pagamento_id', 'ub.nome as baixado_por_nome']);
+
+        $linhas = fn ($q) => $q->get()->map(fn ($r) => (array) $r)->all();
+
+        return [
+            'pagas' => $linhas($base()->where('pp.status_pagamento_id', 2)->whereBetween('pp.data_vencimento', [$de, $ate])),
+            'em_aberto' => $linhas($base()->whereIn('pp.status_pagamento_id', [1, 3])),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     public function atualizarPagamentoBaixa(int $pagamentoId, array $payload): void
