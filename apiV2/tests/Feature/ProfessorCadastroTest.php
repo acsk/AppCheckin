@@ -123,13 +123,13 @@ class ProfessorCadastroTest extends TestCase
         $p = $this->getJson("/v2/admin/professores/{$this->professor}", $this->h())->assertOk()->json('professor');
         $this->assertSame('52998224725', $p['cpf']);
         $this->assertSame('012345-G/AL', $p['cref']);
-        $this->assertSame('82988881234', $p['whatsapp']);
-        $this->assertSame('8233334444', $p['emergencia_telefone']);
+        $this->assertSame('+5582988881234', $p['whatsapp']);
+        $this->assertSame('+558233334444', $p['emergencia_telefone']);
         $this->assertSame('pj', $p['vinculo_codigo']);
         $this->assertSame('2024-02-01', $p['admitido_em']);
         $this->assertSame('57035000', $p['cep']);
         $this->assertSame('AL', $p['estado']);
-        $this->assertSame('82999991234', $p['telefone']);
+        $this->assertSame('+5582999991234', $p['telefone']);
         $this->assertEqualsCanonicalizing([$muay, $jiu], $p['modalidade_ids']);
 
         // Trocar modalidades substitui; limpar campo opcional grava null

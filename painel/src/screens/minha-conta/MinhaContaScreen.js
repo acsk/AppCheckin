@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { editablePhoneValid, phoneForApi, PHONE_ERROR } from '@appcheckin/phone';
 import { useLocalSearchParams } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { Badge, Button, Callout, Modal, PageHeader, Tabs, TextField } from '../../components/ck';
@@ -91,7 +92,7 @@ function PerfilAba() {
   const [erroSenha, setErroSenha] = useState('');
 
   const inicial = (d) => ({
-    nome: titleCase(d.nome || ''), telefone: digits(d.telefone), email: d.email || '', whatsapp: digits(d.whatsapp),
+    nome: titleCase(d.nome || ''), telefone: d.telefone || '', email: d.email || '', whatsapp: d.whatsapp || '',
     cpf: digits(d.cpf), nascimento: isoParaBr(d.data_nascimento), ...pickEndereco(d), cep: digits(d.cep),
   });
   useEffect(() => { if (dados) setForm(inicial(dados)); }, [dados]);
@@ -103,8 +104,8 @@ function PerfilAba() {
   const erros = form ? {
     nome: !form.nome.trim() ? 'Informe o nome' : null,
     email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) ? 'E-mail inválido' : null,
-    telefone: digits(form.telefone) && ![10, 11].includes(digits(form.telefone).length) ? 'DDD + número' : null,
-    whatsapp: digits(form.whatsapp) && !/^\d{2}9\d{8}$/.test(digits(form.whatsapp)) ? 'Celular com DDD (11 dígitos)' : null,
+    telefone: !editablePhoneValid(form.telefone, dados?.telefone) ? PHONE_ERROR : null,
+    whatsapp: !editablePhoneValid(form.whatsapp, dados?.whatsapp) ? PHONE_ERROR : null,
     cpf: !cpfTravado && form.cpf && !pfCpfOk(form.cpf) ? 'CPF inválido' : null,
     nascimento: form.nascimento && !nascimentoIso ? 'Use DD/MM/AAAA' : null,
   } : {};
@@ -115,7 +116,7 @@ function PerfilAba() {
     setErroSenha('');
     try {
       const r = await minhaContaService.salvarPerfil({
-        nome: form.nome.trim(), telefone: digits(form.telefone), email: form.email.trim(), whatsapp: digits(form.whatsapp),
+        nome: form.nome.trim(), telefone: phoneForApi(form.telefone, dados.telefone), email: form.email.trim(), whatsapp: phoneForApi(form.whatsapp, dados.whatsapp),
         ...(cpfTravado ? {} : { cpf: digits(form.cpf) }), data_nascimento: nascimentoIso,
         ...pickEndereco(form), cep: digits(form.cep), senhaAtual,
       });
@@ -145,8 +146,8 @@ function PerfilAba() {
                     hint={cpfTravado ? 'Para trocar o CPF, fale com o suporte.' : null} onChange={(e) => setForm({ ...form, cpf: digits(e.target.value) })} />
                   <TextField label="Data de nascimento" inputMode="numeric" icon="calendar" placeholder="DD/MM/AAAA" value={form.nascimento} error={erros.nascimento}
                     onChange={(e) => setForm({ ...form, nascimento: maskDate(e.target.value) })} />
-                  <TextField label="Telefone" inputMode="tel" icon="phone" value={maskPhone(form.telefone)} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: digits(e.target.value) })} />
-                  <TextField label="WhatsApp" inputMode="tel" icon="message-circle" value={maskPhone(form.whatsapp)} error={erros.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: digits(e.target.value) })} />
+                  <TextField label="Telefone" inputMode="tel" icon="phone" value={form.telefone} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
+                  <TextField label="WhatsApp" inputMode="tel" icon="message-circle" value={form.whatsapp} error={erros.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
                 </div>
                 <TextField label="E-mail" type="email" icon="mail" value={form.email} error={erros.email}
                   hint={trocaEmail ? 'É o seu login. Vamos pedir sua senha para confirmar.' : 'É o seu login no painel e no app.'}
@@ -291,20 +292,20 @@ function EscolaAba() {
   const { dados, setDados, erro, carregar } = useCarregar(minhaContaService.escola);
   const [form, setForm] = useState(null);
   const [salvando, setSalvando] = useState(false);
-  const inicial = (e) => ({ nome: e.nome || '', email: e.email || '', telefone: digits(e.telefone), ...pickEndereco(e), cep: digits(e.cep) });
+  const inicial = (e) => ({ nome: e.nome || '', email: e.email || '', telefone: e.telefone || '', ...pickEndereco(e), cep: digits(e.cep) });
   useEffect(() => { if (dados) setForm(inicial(dados)); }, [dados]);
 
   const alterado = form && dados && JSON.stringify(form) !== JSON.stringify(inicial(dados));
   const erros = form ? {
     nome: !form.nome.trim() ? 'Informe o nome da escola' : null,
     email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) ? 'E-mail inválido' : null,
-    telefone: digits(form.telefone) && ![10, 11].includes(digits(form.telefone).length) ? 'DDD + número' : null,
+    telefone: !editablePhoneValid(form.telefone, dados?.telefone) ? PHONE_ERROR : null,
   } : {};
 
   const salvar = async () => {
     setSalvando(true);
     try {
-      const r = await minhaContaService.salvarEscola({ ...form, telefone: digits(form.telefone) });
+      const r = await minhaContaService.salvarEscola({ ...form, telefone: phoneForApi(form.telefone, dados.telefone) });
       setDados(r.escola);
       showSuccess('Dados da escola salvos');
     } catch (e) {
@@ -325,7 +326,7 @@ function EscolaAba() {
             <TextField label="Nome de exibição" value={form.nome} error={erros.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
             <div className="ck-mc-grid ck-mc-grid--2">
               <TextField label="E-mail de contato" type="email" icon="mail" value={form.email} error={erros.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              <TextField label="Telefone" inputMode="tel" icon="phone" value={maskPhone(form.telefone)} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: digits(e.target.value) })} />
+              <TextField label="Telefone" inputMode="tel" icon="phone" value={form.telefone} error={erros.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
             </div>
             <h3 className="ck-mc-sub">Endereço da unidade</h3>
             <EnderecoCampos prefixo="escola" value={form} onChange={(p) => setForm({ ...form, ...p })} />

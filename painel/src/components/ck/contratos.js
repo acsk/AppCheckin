@@ -2,6 +2,7 @@
    Estilos: src/theme/ck-contratos.css (reaproveita ck-al-*, ck-ml* e ck-stat de ck-pessoas.css). Primitivas de ./index.
    TrocarPlanoContrato (troca de plano do contrato) também mora aqui e usa as mesmas peças do Novo contrato. */
 import React from 'react';
+import { editablePhoneValid, phoneForApi, PHONE_ERROR } from '@appcheckin/phone';
 import { isInstagramProfileUrl } from '../../utils/instagram';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, SegmentedControl, SelectField, Switch,
@@ -160,7 +161,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     if (!f.email.trim()) err.email = 'Informe o e-mail. É o login no painel.';
     else if (!emailOk(f.email)) err.email = 'Confira o e-mail.';
     if (f.cpf && digits(f.cpf).length !== 11) err.cpf = 'O CPF tem 11 números.';
-    if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
+    if (!editablePhoneValid(f.phone, maskPhone(a && a.phone))) err.phone = PHONE_ERROR;
     if (isNew && f.password.length < 6) err.password = 'Crie uma senha com pelo menos 6 caracteres.';
     else if (!isNew && f.password && f.password.length < 6) err.password = 'A nova senha precisa de pelo menos 6 caracteres.';
     var show = tried[0] ? err : {};
@@ -168,7 +169,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       tried[1](true);
       if (Object.keys(err).length) return;
       var roles = ROLE_OPTIONS.map(function (o) { return o.id; }).filter(function (id) { return f.roles.indexOf(id) >= 0; });
-      p.onSave(Object.assign({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null, password: f.password || null, roles: roles },
+      p.onSave(Object.assign({ name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, maskPhone(a && a.phone)), cpf: digits(f.cpf) || null, password: f.password || null, roles: roles },
         permOptions.length ? { permissions: f.perms } : {}));
     }
     var where = p.academyName ? ' de ' + p.academyName : ' desta academia';
@@ -230,7 +231,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
     if (!isInstagramProfileUrl(f.instagram)) err.instagram = 'Use https://www.instagram.com/usuario/';
     if (!f.name.trim()) err.name = 'Informe o nome da academia.';
     if (f.cnpj && digits(f.cnpj).length !== 14) err.cnpj = 'O CNPJ tem 14 números.';
-    if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
+    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
     if (!f.email.trim()) err.email = 'Informe o e-mail de contato.';
     else if (!emailOk(f.email)) err.email = 'Confira o e-mail. Falta algo como @ ou .com.';
     f.whatsapp.forEach(function (w, i) {
@@ -270,7 +271,7 @@ import { StatTile, digits, maskCep, maskCnpj, maskCpf, maskPhone, titleCase } fr
       tried[1](true);
       if (nErr) { focusFirstInvalid(rootRef.current); return; }
       p.onSave && p.onSave({
-        name: f.name.trim(), cnpj: digits(f.cnpj) || null, phone: digits(f.phone) || null, email: f.email.trim().toLowerCase(),
+        name: f.name.trim(), cnpj: digits(f.cnpj) || null, phone: phoneForApi(f.phone, init.phone), email: f.email.trim().toLowerCase(),
         address: { cep: digits(f.cep) || null, street: f.street || null, number: f.number || null, complement: f.complement || null, district: f.district || null, city: f.city || null, uf: f.uf || null },
         instagram: f.instagram.trim() || null,
         whatsapp: waRows.map(function (w) { return { nome: w.nome.trim(), url: w.url.trim() }; }),

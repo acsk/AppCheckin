@@ -22,6 +22,8 @@ import Section, { cardStyle } from "../../src/components/ds/Section";
 import SelectRow from "../../src/components/ds/SelectRow";
 import Stepper from "../../src/components/ds/Stepper";
 import TextField from "../../src/components/ds/TextField";
+import PhoneField from "../../src/components/ds/PhoneField";
+import { normalizePhone, validPhone, PHONE_ERROR } from "@appcheckin/phone";
 import { ds, radius, space, type } from "../../src/components/ds/tokens";
 import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
@@ -71,14 +73,6 @@ const formatCpf = (value) => {
   if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
   if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-};
-
-const formatPhone = (value) => {
-  const d = digitos(value).slice(0, 11);
-  if (d.length <= 2) return d ? `(${d}` : "";
-  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 };
 
 const formatCep = (value) => {
@@ -179,8 +173,8 @@ export default function RegisterMobileScreen() {
     }
     if (idade == null) e.data_nascimento = "Use dia, mês e ano: 14/03/1994.";
     if (!form.sexo) e.sexo = "Escolha uma opção.";
-    if (digitos(form.telefone).length < 10) e.telefone = "Informe DDD e número.";
-    if (!form.mesmoWhatsapp && digitos(form.whatsapp).length < 10) e.whatsapp = "Informe DDD e número do WhatsApp.";
+    if (!validPhone(form.telefone)) e.telefone = PHONE_ERROR;
+    if (!form.mesmoWhatsapp && !validPhone(form.whatsapp)) e.whatsapp = PHONE_ERROR;
     if (temEndereco) {
       if (cepDigits.length !== 8) e.cep = "O CEP tem 8 números.";
       if (!form.logradouro.trim()) e.logradouro = "Informe a rua.";
@@ -365,8 +359,8 @@ export default function RegisterMobileScreen() {
       tenant_id: Number(tenantId),
       sexo: form.sexo,
       data_nascimento: form.data_nascimento.split("/").reverse().join("-"),
-      telefone: digitos(form.telefone),
-      whatsapp: digitos(form.mesmoWhatsapp ? form.telefone : form.whatsapp),
+      telefone: normalizePhone(form.telefone),
+      whatsapp: normalizePhone(form.mesmoWhatsapp ? form.telefone : form.whatsapp),
     };
 
     if (temEndereco) {
@@ -620,7 +614,7 @@ export default function RegisterMobileScreen() {
               onChangeText={(v) => set("email", v)}
               editable={!loading}
             />
-            <TextField
+            <PhoneField
               label="Telefone"
               icon="phone"
               placeholder="(82) 99999-9999"
@@ -628,11 +622,11 @@ export default function RegisterMobileScreen() {
               autoComplete="tel"
               value={form.telefone}
               error={erro("telefone")}
-              onChangeText={(v) => set("telefone", formatPhone(v))}
+              onChangeText={(v) => set("telefone", v)}
               editable={!loading}
             />
             <View style={styles.wa}>
-              <TextField
+              <PhoneField
                 label="WhatsApp"
                 icon="message-circle"
                 placeholder="(82) 99999-9999"
@@ -640,7 +634,7 @@ export default function RegisterMobileScreen() {
                 value={form.mesmoWhatsapp ? form.telefone : form.whatsapp}
                 error={form.mesmoWhatsapp ? null : erro("whatsapp")}
                 hint="A academia usa para avisos e grupos de turma."
-                onChangeText={(v) => set("whatsapp", formatPhone(v))}
+                onChangeText={(v) => set("whatsapp", v)}
                 editable={!loading && !form.mesmoWhatsapp}
                 style={form.mesmoWhatsapp ? { color: ds.inkMuted } : null}
               />

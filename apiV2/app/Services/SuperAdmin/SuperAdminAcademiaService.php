@@ -183,12 +183,12 @@ class SuperAdminAcademiaService
             'nome' => $data['nome'],
             'slug' => $slug,
             'email' => $data['email'],
-            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null,
+            'telefone' => \App\Support\Telefone::normalizar($data['telefone'] ?? null),
             'whatsapp_links' => TenantWhatsappLinks::parse($data['whatsapp_links'] ?? null),
             'instagram_url' => TenantInstagram::normalizar($data['instagram_url'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
-            'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : null,
+            'responsavel_telefone' => \App\Support\Telefone::normalizar($data['responsavel_telefone'] ?? null, 'responsavel_telefone'),
             'responsavel_email' => $data['responsavel_email'] ?? null,
             'cep' => $data['cep'] ?? null,
             'logradouro' => $data['logradouro'] ?? null,
@@ -234,7 +234,7 @@ class SuperAdminAcademiaService
             'nome' => $data['responsavel_nome'] ?? $data['nome'],
             'email' => $data['responsavel_email'] ?? $data['email'],
             'senha' => $data['senha_admin'],
-            'telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : null,
+            'telefone' => \App\Support\Telefone::normalizar($data['responsavel_telefone'] ?? null, 'responsavel_telefone'),
             'cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
             'cep' => $data['cep'] ?? null,
             'logradouro' => $data['logradouro'] ?? null,
@@ -410,7 +410,7 @@ class SuperAdminAcademiaService
             'nome' => $data['nome'],
             'slug' => $slug,
             'email' => $data['email'],
-            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : $academia['telefone'],
+            'telefone' => array_key_exists('telefone', $data) ? \App\Support\Telefone::normalizar($data['telefone']) : $academia['telefone'],
             'instagram_url' => array_key_exists('instagram_url', $data)
                 ? TenantInstagram::normalizar($data['instagram_url'])
                 : ($academia['instagram_url'] ?? null),
@@ -419,7 +419,7 @@ class SuperAdminAcademiaService
                 : TenantWhatsappLinks::parse($academia['whatsapp_links'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? $academia['responsavel_nome'],
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : $academia['responsavel_cpf'],
-            'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : $academia['responsavel_telefone'],
+            'responsavel_telefone' => array_key_exists('responsavel_telefone', $data) ? \App\Support\Telefone::normalizar($data['responsavel_telefone'], 'responsavel_telefone') : $academia['responsavel_telefone'],
             'responsavel_email' => $data['responsavel_email'] ?? $academia['responsavel_email'],
             'cep' => $data['cep'] ?? $academia['cep'],
             'logradouro' => $data['logradouro'] ?? $academia['logradouro'],
@@ -633,8 +633,8 @@ class SuperAdminAcademiaService
             if (! empty($data['email']) && ! $achadoPeloCpf) {
                 $updateData['email'] = $data['email'];
             }
-            if (isset($data['telefone'])) {
-                $updateData['telefone'] = $data['telefone'];
+            if (array_key_exists('telefone', $data)) {
+                $updateData['telefone'] = \App\Support\Telefone::normalizar($data['telefone']);
             }
             if (isset($data['cpf'])) {
                 $updateData['cpf'] = $data['cpf'];
@@ -676,7 +676,7 @@ class SuperAdminAcademiaService
                 'nome' => $data['nome'],
                 'email' => $data['email'],
                 'senha' => $data['senha'],
-                'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null,
+                'telefone' => \App\Support\Telefone::normalizar($data['telefone'] ?? null),
                 'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['cpf']) : null,
                 'papel_id' => 3,
             ];
@@ -778,8 +778,8 @@ class SuperAdminAcademiaService
         if (isset($data['email'])) {
             $updateData['email'] = $data['email'];
         }
-        if (isset($data['telefone'])) {
-            $updateData['telefone'] = preg_replace('/[^0-9]/', '', (string) $data['telefone']);
+        if (array_key_exists('telefone', $data)) {
+            $updateData['telefone'] = \App\Support\Telefone::normalizar($data['telefone']);
         }
         if (isset($data['cpf'])) {
             $updateData['cpf'] = preg_replace('/[^0-9]/', '', (string) $data['cpf']);

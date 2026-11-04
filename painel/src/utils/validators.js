@@ -1,3 +1,5 @@
+import { validPhone } from '@appcheckin/phone';
+
 /**
  * Funções de validação de dados
  */
@@ -97,12 +99,10 @@ export const validarCNPJ = (cnpj) => {
 };
 
 /**
- * Valida telefone (formato brasileiro)
+ * Valida telefone internacional usando os metadados completos do libphonenumber.
  */
 export const validarTelefone = (telefone) => {
-  if (!telefone) return false;
-  const telefoneNumeros = telefone.replace(/[^\d]/g, '');
-  return telefoneNumeros.length >= 10 && telefoneNumeros.length <= 11;
+  return validPhone(telefone);
 };
 
 /**

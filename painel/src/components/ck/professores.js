@@ -5,6 +5,7 @@
    (`bonds` [{value,label}], `modalities` [{value,label}], o professor guarda os values); `requireCpf` no cadastro novo;
    `serverErrors` (campo → mensagem) mostra o que a API recusou; a linha "Usa o app" só aparece quando `appAccess` é conhecido. */
 import React from 'react';
+import { editablePhoneValid, phoneForApi, PHONE_ERROR } from '@appcheckin/phone';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, PageHeader, SelectField, Switch, TextAreaField, TextField,
 } from './index';
@@ -114,15 +115,16 @@ import {
     if (!f.email.trim()) err.email = 'Informe o e-mail. É o login do professor no app.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim())) err.email = 'Confira o e-mail. Falta algo como @ ou .com.';
     else if (mail[0].state === 'taken') err.email = 'Este e-mail já é de ' + mail[0].who + '. Use outro ou vincule o cadastro.';
-    if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
-    if (!f.sameWa && f.whatsapp && digits(f.whatsapp).length < 11) err.whatsapp = 'WhatsApp é celular: DDD e 9 dígitos.';
-    if (f.sameWa && f.phone && digits(f.phone).length === 10) err.phone = err.phone || 'Número fixo não tem WhatsApp. Desmarque a opção abaixo ou use um celular.';
+    var whatsappValue = f.sameWa ? f.phone : f.whatsapp;
+    var whatsappOriginal = f.sameWa && init.sameWa ? init.phone : init.whatsapp;
+    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
+    if (!editablePhoneValid(whatsappValue, whatsappOriginal)) err[f.sameWa ? 'phone' : 'whatsapp'] = PHONE_ERROR;
     if (f.cref && !/^\d{6}-[GP]\/[A-Z]{2}$/.test(f.cref)) err.cref = 'Formato: 000000-G/AL.';
     else if (f.cref && PF_UFS.indexOf(f.cref.slice(-2)) < 0) err.cref = 'A UF do CREF não existe.';
     if (f.crefDue && !crefIso) err.crefDue = 'Use o formato DD/MM/AAAA.';
     if (f.hired && !hiredIso) err.hired = 'Use o formato DD/MM/AAAA.';
     else if (hiredIso && hiredIso > today) err.hired = 'A data está no futuro.';
-    if (f.emPhone && digits(f.emPhone).length < 10) err.emPhone = 'Inclua o DDD.';
+    if (!editablePhoneValid(f.emPhone, init.emPhone)) err.emPhone = PHONE_ERROR;
     if (f.emPhone && !f.emName.trim()) err.emName = 'Diga de quem é o telefone.';
     if (f.emName.trim() && !f.emPhone) err.emPhone = 'Informe o telefone de ' + firstName(f.emName) + '.';
     if (f.cep && digits(f.cep).length !== 8) err.cep = 'O CEP tem 8 números.';
@@ -160,9 +162,9 @@ import {
     function submit(e) {
       e.preventDefault(); tried[1](true);
       if (Object.keys(err).length) { setTimeout(function () { var el = document.querySelector('.ck-al-form [aria-invalid="true"]'); if (el) el.focus(); }, 0); return; }
-      p.onSave && p.onSave({ id: t.id, name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, whatsapp: digits(f.sameWa ? f.phone : f.whatsapp) || null,
+      p.onSave && p.onSave({ id: t.id, name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, init.phone), whatsapp: phoneForApi(whatsappValue, whatsappOriginal),
         cref: f.cref || null, crefDue: crefIso, bond: f.bond || null, hiredAt: hiredIso, modalities: f.modalities,
-        emergency: f.emName.trim() || f.emPhone ? { name: f.emName.trim(), phone: digits(f.emPhone), relation: f.emRel.trim() || null } : null,
+        emergency: f.emName.trim() || f.emPhone ? { name: f.emName.trim(), phone: phoneForApi(f.emPhone, init.emPhone), relation: f.emRel.trim() || null } : null,
         address: { cep: digits(f.cep) || null, street: f.street.trim() || null, number: f.number.trim() || null, complement: f.complement.trim() || null, district: f.district.trim() || null, city: f.city.trim() || null, uf: f.uf || null },
         notes: f.notes.trim() || null, active: f.active }, f);
     }

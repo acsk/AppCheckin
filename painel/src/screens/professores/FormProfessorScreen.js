@@ -56,7 +56,7 @@ const toPayload = (d) => ({
   admitido_em: d.hiredAt,
   modalidade_ids: d.modalities.map(Number),
   emergencia_nome: d.emergency?.name || null,
-  emergencia_telefone: d.emergency?.phone || null,
+  emergencia_telefone: d.emergency ? d.emergency.phone : null,
   emergencia_parentesco: d.emergency?.relation || null,
   cep: d.address.cep,
   logradouro: d.address.street,

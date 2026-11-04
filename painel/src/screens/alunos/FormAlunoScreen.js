@@ -110,7 +110,7 @@ export default function FormAlunoScreen() {
       const payload = {
         nome: data.name,
         email: data.email,
-        telefone: data.phone || '',
+        telefone: data.phone,
         cpf: data.cpf || '',
         data_nascimento: data.birthDate || null,
         cep: data.address.cep || '',

@@ -178,7 +178,8 @@ class CheckoutService
             'endereco_igual' => ! array_key_exists('endereco_responsavel_igual', $data) || filter_var($data['endereco_responsavel_igual'], FILTER_VALIDATE_BOOLEAN),
             'endereco_responsavel' => $endereco('responsavel_'),
             'email' => mb_strtolower($txt('email'), 'UTF-8'),
-            'telefone' => Documento::digitos($txt('telefone')),
+            'telefone' => \App\Support\Telefone::valido($txt('telefone'))
+                ? \App\Support\Telefone::normalizar($txt('telefone')) : $txt('telefone'),
             'senha' => (string) ($data['senha'] ?? ''),
             'senha_confirmacao' => (string) ($data['senha_confirmacao'] ?? ''),
             'plano_id' => (int) ($data['plano_id'] ?? 0),
@@ -255,8 +256,8 @@ class CheckoutService
         if (! filter_var($f['email'], FILTER_VALIDATE_EMAIL) || mb_strlen($f['email']) > 255) {
             $e['email'] = 'Confira o e-mail.';
         }
-        if ($f['legado'] ? (strlen($f['telefone']) < 10 || strlen($f['telefone']) > 11) : ! preg_match('/^\d{2}9\d{8}$/', $f['telefone'])) {
-            $e['telefone'] = 'Informe o WhatsApp com DDD: (00) 90000-0000.';
+        if (! \App\Support\Telefone::valido($f['telefone'])) {
+            $e['telefone'] = \App\Support\Telefone::ERRO;
         }
         if ($f['legado']) {
             if (strlen($f['senha']) < 6) {

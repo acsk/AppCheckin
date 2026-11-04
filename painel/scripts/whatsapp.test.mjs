@@ -1,8 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-const source = await readFile(new URL('../src/utils/whatsapp.js', import.meta.url), 'utf8');
-const { normalizarTelefoneWhatsapp: norm, telefoneWhatsappValido, telefoneDoAluno, urlConversaWhatsapp, abrirConversaWhatsapp } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+import { normalizarTelefoneWhatsapp as norm, telefoneWhatsappValido, telefoneDoAluno, urlConversaWhatsapp, abrirConversaWhatsapp } from '../src/utils/whatsapp.js';
 const numero = value => norm(value).numero;
 test('remove máscara e adiciona +55 a celulares e fixos brasileiros', () => {
   for (const value of ['(82) 99999-9999', '82 99999 9999', '82999999999', '82.99999.9999', ' (82)99999-9999 ', 82999999999]) assert.equal(numero(value), '5582999999999');
@@ -31,7 +29,7 @@ test('rejeita telefone vazio e formatos inválidos com orientação', () => {
   for (const value of [null, undefined, '', '   ', '()-']) assert.equal(norm(value).motivo, 'vazio');
   for (const value of ['9999-9999', '82 9999', '(20) 99999-9999', '(10) 3333-4444', '(82) 89999-9999', '(82) 1333-4444', '(82) 99999-99999', '(82) 99999-9999 ramal 2', '(82) 00000-0000', '(82) 99999-9999 / (82) 98888-7777', 'abc']) {
     const r = norm(value);
-    assert.equal(r.ok, false, String(value)); assert.equal(r.motivo, 'invalido'); assert.match(r.mensagem, /DDD/);
+    assert.equal(r.ok, false, String(value)); assert.equal(r.motivo, 'invalido'); assert.match(r.mensagem, /DDI/);
   }
   assert.equal(telefoneWhatsappValido('(82) 99999-9999'), true); assert.equal(telefoneWhatsappValido('123'), false);
 });
@@ -41,15 +39,15 @@ test('usa o WhatsApp do aluno antes do telefone geral', () => {
   assert.equal(telefoneDoAluno(null), '');
 });
 test('monta a URL do WhatsApp Web com texto codificado opcional', () => {
-  assert.equal(urlConversaWhatsapp('5582999999999'), 'https://web.whatsapp.com/send?phone=5582999999999');
-  assert.equal(urlConversaWhatsapp('5582999999999', '  '), 'https://web.whatsapp.com/send?phone=5582999999999');
+  assert.equal(urlConversaWhatsapp('5582999999999'), 'https://wa.me/5582999999999');
+  assert.equal(urlConversaWhatsapp('5582999999999', '  '), 'https://wa.me/5582999999999');
   const url = new URL(urlConversaWhatsapp('5582999999999', 'Olá & até já? 😊\nLinha 2'));
-  assert.equal(url.searchParams.get('phone'), '5582999999999'); assert.equal(url.searchParams.get('text'), 'Olá & até já? 😊\nLinha 2');
+  assert.equal(url.pathname, '/5582999999999'); assert.equal(url.searchParams.get('text'), 'Olá & até já? 😊\nLinha 2');
 });
 test('abre em nova aba sem opener e não abre nada para telefone inválido', () => {
   const calls = []; globalThis.window = { open: (...args) => calls.push(args) };
-  assert.deepEqual(abrirConversaWhatsapp('(82) 99999-9999', 'Oi'), { ok: true, url: 'https://web.whatsapp.com/send?phone=5582999999999&text=Oi' });
-  assert.deepEqual(calls, [['https://web.whatsapp.com/send?phone=5582999999999&text=Oi', '_blank', 'noopener,noreferrer']]);
+  assert.deepEqual(abrirConversaWhatsapp('(82) 99999-9999', 'Oi'), { ok: true, url: 'https://wa.me/5582999999999?text=Oi' });
+  assert.deepEqual(calls, [['https://wa.me/5582999999999?text=Oi', '_blank', 'noopener,noreferrer']]);
   assert.equal(abrirConversaWhatsapp('123').ok, false); assert.equal(abrirConversaWhatsapp('').ok, false);
   assert.equal(calls.length, 1);
   delete globalThis.window;
@@ -83,6 +81,6 @@ test('a escolha web continua abrindo somente o navegador', () => {
   try {
     abrirConversaWhatsapp('+1 (415) 555-2671', 'Hello', 'web');
     assert.equal(apps.length, 0);
-    assert.deepEqual(abas, [['https://web.whatsapp.com/send?phone=14155552671&text=Hello', '_blank', 'noopener,noreferrer']]);
+    assert.deepEqual(abas, [['https://wa.me/14155552671?text=Hello', '_blank', 'noopener,noreferrer']]);
   } finally { delete globalThis.window; }
 });

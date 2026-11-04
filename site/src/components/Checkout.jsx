@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import PhoneField from '@appcheckin/phone/web';
+import { validPhone, PHONE_ERROR } from '@appcheckin/phone';
 import logo from '../assets/logo.png';
 import { API_URL, LINKS, brl } from '../config';
 import { cicloLabel, gratis, nomeCurto, useCatalogo, valorCiclo } from '../planos';
@@ -103,7 +105,7 @@ function validarForm(f) {
   if (!nasc || nasc > new Date().toISOString().slice(0, 10) || idade(nasc) > 110) e.responsavel_nascimento = 'Informe a data de nascimento (DD/MM/AAAA).';
   else if (idade(nasc) < 18) e.responsavel_nascimento = 'O responsável precisa ter 18 anos ou mais.';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim())) e.email = 'Confira o e-mail.';
-  if (!/^\d{2}9\d{8}$/.test(digitos(f.telefone))) e.telefone = 'Informe o WhatsApp com DDD: (00) 90000-0000.';
+  if (!validPhone(f.telefone)) e.telefone = PHONE_ERROR;
   if (!f.endereco_responsavel_igual) Object.assign(e, erroEndereco(f, 'responsavel_'));
   if (f.senha.length < 8 || !/\p{L}/u.test(f.senha) || !/\d/.test(f.senha)) e.senha = 'Use pelo menos 8 caracteres, com letras e números.';
   else if (f.senha !== f.senha_confirmacao) e.senha_confirmacao = 'As senhas não são iguais.';
@@ -120,13 +122,6 @@ async function buscarCep(cep) {
   } catch {
     return null;
   }
-}
-
-function mascaraTelefone(v) {
-  const d = digitos(v).slice(0, 11);
-  if (d.length <= 2) return d ? `(${d}` : '';
-  const meio = d.length === 11 ? 7 : 6;
-  return `(${d.slice(0, 2)}) ${d.slice(2, meio)}${d.length > meio ? `-${d.slice(meio)}` : ''}`;
 }
 
 function parametros() {
@@ -465,8 +460,8 @@ export default function Checkout() {
                   <Campo id="email" label="E-mail" erro={erroDe('email')} dica="É o seu login no painel.">
                     <input id="email" type="email" placeholder="voce@academia.com.br" autoComplete="email" value={form.email} onChange={set('email')} {...prop('email')} />
                   </Campo>
-                  <Campo id="telefone" label="WhatsApp" erro={erroDe('telefone')} dica="Celular com DDD.">
-                    <input id="telefone" type="tel" placeholder="(82) 90000-0000" autoComplete="tel" value={form.telefone} onChange={set('telefone', mascaraTelefone)} {...prop('telefone')} />
+                  <Campo id="telefone" label="WhatsApp" erro={erroDe('telefone')} dica="Selecione o país e informe o número.">
+                    <PhoneField id="telefone" value={form.telefone} onChange={set('telefone')} error={erroDe('telefone')} />
                   </Campo>
                   <label className="f-check full">
                     <input type="checkbox" checked={form.endereco_responsavel_igual} onChange={(e) => setForm((f) => ({ ...f, endereco_responsavel_igual: e.target.checked }))} />

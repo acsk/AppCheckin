@@ -52,7 +52,7 @@ final class CamposCadastro
         return match (self::CATALOGO[$campo]['tipo'] ?? 'texto') {
             'email' => filter_var($valor, FILTER_VALIDATE_EMAIL) ? null : 'E-mail inválido.',
             'cpf' => strlen($digitos) === 11 ? null : 'CPF deve ter 11 dígitos.',
-            'telefone' => strlen($digitos) >= 10 && strlen($digitos) <= 11 ? null : 'Informe DDD e número.',
+            'telefone' => Telefone::valido($valor) ? null : Telefone::ERRO,
             'cep' => strlen($digitos) === 8 ? null : 'CEP deve ter 8 dígitos.',
             'uf' => preg_match('/^[A-Za-z]{2}$/', $valor) ? null : 'Use a sigla do estado (ex.: AL).',
             'sexo' => SexoAluno::normalizar($valor) ? null : 'Escolha uma opção de sexo.',

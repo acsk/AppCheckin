@@ -5,6 +5,7 @@
    `requireCpf` e busca por CPF que devolve `alreadyHere` (aviso + `onOpenExisting`); AcademiasLista diz "Desativar"
    (a API só tem ativa/inativa). */
 import React from 'react';
+import { editablePhoneValid, formatPhone, phoneForApi, PHONE_ERROR } from '@appcheckin/phone';
 import {
   ActionMenu, Avatar, Badge, Button, Callout, Icon, IconButton, PageHeader, SelectField, Switch, Tabs, TextField,
 } from './index';
@@ -74,9 +75,7 @@ import { Sparkline } from './graficos';
   function digits(v) { return String(v || '').replace(/\D/g, ''); }
   function maskCpf(v) { var d = digits(v).slice(0, 11); return d.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2'); }
   function maskPhone(v) {
-    var d = digits(v).slice(0, 11); if (!d) return ''; if (d.length < 3) return '(' + d;
-    var r = d.slice(2), cut = d.length > 10 ? 5 : 4;
-    return '(' + d.slice(0, 2) + ') ' + (r.length > cut ? r.slice(0, cut) + '-' + r.slice(cut) : r);
+    return formatPhone(v);
   }
   function maskCep(v) { var d = digits(v).slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; }
   function maskDate(v) { var d = digits(v).slice(0, 8); return d.length > 4 ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d; }
@@ -364,7 +363,7 @@ import { Sparkline } from './graficos';
     if (f.cpf && digits(f.cpf).length !== 11) err.cpf = 'O CPF tem 11 números.';
     else if (!f.cpf && !edit && p.requireCpf) err.cpf = 'Informe o CPF. Ele identifica o aluno em qualquer academia.';
     if (f.birth && !birthIso) err.birth = 'Use o formato DD/MM/AAAA.';
-    if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
+    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
     if (!linked[0] && pwOpen[0] && (!edit || f.password) && f.password.length < 6) err.password = edit ? 'A nova senha precisa de pelo menos 6 caracteres.' : 'Crie uma senha com pelo menos 6 caracteres.';
     var show = tried[0] ? err : {};
     var dirty = JSON.stringify(f) !== JSON.stringify(init) || !!linked[0];
@@ -403,7 +402,7 @@ import { Sparkline } from './graficos';
         setTimeout(function () { var el = rootRef.current && rootRef.current.querySelector('[aria-invalid="true"]'); if (el) el.focus(); }, 0);
         return;
       }
-      p.onSave && p.onSave({ name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, gender: f.gender || null, email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null,
+      p.onSave && p.onSave({ name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, gender: f.gender || null, email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, init.phone),
         address: { cep: digits(f.cep) || null, street: f.street || null, number: f.number || null, complement: f.complement || null, district: f.district || null, city: f.city || null, uf: f.uf || null },
         password: !linked[0] && f.password ? f.password : null, status: f.active ? 'ativo' : 'inativo', linkedUserId: linked[0] ? linked[0].userId : null });
     }

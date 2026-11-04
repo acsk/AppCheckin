@@ -277,7 +277,7 @@ class UsuarioRepository
                 $nome = mb_strtoupper(trim((string) ($data['nome'] ?? '')), 'UTF-8');
                 $cpf = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['cpf']) : null;
                 $cep = isset($data['cep']) ? preg_replace('/[^0-9]/', '', (string) $data['cep']) : null;
-                $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
+                $telefone = \App\Support\Telefone::normalizar($data['telefone'] ?? null);
 
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome' => $nome,
@@ -554,10 +554,11 @@ class UsuarioRepository
         if ($busca !== '') {
             $like = '%'.$busca.'%';
             $digitos = preg_replace('/\D/', '', $busca);
-            $base->where(function ($q) use ($like, $digitos) {
+            $base->where(function ($q) use ($like, $digitos, $busca) {
                 $q->where('u.nome', 'like', $like)->orWhere('u.email', 'like', $like);
                 if (strlen($digitos) >= 3) {
-                    $q->orWhere('u.cpf', 'like', '%'.$digitos.'%')->orWhere('u.telefone', 'like', '%'.$digitos.'%');
+                    $q->orWhere('u.cpf', 'like', '%'.$digitos.'%');
+                    \App\Support\Telefone::buscar($q, 'u.telefone', $busca);
                 }
             });
         }
@@ -700,7 +701,7 @@ class UsuarioRepository
                 'email' => $emailNorm,
                 'email_global' => $emailNorm,
                 'senha_hash' => password_hash($senha, PASSWORD_BCRYPT),
-                'telefone' => $data['telefone'] ?? null,
+                'telefone' => \App\Support\Telefone::normalizar($data['telefone'] ?? null),
                 'cpf' => $cpfLimpo ?: null,
                 'ativo' => 1,
             ]);
@@ -767,8 +768,12 @@ class UsuarioRepository
             $update['foto_base64'] = $data['foto_base64'];
         }
 
-        // Dados pessoais: usuarios é a fonte (Pessoa); isset mantém o contrato antigo (null não apaga)
-        $pessoais = array_filter(array_intersect_key($data, array_flip([...Pessoa::CAMPOS, 'nome'])), fn ($v) => $v !== null);
+        // Telefones aceitam null explícito para limpar; os demais campos mantêm o contrato antigo.
+        $pessoais = array_filter(
+            array_intersect_key($data, array_flip([...Pessoa::CAMPOS, 'nome'])),
+            fn ($v, $campo) => $v !== null || in_array($campo, ['telefone', 'whatsapp'], true),
+            ARRAY_FILTER_USE_BOTH,
+        );
         unset($update['nome']);
 
         if ($update === [] && Pessoa::normalizar($pessoais) === []) {
@@ -975,7 +980,7 @@ class UsuarioRepository
                 $nome = mb_strtoupper(trim((string) ($data['nome'] ?? '')), 'UTF-8');
                 $cpf = preg_replace('/[^0-9]/', '', (string) ($data['cpf'] ?? '')) ?: null;
                 $cep = isset($data['cep']) ? preg_replace('/[^0-9]/', '', (string) $data['cep']) : null;
-                $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
+                $telefone = \App\Support\Telefone::normalizar($data['telefone'] ?? null);
                 $senha = self::normalizarSenhaCpf((string) ($data['senha'] ?? ''), $cpf);
 
                 $usuarioId = (int) DB::table('usuarios')->insertGetId([

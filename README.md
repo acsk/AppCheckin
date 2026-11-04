@@ -14,6 +14,29 @@ Sistema completo de check-in com autenticação JWT, desenvolvido com PHP (Slim 
 
 ## ⚡ Quick Start
 
+### Interfaces atuais (painel, mobile e site)
+
+O painel e o mobile usam React/Expo; o site usa React/Vite. Os comandos Angular
+abaixo pertencem à interface legada. A API ativa para gravações é `apiV2` (Laravel).
+
+O `postinstall` das interfaces instala o pacote local compartilhado de telefones,
+que fornece metadados completos do libphonenumber. Se a instalação usar
+`--ignore-scripts`, execute também, a partir da raiz:
+
+```bash
+npm ci --prefix packages/phone
+# Depois, na interface desejada:
+npm ci --prefix site
+# painel/mobile: respeite as opções de instalação já usadas nesses projetos.
+```
+
+O pacote `@appcheckin/phone` fornece o seletor de países, máscara, validação,
+normalização E.164 e links de WhatsApp para as três interfaces. Não há limite fixo
+de 11 dígitos. Campos legados não editados são omitidos dos payloads de atualização,
+permitindo editar outros dados sem reinterpretar o país do telefone.
+
+Auditoria, migração e cuidados de publicação: [API v2](apiV2/README.md#telefones-internacionais).
+
 ```bash
 # Instalação automática
 ./install.sh

@@ -28,8 +28,8 @@ class ConsolidacaoPessoasService
         'nome' => ['texto', ['alunos', 'professores']],
         'cpf' => ['digitos', ['alunos', 'professores']],
         'email' => ['email', ['professores']],
-        'telefone' => ['digitos', ['alunos', 'professores']],
-        'whatsapp' => ['digitos', ['alunos', 'professores']],
+        'telefone' => ['telefone', ['alunos', 'professores']],
+        'whatsapp' => ['telefone', ['alunos', 'professores']],
         'data_nascimento' => ['data', ['alunos', 'professores']],
         'sexo' => ['minusculo', ['alunos']],
         'foto_caminho' => ['caminho', ['alunos']],
@@ -79,7 +79,7 @@ class ConsolidacaoPessoasService
                 if ($item['situacao'] === self::PREENCHER && $campo === 'cpf') {
                     $item = $this->conferirCpf($item, $cpfsEmUso);
                 }
-                if ($item['situacao'] === self::PREENCHER && in_array($campo, ['telefone', 'whatsapp'], true) && ! in_array(strlen((string) $item['novo']), [10, 11, 12, 13], true)) {
+                if ($item['situacao'] === self::PREENCHER && in_array($campo, ['telefone', 'whatsapp'], true) && ! \App\Support\Telefone::valido($item['novo'])) {
                     $item['situacao'] = self::BLOQUEADO;
                     $item['motivo'] = 'Telefone com quantidade de dígitos inválida';
                 }
@@ -218,6 +218,8 @@ class ConsolidacaoPessoasService
 
         $v = match ($tipo) {
             'digitos' => Documento::digitos($v),
+            'telefone' => \App\Support\TelefoneLegado::classificar($v)['normalizado']
+                ?? (preg_match('/^[\d\s().-]+$/', $v) ? Documento::digitos($v) : $v),
             'data' => preg_match('/^\d{4}-\d{2}-\d{2}/', $v) && ! str_starts_with($v, '0000') ? substr($v, 0, 10) : '',
             'email', 'minusculo' => mb_strtolower($v, 'UTF-8'),
             default => $v,

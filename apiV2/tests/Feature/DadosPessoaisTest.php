@@ -70,7 +70,7 @@ class DadosPessoaisTest extends TestCase
 
         $repo->update($a, ['whatsapp' => '(82) 98888-7777', 'cep' => null, 'nome' => 'Maria Souza Lima']);
 
-        $this->assertSame('82988887777', DB::table('usuarios')->where('id', $u)->value('whatsapp'));
+        $this->assertSame('+5582988887777', DB::table('usuarios')->where('id', $u)->value('whatsapp'));
         $this->assertNull(DB::table('alunos')->where('id', $a)->value('whatsapp'), 'cópia limpa');
         $this->assertNull($repo->findById($a)['cep'], 'apagado continua apagado');
         $this->assertSame('MARIA SOUZA LIMA', DB::table('alunos')->where('id', $a)->value('nome'), 'nome espelhado');
@@ -111,6 +111,19 @@ class DadosPessoaisTest extends TestCase
         $this->assertNotNull($aluno);
         $this->assertNull($aluno->cpf);
         $this->assertNull($aluno->telefone);
+    }
+
+    public function test_editar_usuario_preserva_telefone_omitido_e_limpa_null(): void
+    {
+        [$u, $a] = $this->aluno(['telefone' => '8233334444'], ['telefone' => 'legado pendente']);
+        $repo = app(UsuarioRepository::class);
+        $this->assertTrue($repo->atualizarPerfil($u, ['nome' => 'Maria Souza Lima']));
+        $this->assertSame('legado pendente', DB::table('usuarios')->where('id', $u)->value('telefone'));
+        $this->assertTrue($repo->atualizarPerfil($u, ['telefone' => '+49 162 3329708']));
+        $this->assertSame('+491623329708', DB::table('usuarios')->where('id', $u)->value('telefone'));
+        $this->assertTrue($repo->atualizarPerfil($u, ['telefone' => null]));
+        $this->assertNull(DB::table('usuarios')->where('id', $u)->value('telefone'));
+        $this->assertNull(DB::table('alunos')->where('id', $a)->value('telefone'));
     }
 
     public function test_coluna_ausente_vira_null_sem_quebrar_a_query(): void

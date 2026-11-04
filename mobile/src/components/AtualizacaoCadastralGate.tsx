@@ -6,6 +6,7 @@ import Button from "@/src/components/ds/Button";
 import CodigoInput from "@/src/components/ds/CodigoInput";
 import Section from "@/src/components/ds/Section";
 import TextField from "@/src/components/ds/TextField";
+import PhoneField from "@/src/components/ds/PhoneField";
 import { ds, radius, space, type } from "@/src/components/ds/tokens";
 import api from "@/src/services/api";
 
@@ -42,13 +43,6 @@ const MASCARA: Record<string, (v: string) => string> = {
   cpf: (v) => {
     const d = digitos(v).slice(0, 11);
     return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-  },
-  telefone: (v) => {
-    const d = digitos(v).slice(0, 11);
-    if (d.length <= 2) return d ? `(${d}` : "";
-    if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-    if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
   },
   cep: (v) => {
     const d = digitos(v).slice(0, 8);
@@ -281,6 +275,14 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                         </View>
                         {erros.sexo ? <Text style={styles.err}>{erros.sexo}</Text> : null}
                       </View>
+                    ) : c.tipo === "telefone" ? (
+                      <PhoneField
+                        key={c.campo}
+                        label={`${c.label}${c.obrigatorio ? "" : " (opcional)"}`}
+                        value={valores[c.campo] || ""}
+                        onChangeText={set(c.campo, c.tipo)}
+                        error={erros[c.campo] || null}
+                      />
                     ) : (
                       <TextField
                         key={c.campo}

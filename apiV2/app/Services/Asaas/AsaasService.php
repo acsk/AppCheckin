@@ -75,7 +75,7 @@ class AsaasService
             'name' => trim((string) ($data['aluno_nome'] ?? 'Aluno')),
             'cpfCnpj' => $cpf,
             'email' => $data['aluno_email'] ?? null,
-            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['aluno_telefone'] ?? '')) ?: null,
+            'mobilePhone' => \App\Support\Telefone::nacionalBrasil($data['aluno_telefone'] ?? null),
         ]);
 
         $dueDate = AcademyDateTime::today();
@@ -165,7 +165,7 @@ class AsaasService
             'name' => trim((string) ($data['cliente']['name'] ?? '')),
             'cpfCnpj' => $doc,
             'email' => $data['cliente']['email'] ?? null,
-            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['cliente']['mobilePhone'] ?? '')) ?: null,
+            'mobilePhone' => \App\Support\Telefone::nacionalBrasil($data['cliente']['mobilePhone'] ?? null),
         ], true);
 
         $payment = $this->request('POST', '/payments', [
@@ -245,7 +245,7 @@ class AsaasService
             'name' => trim((string) ($data['aluno_nome'] ?? 'Aluno')),
             'cpfCnpj' => $cpf,
             'email' => $data['aluno_email'] ?? null,
-            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['aluno_telefone'] ?? '')) ?: null,
+            'mobilePhone' => \App\Support\Telefone::nacionalBrasil($data['aluno_telefone'] ?? null),
         ]);
 
         $pedido = strtoupper((string) ($data['billing_type'] ?? $data['metodo_pagamento'] ?? ''));
@@ -353,7 +353,7 @@ class AsaasService
             'name' => trim((string) ($data['cliente']['name'] ?? '')),
             'cpfCnpj' => $doc,
             'email' => $data['cliente']['email'] ?? null,
-            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['cliente']['mobilePhone'] ?? '')) ?: null,
+            'mobilePhone' => \App\Support\Telefone::nacionalBrasil($data['cliente']['mobilePhone'] ?? null),
         ]);
         $externalReference = ReferenciaExterna::recorrencia((int) $data['contrato_id']);
         $payload = [

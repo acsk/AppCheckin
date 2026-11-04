@@ -36,7 +36,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
     ->where('filename', '[^/\\\\]+');
 
-Route::prefix('v2')->group(function () {
+Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)->group(function () {
     Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
         ->where('filename', '[^/\\\\]+');
     // Anexos da Central de Comunicação (nome aleatório)

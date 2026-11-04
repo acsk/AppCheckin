@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { normalizePhone, validPhone, PHONE_ERROR } from '@appcheckin/phone';
 import LayoutBase from '../../components/LayoutBase';
 import { Avatar, Badge, Button, Callout, Icon, IconButton, Modal, PageHeader, Switch, TextField } from '../../components/ck';
 import { Panel, digits, maskCpf, maskPhone, titleCase } from '../../components/ck/pessoas';
@@ -56,9 +57,10 @@ function AdicionarModal({ open, gerenciaveis, onClose, onDone }) {
     try { setBusca(await equipeService.buscar({ cpf: digits(f.cpf), email: f.email.trim() })); } catch (e) { setErro(e.message); } finally { setProcurando(false); }
   };
   const salvar = async () => {
+    if (f.telefone && !validPhone(f.telefone)) { setErro(PHONE_ERROR); return; }
     setSalvando(true); setErro('');
     try {
-      const r = await equipeService.adicionar({ ...f, cpf: digits(f.cpf), telefone: digits(f.telefone), email: f.email.trim() });
+      const r = await equipeService.adicionar({ ...f, cpf: digits(f.cpf), telefone: normalizePhone(f.telefone), email: f.email.trim() });
       showSuccess(r.message);
       onDone(r);
     } catch (e) { setErro(e.message); } finally { setSalvando(false); }

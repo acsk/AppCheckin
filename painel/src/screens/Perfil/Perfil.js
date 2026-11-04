@@ -1,4 +1,5 @@
 import React from 'react';
+import PhoneField from '@appcheckin/phone/web';
 import { usePerfil } from '../../hooks/usePerfil';
 import './Perfil.css';
 
@@ -149,8 +150,7 @@ export default function Perfil({ baseUrl = API_BASE_URL, onLogout = null }) {
           <div className="form-group">
             <label>Telefone</label>
             {editando ? (
-              <input 
-                type="tel"
+              <PhoneField
                 value={dadosEditados.telefone || ''}
                 onChange={(e) => setDadosEditados({ ...dadosEditados, telefone: e.target.value })}
               />

@@ -6,6 +6,7 @@
    fatura com `canSettle: false` + `settleNote`, e `invoiceMenu={false}` (sem editar/excluir). */
 /* @ds-bundle: {"format":4,"namespace":"AppCheckin","components":[{"name":"AppShell"},{"name":"Sidebar"},{"name":"AppHeader"},{"name":"PageHeader"},{"name":"Button"},{"name":"IconButton"},{"name":"Switch"},{"name":"SegmentedControl"},{"name":"TextField"},{"name":"SecretField"},{"name":"Fieldset"},{"name":"Tabs"},{"name":"ChoiceCard"},{"name":"Card"},{"name":"ProviderTile"},{"name":"ProviderCard"},{"name":"ProviderLogo"},{"name":"SaveBar"},{"name":"ActionMenu"},{"name":"Modal"},{"name":"SelectField"},{"name":"Matricula"},{"name":"PacoteMatricula"},{"name":"DescontoModal"},{"name":"Badge"},{"name":"Callout"},{"name":"Avatar"},{"name":"Icon"}]} */
 import React from 'react';
+import PhoneField from '@appcheckin/phone/web';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 
@@ -231,6 +232,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
   function TextField(p) {
     var auto = useId(), id = p.id || auto;
+    if (p.type === 'tel' || p.inputMode === 'tel') return h(PhoneField, Object.assign({}, p, { id: id }));
     var rest = omit(p, ['label', 'hint', 'error', 'mono', 'icon', 'suffix', 'labelAside', 'className', 'id', 'prefix']);
     var control = h('div', { className: cx('ck-control', p.error && 'is-invalid', p.readOnly && 'is-readonly') },
       p.icon ? h(Icon, { name: p.icon, size: 16, className: 'ck-control__icon' }) : null,

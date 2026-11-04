@@ -1,6 +1,7 @@
 /* Usuários: lista e formulário, portados das referências UsuariosLista/UsuarioForm.
    Integração da API nas telas de usuarios; estilos ck-usuarios.css e primitivas do painel. */
 import React from 'react';
+import { editablePhoneValid, phoneForApi, PHONE_ERROR } from '@appcheckin/phone';
 import { ActionMenu, Avatar, Badge, Button, Icon, IconButton, PageHeader, SelectField, Switch, TextField } from './index';
 import { AlSection, BackLink, dayDiff, digits, fdate, maskCep, maskCpf, maskPhone, titleCase, UFS } from './pessoas';
 import { pfCpfOk } from './professores';
@@ -116,7 +117,7 @@ function isoToday() { var d = new Date(); return d.getFullYear() + '-' + String(
     if (!f.email.trim()) err.email = 'Informe o e-mail. É o login.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim())) err.email = 'Confira o e-mail. Falta algo como @ ou .com.';
     else if (mail[0].state === 'taken') err.email = 'Este e-mail já é de ' + mail[0].who + '.';
-    if (f.phone && digits(f.phone).length < 10) err.phone = 'Inclua o DDD.';
+    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
     if (p.requireCpf && !f.cpf) err.cpf = 'Informe o CPF.';
     if (f.cpf && !pfCpfOk(f.cpf)) err.cpf = digits(f.cpf).length !== 11 ? 'O CPF tem 11 números.' : 'CPF inválido. Confira os números.';
     var hasAddr = [f.cep, f.street, f.number, f.district, f.city, f.uf].some(function (x) { return String(x).trim(); });
@@ -146,7 +147,7 @@ function isoToday() { var d = new Date(); return d.getFullYear() + '-' + String(
     function submit(e) {
       e.preventDefault(); if (p.saving) return; if (p.associating) { p.onAssociate && p.onAssociate(); return; } tried[1](true);
       if (Object.keys(err).length) { setTimeout(function () { var el = document.querySelector('.ck-al-form [aria-invalid="true"]'); if (el) el.focus(); }, 0); return; }
-      p.onSave && p.onSave({ id: u.id, name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: digits(f.phone) || null, cpf: digits(f.cpf) || null,
+      p.onSave && p.onSave({ id: u.id, name: f.name.trim(), email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, init.phone), cpf: digits(f.cpf) || null,
         address: hasAddr ? { cep: digits(f.cep), street: f.street.trim(), number: f.number.trim(), complement: f.complement.trim() || null, district: f.district.trim() || null, city: f.city.trim(), uf: f.uf } : null,
         password: pw[0] === 'set' ? pass[0] : null, active: f.active });
     }

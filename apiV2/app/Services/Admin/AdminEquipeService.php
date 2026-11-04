@@ -147,7 +147,7 @@ class AdminEquipeService
                 'nome' => mb_strtoupper(trim((string) $data['nome']), 'UTF-8'),
                 'email' => $email,
                 'email_global' => $email,
-                'telefone' => Documento::digitos((string) ($data['telefone'] ?? '')) ?: null,
+                'telefone' => \App\Support\Telefone::normalizar($data['telefone'] ?? null),
                 'cpf' => $cpf ?: null,
                 'senha_hash' => password_hash((string) $data['senha'], PASSWORD_BCRYPT),
                 'ativo' => 1,

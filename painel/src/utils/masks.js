@@ -57,26 +57,7 @@ export const mascaraCPF = (value) => {
  * @param {string} value - Valor a ser formatado
  * @returns {string} - Telefone formatado
  */
-export const mascaraTelefone = (value) => {
-  let numeros = apenasNumeros(value);
-  
-  // Limitar a 11 dígitos (celular)
-  if (numeros.length > 11) {
-    numeros = numeros.substring(0, 11);
-  }
-  
-  if (numeros.length <= 2) {
-    return numeros;
-  } else if (numeros.length <= 6) {
-    return numeros.replace(/(\d{2})(\d{0,4})/, '($1) $2');
-  } else if (numeros.length <= 10) {
-    // Telefone fixo: (XX) XXXX-XXXX
-    return numeros.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
-  } else {
-    // Celular: (XX) XXXXX-XXXX
-    return numeros.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
-  }
-};
+export { formatPhone as mascaraTelefone } from '@appcheckin/phone';
 
 /**
  * Aplica máscara de CEP (XXXXX-XXX)

@@ -194,7 +194,7 @@ class CheckoutServiceTest extends TestCase
             'tipo_pessoa' => 'pj', 'cnpj' => '11.444.777/0001-00', 'razao_social' => 'AB',
             'cep' => '570', 'logradouro' => '', 'numero' => '', 'bairro' => '', 'cidade' => '', 'estado' => 'ZZ',
             'responsavel_nome' => 'Ana', 'responsavel_cpf' => '111.111.111-11', 'responsavel_nascimento' => '2015-01-01',
-            'email' => 'ana@', 'telefone' => '(82) 3333-4444', 'senha' => 'abcdefgh',
+            'email' => 'ana@', 'telefone' => '+49 12', 'senha' => 'abcdefgh',
         ]), '1.1.1.1');
 
         $this->assertSame(422, $res['status']);
@@ -242,7 +242,7 @@ class CheckoutServiceTest extends TestCase
                 && $d['senha_admin'] === 'segredo12'))
             ->andReturn(['status' => 201, 'body' => ['academia' => ['id' => 9, 'nome' => 'Studio Ana'], 'admin' => ['id' => 40], 'contrato' => ['id' => 30, 'data_fim' => null]]]);
         $this->usuarios->shouldReceive('gravarDadosPessoais')->once()
-            ->with(40, ['whatsapp' => '82988887777', 'data_nascimento' => '1990-05-20', 'cep' => '57035000', 'logradouro' => 'Rua A',
+            ->with(40, ['whatsapp' => '+5582988887777', 'data_nascimento' => '1990-05-20', 'cep' => '57035000', 'logradouro' => 'Rua A',
                 'numero' => '10', 'complemento' => '', 'bairro' => 'Ponta Verde', 'cidade' => 'Maceió', 'estado' => 'AL']);
 
         $res = $this->service()->assinar($this->completo(), '1.1.1.1');

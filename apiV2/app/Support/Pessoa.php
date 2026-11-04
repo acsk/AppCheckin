@@ -88,7 +88,7 @@ final class Pessoa
 
     /**
      * Só os campos pessoais (e o nome) presentes em $data, no formato gravado: documentos e telefones
-     * com dígitos, endereço e nome em maiúsculas, sexo pela lista, vazio vira null.
+     * com dígitos, telefones E.164, endereço e nome em maiúsculas, sexo pela lista, vazio vira null.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
@@ -103,7 +103,8 @@ final class Pessoa
             $v = is_string($data[$campo]) ? trim($data[$campo]) : $data[$campo];
             $v = ($v === '' || $v === null) ? null : $v;
             $out[$campo] = $v === null ? null : match ($campo) {
-                'cpf', 'cep', 'telefone', 'whatsapp' => Documento::digitos((string) $v) ?: null,
+                'cpf', 'cep' => Documento::digitos((string) $v) ?: null,
+                'telefone', 'whatsapp' => Telefone::normalizar($v, $campo),
                 'nome', 'logradouro', 'complemento', 'bairro', 'cidade' => mb_strtoupper((string) $v, 'UTF-8'),
                 'estado' => mb_substr(mb_strtoupper((string) $v, 'UTF-8'), 0, 2, 'UTF-8'),
                 'sexo' => SexoAluno::normalizar($v),

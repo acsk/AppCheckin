@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { whatsappUrl } from '@appcheckin/phone';
 import { useRouter } from 'expo-router';
 import { authService } from '../../services/authService';
 import { buscarDashboardCards, buscarDashboardVisao } from '../../services/dashboardService';
@@ -34,11 +35,8 @@ function Empty({ icon = 'check-circle', title, children }) {
 }
 
 function whatsappLink(telefone, nome, ate) {
-  let d = String(telefone || '').replace(/\D/g, '');
-  if (d.length < 10) return null;
-  if (d.length <= 11) d = `55${d}`;
   const texto = `Oi, ${titleCase(nome).split(' ')[0]}! Seu plano na academia vale até ${fdate(ate)}. Quer renovar para continuar treinando?`;
-  return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`;
+  return whatsappUrl(telefone, texto);
 }
 
 export default function Dashboard() {

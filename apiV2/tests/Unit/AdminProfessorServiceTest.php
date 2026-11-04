@@ -291,7 +291,7 @@ class AdminProfessorServiceTest extends TestCase
 
         $result = $this->service($repo)->update(9, 3, [
             'data_nascimento' => now()->subYears(15)->toDateString(),
-            'whatsapp' => '1133334444',
+            'whatsapp' => '+49 12',
             'cref' => '12345-G/AL',
             'admitido_em' => now()->addDay()->toDateString(),
             'vinculo_id' => 99,
@@ -320,7 +320,7 @@ class AdminProfessorServiceTest extends TestCase
         $repo->shouldReceive('associarAoTenant')->once()->with(9, 3, false)->andReturn(true);
         $repo->shouldReceive('atualizar')->once()->with(9, [
             'cref' => '123456-G/AL',
-            'whatsapp' => '82999991234',
+            'whatsapp' => '+5582999991234',
             'cep' => '57035000',
             'estado' => 'AL',
             'complemento' => null,

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "postinstall": "npm ci --prefix ../packages/phone --ignore-scripts --no-audit --no-fund",
     "start": "node -r ./node-polyfill.js ./node_modules/.bin/expo start",
     "android": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --android",
     "ios": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --ios",
@@ -15,6 +16,7 @@
     "postbuild": "node scripts/copy-icons.js"
   },
   "dependencies": {
+    "@appcheckin/phone": "file:../packages/phone",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "^8.6.0",
     "@react-native-picker/picker": "^2.11.4",

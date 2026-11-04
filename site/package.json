@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "npm ci --prefix ../packages/phone --ignore-scripts --no-audit --no-fund",
     "start": "vite",
     "dev": "vite",
     "web": "vite",
@@ -19,6 +20,7 @@
     "planos": "node scripts/fetch-planos.js"
   },
   "dependencies": {
+    "@appcheckin/phone": "file:../packages/phone",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

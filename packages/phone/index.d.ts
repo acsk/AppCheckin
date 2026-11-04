@@ -1,0 +1,16 @@
+import type { CountryCode, PhoneNumber } from 'libphonenumber-js';
+export const DEFAULT_COUNTRY: CountryCode;
+export const PHONE_ERROR: string;
+export function phoneInput(value: unknown, country?: CountryCode): string;
+export function parsePhone(value: unknown, country?: CountryCode): PhoneNumber | undefined;
+export function normalizePhone(value: unknown, country?: CountryCode): string | null;
+export function validPhone(value: unknown, country?: CountryCode): boolean;
+export function formatPhone(value: unknown): string;
+export function phoneForApi(value: unknown, original?: unknown): unknown;
+export function editablePhoneValid(value: unknown, original?: unknown): boolean;
+export function countryFlag(country: string): string;
+export const countries: { country: CountryCode; callingCode: string; label: string }[];
+export function phoneEditor(value: unknown, country?: CountryCode): { country: CountryCode; display: string; value: string };
+export function nationalPhone(value: unknown, country?: CountryCode): string;
+export function changePhoneCountry(value: unknown, country: CountryCode): { country: CountryCode; display: string; value: string };
+export function whatsappUrl(value: unknown, text?: string): string | null;

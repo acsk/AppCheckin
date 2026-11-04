@@ -86,6 +86,75 @@ curl -s -X POST http://localhost:9090/v2/auth/login \
   -d '{"email":"teste@exemplo.com","senha":"password123"}'
 ```
 
+## Telefones internacionais
+
+Novos telefones são validados com `giggsey/libphonenumber-for-php` e armazenados
+em E.164 (`+` e DDI). A validação Angular legada não participa dos fluxos atuais:
+painel/mobile/site React reutilizam `packages/phone` com `libphonenumber-js/max`.
+Brasil é o padrão para **novas entradas nacionais** de clientes antigos; a
+migração **não** atribui país a números existentes sem DDI.
+
+Campos: `telefone`, `whatsapp`, `emergencia_telefone`, `responsavel_telefone`,
+inclusive em objetos aninhados. Enviar `null` limpa um campo opcional; omiti-lo
+preserva o valor. Entradas inválidas retornam HTTP 422 com `errors` por campo.
+Webhooks não são normalizados pelo middleware cadastral.
+
+### Publicação e auditoria segura
+
+Faça backup do banco e instale as dependências com `composer install` antes dos
+comandos abaixo. Nenhuma conversão deve ser feita automaticamente no deploy.
+A auditoria é somente leitura por padrão e não imprime números pessoais:
+
+```bash
+php artisan telefones:normalizar --detalhes
+```
+
+Ela inventaria as colunas existentes em `usuarios`, `alunos`, `professores` e
+`tenants`, verifica índices e classifica números como normalizados, conversíveis,
+sem DDI ou inválidos. Não utiliza tabelas de histórico como fonte cadastral.
+
+Ordem de implantação:
+
+1. Criar somente o histórico dos originais:
+   `php artisan migrate --path=database/migrations/2026_11_03_200000_create_telefone_normalizacoes_table.php --force`.
+2. Auditar os registros e índices no banco de destino.
+3. Converter os números com DDI explícito e válido:
+   `php artisan telefones:normalizar --aplicar`.
+4. Confirmar o país dos registros sem DDI antes de converter. Exemplo restrito:
+   `php artisan telefones:normalizar --aplicar --pais-legado=BR --tabela=usuarios --id=123`.
+   Não usar `--pais-legado=BR` globalmente sem verificar a origem dos dados.
+5. Resolver manualmente valores maiores que 20 caracteres e casos ambíguos,
+   sem apagá-los. A migração de schema recusa truncamento antes de alterar colunas.
+6. Executar
+   `php artisan migrate --path=database/migrations/2026_11_03_201000_telefones_e164_varchar20.php --force`
+   e publicar as interfaces junto da API.
+
+O original de cada conversão é preservado em `telefone_normalizacoes` na mesma
+transação da atualização. Restrinja acesso a essa tabela: ela contém dados pessoais.
+Reexecutar o comando não reconverte números E.164. Os métodos `down` não removem
+o histórico nem reduzem a coluna, pois isso poderia destruir números internacionais.
+
+Telefones compartilhados por familiares continuam permitidos: não foi adicionada
+unicidade global. Índices existentes são preservados; conversões com colisão
+normalizada em índice único são bloqueadas para revisão (a verificação de índices
+compostos é conservadora). Buscas aceitam E.164 e os formatos legados equivalentes.
+
+WhatsApp usa `https://wa.me/<E164 sem +>`. Os gateways brasileiros Asaas/Mercado Pago
+continuam recebendo somente o número nacional brasileiro em seus campos opcionais:
+telefones estrangeiros não são enviados como falsos números brasileiros, mas
+permanecem íntegros no cadastro.
+
+### Testes
+
+```bash
+php vendor/bin/phpunit tests/Unit/TelefoneTest.php tests/Feature/TelefonesInternacionaisTest.php
+# A partir da raiz:
+node --test packages/phone/phone.test.mjs painel/scripts/whatsapp.test.mjs
+```
+
+Os testes de banco usam SQLite em memória. Execute a auditoria no MySQL de destino
+antes da migração; os testes não inspecionam nem modificam o banco de produção.
+
 ## Variáveis de ambiente
 
 Copie `.env.example` para `.env` e alinhe com a API Slim:

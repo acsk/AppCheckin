@@ -362,7 +362,7 @@ class MercadoPagoService
             'name' => $data['aluno_nome'] ?? '',
             'email' => $payerEmail,
             'phone' => [
-                'number' => $data['aluno_telefone'] ?? ''
+                'number' => \App\Support\Telefone::nacionalBrasil($data['aluno_telefone'] ?? null) ?? ''
             ]
         ];
         $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', $data['aluno_cpf']) : '';

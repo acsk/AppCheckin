@@ -15,7 +15,7 @@ export function usuarioParaLayout(u) {
 }
 export function usuarioParaApi(d, papelId = 1) {
   const a = d.address || {};
-  const payload = { nome: d.name, email: d.email, telefone: d.phone || '', cpf: d.cpf || '', papel_id: papelId,
+  const payload = { nome: d.name, email: d.email, telefone: d.phone, cpf: d.cpf || '', papel_id: papelId,
     cep: a.cep || '', logradouro: a.street || '', numero: a.number || '', complemento: a.complement || '', bairro: a.district || '', cidade: a.city || '', estado: a.uf || '' };
   if (d.password) payload.senha = d.password;
   return payload;

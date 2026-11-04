@@ -593,8 +593,8 @@ class AuthService
             $tenantId = null;
         }
 
-        $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
-        $whatsapp = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', (string) $data['whatsapp']) : null;
+        $telefone = \App\Support\Telefone::normalizar($data['telefone'] ?? null);
+        $whatsapp = \App\Support\Telefone::normalizar($data['whatsapp'] ?? null, 'whatsapp');
 
         $erros = [];
         if ($nome === '') {

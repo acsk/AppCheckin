@@ -1,4 +1,5 @@
 import React from 'react';
+import PhoneField from '@appcheckin/phone/web';
 import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import styles from '../styles';
@@ -27,12 +28,9 @@ export default function AcademiaForm({ values, onChange, onSubmit, saving, isEdi
       </View>
       <View style={styles.formGroup}>
         <Text style={styles.formLabel}>Telefone</Text>
-        <TextInput
-          style={styles.formInput}
+        <PhoneField
           value={values.telefone}
-          onChangeText={(v) => onChange({ ...values, telefone: v })}
-          placeholder="(11) 99999-9999"
-          keyboardType="phone-pad"
+          onChange={(event) => onChange({ ...values, telefone: event.target.value })}
         />
       </View>
       <View style={styles.formGroup}>

@@ -103,11 +103,10 @@ class AdminMinhaContaService
     private function validarPessoais(array $p, int $usuarioId, ?string $cpfAtual): array
     {
         $errors = [];
-        if (! empty($p['telefone']) && ! in_array(strlen($p['telefone']), [10, 11], true)) {
-            $errors[] = 'Telefone deve ter DDD + número (10 ou 11 dígitos)';
-        }
-        if (! empty($p['whatsapp']) && ! preg_match('/^\d{2}9\d{8}$/', $p['whatsapp'])) {
-            $errors[] = 'WhatsApp deve ser um celular com DDD (11 dígitos)';
+        foreach (['telefone', 'whatsapp'] as $campo) {
+            if (! empty($p[$campo]) && ! \App\Support\Telefone::valido($p[$campo])) {
+                $errors[] = \App\Support\Telefone::ERRO;
+            }
         }
         if (array_key_exists('cpf', $p)) {
             if ($cpfAtual !== null && $p['cpf'] !== $cpfAtual) {
@@ -248,7 +247,11 @@ class AdminMinhaContaService
             $v[$campo] = trim((string) ($data[$campo] ?? ''));
         }
         $v['email'] = mb_strtolower($v['email'], 'UTF-8');
-        $v['telefone'] = Documento::digitos($v['telefone']);
+        if (array_key_exists('telefone', $data)) {
+            $v['telefone'] = \App\Support\Telefone::normalizar($v['telefone']) ?? '';
+        } else {
+            unset($v['telefone']);
+        }
         $v['cep'] = Documento::digitos($v['cep']);
         $v['estado'] = mb_strtoupper($v['estado'], 'UTF-8');
 
@@ -261,8 +264,8 @@ class AdminMinhaContaService
         if (! filter_var($v['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'E-mail de contato inválido';
         }
-        if ($v['telefone'] !== '' && ! in_array(strlen($v['telefone']), [10, 11], true)) {
-            $errors[] = 'Telefone deve ter DDD + número (10 ou 11 dígitos)';
+        if (! empty($v['telefone']) && ! \App\Support\Telefone::valido($v['telefone'])) {
+            $errors[] = \App\Support\Telefone::ERRO;
         }
         if ($v['cep'] !== '' && strlen($v['cep']) !== 8) {
             $errors[] = 'CEP deve ter 8 dígitos';

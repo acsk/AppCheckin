@@ -610,11 +610,9 @@ class AdminAlunoService
             $errors[] = 'Sexo inválido';
         }
 
-        if (! empty($data['telefone'])) {
-            $tel = preg_replace('/[^0-9]/', '', (string) $data['telefone']);
-            $len = strlen((string) $tel);
-            if ($len < 10 || $len > 11) {
-                $errors[] = 'Telefone deve ter 10 ou 11 dígitos';
+        foreach (['telefone', 'whatsapp'] as $campo) {
+            if (! empty($data[$campo]) && ! \App\Support\Telefone::valido($data[$campo])) {
+                $errors[] = \App\Support\Telefone::ERRO;
             }
         }
 

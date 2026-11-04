@@ -1,7 +1,8 @@
 /* Conversa manual pelo WhatsApp: normaliza o telefone e abre a versão web ou o aplicativo.
    Não envia nada — só abre a conversa (com texto opcional) para o atendente enviar à mão. */
+import { parsePhone } from '@appcheckin/phone';
 
-export const WHATSAPP_WEB_URL = 'https://web.whatsapp.com/send';
+export const WHATSAPP_WEB_URL = 'https://wa.me';
 export const WHATSAPP_APP_URL = 'whatsapp://send';
 export const PAIS_BRASIL = '55';
 
@@ -12,15 +13,7 @@ export const DDDS = new Set([
   71, 73, 74, 75, 77, 79, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99,
 ].map(String));
 
-export const ORIENTACAO_TELEFONE = 'Corrija o cadastro com DDD + número, ex.: (82) 99999-9999.';
-
-// Celular: DDD + 9 + 8 dígitos. Fixo: DDD + [2-5] + 7 dígitos. Contas antigas de celular
-// com 8 dígitos (DDD + [6-9] + 7) ainda existem no cadastro e o WhatsApp as reconhece.
-function nacionalValido(d) {
-  if (!DDDS.has(d.slice(0, 2))) return false;
-  if (d.length === 11) return d[2] === '9';
-  return d.length === 10 && /[2-9]/.test(d[2]);
-}
+export const ORIENTACAO_TELEFONE = 'Corrija o cadastro selecionando o país e o DDI, ex.: +55 (82) 99999-9999.';
 
 /**
  * Normaliza um telefone para o formato internacional usado pelo WhatsApp (só dígitos, com país).
@@ -29,26 +22,10 @@ function nacionalValido(d) {
  */
 export function normalizarTelefoneWhatsapp(telefone) {
   const bruto = telefone == null ? '' : String(telefone).trim();
-  let d = bruto.replace(/\D/g, '');
   const invalido = { ok: false, motivo: 'invalido', mensagem: `Telefone inválido. ${ORIENTACAO_TELEFONE}` };
-  if (!d) return /[a-z]/i.test(bruto) ? invalido : { ok: false, motivo: 'vazio', mensagem: 'Aluno sem telefone cadastrado.' };
-
-  // Discagem internacional (00 / +): país explícito
-  const internacional = bruto.startsWith('+') || d.startsWith('00');
-  const comZero = d.startsWith('0');
-  d = d.replace(/^0+/, '');
-  // Discagem nacional com código de operadora: 0 + XX + DDD + número
-  if (comZero && !internacional && (d.length === 12 || d.length === 13) && nacionalValido(d.slice(2))) {
-    d = d.slice(2);
-  }
-  if (internacional && !d.startsWith(PAIS_BRASIL)) {
-    return d.length >= 8 && d.length <= 15 ? { ok: true, numero: d, nacional: null } : invalido;
-  }
-  // Já vem com 55 (sem duplicar). DDD 55 sozinho tem 10/11 dígitos, então não se confunde.
-  if ((d.length === 12 || d.length === 13) && d.startsWith(PAIS_BRASIL) && nacionalValido(d.slice(2))) {
-    d = d.slice(2);
-  }
-  return nacionalValido(d) ? { ok: true, numero: PAIS_BRASIL + d, nacional: d } : invalido;
+  if (!bruto.replace(/\D/g, '')) return /[a-z]/i.test(bruto) ? invalido : { ok: false, motivo: 'vazio', mensagem: 'Aluno sem telefone cadastrado.' };
+  const phone = parsePhone(bruto);
+  return phone ? { ok: true, numero: phone.number.slice(1), nacional: phone.country === 'BR' ? phone.nationalNumber : null } : invalido;
 }
 
 export const telefoneWhatsappValido = (telefone) => normalizarTelefoneWhatsapp(telefone).ok;
@@ -63,7 +40,8 @@ export const telefoneDoAluno = (aluno) => (aluno && (aluno.whatsapp || aluno.tel
  */
 export function urlConversaWhatsapp(numero, texto, destino = 'web') {
   const msg = texto && String(texto).trim();
-  return `${destino === 'app' ? WHATSAPP_APP_URL : WHATSAPP_WEB_URL}?phone=${numero}${msg ? `&text=${encodeURIComponent(msg)}` : ''}`;
+  if (destino === 'app') return `${WHATSAPP_APP_URL}?phone=${numero}${msg ? `&text=${encodeURIComponent(msg)}` : ''}`;
+  return `${WHATSAPP_WEB_URL}/${numero}${msg ? `?text=${encodeURIComponent(msg)}` : ''}`;
 }
 
 /**

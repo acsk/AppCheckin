@@ -129,11 +129,11 @@ class AdminAlunoRepository
         if ($busca !== '') {
             $like = '%'.$busca.'%';
             $digitos = preg_replace('/\D/', '', $busca);
-            $base->where(function ($q) use ($like, $digitos) {
+            $base->where(function ($q) use ($like, $digitos, $busca) {
                 $q->where('a.nome', 'like', $like)->orWhere('u.email', 'like', $like);
                 if (strlen($digitos) >= 3) {
-                    // CPF e telefone são gravados só com dígitos
-                    $q->orWhere(Pessoa::col('cpf'), 'like', '%'.$digitos.'%')->orWhere(Pessoa::col('telefone'), 'like', '%'.$digitos.'%');
+                    $q->orWhere(Pessoa::col('cpf'), 'like', '%'.$digitos.'%');
+                    \App\Support\Telefone::buscar($q, Pessoa::col('telefone'), $busca);
                 }
             });
         }

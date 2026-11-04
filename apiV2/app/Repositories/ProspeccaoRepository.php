@@ -137,7 +137,10 @@ class ProspeccaoRepository
                 $j->on('o.aluno_id', '=', 'a.id')->where('o.tenant_id', $tenantId)->whereNull('o.encerrada_em');
             });
         if ($buscaDigitos) {
-            $q->where(fn ($w) => $w->where(Pessoa::col('telefone', 'pu'), 'like', '%'.$buscaDigitos.'%')->orWhere(Pessoa::col('whatsapp', 'pu'), 'like', '%'.$buscaDigitos.'%'));
+            $q->where(function ($w) use ($buscaDigitos) {
+                \App\Support\Telefone::buscar($w, Pessoa::col('telefone', 'pu'), $buscaDigitos, 'and');
+                \App\Support\Telefone::buscar($w, Pessoa::col('whatsapp', 'pu'), $buscaDigitos);
+            });
         } elseif ($buscaNome) {
             $q->where('a.nome', 'like', '%'.$buscaNome.'%');
         }
@@ -284,8 +287,10 @@ class ProspeccaoRepository
             $q->where('o.status', $f['status']);
         }
         if (! empty($f['busca_digitos'])) {
-            $like = '%'.$f['busca_digitos'].'%';
-            $q->where(fn ($w) => $w->where(Pessoa::col('telefone', 'pu'), 'like', $like)->orWhere(Pessoa::col('whatsapp', 'pu'), 'like', $like));
+            $q->where(function ($w) use ($f) {
+                \App\Support\Telefone::buscar($w, Pessoa::col('telefone', 'pu'), $f['busca_digitos'], 'and');
+                \App\Support\Telefone::buscar($w, Pessoa::col('whatsapp', 'pu'), $f['busca_digitos']);
+            });
         } elseif (! empty($f['busca_nome'])) {
             $q->where('a.nome', 'like', '%'.$f['busca_nome'].'%');
         }

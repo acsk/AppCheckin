@@ -369,7 +369,7 @@ class AdminProfessorService
     private const COMPLEMENTO = ['data_nascimento', 'whatsapp', 'cref', 'cref_validade', 'emergencia_nome', 'emergencia_telefone', 'emergencia_parentesco',
         'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'];
 
-    private const SO_DIGITOS = ['cpf', 'telefone', 'whatsapp', 'emergencia_telefone', 'cep'];
+    private const SO_DIGITOS = ['cpf', 'cep'];
 
     /** Limites de tamanho (iguais às colunas). */
     private const TAMANHOS = ['nome' => 255, 'emergencia_nome' => 120, 'emergencia_parentesco' => 60, 'logradouro' => 255,
@@ -379,7 +379,7 @@ class AdminProfessorService
     private const IDADE_MINIMA = 16;
 
     /**
-     * Texto vazio vira null (o formulário limpa o campo), documentos e telefones só dígitos, CREF e UF no formato.
+     * Texto vazio vira null; documentos só dígitos, telefones E.164, CREF e UF no formato.
      *
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
@@ -395,6 +395,11 @@ class AdminProfessorService
         foreach (self::SO_DIGITOS as $campo) {
             if (isset($data[$campo])) {
                 $data[$campo] = Documento::digitos((string) $data[$campo]) ?: null;
+            }
+        }
+        foreach (['telefone', 'whatsapp', 'emergencia_telefone'] as $campo) {
+            if (isset($data[$campo]) && \App\Support\Telefone::valido($data[$campo])) {
+                $data[$campo] = \App\Support\Telefone::normalizar($data[$campo], $campo);
             }
         }
         if (isset($data['email'])) {
@@ -437,13 +442,10 @@ class AdminProfessorService
         if ($tem('email') && ! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $erros['email'] = 'E-mail inválido';
         }
-        foreach (['telefone' => 'Celular', 'emergencia_telefone' => 'Telefone de emergência'] as $campo => $rotulo) {
-            if ($tem($campo) && ! in_array(strlen((string) $data[$campo]), [10, 11], true)) {
-                $erros[$campo] = "{$rotulo} inválido: use DDD + número";
+        foreach (['telefone', 'whatsapp', 'emergencia_telefone'] as $campo) {
+            if ($tem($campo) && ! \App\Support\Telefone::valido($data[$campo])) {
+                $erros[$campo] = \App\Support\Telefone::ERRO;
             }
-        }
-        if ($tem('whatsapp') && ! preg_match('/^\d{2}9\d{8}$/', (string) $data['whatsapp'])) {
-            $erros['whatsapp'] = 'WhatsApp inválido: use DDD + celular com 9 dígitos';
         }
 
         if ($tem('data_nascimento')) {

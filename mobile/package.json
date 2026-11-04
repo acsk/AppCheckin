@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.16",
   "scripts": {
+    "postinstall": "npm ci --prefix ../packages/phone --ignore-scripts --no-audit --no-fund",
     "start": "expo start",
     "start:clear": "expo start --clear",
     "reset-project": "node ./scripts/reset-project.js",
@@ -25,6 +26,7 @@
     "test:api-env": "node --test scripts/apiEnvironment.test.mjs"
   },
   "dependencies": {
+    "@appcheckin/phone": "file:../packages/phone",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/hooks": "^100.1.0",
