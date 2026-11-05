@@ -1031,5 +1031,7 @@ class SuperAdminAcademiaService
         if (in_array(2, array_map('intval', $papeis), true)) {
             $this->professores->garantirPerfil($usuarioId);
         }
+        // Papel Aluno marcado: sem registro em alunos o app não mostra pacotes, planos nem matrícula
+        \App\Support\PerfilAluno::garantirSeAluno($usuarioId, $papeis);
     }
 }

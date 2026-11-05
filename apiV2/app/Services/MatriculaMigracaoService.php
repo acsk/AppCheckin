@@ -909,9 +909,12 @@ class MatriculaMigracaoService
      * pagamento duplicado) volta inteiro. Cancelada/vencida/atrasada/limite de check-ins esgotado: zero.
      * Pendente com pagamento: o pago vira crédito (o ciclo não começou a ser consumido).
      *
+     * $dataReferencia: dia em que o plano atual deixa de ser usado (troca com data retroativa no painel).
+     * Sem ela, hoje.
+     *
      * @return array<string, mixed>
      */
-    public function calcularCreditoMigracao(array $matricula, int $tenantId, int $matriculaId, ?float $valorNovo = null): array
+    public function calcularCreditoMigracao(array $matricula, int $tenantId, int $matriculaId, ?float $valorNovo = null, ?string $dataReferencia = null): array
     {
         $valorCicloAtual = (float) $matricula['valor'];
         $dataInicioCiclo = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
@@ -943,7 +946,7 @@ class MatriculaMigracaoService
         // Ciclo vigente = data_vencimento (alinhado ao painel). proxima_data_vencimento é parcela futura.
         $dataVencimentoStr = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null)
             ?? AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null);
-        $hoje = AcademyDateTime::today();
+        $hoje = AcademyDateTime::dateOnly($dataReferencia) ?? AcademyDateTime::today();
 
         if ($dataInicio === null || $dataVencimentoStr === null) {
             if ($pendenteComPago) {

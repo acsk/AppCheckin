@@ -66,6 +66,19 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(501, $credito['pagamento_origem_id']);
     }
 
+    // Matrícula 204: troca feita hoje no painel com data de início ontem — o plano atual parou de ser usado ontem
+    public function test_troca_retroativa_calcula_o_credito_na_data_da_troca(): void
+    {
+        $this->pagamentoPago(501);
+
+        $credito = $this->service()->calcularCreditoMigracao($this->matricula(), self::TENANT, self::MATRICULA, 500.0, $this->dia(-1));
+
+        // 300 por 30 dias: na véspera sobravam 21 dias (hoje seriam 20)
+        $this->assertSame(21, $credito['dias_restantes']);
+        $this->assertSame(210.0, $credito['credito']);
+        $this->assertStringContainsString('21 de 30 dias restantes', $credito['motivo']);
+    }
+
     public function test_upgrade_devolve_inteiro_so_o_que_foi_pago_alem_do_plano_no_ciclo(): void
     {
         $this->inserirPagamentoPago(601, 70.0, $this->dia(-1));

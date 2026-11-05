@@ -1382,6 +1382,10 @@ class AdminMatriculaService
                         'valor' => $creditoValor,
                         'motivo' => $creditoMotivo,
                         'criado_por' => $adminId,
+                        // Troca retroativa: o crédito nasce na data da troca, junto da primeira parcela do plano novo
+                        ...($dataInicio < AcademyDateTime::today()
+                            ? ['created_at' => $dataInicio.' '.AcademyDateTime::now()->format('H:i:s')]
+                            : []),
                     ]);
 
                     if ($creditoId !== null) {
@@ -1608,7 +1612,8 @@ class AdminMatriculaService
         // as duas opções seguem a régua da migração do app — só ciclo vigente, proporcional ao uso.
         if ($podeGerarCreditoMigracao && (! empty($data['abater_plano_anterior']) || ! empty($data['abater_pagamento_anterior']))) {
             $tipoCredito = 'proporcional';
-            $proporcional = $this->creditoProporcionalAoUso($matricula, $tenantId);
+            // Troca retroativa: o plano atual deixou de ser usado na data de início escolhida, não hoje
+            $proporcional = $this->creditoProporcionalAoUso($matricula, $tenantId, $dataInicio < AcademyDateTime::today() ? $dataInicio : null);
             $creditoValor = (float) $proporcional['credito'];
             $diasTotais = (int) $proporcional['dias_totais'];
             $diasRestantes = $creditoValor > 0 ? (int) $proporcional['dias_restantes'] : 0;
@@ -1931,9 +1936,9 @@ class AdminMatriculaService
      * @param  array<string, mixed>  $matricula
      * @return array<string, mixed>
      */
-    private function creditoProporcionalAoUso(array $matricula, int $tenantId): array
+    private function creditoProporcionalAoUso(array $matricula, int $tenantId, ?string $dataReferencia = null): array
     {
-        return app(MatriculaMigracaoService::class)->calcularCreditoMigracao($matricula, $tenantId, (int) $matricula['id']);
+        return app(MatriculaMigracaoService::class)->calcularCreditoMigracao($matricula, $tenantId, (int) $matricula['id'], null, $dataReferencia);
     }
 
     /**
