@@ -361,9 +361,11 @@ export default function PlanosScreen() {
   };
 
   // ---- Etapa 2 · Individual ----
-  const opcaoFreq = (p: Plan): FreqOption => {
+  const opcaoFreq = (p: Plan, grupo: Plan[]): FreqOption => {
     const pa = porAula(p);
+    const repetida = grupo.some((o) => o.id !== p.id && (o.checkins_semanais || 0) === (p.checkins_semanais || 0));
     return {
+      name: repetida ? p.nome : null,
       id: p.id,
       freq: semLimite(p) ? "∞" : `${p.checkins_semanais}x`,
       unit: semLimite(p) ? "livre" : "por semana",
@@ -377,13 +379,13 @@ export default function PlanosScreen() {
     const porModalidade = modalidades.length > 1;
     const grupos = porModalidade
       ? modalidades.map((m) => ({ titulo: m, itens: semanais.filter((p) => p.modalidade?.nome === m) })).filter((g) => g.itens.length)
-      : [{ titulo: "Quantas aulas por semana?", itens: semanais }];
+      : [{ titulo: "Aulas por semana", itens: semanais }];
     return (
       <>
         {etapaEscolhida == null ? creditoBanner : null}
         {grupos.map((g) => (
-          <Section key={g.titulo} title={g.titulo} aside="Preço por mês" bare>
-            <FreqGrid options={g.itens.map(opcaoFreq)} value={planoSel?.id ?? null} onChange={(id) => setPlanoId(Number(id))} />
+          <Section key={g.titulo} title={g.titulo} aside="Por mês" bare>
+            <FreqGrid options={g.itens.map((p) => opcaoFreq(p, g.itens))} value={planoSel?.id ?? null} onChange={(id) => setPlanoId(Number(id))} />
           </Section>
         ))}
         {avulsos.map((p) => (
@@ -442,12 +444,22 @@ export default function PlanosScreen() {
       return (
         <View style={styles.summary}>
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel} numberOfLines={1}>
-              {`${freqTexto(planoSel)} · ${atual ? "seu plano atual" : planoSel.modalidade?.nome || planoSel.nome}`}
+            <Text style={styles.summaryLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+              {atual ? `${freqTexto(planoSel)} · seu plano` : planoSel.nome || freqTexto(planoSel)}
             </Text>
-            <Text style={styles.summaryTotal} numberOfLines={1}>{`${brl(valorPlano(planoSel))}/mês`}</Text>
+            <Text style={styles.summaryTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.2}>
+              {brl(valorPlano(planoSel))}
+              <Text style={styles.summaryUnit}>/mês</Text>
+            </Text>
           </View>
-          <Button size="lg" variant={atual && !renovar ? "secondary" : "primary"} iconRight="arrow-right" onPress={() => abrirPlano(planoSel)}>
+          <Button
+            key={`${planoSel.id}-${atual ? "atual" : "novo"}`}
+            size="lg"
+            variant={atual && !renovar ? "secondary" : "primary"}
+            iconRight="arrow-right"
+            style={styles.summaryBtn}
+            onPress={() => abrirPlano(planoSel)}
+          >
             {atual ? (renovar ? "Renovar" : "Meu plano") : planoSel.pode_migrar ? "Trocar" : "Continuar"}
           </Button>
         </View>
@@ -457,10 +469,18 @@ export default function PlanosScreen() {
       return (
         <View style={styles.summary}>
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel} numberOfLines={1}>{`${pacoteSel.nome} · ${pacoteSel.vagas} pessoas`}</Text>
-            <Text style={styles.summaryTotal} numberOfLines={1}>{brl(pacoteSel.valor_total)}</Text>
+            <Text style={styles.summaryLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>{`${pacoteSel.nome} · ${pacoteSel.vagas} pessoas`}</Text>
+            <Text style={styles.summaryTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} maxFontSizeMultiplier={1.2}>
+              {brl(pacoteSel.valor_total)}
+            </Text>
           </View>
-          <Button size="lg" iconRight="arrow-right" onPress={() => pagarPacote(pacoteSel)}>
+          <Button
+            key={`pacote-${pacoteSel.id}`}
+            size="lg"
+            iconRight="arrow-right"
+            style={styles.summaryBtn}
+            onPress={() => pagarPacote(pacoteSel)}
+          >
             {pacoteSel.contrato_pendente_id ? "Pagar" : "Continuar"}
           </Button>
         </View>
@@ -563,6 +583,9 @@ const styles = StyleSheet.create({
     borderTopColor: ds.line,
   },
   summaryText: { flex: 1, minWidth: 0 },
+  summaryUnit: { fontSize: 13, fontWeight: "700", letterSpacing: 0, color: ds.inkMuted },
+  // O botão nunca encolhe: quem cede espaço é o resumo à esquerda
+  summaryBtn: { flexShrink: 0, paddingHorizontal: space[4] },
   summaryLabel: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: ds.inkMuted },
   summaryTotal: { fontSize: 22, lineHeight: 26, fontWeight: "900", letterSpacing: -0.4, color: ds.ink, fontVariant: ["tabular-nums"] },
 });

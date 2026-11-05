@@ -14,6 +14,8 @@ export type FreqOption = {
   perClass?: string | null;
   tag?: string | null;
   current?: boolean;
+  /** Nome do plano, quando duas opções têm a mesma frequência. */
+  name?: string | null;
 };
 
 type Props = {
@@ -42,18 +44,31 @@ export default function FreqGrid({ options, value, onChange, label = "Aulas por 
           >
             {tag ? (
               <View style={[styles.tag, o.current && styles.tagCurrent]}>
-                <Text style={[styles.tagText, o.current && styles.tagTextCurrent]}>{tag}</Text>
+                <Text
+                  style={[styles.tagText, o.current && styles.tagTextCurrent]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  maxFontSizeMultiplier={1.1}
+                >
+                  {tag}
+                </Text>
               </View>
             ) : null}
             <View style={styles.freqRow}>
-              <Text style={styles.freq}>{o.freq}</Text>
-              <Text style={styles.unit}>{o.unit || "por semana"}</Text>
+              <Text style={styles.freq} maxFontSizeMultiplier={1.2}>{o.freq}</Text>
+              <Text style={styles.unit} numberOfLines={1} maxFontSizeMultiplier={1.2}>{o.unit || "por semana"}</Text>
             </View>
-            <Text style={styles.priceRow}>
+            {o.name ? <Text style={styles.name} numberOfLines={1} maxFontSizeMultiplier={1.2}>{o.name}</Text> : null}
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={1.2}>
               <Text style={styles.price}>{o.price}</Text>
               <Text style={styles.per}>/mês</Text>
             </Text>
-            {o.perClass ? <Text style={styles.perClass}>{o.perClass} por aula</Text> : null}
+            {o.perClass ? (
+              <Text style={styles.perClass} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} maxFontSizeMultiplier={1.2}>
+                {o.perClass} por aula
+              </Text>
+            ) : null}
           </TouchableOpacity>
         );
       })}
@@ -78,6 +93,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -10,
     left: 12,
+    maxWidth: "88%",
     height: 20,
     paddingHorizontal: 8,
     borderRadius: 999,
@@ -90,8 +106,8 @@ const styles = StyleSheet.create({
   tagTextCurrent: { color: ds.onInverse },
   freqRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: 6 },
   freq: { fontSize: 30, lineHeight: 32, fontWeight: "900", letterSpacing: -1.2, color: ds.brandInk },
-  unit: { fontSize: 12, lineHeight: 16, fontWeight: "800", color: ds.inkMuted },
-  priceRow: {},
+  unit: { flexShrink: 1, fontSize: 12, lineHeight: 16, fontWeight: "800", color: ds.inkMuted },
+  name: { fontSize: 12, lineHeight: 16, fontWeight: "800", color: ds.ink, marginTop: -4 },
   price: { fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: -0.4, color: ds.ink, fontVariant: ["tabular-nums"] },
   per: { fontSize: 12, fontWeight: "700", color: ds.inkMuted },
   perClass: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ds.inkMuted, fontVariant: ["tabular-nums"] },

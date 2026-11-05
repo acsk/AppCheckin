@@ -3,7 +3,7 @@ import { BaixaModal, Button, Callout, Icon, Modal } from './ck';
 import api from '../services/api';
 import pagamentoContratoService from '../services/pagamentoContratoService';
 import { obterMensagemErro, extrairMensagemErro } from '../utils/errorHandler';
-import { showError, showSuccess } from '../utils/toast';
+import { showError, showSuccess, showWarning } from '../utils/toast';
 
 export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plano = false, student, plan }) {
   const [methods, setMethods] = useState([]);
@@ -65,6 +65,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
     busy.current = true;
     setSaving(true);
     setError('');
+    let resposta = null;
     try {
       const payload = {
         data_pagamento: values.paidDate,
@@ -72,7 +73,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         observacoes: values.notes || '',
       };
       if (plano) {
-        await api.post(`/admin/matriculas/contas/${id}/baixa`, {
+        resposta = await api.post(`/admin/matriculas/contas/${id}/baixa`, {
           ...payload,
           data_vencimento: values.dueDate,
           ...(confirmarDuplicidade ? { confirmar_duplicidade: true } : {}),
@@ -98,7 +99,15 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
       busy.current = false;
       setSaving(false);
     }
-    showSuccess(plano ? 'Pagamento confirmado! Próximo pagamento gerado automaticamente.' : 'Pagamento confirmado com sucesso!');
+    const corpo = resposta?.data || {};
+    if (plano && corpo.aviso_cobranca) {
+      // Outra parcela cobre o mesmo período: a próxima não foi gerada e o admin precisa conferir
+      showWarning(`Pagamento confirmado. ${corpo.aviso_cobranca}`);
+    } else {
+      showSuccess(plano
+        ? (corpo.proxima_parcela ? 'Pagamento confirmado! Próximo pagamento gerado automaticamente.' : 'Pagamento confirmado!')
+        : 'Pagamento confirmado com sucesso!');
+    }
     onClose();
     onSuccess?.();
   };

@@ -22,6 +22,8 @@ export default function FormMatriculaScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // O período já tem cobrança na matrícula do aluno: pede confirmação antes de cobrar de novo
+  const [conflitoPeriodo, setConflitoPeriodo] = useState(null);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [selectionError, setSelectionError] = useState('');
@@ -154,7 +156,7 @@ export default function FormMatriculaScreen() {
     setError(message);
     if (!message) setShowConfirmModal(true);
   };
-  const confirm = async () => {
+  const confirm = async (permitirCobrancaNoPeriodo = false) => {
     if (busy.current) return;
     const message = validate();
     if (message) {
@@ -175,12 +177,19 @@ export default function FormMatriculaScreen() {
         usuario_id: Number(form.usuario_id),
         plano_id: Number(form.plano_id),
         plano_ciclo_id: Number(form.plano_ciclo_id),
+        ...(permitirCobrancaNoPeriodo ? { permitir_cobranca_no_periodo: true } : {}),
       };
       await matriculaService.criar(payload);
+      setConflitoPeriodo(null);
       showSuccess('Matrícula realizada com sucesso');
       router.push('/matriculas');
     } catch (err) {
+      if (err?.code === 'COBRANCA_EXISTENTE_NO_PERIODO') {
+        setConflitoPeriodo({ message: err.message || err.mensagemLimpa, matriculaId: err.matricula_id });
+        return;
+      }
       console.error('Erro ao criar matrícula:', err);
+      setConflitoPeriodo(null);
       setError(obterMensagemErro(err, 'Não foi possível realizar a matrícula.'));
     } finally {
       setShowConfirmModal(false);
@@ -253,7 +262,7 @@ export default function FormMatriculaScreen() {
             onClose={() => setShowConfirmModal(false)}
             footer={<>
               <Button variant="ghost" disabled={saving} onClick={() => setShowConfirmModal(false)}>Voltar</Button>
-              <Button variant="primary" loading={saving} onClick={confirm}>Confirmar matrícula</Button>
+              <Button variant="primary" loading={saving} onClick={() => confirm()}>Confirmar matrícula</Button>
             </>}
           >
             <div className="ck-enrollment-review"><dl>
@@ -269,6 +278,22 @@ export default function FormMatriculaScreen() {
                 <div><dt>Dependentes</dt><dd>{selectedDependentes.map((a) => a.nome).join(', ') || 'Nenhum'}</dd></div>
               </>}
             </dl></div>
+          </Modal>
+          <Modal
+            open={!!conflitoPeriodo}
+            title="Esse período já tem cobrança"
+            description="Matricular agora gera uma nova cobrança para o mesmo período."
+            dismissable={!saving}
+            onClose={() => setConflitoPeriodo(null)}
+            footer={<>
+              {conflitoPeriodo?.matriculaId ? (
+                <Button variant="ghost" disabled={saving} onClick={() => router.push(`/matriculas/detalhe?id=${conflitoPeriodo.matriculaId}`)}>Ver matrícula</Button>
+              ) : null}
+              <Button variant="ghost" disabled={saving} onClick={() => setConflitoPeriodo(null)}>Voltar</Button>
+              <Button variant="danger" loading={saving} onClick={() => confirm(true)}>Cobrar mesmo assim</Button>
+            </>}
+          >
+            <p>{conflitoPeriodo?.message}</p>
           </Modal>
         </>
       )}

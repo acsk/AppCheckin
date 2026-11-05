@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "main": "expo-router/entry",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "scripts": {
     "postinstall": "npm ci --prefix ../packages/phone --ignore-scripts --no-audit --no-fund",
     "start": "expo start",

@@ -12,6 +12,7 @@ use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use App\Support\CobrancaAssinatura;
 use App\Support\MotivoCancelamento;
+use App\Support\ParcelasPeriodo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -240,6 +241,8 @@ class AdminMatriculaService
                     'creditos_ativos' => $creditos['creditos_ativos'],
                 ],
                 'outras_matriculas' => $outrasMatriculas,
+                // Duas parcelas válidas no mesmo vencimento = mesmo período cobrado duas vezes
+                'alertas_cobranca' => ParcelasPeriodo::duplicadas($pagamentos),
             ],
         ];
     }
@@ -764,6 +767,32 @@ class AdminMatriculaService
         }
 
 
+        // O novo ciclo entra numa matrícula que já tem cobrança para este período (ex.: renovação em
+        // aberto vencendo hoje): a "Primeiro pagamento" cobraria o mesmo período duas vezes. Bloqueia,
+        // salvo confirmação explícita do painel (permitir_cobranca_no_periodo).
+        $matriculaDestino = $matriculaMesmaModalidade ?: ($reutilizandoMatricula ? $matriculaVencida : null);
+        if ($matriculaDestino && $periodoTeste !== 1 && empty($data['permitir_cobranca_no_periodo'])) {
+            $existentes = ParcelasPeriodo::existentesAPartirDe($tenantId, (int) $matriculaDestino['id'], $dataInicio);
+            // Compra pendente nunca paga tem as parcelas em aberto canceladas mais abaixo: só o que foi pago conta
+            if (! $matriculaMesmaModalidade && ($matriculaDestino['status_codigo'] ?? null) === 'pendente') {
+                $existentes = array_values(array_filter($existentes, static fn ($x) => $x['status'] === 'Pago'));
+            }
+            if ($existentes !== []) {
+                return [
+                    'status' => 409,
+                    'body' => [
+                        'type' => 'warning',
+                        'code' => 'COBRANCA_EXISTENTE_NO_PERIODO',
+                        'message' => 'Este aluno já tem cobrança para o período a partir de '
+                            .AcademyDateTime::parse($dataInicio)->format('d/m/Y').': '.ParcelasPeriodo::descrever($existentes)
+                            .'. Dê baixa ou cancele essa parcela na matrícula antes de matricular de novo, para não cobrar o mesmo período duas vezes.',
+                        'parcelas' => $existentes,
+                        'matricula_id' => (int) $matriculaDestino['id'],
+                    ],
+                ];
+            }
+        }
+
         $dataMatricula = AcademyDateTime::today();
         // $dataInicio já normalizado/validado (Y-m-d) no início do método — não reler o input bruto.
         $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
@@ -992,6 +1021,7 @@ class AdminMatriculaService
         $this->matriculas->ativarMatriculaSePendente((int) $pagamento['matricula_id']);
 
         $proximaParcela = null;
+        $periodoJaCobrado = false;
 
         try {
             $vencimentoBase = $dataVencimento ?? $pagamento['data_vencimento'];
@@ -1035,7 +1065,21 @@ class AdminMatriculaService
 
             $valorProximaParcela = $pagamento['matricula_valor'] ?? $pagamento['valor'];
 
-            if ((float) $valorProximaParcela > 0.001) {
+            // Outra parcela já cobre o próximo período (ex.: "Primeiro pagamento" de matrícula refeita):
+            // não gera mais uma; o painel avisa para conferir a duplicidade
+            try {
+                $periodoJaCobrado = ParcelasPeriodo::periodoSeguinteJaCobrado(
+                    (int) $pagamento['tenant_id'],
+                    (int) $pagamento['matricula_id'],
+                    $pagamentoId,
+                    $pagamentoVencimento ? $pagamentoVencimento->format('Y-m-d') : $baseDate->format('Y-m-d'),
+                    $proximoVencimento->format('Y-m-d')
+                );
+            } catch (\Throwable $e) {
+                Log::warning('AdminMatriculaService::darBaixaConta checagem de período: '.$e->getMessage());
+            }
+
+            if ((float) $valorProximaParcela > 0.001 && ! $periodoJaCobrado) {
                 $proximaParcelaId = $this->matriculas->inserirPagamentoPlano([
                     'tenant_id' => $pagamento['tenant_id'],
                     'aluno_id' => $pagamento['aluno_id'],
@@ -1072,12 +1116,32 @@ class AdminMatriculaService
         $pagamentoAtualizado = $this->matriculas->findPagamentoParaBaixa($pagamentoId, $tenantId);
         $this->pagamentosPlano->atualizarStatusMatricula($tenantId, (int) $pagamento['matricula_id']);
 
+        // Outra parcela válida no mesmo vencimento da que foi paga: o período ficou cobrado duas vezes
+        // Só um aviso: nunca impede a baixa
+        $mesmoPeriodo = [];
+        $vencPaga = substr((string) ($pagamentoAtualizado['data_vencimento'] ?? $pagamento['data_vencimento'] ?? ''), 0, 10);
+        if ($vencPaga !== '') {
+            try {
+                $mesmoPeriodo = array_values(array_filter(
+                    ParcelasPeriodo::existentesAPartirDe((int) $pagamento['tenant_id'], (int) $pagamento['matricula_id'], $vencPaga),
+                    static fn ($x) => $x['id'] !== $pagamentoId && $x['data_vencimento'] === $vencPaga
+                ));
+            } catch (\Throwable $e) {
+                Log::warning('AdminMatriculaService::darBaixaConta aviso de duplicidade: '.$e->getMessage());
+            }
+        }
+        $aviso = $mesmoPeriodo !== []
+            ? 'Atenção: este período também tem a parcela '.ParcelasPeriodo::descrever($mesmoPeriodo)
+                .'. Se for duplicada, cancele-a. A próxima parcela não foi gerada para não cobrar em dobro.'
+            : ($periodoJaCobrado ? 'A próxima parcela não foi gerada: já existe cobrança para o período seguinte.' : null);
+
         return [
             'status' => 200,
             'body' => [
                 'message' => 'Baixa realizada com sucesso',
                 'pagamento' => $pagamentoAtualizado,
                 'proxima_parcela' => $proximaParcela,
+                'aviso_cobranca' => $aviso,
             ],
         ];
     }

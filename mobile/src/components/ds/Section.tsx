@@ -21,8 +21,8 @@ export default function Section({ title, aside, bare, padded, children, style }:
     <View style={[styles.section, style]}>
       {title || aside ? (
         <View style={styles.head}>
-          {title ? <Text style={styles.title}>{title}</Text> : <View />}
-          {typeof aside === "string" ? <Text style={styles.aside}>{aside}</Text> : aside}
+          {title ? <Text style={styles.title} numberOfLines={2}>{title}</Text> : <View />}
+          {typeof aside === "string" ? <Text style={styles.aside} numberOfLines={1}>{aside}</Text> : aside}
         </View>
       ) : null}
       {bare ? (
@@ -59,8 +59,8 @@ const styles = StyleSheet.create({
     gap: space[3],
     paddingHorizontal: space[1],
   },
-  title: { ...type.label, color: ds.inkMuted },
-  aside: { ...type.caption, color: ds.inkMuted },
+  title: { ...type.label, color: ds.inkMuted, flexShrink: 1 },
+  aside: { ...type.caption, color: ds.inkMuted, flexShrink: 0 },
   card: cardStyle,
   divided: { borderTopWidth: 1, borderTopColor: ds.line },
 });

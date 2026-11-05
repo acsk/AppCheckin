@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use App\Support\CobrancaAssinatura;
+use App\Support\ParcelasPeriodo;
 use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -730,6 +731,14 @@ class AdminPagamentoPlanoService
             $valorProximaParcela !== null
             && (float) $valorProximaParcela > 0
             && ! $this->existePagamentoParaData($tenantId, (int) $pagamento['matricula_id'], $proximaDataStr)
+            // Outra parcela válida já cobre o período seguinte (ex.: matrícula refeita): não cobra em dobro
+            && ! ParcelasPeriodo::periodoSeguinteJaCobrado(
+                $tenantId,
+                (int) $pagamento['matricula_id'],
+                (int) ($pagamento['id'] ?? 0),
+                substr((string) $pagamento['data_vencimento'], 0, 10),
+                $proximaDataStr
+            )
         ) {
             $aplicaveis = $this->descontos->buscarAplicaveis(
                 $tenantId,

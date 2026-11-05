@@ -64,8 +64,11 @@ export default function Button({
       ) : null}
       {children ? (
         <Text
+          // Rótulo novo = Text novo: no Android o texto trocado mantinha a largura antiga (sumia)
+          key={typeof children === "string" ? children : undefined}
           numberOfLines={1}
-          style={[styles.text, { color: v.fg, fontSize: size === "lg" ? 17 : size === "sm" ? 14 : 16 }, textStyle]}
+          maxFontSizeMultiplier={1.3}
+          style={[styles.text, { flexShrink: 0 }, { color: v.fg, fontSize: size === "lg" ? 17 : size === "sm" ? 14 : 16 }, textStyle]}
         >
           {children}
         </Text>

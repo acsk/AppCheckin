@@ -58,6 +58,8 @@ export default function MatriculaDetalheScreen() {
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
   const [ajustePlano, setAjustePlano] = useState(null);
+  // Duas parcelas válidas no mesmo vencimento (mesmo período cobrado duas vezes)
+  const [alertasCobranca, setAlertasCobranca] = useState([]);
   const [modalEditarVencimento, setModalEditarVencimento] = useState(false);
   const [novaDataVencimento, setNovaDataVencimento] = useState('');
   const [salvandoData, setSalvandoData] = useState(false);
@@ -171,6 +173,7 @@ export default function MatriculaDetalheScreen() {
       setCreditosAluno(responseMatricula?.creditos || null);
       setOutrasMatriculas(responseMatricula?.outras_matriculas || []);
       setAjustePlano(responseMatricula?.ajuste_plano || null);
+      setAlertasCobranca(Array.isArray(responseMatricula?.alertas_cobranca) ? responseMatricula.alertas_cobranca : []);
 
       // Buscar histórico de pagamentos (se existir endpoint)
       try {
@@ -1385,8 +1388,13 @@ export default function MatriculaDetalheScreen() {
 
   const creditosAtivos = creditosAluno?.creditos_ativos || [];
   const avisosMatricula =
-    limiteEsgotado || isMatriculaBloqueada || (isPacote && isMatriculaRenovavel) || isMatriculaCancelada || creditosAtivos.length > 0 ? (
+    limiteEsgotado || isMatriculaBloqueada || (isPacote && isMatriculaRenovavel) || isMatriculaCancelada || creditosAtivos.length > 0 || alertasCobranca.length > 0 ? (
       <>
+        {alertasCobranca.map((a) => (
+          <CkCallout key={`dup-${a.data_vencimento}`} tone="warning" icon="alert-triangle" title={`Cobrança duplicada em ${formatDate(a.data_vencimento)}`}>
+            {a.mensagem}
+          </CkCallout>
+        ))}
         {isMatriculaCancelada ? (
           <CkCallout tone="neutral" icon="ban" title={`Cancelada${matricula.data_cancelamento ? ` em ${formatDate(matricula.data_cancelamento)}` : ''}`}>
             {matricula.cancelado_por_nome ? `Por ${matricula.cancelado_por_nome}` : 'Pelo app ou automaticamente pelo sistema'}

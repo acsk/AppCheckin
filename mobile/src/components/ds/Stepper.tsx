@@ -40,7 +40,7 @@ export default function Stepper({ steps, current, tone = "surface" }: Props) {
                 {done ? (
                   <Feather name="check" size={12} color={ds.onInverse} />
                 ) : (
-                  <Text style={[styles.numText, { color: on ? ds.onInverse : brand ? ds.onBrand : ds.ink }]}>{i + 1}</Text>
+                  <Text maxFontSizeMultiplier={1.15} style={[styles.numText, { color: on ? ds.onInverse : brand ? ds.onBrand : ds.ink }]}>{i + 1}</Text>
                 )}
               </View>
               <Text
@@ -49,6 +49,9 @@ export default function Stepper({ steps, current, tone = "surface" }: Props) {
                   { color: on ? (brand ? ds.onBrand : ds.ink) : brand ? "rgba(23,26,33,0.7)" : ds.inkMuted },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                maxFontSizeMultiplier={1.15}
               >
                 {label}
               </Text>
