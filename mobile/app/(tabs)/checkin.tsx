@@ -86,6 +86,12 @@ function CheckinScreenContent() {
   // Filtro da linha do tempo: todas, só as que aceitam check-in, ou as minhas.
   const [filtroAulas, setFiltroAulas] = useState<"todas" | "disp" | "minhas">("todas");
   const [acaoTurmaId, setAcaoTurmaId] = useState<number | null>(null);
+  const [, refreshTimelineClock] = useState(0);
+  useFocusEffect(useCallback(() => {
+    refreshTimelineClock(value => value + 1);
+    const timer = setInterval(() => refreshTimelineClock(value => value + 1), 30000);
+    return () => clearInterval(timer);
+  }, []));
   type LimiteCicloDetalhes = {
     plano?: string;
     checkins_semanais?: number;
@@ -1388,7 +1394,6 @@ function CheckinScreenContent() {
     if (min <= 0) return "agora";
     const h = Math.floor(min / 60);
     const m = min % 60;
-    if (h > 0 && m > 0) return `${h}h ${m}min`;
     if (h > 0) return `${h}h`;
     return `${m}min`;
   };
@@ -1496,6 +1501,7 @@ function CheckinScreenContent() {
       booked: turma.alunos_inscritos,
       capacity: turma.limite_alunos,
       status,
+      inProgress: isDurantePeriodo(turma),
       deadline: getHoraLimiteCheckin(turma),
       opensIn: minutosParaAbrir > 0 ? formatMinutos(minutosParaAbrir) : null,
       attendees: Array.isArray(turma.participantes_preview)

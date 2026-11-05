@@ -9,10 +9,10 @@ export const initials = (name: string = "") => {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 };
 
-type Props = { name?: string | null; uri?: string | null; size?: number; ring?: boolean };
+type Props = { name?: string | null; uri?: string | null; size?: number; ring?: boolean; maxFontSizeMultiplier?: number };
 
 // Avatar redondo: foto ou iniciais em ink sobre surface-sunken.
-export default function Avatar({ name, uri, size = 40, ring }: Props) {
+export default function Avatar({ name, uri, size = 40, ring, maxFontSizeMultiplier }: Props) {
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const inner = (
     <View style={[styles.base, { width: size, height: size, borderRadius: size / 2 }]}>
@@ -24,7 +24,7 @@ export default function Avatar({ name, uri, size = 40, ring }: Props) {
           accessibilityIgnoresInvertColors
         />
       ) : (
-        <Text style={[styles.text, { fontSize: Math.round(size * 0.38) }]}>{initials(name || "")}</Text>
+        <Text maxFontSizeMultiplier={maxFontSizeMultiplier} style={[styles.text, { fontSize: Math.round(size * 0.38) }]}>{initials(name || "")}</Text>
       )}
     </View>
   );

@@ -1,5 +1,6 @@
 import { chamarRecorrencia, type Oferta } from "@/src/services/recorrencia";
-import Badge from "@/src/components/ds/Badge";
+import { SubscriptionAction, SubscriptionOverviewCard, PastSubscriptions } from "@/src/components/ds/SubscriptionOverview";
+import { diasAteAssinatura, assinaturaEncerrada, type ProximaCobrancaAssinatura } from "@/src/utils/assinaturasLayout";
 import Button from "@/src/components/ds/Button";
 import Modal from "@/src/components/ds/Modal";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
@@ -67,7 +68,10 @@ const TOM: Record<string, "success" | "warning" | "danger" | "info" | "neutral">
 };
 const PAG: Record<string, string> = { paga: "Paga", pendente: "Em aberto", vencida: "Vencida", estornada: "Estornada", cancelada: "Cancelada" };
 
-export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: { versao?: number; onQuantidade?: (n: number) => void }) {
+export type AssinaturasFidelidadeLayout = { alerts: React.ReactNode; active: React.ReactNode; past: React.ReactNode; pastCount: number; count: number; loading: boolean; error: boolean; charges: ProximaCobrancaAssinatura[] };
+export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade, renderContent }: { versao?: number; onQuantidade?: (n: number) => void; renderContent?: (layout: AssinaturasFidelidadeLayout) => React.ReactNode }) {
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [aberto, setAberto] = useState<number | null>(null);
   const [cancelando, setCancelando] = useState<{ c: Contrato; sim: Simulacao | null } | null>(null);
@@ -78,14 +82,16 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
   const [pix, setPix] = useState<{ valor: string; code: string | null; qr: string | null; url: string | null } | null>(null);
 
   const carregar = useCallback(async () => {
+    setLoading(true); setReadError("");
     try {
       const { ok, json } = await chamarRecorrencia("GET", "/contratos");
-      const lista: Contrato[] = ok ? json?.data?.contratos || [] : [];
+      if (!ok) throw new Error(json?.message || "Não foi possível carregar suas assinaturas.");
+      const lista: Contrato[] = json?.data?.contratos || [];
       setContratos(lista);
       onQuantidade?.(lista.length);
     } catch {
-      onQuantidade?.(0);
-    }
+      setReadError("Não foi possível carregar os contratos com fidelidade. Atualize para tentar novamente.");
+    } finally { setLoading(false); }
   }, [onQuantidade]);
   useEffect(() => { void carregar(); }, [carregar, versao]);
 
@@ -153,33 +159,15 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
     }
   }
 
-  if (!contratos.length) return null;
-
-  return (
-    <View style={styles.secao}>
-      <View style={styles.cab}>
-        <Text style={styles.cabTitulo}>MINHA ASSINATURA</Text>
-        <Text style={styles.cabAside}>Com fidelidade</Text>
-      </View>
-      {aviso ? (
-        <View style={[styles.aviso, aviso.ok ? styles.avisoOk : styles.avisoErro]} accessibilityLiveRegion="polite">
-          <Feather name={aviso.ok ? "check-circle" : "alert-circle"} size={16} color={aviso.ok ? ds.success : ds.danger} />
-          <Text style={styles.avisoTexto}>{aviso.texto}</Text>
-        </View>
-      ) : null}
-      {contratos.map((c) => {
+  const renderContrato = (c: Contrato) => {
         const expandido = aberto === c.id;
         const pagas = c.pagamentos.filter((p) => p.status === "paga").length;
         return (
-          <View key={c.id} style={styles.card}>
-            <View style={styles.topo}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.nome}>{c.plano_nome}</Text>
-                {c.modalidade_nome ? <Text style={styles.meta}>{c.modalidade_nome}</Text> : null}
-              </View>
-              <Badge tone={TOM[c.status] || "neutral"}>{c.status_nome}</Badge>
-            </View>
-            <Text style={styles.valor}>{brl(c.valor_mensal)}<Text style={styles.porMes}>/mês</Text></Text>
+          <SubscriptionOverviewCard key={c.id} title={c.plano_nome} price={brl(c.valor_mensal)} unit="/mês"
+            subtitle={[c.fidelizacao_meses ? "Mensal com fidelidade" : "Mensal", c.proxima_cobranca_em ? `renova ${dataBr(c.proxima_cobranca_em)}` : c.acesso_ate ? `até ${dataBr(c.acesso_ate)}` : null, c.metodo === "cartao" ? "cartão" : c.metodo === "pix" ? "PIX mensal" : "boleto", c.status_nome].filter(Boolean).join(" · ")}
+            days={diasAteAssinatura(c.acesso_ate || c.proxima_cobranca_em)}
+            fidelity={c.fidelizacao_meses > 0 ? {paid: Math.min(pagas,c.fidelizacao_meses),total:c.fidelizacao_meses,until:dataBr(c.fim_fidelizacao_em)} : undefined}
+            expanded={expandido} onToggle={() => setAberto(expandido ? null : c.id)}>
             {Number(c.taxas ?? c.taxa_cartao) > 0 ? <Text style={styles.meta}>+ taxas {brl(c.taxas ?? c.taxa_cartao)}/mês</Text> : null}
             <View style={styles.grade}>
               <Info k="Próximo vencimento" v={dataBr(c.proxima_cobranca_em)} />
@@ -187,12 +175,7 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
               <Info k="Início" v={dataBr(c.inicio_em)} />
               <Info k="Acesso até" v={dataBr(c.acesso_ate)} />
             </View>
-            {c.em_fidelizacao ? (
-              <View style={styles.fid}>
-                <View style={styles.trilho}><View style={[styles.barra, { width: `${Math.round((Math.min(pagas, c.fidelizacao_meses) / Math.max(1, c.fidelizacao_meses)) * 100)}%` }]} /></View>
-                <Text style={styles.meta}>Fidelidade: faltam {c.fidelizacao_restante} de {c.fidelizacao_meses} mensalidades (até {dataBr(c.fim_fidelizacao_em)})</Text>
-              </View>
-            ) : <Text style={styles.meta}>{c.fidelizacao_meses ? "Fidelidade cumprida" : "Sem fidelidade"}: cancele quando quiser, sem custo.</Text>}
+            {!c.em_fidelizacao ? <Text style={styles.meta}>{c.fidelizacao_meses ? "Fidelidade cumprida" : "Sem fidelidade"}</Text> : null}
             {c.condicoes_renovacao ? <Text style={styles.meta}>{c.condicoes_renovacao}</Text> : null}
             {c.cancelamento && ["cancelamento_solicitado", "cancelamento_agendado", "cancelado"].includes(c.status) ? (
               <Text style={styles.meta}>
@@ -216,9 +199,7 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
               {c.pode_cancelar ? <Button size="sm" variant="danger" icon="x-circle" onPress={() => void abrirCancelamento(c)}>
                 {c.status === "pendente_ativacao" ? "Cancelar pedido" : "Solicitar cancelamento"}
               </Button> : null}
-              <Button size="sm" variant="ghost" icon={expandido ? "chevron-up" : "chevron-down"} onPress={() => setAberto(expandido ? null : c.id)}>
-                {expandido ? "Menos" : "Pagamentos e termos"}
-              </Button>
+
             </View>
 
             {expandido ? (
@@ -237,9 +218,21 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
                 <Text style={styles.termos}>{c.termos_aceitos}</Text>
               </View>
             ) : null}
-          </View>
+          </SubscriptionOverviewCard>
         );
-      })}
+  };
+  const active = contratos.filter(c => !assinaturaEncerrada(c.status));
+  const past = contratos.filter(c => assinaturaEncerrada(c.status));
+  const alerts = <View style={{gap:space[3]}}>
+    {readError ? <SubscriptionAction title="Não foi possível carregar as assinaturas" text={readError} tone="danger" action={{label:"Atualizar",onPress:()=>void carregar(),loading}} /> : null}
+    {aviso ? <View style={[styles.aviso,aviso.ok?styles.avisoOk:styles.avisoErro]} accessibilityLiveRegion="polite"><Text style={styles.avisoTexto}>{aviso.texto}</Text></View> : null}
+    {contratos.filter(c=>c.tem_pagamento_aberto).map(c=><SubscriptionAction key={c.id} title={`${c.plano_nome} · pagamento pendente`} text={`${brl(c.valor_mensal)} · ${c.status_nome}`} tone={c.status === "inadimplente" ? "danger" : "warning"} action={{label:c.metodo === "cartao"?"Pagar / cartão":"Pagar",loading:busy,onPress:()=>void pagar(c)}} />)}
+  </View>;
+  const content: AssinaturasFidelidadeLayout = { alerts, active:active.map(renderContrato),past:past.map(renderContrato),pastCount:past.length,count:contratos.length,loading,error:!!readError,
+    charges:active.filter(c=>c.proxima_cobranca_em && c.status === "ativo" && !c.cancelamento).map(c=>({date:c.proxima_cobranca_em!,amount:Number(c.valor_mensal)+Number(c.taxas ?? c.taxa_cartao ?? 0)})) };
+  return <>
+    {renderContent ? renderContent(content) : <View style={styles.secao}>{alerts}{content.active}<PastSubscriptions count={past.length}>{content.past}</PastSubscriptions></View>}
+
 
       <Modal
         visible={!!cancelando}
@@ -305,8 +298,7 @@ export default function MinhaAssinaturaFidelidade({ versao = 0, onQuantidade }: 
         onOpenBank={() => { if (pix?.url) void Linking.openURL(pix.url); }}
         onClose={() => { setPix(null); void carregar(); }}
       />
-    </View>
-  );
+    </>;
 }
 
 function Info({ k, v }: { k: string; v: string }) {

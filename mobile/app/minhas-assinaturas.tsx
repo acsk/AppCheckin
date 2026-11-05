@@ -30,7 +30,6 @@ import {
   Linking,
   Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -44,6 +43,8 @@ import Button from "@/src/components/ds/Button";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { useParametro } from "@/src/hooks/useConfigRemota";
 import { ds } from "@/src/components/ds/tokens";
+import { SubscriptionAction, SubscriptionOverviewCard, PastSubscriptions, NextSubscriptionCharge } from "@/src/components/ds/SubscriptionOverview";
+import { assinaturaEncerrada, diasAteAssinatura, primeiraCobrancaAssinatura } from "@/src/utils/assinaturasLayout";
 import MinhaAssinaturaFidelidade from "@/src/components/MinhaAssinaturaFidelidade";
 interface StatusAssinatura {
   id: number;
@@ -172,7 +173,6 @@ export default function MinhasAssinaturasScreen() {
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
   const [loading, setLoading] = useState(true);
   const [versaoFidelidade, setVersaoFidelidade] = useState(0);
-  const [qtdFidelidade, setQtdFidelidade] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [isUserAdmin, setIsUserAdmin] = useState(false);
@@ -816,7 +816,7 @@ export default function MinhasAssinaturasScreen() {
     return criarCardsAssinaturas(assinaturas, hojeIso);
   }, [assinaturas]);
 
-  const renderAssinaturaCard = ({ item }: { item: AssinaturaCardItem }) => {
+  const renderAssinaturaCard = ({ item, onlyAction = false }: { item: AssinaturaCardItem; onlyAction?: boolean }) => {
     const { assinatura, pagamentos } = item;
     const dataInicioText = formatDate(assinatura.data_inicio) || "-";
     const isAtiva = assinatura.status.codigo === "ativa";
@@ -879,75 +879,19 @@ export default function MinhasAssinaturasScreen() {
       ultimaCobrancaText ? { label: "ÚLT. COBRANÇA", value: ultimaCobrancaText } : null,
     ].filter(Boolean) as { label: string; value: string }[];
 
+    if (onlyAction) {
+      if (aguardandoAsaas) return <SubscriptionAction key={`action-${item.key}`} tone="info" title={`${assinatura.plano.nome} · aguardando ativação`} text={gatewayPagamento?.mensagem || "Pagamento confirmado. Aguarde a ativação da matrícula."} action={podeAtualizarPagamento ? {label:"Atualizar",onPress:()=>void handleAtualizarPagamento(assinatura),loading:atualizandoPagamentoId === assinatura.id} : undefined} />;
+      if (!(isPagamentoPendente || temPagamentoAguardandoComPlanoAtivo || (podePagar && assinatura.pode_renovar))) return null;
+      return <SubscriptionAction key={`action-${item.key}`} title={`${assinatura.plano.nome} · ${assinatura.pode_renovar ? "renovação disponível" : "pagamento pendente"}`} text={`${valorExibido}${temPagamentoAguardandoComPlanoAtivo ? " · seu plano atual continua ativo" : ""}`}
+        action={podePagar ? {label:assinatura.pode_renovar ? "Renovar" : "Pagar",onPress:()=>void handlePagarAssinatura(assinatura)} : podeAtualizarPagamento ? {label:"Atualizar",onPress:()=>void handleAtualizarPagamento(assinatura),loading:atualizandoPagamentoId === assinatura.id} : undefined} />;
+    }
+    const ultimoPago = pagamentos.find(isPagamentoPago);
     return (
-      <View style={[styles.card, isPagamentoPendente && styles.cardPendente]}>
-        {aguardandoAsaas ? (
-          <View style={styles.pendenteBanner}>
-            <Feather name="check-circle" size={16} color={ds.success} />
-            <Text style={styles.pendenteBannerText}>
-              {gatewayPagamento?.mensagem ||
-                `Pagamento ${gatewayPagamento?.status_label || "confirmado"} no Asaas${
-                  gatewayPagamento?.data_formatada
-                    ? ` em ${gatewayPagamento.data_formatada}`
-                    : ""
-                }. Aguarde a ativação da matrícula.`}
-            </Text>
-          </View>
-        ) : isPagamentoPendente ? (
-          <View style={styles.pendenteBanner}>
-            <Feather name="clock" size={16} color={ds.warning} />
-            <Text style={styles.pendenteBannerText}>
-              Pagamento pendente. Regularize para manter o acesso.
-            </Text>
-          </View>
-        ) : temPagamentoAguardandoComPlanoAtivo ? (
-          <View style={styles.pendenteBanner}>
-            <Feather name="clock" size={16} color={ds.warning} />
-            <Text style={styles.pendenteBannerText}>
-              Há um pagamento aguardando. Seu plano atual continua ativo.
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.subHead}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <View style={styles.subTitleRow}>
-              <Text style={styles.subName} numberOfLines={2}>
-                {assinatura.plano.nome}
-              </Text>
-              <Badge tone={statusTone}>
-                {isPagamentoPendente
-                  ? "Pendente"
-                  : temPagamentoAguardandoComPlanoAtivo
-                    ? "Ativa · aguardando"
-                    : statusBadgeLabel}
-              </Badge>
-            </View>
-            <Text style={styles.subMeta} numberOfLines={2}>
-              {[
-                assinatura.plano.modalidade,
-                assinatura.ciclo?.nome
-                  ? `${assinatura.ciclo.nome}${
-                      assinatura.ciclo.meses > 0
-                        ? ` · ${assinatura.ciclo.meses} ${assinatura.ciclo.meses === 1 ? "mês" : "meses"}`
-                        : ""
-                    }`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </Text>
-            {assinatura.external_reference ? (
-              <Text style={styles.subCode} numberOfLines={1}>
-                {assinatura.external_reference}
-              </Text>
-            ) : null}
-          </View>
-          <Text style={[styles.subPrice, isPagamentoPendente && { color: ds.warning }]}>
-            {valorExibido}
-          </Text>
-        </View>
-
+      <SubscriptionOverviewCard title={assinatura.plano.nome} price={valorExibido} unit={!isAvulso && assinatura.ciclo?.meses === 1 ? "/mês" : undefined}
+        days={diasAteAssinatura(assinatura.data_fim || assinatura.proxima_cobranca)}
+        subtitle={[assinatura.ciclo?.nome, isAvulso ? (fimAcessoText ? `até ${fimAcessoText}` : "Pagamento único") : proximaCobrancaText ? `renova ${proximaCobrancaText}` : null, ultimoPago?.forma_pagamento, statusBadgeLabel].filter(Boolean).join(" · ")}>
+        <Badge tone={statusTone}>{statusBadgeLabel}</Badge>
+        {assinatura.external_reference ? <Text style={styles.subCode}>{assinatura.external_reference}</Text> : null}
         {datas.length > 0 ? (
           <View style={styles.subDates}>
             {datas.map((d, i) => (
@@ -1053,7 +997,7 @@ export default function MinhasAssinaturasScreen() {
             )}
           </View>
         )}
-      </View>
+      </SubscriptionOverviewCard>
     );
   };
 
@@ -1065,7 +1009,7 @@ export default function MinhasAssinaturasScreen() {
     onErro: (m) => showErrorModal("⚠️ Pacote", m, "warning"),
   });
 
-  const renderPacoteItem = (item: PacoteContrato) => {
+  const renderPacoteItem = (item: PacoteContrato, onlyAction = false) => {
     const contratoId = item.contrato_id ?? item.id;
     const statusCodigo =
       item.status_codigo || item.status || item.status_nome || "pendente";
@@ -1089,23 +1033,10 @@ export default function MinhasAssinaturasScreen() {
     const buttonLabel = "Pagar pacote";
     const renovacaoEm = item.renovacao_liberada_em ? formatDate(item.renovacao_liberada_em) : null;
 
+    if (onlyAction) return isPendente && contratoId ? <SubscriptionAction key={`pacote-action-${contratoId}`} title={`${pacoteNome} pendente`} text={`${formatCurrency(total)} · ${qtd} beneficiário(s)`} action={{label:"Pagar",onPress:()=>pagamentoPacote.iniciar({titulo:pacoteNome,valor:total,contratoId})}} /> : null;
     return (
-      <View
-        key={`pacote-${contratoId ?? Math.random().toString(36)}`}
-        style={styles.pacoteCard}
-      >
-        <View style={styles.pacoteHeader}>
-          <View style={styles.pacoteInfo}>
-            <Text style={styles.pacoteNome}>{pacoteNome}</Text>
-            {!!pacoteDescricao && (
-              <Text style={styles.pacoteDescricao}>{pacoteDescricao}</Text>
-            )}
-          </View>
-          <Badge tone={isPendente ? "warning" : "success"} icon={isPendente ? "clock" : "check"}>
-            {statusText}
-          </Badge>
-        </View>
-
+      <SubscriptionOverviewCard key={`pacote-${contratoId ?? pacoteNome}`} title={pacoteNome} price={formatCurrency(total)} days={diasAteAssinatura(item.data_fim)} subtitle={[`${qtd} beneficiário(s)`,statusText,dataFim ? `até ${dataFim}` : null].filter(Boolean).join(" · ")}>
+        {pacoteDescricao ? <Text style={styles.pacoteDescricao}>{pacoteDescricao}</Text> : null}
         <View style={styles.pacoteMetaRow}>
           <View style={styles.pacoteMetaItem}>
             <Text style={styles.pacoteMetaLabel}>Total</Text>
@@ -1184,7 +1115,7 @@ export default function MinhasAssinaturasScreen() {
         ) : !isPendente && renovacaoEm ? (
           <Text style={styles.pacoteDateText}>Renovação pelo app a partir de {renovacaoEm}</Text>
         ) : null}
-      </View>
+      </SubscriptionOverviewCard>
     );
   };
 
@@ -1246,8 +1177,10 @@ export default function MinhasAssinaturasScreen() {
     </View>
   );
 
-  // Planos com fidelidade (assinatura mensal) ficam em "Minha assinatura", fora da lista de assinaturas
-  const fidelidade = <MinhaAssinaturaFidelidade versao={versaoFidelidade} onQuantidade={setQtdFidelidade} />;
+  const cardsAtuais = assinaturaCards.filter(item => !assinaturaEncerrada(item.assinatura.status.codigo));
+  const cardsEncerrados = assinaturaCards.filter(item => assinaturaEncerrada(item.assinatura.status.codigo));
+  const pacotesAtuais = pacotes.filter(item => !assinaturaEncerrada(item.status_codigo || item.status));
+  const pacotesEncerrados = pacotes.filter(item => assinaturaEncerrada(item.status_codigo || item.status));
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
@@ -1267,54 +1200,31 @@ export default function MinhasAssinaturasScreen() {
         </View>
       ) : error ? (
         renderErrorState()
-      ) : assinaturas.length === 0 && pacotes.length === 0 ? (
-        <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
-          {fidelidade}
-          {qtdFidelidade ? null : renderEmptyState()}
-        </ScrollView>
       ) : (
-        <FlatList
-          data={assinaturaCards}
-          keyExtractor={(item) => item.key}
-          renderItem={renderAssinaturaCard}
-          ListHeaderComponent={
-            <View style={styles.sectionsWrapper}>
-              {fidelidade}
-              {pacotes.length > 0 && (
-                <View style={styles.pacotesSection}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionLabel}>PACOTES</Text>
-                    <Text style={styles.sectionAside}>Vinculados ao seu pagamento</Text>
-                  </View>
-                  <View style={styles.pacotesList}>
-                    {pacotes.map(renderPacoteItem)}
-                  </View>
-                </View>
-              )}
-              <View style={styles.assinaturasSectionHeader}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>ASSINATURAS</Text>
-                  <Text style={styles.sectionAside}>
-                    {assinaturaCards.length} {assinaturaCards.length === 1 ? "assinatura" : "assinaturas"}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          }
-          ListEmptyComponent={
-            pacotes.length > 0 ? (
-              <View style={styles.assinaturasEmptyNote}>
-                <Feather name="info" size={16} color={colors.primary} />
-                <Text style={styles.assinaturasEmptyNoteText}>
-                  Você não possui assinaturas individuais no momento.
-                </Text>
-              </View>
-            ) : null
-          }
-          contentContainerStyle={styles.listContent}
-          scrollEnabled={true}
-          showsVerticalScrollIndicator={false}
-        />
+        <MinhaAssinaturaFidelidade versao={versaoFidelidade} renderContent={(fidelidade) => {
+          const nextCharge = primeiraCobrancaAssinatura([
+            ...fidelidade.charges,
+            ...cardsAtuais.filter(({assinatura})=>assinatura.proxima_cobranca && assinatura.status.codigo === "ativa").map(({assinatura})=>{
+              const parcela = assinatura.pagamentos?.find(pagamento => Number(pagamento.status_pagamento_id) !== 4 && !isPagamentoPago(pagamento) && String(pagamento.data_vencimento || "").slice(0,10) === String(assinatura.proxima_cobranca).slice(0,10));
+              return {date:assinatura.proxima_cobranca!,amount:Number(parcela?.valor ?? assinatura.valor)};
+            }),
+          ]);
+          const pastCount = cardsEncerrados.length + pacotesEncerrados.length + fidelidade.pastCount;
+          return <FlatList data={cardsAtuais} keyExtractor={item=>item.key} renderItem={renderAssinaturaCard}
+            ListHeaderComponent={<View style={styles.sectionsWrapper}>
+              {assinaturaCards.map(item=>renderAssinaturaCard({item,onlyAction:true}))}
+              {pacotesAtuais.map(item=>renderPacoteItem(item,true))}
+              {fidelidade.alerts}
+              {nextCharge ? <NextSubscriptionCharge>Próxima cobrança: <Text style={{fontWeight:"900",color:ds.ink}}>{formatCurrency(nextCharge.amount)} em {formatDate(nextCharge.date)}</Text></NextSubscriptionCharge> : null}
+              {fidelidade.loading ? <Text style={styles.sectionAside}>Carregando contratos…</Text> : null}
+              {cardsAtuais.length || fidelidade.count > fidelidade.pastCount ? <View style={styles.sectionHeader}><Text style={styles.sectionLabel}>SUAS ASSINATURAS</Text><Text style={styles.sectionAside}>Dias até vencer</Text></View> : null}
+              {fidelidade.active}
+              {pacotesAtuais.length ? <View style={styles.pacotesSection}><View style={styles.sectionHeader}><Text style={styles.sectionLabel}>PACOTES</Text><Text style={styles.sectionAside}>Vinculados ao seu pagamento</Text></View><View style={styles.pacotesList}>{pacotesAtuais.map(item=>renderPacoteItem(item))}</View></View> : null}
+            </View>}
+            ListFooterComponent={<View style={{gap:12,marginTop:12}}><PastSubscriptions count={pastCount}>{cardsEncerrados.map(item=><View key={item.key}>{renderAssinaturaCard({item})}</View>)}{pacotesEncerrados.map(item=>renderPacoteItem(item))}{fidelidade.past}</PastSubscriptions></View>}
+            ListEmptyComponent={!assinaturas.length && !pacotes.length && !fidelidade.count && !fidelidade.loading && !fidelidade.error ? renderEmptyState() : null}
+            contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}/>
+        }} />
       )}
 
       {/* Confirm Cancel Modal */}
@@ -1670,8 +1580,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionsWrapper: {
-    gap: 24,
-    marginBottom: 0,
+    gap: 12,
+    marginBottom: 12,
   },
 
   /* Pacotes */
