@@ -15,6 +15,7 @@ import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -272,9 +273,9 @@ export default function PlanoDetalhesScreen() {
 
 
 
-  const fetchPlanoDetalhes = async (baseUrl: string, planoId: string) => {
+  const fetchPlanoDetalhes = async (baseUrl: string, planoId: string, opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       setError(null);
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -282,13 +283,17 @@ export default function PlanoDetalhesScreen() {
         throw new Error("Token não encontrado");
       }
 
-      const url = `${baseUrl}/mobile/planos/${planoId}`;
+      // Sem cache: no Android o fetch pode devolver o GET anterior
+      const url = `${baseUrl}/mobile/planos/${planoId}?_=${Date.now()}`;
 
       const response = await fetch(url, {
         method: "GET",
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store",
+          Pragma: "no-cache",
         },
       });
 
@@ -357,7 +362,12 @@ export default function PlanoDetalhesScreen() {
           const cicloAtual = cicloAtualId
             ? ciclos.find((c: Ciclo) => c.id === cicloAtualId)
             : null;
-          setSelectedCicloId(cicloAtual?.id ?? ciclos[0].id);
+          // Ao recarregar a mesma tela, mantém o ciclo que o aluno já escolheu
+          setSelectedCicloId((anterior) =>
+            anterior != null && ciclos.some((c: Ciclo) => c.id === anterior)
+              ? anterior
+              : cicloAtual?.id ?? ciclos[0].id,
+          );
         }
       } else {
         throw new Error(data.error || "Falha ao carregar detalhes do plano");
@@ -412,17 +422,18 @@ export default function PlanoDetalhesScreen() {
     checkPermission();
   }, [router]);
 
-  useEffect(() => {
-    const init = async () => {
+  // Lê a API toda vez que a tela entra em foco (no Android a rota pode continuar montada).
+  // A primeira leitura de cada plano mostra o carregando; as seguintes atualizam em silêncio.
+  const carregadoId = useRef<string | null>(null);
+  useFocusEffect(
+    React.useCallback(() => {
       const url = getApiUrlRuntime();
       setApiUrl(url);
-      if (id && hasPermission) {
-        await fetchPlanoDetalhes(url, id);
-      }
-    };
-    init();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, hasPermission]);
+      if (!id || !hasPermission) return;
+      void fetchPlanoDetalhes(url, id, { silent: carregadoId.current === id });
+      carregadoId.current = id;
+    }, [id, hasPermission]),
+  );
 
   const abrirCheckout = (
     url: string,
@@ -1192,7 +1203,7 @@ export default function PlanoDetalhesScreen() {
           title="Detalhes do Plano"
           onBack={handleBack}
           bottom={
-            <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+            <Stepper tone="brand" steps={["Tipo", "Plano", "Pagamento"]} current={2} />
           }
         />
         <View style={styles.centerContent}>
@@ -1210,7 +1221,7 @@ export default function PlanoDetalhesScreen() {
           title="Detalhes do Plano"
           onBack={handleBack}
           bottom={
-            <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+            <Stepper tone="brand" steps={["Tipo", "Plano", "Pagamento"]} current={2} />
           }
         />
         <View style={styles.errorContainer}>
@@ -1314,7 +1325,7 @@ export default function PlanoDetalhesScreen() {
         title={plano.nome}
         onBack={handleBack}
         bottom={
-          <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+          <Stepper tone="brand" steps={["Tipo", "Plano", "Pagamento"]} current={2} />
         }
         right={
           isPlanoAtivo || podeRenovar ? (
