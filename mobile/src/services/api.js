@@ -78,6 +78,7 @@ const api = {
 
   /**
    * Faz uma requisição POST
+   * @param {object | null} [data=null]
    */
   async post(endpoint, data = null, config = {}) {
     return this.request("POST", endpoint, data, config);

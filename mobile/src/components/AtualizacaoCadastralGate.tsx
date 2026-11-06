@@ -30,6 +30,14 @@ type Pendente = {
   trocar_senha: boolean;
   senha: { min_caracteres: number; nivel: string; regras: string[] } | null;
 };
+type PreMatricula = {
+  tenant_id: number;
+  obrigatoria: boolean;
+  status: "pendente" | "aprovada" | "reprovada" | null;
+  observacao: string | null;
+  planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string }[];
+  turmas: { id: number; nome: string; modalidade_id: number; dias_semana: number[]; horario_inicio: string; horario_fim: string }[];
+};
 
 const SEXOS = [
   { value: "feminino", label: "Feminino" },
@@ -90,6 +98,13 @@ const faltasSenha = (senha: string, nivel: string, min: number) => {
 export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean }) {
   const [pendente, setPendente] = useState<Pendente | null>(null);
   const [adiada, setAdiada] = useState<number | null>(null);
+  const [preMatricula, setPreMatricula] = useState<PreMatricula | null>(null);
+  const [preMatriculaAdiada, setPreMatriculaAdiada] = useState<number | null>(null);
+  const [planoPreMatricula, setPlanoPreMatricula] = useState<number | null>(null);
+  const [gradePreMatricula, setGradePreMatricula] = useState<{ turma_fixa_id: number; dia_semana: number }[]>([]);
+  const [diaVencimento, setDiaVencimento] = useState("");
+  const [erroPreMatricula, setErroPreMatricula] = useState("");
+  const [salvandoPreMatricula, setSalvandoPreMatricula] = useState(false);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState("");
@@ -103,54 +118,104 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [novaSenha, setNovaSenha] = useState("");
   const [confirmaSenha, setConfirmaSenha] = useState("");
   const buscando = useRef(false);
+  const versaoBusca = useRef(0);
   const idAtual = useRef<number | null>(null);
   const forcarValidacaoAtual = useRef(false);
 
   const carregar = useCallback(async () => {
     if (!enabled || buscando.current) return;
     buscando.current = true;
+    const versao = ++versaoBusca.current;
     try {
-      const r: any = await api.get("/mobile/atualizacao-cadastral");
-      const p: Pendente | null = r?.data?.pendente ?? null;
-      // Outra campanha (ou a primeira): começa o formulário do zero com os valores atuais
-      if (p && idAtual.current !== p.id) {
-        setValores(Object.fromEntries(p.campos.map((c) => [c.campo, paraTela(c)])));
-        setErros({});
-        setErroGeral("");
-        setCodigo("");
-        setCodigoEnviadoPara("");
-        setEmailConfirmado("");
-        setSenhaAtual("");
-        setNovaSenha("");
-        setConfirmaSenha("");
+      try {
+        const r: any = await api.get("/mobile/atualizacao-cadastral");
+        if (versao !== versaoBusca.current) return;
+        const p: Pendente | null = r?.data?.pendente ?? null;
+        // Outra campanha (ou a primeira): começa o formulário do zero com os valores atuais
+        if (p && idAtual.current !== p.id) {
+          setValores(Object.fromEntries(p.campos.map((c) => [c.campo, paraTela(c)])));
+          setErros({});
+          setErroGeral("");
+          setCodigo("");
+          setCodigoEnviadoPara("");
+          setEmailConfirmado("");
+          setSenhaAtual("");
+          setNovaSenha("");
+          setConfirmaSenha("");
+        }
+        // A campanha pode passar a forçar validação enquanto o formulário já está aberto.
+        if (p && idAtual.current === p.id && p.forcar_validacao_email && !forcarValidacaoAtual.current) {
+          setCodigo("");
+          setCodigoEnviadoPara("");
+          setEmailConfirmado("");
+          setAviso("");
+        }
+        forcarValidacaoAtual.current = !!p?.forcar_validacao_email;
+        idAtual.current = p?.id ?? null;
+        setPendente(p);
+      } catch {
+        if (versao !== versaoBusca.current) return;
+        // Sem conexão ou API antiga: não bloqueia o app por causa disso
       }
-      // A campanha pode passar a forçar validação enquanto o formulário já está aberto.
-      if (p && idAtual.current === p.id && p.forcar_validacao_email && !forcarValidacaoAtual.current) {
-        setCodigo("");
-        setCodigoEnviadoPara("");
-        setEmailConfirmado("");
-        setAviso("");
+      try {
+        const resposta: any = await api.get("/mobile/pre-matricula");
+        if (versao !== versaoBusca.current) return;
+        const atual: PreMatricula | null = resposta?.data?.pre_matricula ?? null;
+        setPreMatricula(atual);
+        if (atual?.status !== "reprovada") {
+          setPlanoPreMatricula(null);
+          setGradePreMatricula([]);
+          setDiaVencimento("");
+        }
+        setErroPreMatricula("");
+      } catch (error: any) {
+        if (versao !== versaoBusca.current) return;
+        setErroPreMatricula(error?.response?.data?.message || "Não foi possível carregar a pré-matrícula.");
+        console.error("[PreMatriculaGate] Falha ao carregar pré-matrícula", error);
       }
-      forcarValidacaoAtual.current = !!p?.forcar_validacao_email;
-      idAtual.current = p?.id ?? null;
-      setPendente(p);
-    } catch {
-      // Sem conexão ou API antiga: não bloqueia o app por causa disso
     } finally {
-      buscando.current = false;
+      if (versao === versaoBusca.current) buscando.current = false;
     }
   }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
+      versaoBusca.current += 1;
+      buscando.current = false;
+      idAtual.current = null;
+      forcarValidacaoAtual.current = false;
       setPendente(null);
+      setAdiada(null);
+      setPreMatricula(null);
+      setPreMatriculaAdiada(null);
+      setPlanoPreMatricula(null);
+      setGradePreMatricula([]);
+      setDiaVencimento("");
+      setErroPreMatricula("");
+      setValores({});
+      setErros({});
+      setErroGeral("");
+      setAviso("");
+      setCodigo("");
+      setCodigoEnviadoPara("");
+      setEmailConfirmado("");
+      setSenhaAtual("");
+      setNovaSenha("");
+      setConfirmaSenha("");
+      setSalvando(false);
+      setSalvandoPreMatricula(false);
+      setEnviandoCodigo(false);
       return undefined;
     }
     void carregar();
     const sub = AppState.addEventListener("change", (s) => {
       if (s === "active") void carregar();
     });
-    return () => sub.remove();
+    return () => {
+      versaoBusca.current += 1;
+      buscando.current = false;
+      sub.remove();
+    };
   }, [enabled, carregar]);
 
   const campoEmail = pendente?.campos.find((c) => c.campo === "email");
@@ -169,37 +234,44 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   };
 
   const enviarCodigo = async () => {
+    const versao = versaoBusca.current;
     setEnviandoCodigo(true);
     setAviso("");
     setErros((e) => ({ ...e, email: "" }));
     try {
       const r: any = await api.post("/mobile/atualizacao-cadastral/email/codigo", { email: emailFinal });
+      if (versao !== versaoBusca.current) return;
       setCodigoEnviadoPara(emailFinal);
       setAviso(r?.data?.message || `Enviamos um código para ${emailFinal}.`);
     } catch (e: any) {
+      if (versao !== versaoBusca.current) return;
       setErros((x) => ({ ...x, email: e?.response?.data?.error || e?.message || "Não foi possível enviar o código." }));
     } finally {
-      setEnviandoCodigo(false);
+      if (versao === versaoBusca.current) setEnviandoCodigo(false);
     }
   };
 
   const confirmarCodigo = async (valor: string = codigo) => {
+    const versao = versaoBusca.current;
     setEnviandoCodigo(true);
     try {
       await api.post("/mobile/atualizacao-cadastral/email/validar", { email: codigoEnviadoPara, codigo: valor });
+      if (versao !== versaoBusca.current) return;
       setEmailConfirmado(codigoEnviadoPara);
       setAviso("");
       setErros((x) => ({ ...x, codigo: "", email: "" }));
     } catch (e: any) {
+      if (versao !== versaoBusca.current) return;
       setCodigo("");
       setErros((x) => ({ ...x, codigo: e?.response?.data?.error || e?.message || "Código incorreto." }));
     } finally {
-      setEnviandoCodigo(false);
+      if (versao === versaoBusca.current) setEnviandoCodigo(false);
     }
   };
 
   const salvar = async () => {
     if (!pendente || salvando) return;
+    const versao = versaoBusca.current;
     const locais: Record<string, string> = {};
     pendente.campos.forEach((c) => {
       if (c.obrigatorio && !String(valores[c.campo] || "").trim()) locais[c.campo] = "Campo obrigatório.";
@@ -224,21 +296,64 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         senha_atual: pendente.trocar_senha ? senhaAtual : undefined,
         nova_senha: pendente.trocar_senha ? novaSenha : undefined,
       });
+      if (versao !== versaoBusca.current) return;
       setPendente(null);
       void carregar();
     } catch (e: any) {
+      if (versao !== versaoBusca.current) return;
       const data = e?.response?.data || {};
       setErros(data.campos || {});
       setErroGeral(data.error || e?.message || "Não foi possível salvar. Tente de novo.");
     } finally {
-      setSalvando(false);
+      if (versao === versaoBusca.current) setSalvando(false);
     }
   };
 
-  const visivel = !!pendente && adiada !== pendente.id;
-  if (!visivel || !pendente) return null;
+  const salvarPreMatricula = async () => {
+    if (!preMatricula || !planoSelecionado || salvandoPreMatricula) return;
+    const versao = versaoBusca.current;
+    const frequencia = Number(planoSelecionado.checkins_semanais);
+    if (gradePreMatricula.length !== frequencia) {
+      setErroPreMatricula(`Escolha exatamente ${frequencia} dia(s) e horário(s) por semana.`);
+      return;
+    }
+    if (diaVencimento && (!/^\d{1,2}$/.test(diaVencimento) || Number(diaVencimento) < 1 || Number(diaVencimento) > 31)) {
+      setErroPreMatricula("Informe um dia de pagamento entre 1 e 31.");
+      return;
+    }
+    setSalvandoPreMatricula(true);
+    setErroPreMatricula("");
+    try {
+      await api.post("/mobile/pre-matricula", {
+        plano_id: planoSelecionado.id,
+        grade: gradePreMatricula,
+        dia_vencimento: diaVencimento ? Number(diaVencimento) : null,
+      });
+      if (versao !== versaoBusca.current) return;
+      setPreMatricula({ ...preMatricula, status: "pendente" });
+      setPlanoPreMatricula(null);
+      setGradePreMatricula([]);
+      setDiaVencimento("");
+    } catch (error: any) {
+      if (versao !== versaoBusca.current) return;
+      const data = error?.response?.data || {};
+      const details = Object.values(data.errors || {}).flat().join(" ");
+      setErroPreMatricula(details || data.message || data.error || "Não foi possível enviar a pré-matrícula.");
+    } finally {
+      if (versao === versaoBusca.current) setSalvandoPreMatricula(false);
+    }
+  };
 
-  return (
+  const planoSelecionado = preMatricula?.planos.find((plano) => plano.id === planoPreMatricula) || null;
+  const modalidadesPermitidas = planoSelecionado ? preMatricula?.turmas.filter((turma) => turma.modalidade_id === planoSelecionado.modalidade_id) || [] : [];
+  const visivelCadastro = enabled && !!pendente && adiada !== pendente.id;
+  const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula
+    && !["pendente", "aprovada"].includes(preMatricula.status || "")
+    && (preMatricula.obrigatoria || preMatriculaAdiada !== preMatricula.tenant_id);
+  if (!visivelCadastro && !visivelPreMatricula) return null;
+
+  return <>
+    {visivelCadastro && pendente ? (
     <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (!pendente.bloquear_app) setAdiada(pendente.id); }}>
       <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
         <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -370,7 +485,96 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
-  );
+    ) : null}
+    {visivelPreMatricula && preMatricula ? (
+      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (!preMatricula.obrigatoria) setPreMatriculaAdiada(preMatricula.tenant_id); }}>
+        <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
+          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+              <View style={styles.head}>
+                <View style={styles.icon}><Feather name="clipboard" size={24} color={ds.brandInk} /></View>
+                <Text style={styles.title} accessibilityRole="header">Pré-matrícula</Text>
+                <Text style={styles.text}>Informe o plano e os dias/horários desejados. A solicitação será analisada pela academia; não cria matrícula, não gera cobrança e não reserva vaga.</Text>
+              </View>
+              {preMatricula.status === "reprovada" ? (
+                <View style={styles.alert} accessibilityRole="alert">
+                  <Feather name="alert-circle" size={18} color={ds.danger} />
+                  <Text style={styles.alertText}>{preMatricula.observacao || "Sua solicitação anterior não foi aprovada. Confira seus dados e envie novamente."}</Text>
+                </View>
+              ) : null}
+              {erroPreMatricula ? (
+                <View style={styles.alert} accessibilityRole="alert">
+                  <Feather name="alert-circle" size={18} color={ds.danger} />
+                  <Text style={styles.alertText}>{erroPreMatricula}</Text>
+                </View>
+              ) : null}
+              <Section title="ESCOLHA O PLANO" padded>
+                <View style={styles.fields}>
+                  {preMatricula.planos.map((plano) => {
+                    const selecionado = planoPreMatricula === plano.id;
+                    const descricao = String(plano.descricao || "").replace(/\bfree\b/gi, "").trim();
+                    return (
+                      <Pressable key={plano.id} onPress={() => {
+                        setPlanoPreMatricula(plano.id);
+                        setGradePreMatricula([]);
+                        setErroPreMatricula("");
+                      }} accessibilityRole="radio" accessibilityState={{ checked: selecionado }} style={[styles.opt, selecionado && styles.optOn]}>
+                        <Text style={[styles.optText, selecionado && { color: ds.onInverse }]}>
+                          {plano.checkins_semanais}x por semana · {plano.modalidade_nome}{descricao ? `\n${descricao}` : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  {!preMatricula.planos.length ? <Text style={styles.text}>Não há planos disponíveis para esta pré-matrícula. Fale com a academia.</Text> : null}
+                </View>
+              </Section>
+              {planoSelecionado ? (
+                <Section title="ESCOLHA OS DIAS E HORÁRIOS" padded>
+                  <View style={styles.fields}>
+                    <Text style={styles.text}>Escolha {planoSelecionado.checkins_semanais} horário(s) em dias diferentes.</Text>
+                    {Array.from({ length: 7 }, (_, index) => index + 1).map((dia) => {
+                      const opcoes = modalidadesPermitidas.filter((turma) => turma.dias_semana.includes(dia));
+                      if (!opcoes.length) return null;
+                      const escolhida = gradePreMatricula.find((slot) => slot.dia_semana === dia);
+                      return (
+                        <View key={dia}>
+                          <Text style={styles.label}>{["", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"][dia]}</Text>
+                          {opcoes.map((turma) => {
+                            const marcada = escolhida?.turma_fixa_id === turma.id;
+                            const jaCheia = gradePreMatricula.length >= planoSelecionado.checkins_semanais && !escolhida;
+                            return (
+                              <Pressable key={turma.id} disabled={jaCheia} onPress={() => {
+                                setGradePreMatricula((atual) => {
+                                  const semEsteDia = atual.filter((slot) => slot.dia_semana !== dia);
+                                  return marcada ? semEsteDia : [...semEsteDia, { turma_fixa_id: turma.id, dia_semana: dia }];
+                                });
+                                setErroPreMatricula("");
+                              }} accessibilityRole="radio" accessibilityState={{ checked: marcada, disabled: jaCheia }} style={[styles.opt, marcada && styles.optOn, jaCheia && { opacity: 0.45 }]}>
+                                <Text style={[styles.optText, marcada && { color: ds.onInverse }]}>
+                                  {String(turma.horario_inicio).slice(0, 5)} · {turma.nome}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      );
+                    })}
+                    <TextField label="Dia de vencimento (opcional)" value={diaVencimento} onChangeText={setDiaVencimento} keyboardType="number-pad" placeholder="De 1 a 31" />
+                  </View>
+                </Section>
+              ) : null}
+              <View style={styles.fields}>
+                <Button variant="primary" icon="check" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais)} onPress={() => void salvarPreMatricula()}>
+                  Enviar para análise
+                </Button>
+                {!preMatricula.obrigatoria ? <Button variant="secondary" onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>Agora não</Button> : null}
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+    ) : null}
+  </>;
 }
 
 const styles = StyleSheet.create({

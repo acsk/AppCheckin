@@ -163,6 +163,8 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::post('/pacotes/{pacoteId}/contratar', [MobilePacoteVendaController::class, 'contratar'])->whereNumber('pacoteId')->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
             Route::post('/pacotes/contratos/{contratoId}/cobranca', [MobilePacoteVendaController::class, 'cobrar'])->whereNumber('contratoId')->middleware('funcionalidade:pagamentos');
             Route::post('/pacotes/contratos/{contratoId}/renovar', [MobilePacoteVendaController::class, 'renovar'])->whereNumber('contratoId')->middleware(['funcionalidade:matriculas', 'funcionalidade:pagamentos']);
+            Route::get('/pre-matricula', [\App\Http\Controllers\Api\V2\MobilePreMatriculaController::class, 'show']);
+            Route::post('/pre-matricula', [\App\Http\Controllers\Api\V2\MobilePreMatriculaController::class, 'store']);
             Route::get('/atualizacao-cadastral', [MobileAtualizacaoCadastralController::class, 'pendente']);
             Route::post('/atualizacao-cadastral/email/codigo', [MobileAtualizacaoCadastralController::class, 'enviarCodigo']);
             Route::post('/atualizacao-cadastral/email/validar', [MobileAtualizacaoCadastralController::class, 'validarCodigo']);
