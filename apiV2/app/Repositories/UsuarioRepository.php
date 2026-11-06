@@ -270,11 +270,33 @@ class UsuarioRepository
         if (! $this->hasColumn('usuarios', 'responsavel_usuario_id')) {
             return;
         }
-        $cpf = DB::table('usuarios')->where('id', $usuarioId)->value('responsavel_cpf');
-        $responsavelId = $cpf ? DB::table('usuarios')->where('cpf', $cpf)->where('id', '<>', $usuarioId)->value('id') : null;
+        $cpf = \App\Support\Documento::digitos((string) DB::table('usuarios')->where('id', $usuarioId)->value('responsavel_cpf'));
+        $formatado = strlen($cpf) === 11 ? substr($cpf, 0, 3).'.'.substr($cpf, 3, 3).'.'.substr($cpf, 6, 3).'-'.substr($cpf, 9) : null;
+        $responsavelId = $formatado ? DB::table('usuarios')->whereIn('cpf', [$cpf, $formatado])->where('id', '<>', $usuarioId)->value('id') : null;
         if ($responsavelId) {
             DB::table('usuarios')->where('id', $usuarioId)->update(['responsavel_usuario_id' => (int) $responsavelId]);
         }
+    }
+
+    /**
+     * Liga à conta do responsável os menores que informaram o CPF dele e ainda não estão ligados
+     * (cadastrados antes da migration, ou quando o CPF só bateu depois). Devolve quantos ligou.
+     */
+    public function ligarDependentesPorCpf(int $responsavelId): int
+    {
+        if (! $this->hasColumn('usuarios', 'responsavel_usuario_id')) {
+            return 0;
+        }
+        $cpf = \App\Support\Documento::digitos((string) DB::table('usuarios')->where('id', $responsavelId)->value('cpf'));
+        if (strlen($cpf) !== 11) {
+            return 0;
+        }
+
+        return DB::table('usuarios')
+            ->where('responsavel_cpf', $cpf)
+            ->whereNull('responsavel_usuario_id')
+            ->where('id', '<>', $responsavelId)
+            ->update(['responsavel_usuario_id' => $responsavelId, 'updated_at' => now()]);
     }
 
     public function isTenantActive(int $tenantId): bool

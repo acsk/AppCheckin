@@ -287,4 +287,24 @@ class DependentesTest extends TestCase
         $this->assertSame(404, $this->service()->atualizar(99, $id, $this->filho())['status']);
         $this->assertSame(422, $this->service()->atualizar(self::PAI, $id, $this->filho(['email' => 'andre@exemplo.com']))['status']);
     }
+
+    public function test_menor_cadastrado_no_painel_sem_vinculo_e_ligado_ao_abrir_dependentes(): void
+    {
+        // Cadastro antigo (antes da migration): tem o CPF do responsável, mas não o vínculo
+        DB::table('usuarios')->insert(['id' => 459, 'nome' => 'FILHO DO ANDRE', 'responsavel_cpf' => '52998224725', 'data_nascimento' => '2015-08-31']);
+        DB::table('alunos')->insert(['usuario_id' => 459, 'nome' => 'FILHO DO ANDRE']);
+        DB::table('tenant_usuario_papel')->insert(['tenant_id' => self::TENANT, 'usuario_id' => 459, 'papel_id' => 1, 'ativo' => 1]);
+
+        $lista = $this->service()->listar(self::PAI, self::TENANT)['body']['data']['dependentes'];
+        $this->assertSame([459], array_column($lista, 'usuario_id'));
+        $this->assertSame(self::PAI, (int) DB::table('usuarios')->where('id', 459)->value('responsavel_usuario_id'));
+
+        // O login "Sou dependente" também liga; com PIN o perfil aparece
+        DB::table('usuarios')->where('id', 459)->update(['responsavel_usuario_id' => null]);
+        $this->service()->definirPin(self::PAI, 459, '4826'); // sem vínculo: 404
+        $this->assertSame([], app(DependenteLoginService::class)->perfis('andre@exemplo.com', '9.9.9.9')['body']['perfis']);
+        $this->service()->listar(self::PAI, self::TENANT);
+        $this->service()->definirPin(self::PAI, 459, '4826');
+        $this->assertSame([['id' => 459, 'nome' => 'Filho']], app(DependenteLoginService::class)->perfis('andre@exemplo.com', '9.9.9.9')['body']['perfis']);
+    }
 }

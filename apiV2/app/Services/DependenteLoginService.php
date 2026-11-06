@@ -35,6 +35,9 @@ class DependenteLoginService
             return $bloqueio;
         }
         $responsavel = $this->responsavelPorEmail($email);
+        if ($responsavel) {
+            $this->usuarios->ligarDependentesPorCpf($responsavel->id);
+        }
         $perfis = $responsavel ? DB::table('usuarios')
             ->where('responsavel_usuario_id', $responsavel->id)
             ->whereNotNull('dependente_pin_hash')

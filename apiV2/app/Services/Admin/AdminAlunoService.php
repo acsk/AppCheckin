@@ -102,9 +102,12 @@ class AdminAlunoService
             return $this->error('Aluno não encontrado', 404);
         }
 
+        $aluno = $this->enriquecerAluno($aluno, $tenantId);
+        $aluno['responsavel_conta'] = $this->contaDoResponsavel((int) $aluno['usuario_id'], $tenantId);
+
         return [
             'status' => 200,
-            'body' => ['aluno' => $this->enriquecerAluno($aluno, $tenantId)],
+            'body' => ['aluno' => $aluno],
         ];
     }
 
@@ -640,6 +643,43 @@ class AdminAlunoService
         }
 
         return $errors;
+    }
+
+    /**
+     * Situação do menor no app: ligado (ou não) à conta do responsável e com PIN de login próprio.
+     * Tenta ligar de novo pelo CPF antes de responder.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function contaDoResponsavel(int $usuarioId, int $tenantId): ?array
+    {
+        if (! \App\Support\Pessoa::existe('usuarios', 'responsavel_usuario_id')) {
+            return null;
+        }
+        $u = DB::table('usuarios')->where('id', $usuarioId)->first(['responsavel_cpf', 'responsavel_usuario_id', 'email']);
+        if (! $u || (! $u->responsavel_cpf && ! $u->responsavel_usuario_id)) {
+            return null;
+        }
+        if (! $u->responsavel_usuario_id) {
+            $this->usuarios->ligarAoResponsavel($usuarioId);
+            $u->responsavel_usuario_id = DB::table('usuarios')->where('id', $usuarioId)->value('responsavel_usuario_id');
+        }
+        $temPin = \App\Support\Pessoa::existe('usuarios', 'dependente_pin_hash')
+            && DB::table('usuarios')->where('id', $usuarioId)->whereNotNull('dependente_pin_hash')->exists();
+        if (! $u->responsavel_usuario_id) {
+            return ['ligado' => false, 'tem_pin' => false, 'tem_email' => (bool) $u->email];
+        }
+        $r = DB::table('usuarios')->where('id', $u->responsavel_usuario_id)->first(['id', 'nome', 'email']);
+
+        return [
+            'ligado' => true,
+            'usuario_id' => (int) $u->responsavel_usuario_id,
+            'nome' => $r->nome ?? null,
+            'email' => $r->email ?? null,
+            'aluno_id' => $r ? $this->alunos->findByUsuarioIdAndTenant((int) $r->id, $tenantId)['id'] ?? null : null,
+            'tem_pin' => $temPin,
+            'tem_email' => (bool) $u->email,
+        ];
     }
 
     /** @param  array<string, mixed>  $efetivo */

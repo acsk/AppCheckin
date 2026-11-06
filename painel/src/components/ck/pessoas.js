@@ -300,7 +300,15 @@ import { Sparkline } from './graficos';
             h(AlDl, { items: [
               ['Nome', titleCase(guardian.name), 'users'], ['Parentesco', (RELATIONS.filter(function (r) { return r.value === guardian.relation; })[0] || {}).label, 'user'],
               ['CPF', guardian.cpf ? maskCpf(guardian.cpf) : null, 'clipboard'], ['E-mail', guardian.email, 'mail'],
-              ['Telefone', guardian.phone ? maskPhone(guardian.phone) : null, 'phone']] }))
+              ['Telefone', guardian.phone ? maskPhone(guardian.phone) : null, 'phone']] }),
+            // Situação no app: ligado à conta do responsável? PIN de login próprio criado?
+            s.guardianAccount ? (s.guardianAccount.ligado
+              ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: s.guardianAccount.tem_pin ? 'check-circle' : 'info', size: 15 }),
+                  s.guardianAccount.tem_pin
+                    ? 'Ligado à conta de ' + titleCase(s.guardianAccount.nome) + '. Entra sozinho no app em “Sou dependente”, com o e-mail ' + s.guardianAccount.email + ' e o PIN.'
+                    : 'Ligado à conta de ' + titleCase(s.guardianAccount.nome) + (s.guardianAccount.aluno_id ? ' (aluno #' + s.guardianAccount.aluno_id + ')' : '') + '. Ainda sem PIN: para entrar sozinho, o responsável cria o PIN no app, em Menu › Família › Dependentes. Ele também pode usar o perfil da criança por lá.')
+              : h('p', { className: 'ck-al-hint is-error' }, h(Icon, { name: 'alert-triangle', size: 15 }),
+                  'O CPF do responsável não corresponde a nenhuma conta no app. Confira o CPF ou peça para o responsável se cadastrar; a criança aparece para ele assim que o CPF bater.')) : null)
             : age != null && age < 18 ? h(Callout, { tone: 'warning', title: 'Menor de idade sem responsável',
               action: p.onEdit ? h(Button, { size: 'sm', onClick: p.onEdit }, 'Informar responsável') : null },
               'Cadastre nome, CPF e e-mail do responsável legal para contratos e cobranças.') : null,

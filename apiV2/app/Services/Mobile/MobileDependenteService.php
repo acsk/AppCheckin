@@ -25,6 +25,7 @@ class MobileDependenteService
     /** @return array{status: int, body: array<string, mixed>} */
     public function listar(int $responsavelId, int $tenantId): array
     {
+        $this->usuarios->ligarDependentesPorCpf($responsavelId);
         $linhas = DB::table('usuarios as u')
             ->leftJoin('alunos as a', 'a.usuario_id', '=', 'u.id')
             ->leftJoin('tenant_usuario_papel as tup', function ($j) use ($tenantId) {
