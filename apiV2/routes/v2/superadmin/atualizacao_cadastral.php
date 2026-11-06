@@ -15,5 +15,6 @@ Route::get('/atualizacoes-cadastrais/{id}/pendentes', [AtualizacaoCadastralContr
 // Pré-matrícula de migração: configuração por academia e revisão sem criar a matrícula real.
 Route::get('/pre-matriculas', [PreMatriculaController::class, 'index']);
 Route::put('/pre-matriculas/configuracao', [PreMatriculaController::class, 'update']);
+Route::delete('/pre-matriculas/configuracao', [PreMatriculaController::class, 'destroyConfiguracao']);
 Route::post('/pre-matriculas/{id}/aprovar', [PreMatriculaController::class, 'aprovar'])->whereNumber('id');
 Route::post('/pre-matriculas/{id}/reprovar', [PreMatriculaController::class, 'reprovar'])->whereNumber('id');

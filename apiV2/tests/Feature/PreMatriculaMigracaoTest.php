@@ -177,4 +177,22 @@ class PreMatriculaMigracaoTest extends TestCase
 
         $this->assertSame('2025-01-02 03:04:05', DB::table('pre_matricula_configuracoes')->value('created_at'));
     }
+
+    public function test_excluir_configuracao_desativa_novos_pedidos_e_preserva_os_existentes(): void
+    {
+        $envio = $this->service->enviar(1, 1, [
+            'plano_id' => 1,
+            'grade' => [
+                ['turma_fixa_id' => 1, 'dia_semana' => 1],
+                ['turma_fixa_id' => 2, 'dia_semana' => 5],
+            ],
+        ]);
+
+        $configuracao = $this->service->excluirConfiguracao(1);
+
+        $this->assertFalse($configuracao['configurada']);
+        $this->assertNull($this->service->paraAluno(1, 1));
+        $this->assertSame(1, DB::table('pre_matriculas')->where('id', $envio['id'])->count());
+        $this->assertSame(1, count($this->service->painel(1)['solicitacoes']));
+    }
 }

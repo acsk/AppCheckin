@@ -74,6 +74,15 @@ class PreMatriculaService
         return $this->configuracao($tenantId);
     }
 
+    /** @return array<string, mixed> */
+    public function excluirConfiguracao(int $tenantId): array
+    {
+        abort_unless(DB::table('tenants')->where('id', $tenantId)->exists(), 404, 'Academia não encontrada.');
+        DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->delete();
+
+        return $this->configuracao($tenantId);
+    }
+
     /** @return array<string, mixed>|null */
     public function paraAluno(int $tenantId, int $userId): ?array
     {
@@ -230,6 +239,7 @@ class PreMatriculaService
 
         return [
             'tenant_id' => $tenantId,
+            'configurada' => $row !== null,
             'ativa' => (bool) ($row->ativa ?? false),
             'obrigatoria' => (bool) ($row->obrigatoria ?? false),
             'publico' => (string) ($row->publico ?? 'sem_matricula'),

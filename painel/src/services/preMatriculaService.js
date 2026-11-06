@@ -23,6 +23,14 @@ const preMatriculaService = {
     }
   },
 
+  async excluirConfiguracao(tenantId) {
+    try {
+      return (await api.delete('/superadmin/pre-matriculas/configuracao', { params: { tenant_id: tenantId } })).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível remover a configuração.'));
+    }
+  },
+
   async avaliar(id, tenantId, decisao, observacao) {
     try {
       return (await api.post(`/superadmin/pre-matriculas/${id}/${decisao}`, {

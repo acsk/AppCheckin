@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Callout, Modal, SelectField, Switch, TextAreaField } from '../../components/ck';
+import { Badge, Button, Callout, Modal, SegmentedControl, SelectField, Switch, TextAreaField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
 import { superAdminService } from '../../services/superAdminService';
 import preMatriculaService from '../../services/preMatriculaService';
@@ -18,6 +18,9 @@ export default function PreMatriculaPanel() {
   const [tenantId, setTenantId] = useState('');
   const [dados, setDados] = useState(null);
   const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula' });
+  const [configAberta, setConfigAberta] = useState(false);
+  const [excluirConfig, setExcluirConfig] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState('pendente');
   const [decisao, setDecisao] = useState(null);
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState('');
@@ -68,7 +71,25 @@ export default function PreMatriculaPanel() {
         tenant_id: Number(tenantId),
         ...config,
       });
+      setConfigAberta(false);
       showSuccess('Configuração da pré-matrícula salva.');
+      await carregar(tenantId);
+    } catch (error) {
+      setErro(error.message);
+      showError(error.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const removerConfiguracao = async () => {
+    if (!tenantId || salvando) return;
+    setSalvando(true);
+    setErro('');
+    try {
+      await preMatriculaService.excluirConfiguracao(Number(tenantId));
+      setExcluirConfig(false);
+      showSuccess('Configuração removida. Os pedidos recebidos foram preservados.');
       await carregar(tenantId);
     } catch (error) {
       setErro(error.message);
@@ -96,6 +117,14 @@ export default function PreMatriculaPanel() {
     }
   };
 
+  const solicitacoes = dados?.solicitacoes || [];
+  const contagens = {
+    pendente: solicitacoes.filter((item) => item.status === 'pendente').length,
+    aprovada: solicitacoes.filter((item) => item.status === 'aprovada').length,
+    reprovada: solicitacoes.filter((item) => item.status === 'reprovada').length,
+  };
+  const filtradas = filtroStatus === 'todas' ? solicitacoes : solicitacoes.filter((item) => item.status === filtroStatus);
+
   return (
     <>
       <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. A aprovação apenas valida os dados: não cria matrícula nem cobrança; faça a matrícula manualmente após revisar.">
@@ -103,23 +132,46 @@ export default function PreMatriculaPanel() {
         <div className="ck-mc-form">
           <SelectField label="Academia" value={tenantId} options={academias.map((academia) => ({ value: String(academia.id), label: academia.nome }))} onChange={(event) => setTenantId(event.target.value)} />
           {carregando && !dados ? <p className="ck-mc-hint" role="status">Carregando…</p> : null}
-          {tenantId ? <>
-            <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão preencher a solicitação no app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
-            <Switch label="Envio obrigatório" description="Quando ativo, o app exige que o aluno envie a pré-matrícula para continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
-            <SelectField label="Público" hint="A opção com matrícula ativa só inclui alunos com uma matrícula de status ativa nesta academia. Para alunos sem matrícula, selecione “Sem matrícula ativa” ou “Com ou sem matrícula ativa”." value={config.publico} options={[
-              { value: 'sem_matricula', label: publicoLabel.sem_matricula },
-              { value: 'com_matricula', label: publicoLabel.com_matricula },
-              { value: 'ambos', label: publicoLabel.ambos },
-            ]} onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
-            <div><Button variant="primary" icon="save" loading={salvando} disabled={carregando} onClick={salvar}>Salvar configuração</Button></div>
-          </> : null}
+          {tenantId ? <section className="ck-card ck-mc-form">
+            <div>
+              <strong>Configuração da pré-matrícula</strong>
+              <p className="ck-mc-hint">
+                {dados?.configuracao?.configurada
+                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula}`
+                  : 'Ainda não configurada para esta academia.'}
+              </p>
+            </div>
+            <div className="ck-cad-table__actions">
+              <Button variant="primary" icon={dados?.configuracao?.configurada ? 'pencil' : 'plus'} disabled={carregando} onClick={() => {
+                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false, publico: 'sem_matricula' });
+                setConfigAberta(true);
+              }}>{dados?.configuracao?.configurada ? 'Editar configuração' : 'Montar pré-matrícula'}</Button>
+              {dados?.configuracao?.configurada ? <Button variant="danger" disabled={salvando || carregando} onClick={() => setExcluirConfig(true)}>Excluir</Button> : null}
+            </div>
+          </section> : null}
         </div>
-        <h3>Solicitações</h3>
-        {!dados?.solicitacoes?.length ? <p className="ck-mc-hint">Nenhuma pré-matrícula recebida para esta academia.</p> : (
+        <div className="ck-mc-form">
+          <div>
+            <h3>Pedidos de pré-cadastro</h3>
+            <p className="ck-mc-hint">{contagens.pendente} aguardando aprovação. As decisões anteriores continuam disponíveis nos filtros.</p>
+          </div>
+          <SegmentedControl
+            label="Filtrar pedidos por status"
+            value={filtroStatus}
+            onChange={setFiltroStatus}
+            options={[
+              { value: 'pendente', label: `Aguardando aprovação (${contagens.pendente})` },
+              { value: 'aprovada', label: `Aprovadas (${contagens.aprovada})` },
+              { value: 'reprovada', label: `Reprovadas (${contagens.reprovada})` },
+              { value: 'todas', label: `Todas (${solicitacoes.length})` },
+            ]}
+          />
+        </div>
+        {!filtradas.length ? <p className="ck-mc-hint">{filtroStatus === 'pendente' ? 'Não há pedidos aguardando aprovação para esta academia.' : 'Nenhum pedido neste filtro.'}</p> : (
           <div className="ck-pc__wrap">
             <table className="ck-pc__table">
               <thead><tr><th>Aluno</th><th>Plano solicitado</th><th>Grade semanal</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead>
-              <tbody>{dados.solicitacoes.map((item) => (
+              <tbody>{filtradas.map((item) => (
                 <tr key={item.id}>
                   <td><strong>{item.nome}</strong><span className="ck-cad-table__summary">{item.email}{item.cpf ? ` · CPF ${item.cpf}` : ''}</span></td>
                   <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span></td>
@@ -136,6 +188,26 @@ export default function PreMatriculaPanel() {
           </div>
         )}
       </Panel>
+
+      <Modal open={configAberta} size="md" title={dados?.configuracao?.configurada ? 'Editar pré-matrícula' : 'Montar pré-matrícula'} dismissable={!salvando} onClose={() => setConfigAberta(false)}
+        description="Defina como o pedido de pré-cadastro será apresentado aos alunos desta academia."
+        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setConfigAberta(false)}>Cancelar</Button><Button variant="primary" icon="save" loading={salvando} onClick={salvar}>Salvar configuração</Button></>}>
+        <div className="ck-mc-form">
+          <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão enviar o pedido pelo app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
+          <Switch label="Envio obrigatório" description="Quando ativo, o app exige o envio antes de continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
+          <SelectField label="Público" hint="“Com matrícula ativa” considera matrículas ativas nesta academia. Para incluir alunos sem matrícula, escolha “Sem matrícula ativa” ou “Com ou sem matrícula ativa”." value={config.publico} options={[
+            { value: 'sem_matricula', label: publicoLabel.sem_matricula },
+            { value: 'com_matricula', label: publicoLabel.com_matricula },
+            { value: 'ambos', label: publicoLabel.ambos },
+          ]} onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
+        </div>
+      </Modal>
+
+      <Modal open={excluirConfig} size="sm" title="Excluir configuração?" dismissable={!salvando} onClose={() => setExcluirConfig(false)}
+        description="A pré-matrícula deixará de ser oferecida aos alunos. Os pedidos já recebidos serão preservados para consulta e aprovação."
+        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setExcluirConfig(false)}>Cancelar</Button><Button variant="danger" loading={salvando} onClick={removerConfiguracao}>Excluir configuração</Button></>}>
+        <p>Deseja excluir a configuração desta academia?</p>
+      </Modal>
 
       <Modal open={!!decisao} size="sm" title={decisao?.acao === 'aprovar' ? 'Aprovar pré-matrícula?' : 'Reprovar pré-matrícula?'} dismissable={!salvando} onClose={() => setDecisao(null)}
         description={`${decisao?.nome || ''}. Esta decisão não cria uma matrícula nem gera cobrança.`}

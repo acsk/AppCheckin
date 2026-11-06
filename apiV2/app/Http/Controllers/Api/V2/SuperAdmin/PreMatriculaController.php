@@ -31,6 +31,18 @@ class PreMatriculaController extends Controller
         ], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function destroyConfiguracao(Request $request): JsonResponse
+    {
+        $dados = $request->validate([
+            'tenant_id' => 'required|integer|min:1|exists:tenants,id',
+        ]);
+
+        return response()->json([
+            'configuracao' => $this->service->excluirConfiguracao((int) $dados['tenant_id']),
+            'message' => 'Configuração removida. As solicitações já recebidas foram preservadas.',
+        ], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function aprovar(Request $request, int $id): JsonResponse
     {
         return $this->avaliar($request, $id, 'aprovada');

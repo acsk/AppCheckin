@@ -1,7 +1,8 @@
 # Pré-matrícula de migração
 
-O Super Admin configura o fluxo por academia em **Atualização Cadastral →
-Pré-matrícula de migração**. A configuração define se o fluxo está ativo, se o
+O Super Admin configura o fluxo por academia em **App Mobile →
+Pré-matrícula de migração**. A tela permite criar, editar e excluir a
+configuração da academia. A configuração define se o fluxo está ativo, se o
 envio é obrigatório no app e se o público-alvo são alunos com matrícula ativa,
 sem matrícula ativa ou ambos. Antes de ativar, a academia precisa ter planos
 ativos de valor zero e turmas fixas ativas com dias suficientes para cumprir a
@@ -16,8 +17,10 @@ matrícula.
 ## Revisão e efeitos
 
 Cada aluno mantém no máximo uma solicitação pendente ou aprovada por academia.
-Uma solicitação reprovada pode ser enviada novamente. O Super Admin pode
-aprovar ou reprovar, com observação opcional. A decisão não cria matrícula,
+Uma solicitação reprovada pode ser enviada novamente. A fila do painel abre no
+filtro **Aguardando aprovação**; filtros adicionais permitem consultar pedidos
+aprovados, reprovados ou todos. O Super Admin pode aprovar ou reprovar, com
+observação opcional. A decisão não cria matrícula,
 cobrança nem reserva vaga; após revisar, a matrícula deve ser criada
 manualmente. O plano e os dados da turma são registrados como estavam no envio,
 para que uma edição posterior do plano ou da turma não altere o histórico.
@@ -36,6 +39,8 @@ As rotas do painel exigem autenticação de Super Admin:
 - `GET /v2/superadmin/pre-matriculas?tenant_id={id}`: configuração e fila.
 - `PUT /v2/superadmin/pre-matriculas/configuracao`: grava `tenant_id`, `ativa`,
   `obrigatoria` e `publico`.
+- `DELETE /v2/superadmin/pre-matriculas/configuracao?tenant_id={id}`: remove a
+  configuração e desativa novos pedidos, preservando as solicitações recebidas.
 - `POST /v2/superadmin/pre-matriculas/{id}/aprovar` e
   `POST /v2/superadmin/pre-matriculas/{id}/reprovar`: recebem `tenant_id` e
   `observacao` opcional.
