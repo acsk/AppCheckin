@@ -26,30 +26,30 @@ function formTurma(turma) {
 }
 
 export function TurmasFixas({ onClose, onSaved, initialId }) {
-  const [turmas, setTurmas] = useState([]);
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [form, setForm] = useState(vazio);
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(true);
+  const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setReady(false);
     setErro('');
     Promise.all([acessoHibridoService.listarTurmas(), professorService.listar(false), modalidadeService.listar()])
       .then(([lista, professoresLista, modalidadesLista]) => {
         if (!active) return;
         const grupos = Array.isArray(lista) ? lista : [];
-        setTurmas(grupos);
+        const selecionada = initialId ? grupos.find((turma) => Number(turma.id) === Number(initialId)) : null;
+        if (initialId && !selecionada) throw new Error('Turma não encontrada. Feche o formulário e atualize a listagem.');
         setProfessores(Array.isArray(professoresLista) ? professoresLista : []);
         setModalidades(Array.isArray(modalidadesLista) ? modalidadesLista : []);
-        if (initialId) {
-          const selecionada = grupos.find((turma) => Number(turma.id) === Number(initialId));
-          if (selecionada) setForm(formTurma(selecionada));
-        }
+        setForm(selecionada ? formTurma(selecionada) : vazio);
+        setReady(true);
       })
       .catch((e) => { if (active) setErro(erroApi(e)); })
       .finally(() => { if (active) setLoading(false); });
@@ -62,7 +62,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
     : [...form.dias_semana, dia]);
 
   const salvar = async () => {
-    if (saving) return;
+    if (saving || !ready) return;
     setSaving(true);
     setErro('');
     try {
@@ -92,26 +92,17 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
   return (
     <Modal
       open
-      title="Grade recorrente"
+      title={initialId ? 'Editar turma' : 'Criar turma'}
       onClose={onClose}
       dismissable={!saving}
       footer={<>
         <Button disabled={saving} onClick={onClose}>Fechar</Button>
-        <Button variant="primary" loading={saving} disabled={loading} onClick={salvar}>{form.id ? 'Salvar turma' : 'Criar turma'}</Button>
+        <Button variant="primary" loading={saving} disabled={loading || !ready} onClick={salvar}>{initialId ? 'Salvar turma' : 'Criar turma'}</Button>
       </>}
     >
       {erro ? <Callout tone="danger" title="Não foi possível concluir">{erro}<Button onClick={() => setReload((value) => value + 1)}>Recarregar</Button></Callout> : null}
       {loading ? <p role="status">Carregando…</p> : (
-        <fieldset disabled={saving}>
-          <SelectField
-            label="Turma"
-            value={form.id ? String(form.id) : ''}
-            options={[{ value: '', label: 'Nova turma recorrente' }, ...turmas.map((turma) => ({ value: String(turma.id), label: turma.nome }))]}
-            onChange={(event) => {
-              const turma = turmas.find((item) => String(item.id) === event.target.value);
-              setForm(turma ? formTurma(turma) : vazio);
-            }}
-          />
+        <fieldset disabled={saving || !ready}>
           <TextField label="Nome" value={form.nome} onChange={(event) => set('nome', event.target.value)} />
           <SelectField
             label="Modalidade"

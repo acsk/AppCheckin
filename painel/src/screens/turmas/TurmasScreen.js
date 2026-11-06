@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import WodPreviewModal from '../../components/WodPreviewModal';
 import { AulasAgenda } from '../../components/ck/aulasOficial';
@@ -9,10 +9,10 @@ import { turmaService } from '../../services/turmaService';
 import { buscarWodPorDataModalidade } from '../../services/wodService';
 import { aulaError, dateLabel, localISO, officialAula } from '../../utils/aulas';
 import { showSuccess } from '../../utils/toast';
-import { TurmasFixas } from '../../components/ck/TurmasFixas';
 
 export default function TurmasScreen() {
   const params = useLocalSearchParams();
+  const router = useRouter();
   const [date, setDate] = useState(() => /^\d{4}-\d{2}-\d{2}$/.test(params.data || '') ? params.data : localISO());
   const [result, setResult] = useState(null);
   const [counts, setCounts] = useState({});
@@ -88,11 +88,10 @@ export default function TurmasScreen() {
   const confirmation = modal && ['delete', 'deleteDay', 'reactivate'].includes(modal.type);
   return <LayoutBase title="Aulas" pageHeader={false}>
     <div className="ck-au__statusbar">
-      <Button size="sm" icon="users" onClick={() => setModal({ type: 'fixas' })}>Turmas fixas</Button>
+      <Button size="sm" icon="users" disabled={busy} onClick={() => router.push('/turmas-fixas')}>Gerenciar turmas</Button>
       <Button size="sm" icon="refresh-cw" disabled={loading || busy} onClick={refresh}>Atualizar</Button>
       {loading ? <span role="status">Carregando aulas…</span> : null}
     </div>
-    {modal?.type === 'fixas' ? <TurmasFixas onClose={close} onSaved={refresh} /> : null}
     {error ? <Callout tone="danger" title="Não foi possível concluir" action={<Button size="sm" onClick={refresh}>Tentar novamente</Button>}>{error}</Callout> : null}
     <fieldset className="ck-au__fieldset ck-au__view" disabled={busy} aria-busy={loading || busy}>
       <AulasAgenda date={date} loading={loading} error={error} today={localISO()} now={new Date().toTimeString().slice(0, 5)} counts={counts} aulas={aulas}

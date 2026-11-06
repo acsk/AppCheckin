@@ -29,7 +29,9 @@ O menu **Turmas** do painel aparece quando o tenant:
 1. possui alguma turma cadastrada; **ou**
 2. utiliza turma fixa como padrão.
 
-As permissões da equipe continuam sendo exigidas. Um tenant de horário livre pode cadastrar a primeira turma pela área de **Aulas**. Não foi criada uma configuração extra só para exibir o menu.
+O menu **Turmas** é uma entrada própria na seção **Gestão**, separada de **Academia → Aulas**. Sua página é dedicada a listar, criar e editar turmas; cada cartão tem a ação **Editar** e o botão **Criar turma** abre um formulário novo, sem misturar a seleção de outra turma dentro dele. Agenda e presenças permanecem em **Aulas**.
+
+As permissões da equipe continuam sendo exigidas. Um tenant de horário livre pode acessar a gestão dedicada pelo atalho **Gerenciar turmas** na área de **Aulas** para cadastrar a primeira turma. Não foi criada uma configuração extra só para exibir o menu.
 
 ## 3. Cadastro e geração das turmas
 
@@ -281,6 +283,7 @@ Execuções registradas nesta implementação:
 - exportação web Expo do painel e mobile: concluída;
 - lint mobile focado: zero erros, 26 avisos.
 - seed do tenant 5 em SQLite em memória: **quatro testes, 19 asserções**, código de saída 0; verificação de formatação dos dois arquivos PHP aprovada.
+- menu dedicado de Turmas: exportação web do painel aprovada e seis verificações de navegador com API simulada (menu de primeiro nível, listagem, criação, edição, formulário novo vazio e erro de carregamento impedindo gravação). Criação/edição verificaram os métodos POST/PUT e a releitura dos dados no servidor simulado; não acessaram produção.
 
 Essas execuções têm escopos sobrepostos; suas contagens **não devem ser somadas**.
 
@@ -294,7 +297,7 @@ Os testes de concorrência são opt-in e exigem MySQL descartável/isolado. As i
 
 Limitações conhecidas:
 
-- a tentativa de validação visual no navegador foi inconclusiva;
+- a tentativa inicial de validação visual dos fluxos híbridos foi inconclusiva; posteriormente, a gestão dedicada de turmas foi validada no navegador com API simulada, sem homologação integrada com banco real;
 - Android/iOS ainda precisam de homologação;
 - gateways reais e o ambiente da Aqua4Styles não foram homologados nesta rodada;
 - erros de mocks de `CentralComunicacaoTest` foram reproduzidos na base anterior, fora da correção;

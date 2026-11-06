@@ -38,16 +38,16 @@ export default function TurmasFixasScreen() {
   };
 
   return (
-    <LayoutBase title="Turmas" subtitle="Cadastre e gerencie grades recorrentes por modalidade, dias, horário e capacidade.">
+    <LayoutBase title="Turmas" subtitle="Liste, crie e edite turmas recorrentes. A agenda e as presenças continuam na área de Aulas.">
       <div className="ck-au__statusbar">
-        <Button variant="primary" icon="plus" onClick={() => setModal({ id: null })}>Cadastrar grade recorrente</Button>
+        <Button variant="primary" icon="plus" onClick={() => setModal({ id: null })}>Criar turma</Button>
         <Button icon="refresh-cw" disabled={loading} onClick={atualizar}>Atualizar</Button>
         {loading ? <span role="status">Carregando turmas…</span> : null}
       </div>
       {erro ? <Callout tone="danger" title="Não foi possível carregar as turmas" action={<Button size="sm" onClick={atualizar}>Tentar novamente</Button>}>{erro}</Callout> : null}
       {!loading && !erro && !turmas.length ? (
         <section className="ck-card">
-          <h2>Nenhuma grade recorrente cadastrada</h2>
+          <h2>Nenhuma turma cadastrada</h2>
           <p>Cadastre as turmas e dias recorrentes que poderão ser vinculados às matrículas. Planos, frequência e valores permanecem na matrícula.</p>
         </section>
       ) : null}
@@ -71,7 +71,7 @@ export default function TurmasFixasScreen() {
           </article>
         ))}
       </div>
-      {modal ? <TurmasFixas initialId={modal.id} onClose={() => setModal(null)} onSaved={salvar} /> : null}
+      {modal ? <TurmasFixas key={modal.id || 'nova'} initialId={modal.id} onClose={() => setModal(null)} onSaved={salvar} /> : null}
     </LayoutBase>
   );
 }
