@@ -29,7 +29,9 @@ O menu **Turmas** do painel aparece quando o tenant:
 1. possui alguma turma cadastrada; **ou**
 2. utiliza turma fixa como padrão.
 
-O menu **Turmas** é uma entrada própria na seção **Gestão**, separada de **Academia → Aulas**. Sua página é dedicada a listar, criar e editar turmas; cada cartão tem a ação **Editar** e o botão **Criar turma** abre um formulário novo, sem misturar a seleção de outra turma dentro dele. Agenda e presenças permanecem em **Aulas**.
+O menu fica em **Academia → Turmas**, ao lado de **Aulas**, conforme o layout enviado em `Turmas.html`. Sua página é dedicada a listar, criar e editar turmas, com resumo, busca, filtros de modalidade/professor/dias/situação, tabela e grade semanal. **Nova turma** abre um formulário próprio com seções e prévia da semana; a edição preserva os vínculos e a grade existente. Agenda e presenças permanecem em **Aulas**.
+
+Os indicadores usam turmas ativas, aulas recorrentes por semana, capacidade semanal e turmas que permitem check-in livre. Capacidade não representa saldo disponível. Ações do protótipo sem suporte na API (pausar/arquivar, exclusão, operações em lote, troca de professor ou mudança de grade com data de vigência) não são exibidas como se funcionassem.
 
 As permissões da equipe continuam sendo exigidas. Um tenant de horário livre pode acessar a gestão dedicada pelo atalho **Gerenciar turmas** na área de **Aulas** para cadastrar a primeira turma. Não foi criada uma configuração extra só para exibir o menu.
 
@@ -284,6 +286,7 @@ Execuções registradas nesta implementação:
 - lint mobile focado: zero erros, 26 avisos.
 - seed do tenant 5 em SQLite em memória: **quatro testes, 19 asserções**, código de saída 0; verificação de formatação dos dois arquivos PHP aprovada.
 - menu dedicado de Turmas: exportação web do painel aprovada e seis verificações de navegador com API simulada (menu de primeiro nível, listagem, criação, edição, formulário novo vazio e erro de carregamento impedindo gravação). Criação/edição verificaram os métodos POST/PUT e a releitura dos dados no servidor simulado; não acessaram produção.
+- atualização para o layout `Turmas.html`: menu reposicionado em **Academia → Turmas**, build web aprovado e nove verificações com API simulada (menu, lista, grade semanal, filtros/busca sem acentos, criação, edição, formulário vazio, bloqueio após falha de carregamento e responsividade a 390px). Capturas desktop/mobile inspecionadas. Nenhuma chamada de produção.
 
 Essas execuções têm escopos sobrepostos; suas contagens **não devem ser somadas**.
 

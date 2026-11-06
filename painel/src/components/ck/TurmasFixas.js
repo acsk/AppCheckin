@@ -92,7 +92,10 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
   return (
     <Modal
       open
-      title={initialId ? 'Editar turma' : 'Criar turma'}
+      title={initialId ? 'Editar turma' : 'Nova turma'}
+      size="lg"
+      dialogClassName="ck-tu-dlg"
+      description={initialId ? 'Edite nome, capacidade e check-in livre sem alterar a grade e os contratos existentes.' : 'Horário fixo que se repete toda semana. As aulas entram na agenda sozinhas.'}
       onClose={onClose}
       dismissable={!saving}
       footer={<>
@@ -102,8 +105,10 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
     >
       {erro ? <Callout tone="danger" title="Não foi possível concluir">{erro}<Button onClick={() => setReload((value) => value + 1)}>Recarregar</Button></Callout> : null}
       {loading ? <p role="status">Carregando…</p> : (
-        <fieldset disabled={saving || !ready}>
-          <TextField label="Nome" value={form.nome} onChange={(event) => set('nome', event.target.value)} />
+        <div className="ck-tu-form">
+        <fieldset className="ck-tu-fields" disabled={saving || !ready}>
+          <section className="ck-pc__sec">
+          <header><span className="ck-pc__secn">1</span><h3>Modalidade e nome</h3></header>
           <SelectField
             label="Modalidade"
             placeholder="Selecione a modalidade"
@@ -112,6 +117,25 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
             options={modalidades.map((modalidade) => ({ value: String(modalidade.id), label: modalidade.nome }))}
             onChange={(event) => set('modalidade_id', event.target.value)}
           />
+          <TextField label="Nome" value={form.nome} onChange={(event) => set('nome', event.target.value)} />
+          </section>
+          <section className="ck-pc__sec">
+          <header><span className="ck-pc__secn">2</span><h3>Dias e horário</h3></header>
+          <div className="ck-field">
+            <span className="ck-field__label">Dias recorrentes</span>
+            <div className="ck-tu-dayset" role="group" aria-label="Dias recorrentes">
+            {dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day" disabled={!!form.id} aria-label={dia} aria-pressed={form.dias_semana.includes(index + 1)} onClick={() => toggleDia(index + 1)}>{dia.slice(0, 3)}</button>)}
+            </div>
+          </div>
+          <div className="ck-al-grid">
+            <TextField label="Início" type="time" disabled={!!form.id} value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
+            <TextField label="Fim" type="time" disabled={!!form.id} value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
+          </div>
+          {form.id ? <p className="ck-field__hint">Para alterar dias ou horários, crie outra turma e transfira a grade dos alunos pela matrícula.</p> : null}
+          </section>
+          <section className="ck-pc__sec">
+          <header><span className="ck-pc__secn">3</span><h3>Professor e vagas</h3></header>
+          <div className="ck-al-grid">
           <SelectField
             label="Professor"
             placeholder="Selecione o professor"
@@ -120,26 +144,26 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
             options={professores.map((professor) => ({ value: String(professor.id), label: professor.nome }))}
             onChange={(event) => set('professor_id', event.target.value)}
           />
-          <div className="ck-al-grid">
-            <TextField label="Início" type="time" disabled={!!form.id} value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
-            <TextField label="Fim" type="time" disabled={!!form.id} value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
-            <TextField label="Capacidade" type="number" min="1" value={form.capacidade} onChange={(event) => set('capacidade', event.target.value)} />
+            <TextField label="Capacidade" type="number" min="1" max="500" hint="Vagas por aula" value={form.capacidade} onChange={(event) => set('capacidade', event.target.value)} />
           </div>
-          <fieldset disabled={!!form.id}>
-            <legend>Dias recorrentes</legend>
-            {dias.map((dia, index) => (
-              <label key={dia}>
-                <input type="checkbox" checked={form.dias_semana.includes(index + 1)} onChange={() => toggleDia(index + 1)} />
-                {dia}{' '}
-              </label>
-            ))}
-          </fieldset>
           <label>
             <input type="checkbox" checked={form.checkin_livre} onChange={(event) => set('checkin_livre', event.target.checked)} />
             Permitir check-in de horário livre nas novas aulas desta turma
           </label>
-          <p>As turmas recorrentes organizam a grade; a modalidade e a frequência contratadas pertencem à matrícula. Para alterar os dias ou horários de uma turma existente, crie outra turma.</p>
+          <p className="ck-field__hint">Planos, frequência e valores permanecem na matrícula de cada aluno.</p>
+          </section>
         </fieldset>
+        <aside className="ck-tu-side" aria-label="Prévia da turma" aria-live="polite">
+          <strong>Como fica na semana</strong>
+          <div className="ck-tu-week">{dias.map((dia, index) => <div key={dia} className={`ck-tu-week__d${form.dias_semana.includes(index + 1) ? ' is-on' : ''}`}><span>{dia.slice(0, 3)}</span><b>{form.dias_semana.includes(index + 1) ? form.horario_inicio || '—' : '·'}</b></div>)}</div>
+          <strong className="ck-tu-side__name">{form.nome || 'Nome da turma'}</strong>
+          <span className="ck-tu-side__line">{modalidades.find(item => String(item.id) === form.modalidade_id)?.nome || 'Escolha a modalidade'}</span>
+          <span className="ck-tu-side__line">{form.dias_semana.map(dia => dias[dia - 1].slice(0, 3)).join(', ') || 'Escolha os dias'}{form.horario_inicio && form.horario_fim ? `, ${form.horario_inicio} às ${form.horario_fim}` : ''}</span>
+          <span className="ck-tu-side__line">{professores.find(item => String(item.id) === form.professor_id)?.nome || 'Selecione o professor'}</span>
+          <span className="ck-tu-side__line">{form.capacidade || '—'} vagas por aula{form.checkin_livre ? ' · check-in livre nas novas aulas' : ''}</span>
+          {!form.id ? <span className="ck-tu-side__line">Aulas geradas para os próximos 90 dias, respeitando dias ativos e conflitos de agenda.</span> : null}
+        </aside>
+        </div>
       )}
     </Modal>
   );

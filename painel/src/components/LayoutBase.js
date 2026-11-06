@@ -84,9 +84,9 @@ const SECTIONS = [
           { id: 'wods', label: 'WOD', path: '/wods', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'turmas-fixas', label: 'Turmas', path: '/turmas-fixas', roles: [3], perm: 'aulas.gerenciar' },
         ],
       },
-      { id: 'turmas-fixas', label: 'Turmas', path: '/turmas-fixas', icon: 'users', roles: [3], perm: 'aulas.gerenciar' },
       {
         id: 'comunicacao',
         label: 'Comunicação',
