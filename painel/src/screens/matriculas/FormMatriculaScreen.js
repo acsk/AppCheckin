@@ -50,7 +50,11 @@ function TurmasNaSemana({ tipoAcesso, onTipoAcessoChange, grade, onGradeChange, 
       return;
     }
     const outras = escolhidas.filter((item) => Number(item.dia_semana) !== dia);
-    if (limite !== 1 && limite != null && outras.length >= limite) return;
+    if (limite === 1) {
+      onGradeChange([{ turma_fixa_id: String(turma.id), dia_semana: dia }]);
+      return;
+    }
+    if (limite != null && outras.length >= limite) return;
     onGradeChange([...outras, { turma_fixa_id: String(turma.id), dia_semana: dia }]);
   };
 
