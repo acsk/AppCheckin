@@ -72,7 +72,7 @@ export default function TurmasFixasScreen() {
     status(turma) === ({ ativas: 'ativa', pausadas: 'pausada', arquivadas: 'arquivada', agendadas: 'agendada' })[situacao]
     && (!modalidade || String(turma.modalidade_id) === modalidade)
     && (!professor || (professor === 'none' ? !Number(turma.professor_id) : String(turma.professor_id) === professor))
-    && diasFiltro.every(dia => turma.dias.includes(dia))
+    && (!diasFiltro.length || diasFiltro.some(dia => turma.dias.includes(dia)))
     && normalizar(`${turma.nome} ${turma.modalidade?.nome || ''} ${turma.professor?.nome || ''}`).includes(normalizar(query.trim())),
   ).sort((a, b) => hora(a.horario_inicio).localeCompare(hora(b.horario_inicio)) || a.nome.localeCompare(b.nome));
   const editar = turma => setModal({ id: turma.id });
@@ -144,7 +144,7 @@ export default function TurmasFixasScreen() {
         </div>
         {selecionados.length && view === 'lista' ? <div className="ck-tu-bar2" role="region" aria-label="Ações em lote"><strong>{selecionados.length} turmas selecionadas</strong><Button size="sm" onClick={() => acao('capacidade', selecionados)}>Ajustar vagas</Button>{situacao !== 'arquivadas' ? <><Button size="sm" onClick={() => acao('professor', selecionados)}>Trocar professor</Button><Button size="sm" onClick={() => acao('pausar', selecionados)}>Pausar</Button><Button size="sm" onClick={() => acao('retomar', selecionados)}>Retomar</Button><Button size="sm" onClick={() => acao('arquivar', selecionados)}>Arquivar</Button></> : <Button size="sm" onClick={() => acao('reativar', selecionados)}>Reativar</Button>}<Button size="sm" variant="ghost" onClick={() => setSelecionadas([])}>Limpar seleção</Button></div> : null}
         <div className="ck-tu-bar2">
-          <div className="ck-tu-dayf" role="group" aria-label="Filtrar por dia"><span>Dias:</span>{dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day is-sm" aria-label={dia} aria-pressed={diasFiltro.includes(index + 1)} onClick={() => setDiasFiltro(current => current.includes(index + 1) ? current.filter(value => value !== index + 1) : [...current, index + 1])}>{abreviacoes[index]}</button>)}</div>
+          <div className="ck-tu-dayf" role="group" aria-label="Filtrar por dia; mostra turmas de qualquer dia selecionado"><span>Dias:</span>{dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day is-sm" aria-label={dia} aria-pressed={diasFiltro.includes(index + 1)} onClick={() => setDiasFiltro(current => current.includes(index + 1) ? current.filter(value => value !== index + 1) : [...current, index + 1])}>{abreviacoes[index]}</button>)}</div>
           <span className="ck-tu-count">{rows.length} {rows.length === 1 ? 'turma' : 'turmas'}{filtrado ? ' com esses filtros' : ''}</span>
           {filtrado ? <Button size="sm" variant="ghost" onClick={limpar}>Limpar filtros</Button> : null}
           <SegmentedControl label="Visualização" value={view} onChange={setView} options={[{ value: 'lista', label: 'Lista', icon: 'layers' }, { value: 'grade', label: 'Grade', icon: 'calendar' }]} />
