@@ -48,6 +48,7 @@ function isAuthEndpoint(url?: string): boolean {
     url.includes("/auth/login") ||
     url.includes("/auth/register") ||
     url.includes("/auth/register-mobile") ||
+    url.includes("/auth/dependente/") ||
     url.includes("/auth/tenants-public") ||
     url.includes("/auth/select-tenant-public") ||
     url.includes("/auth/select-tenant-initial") ||

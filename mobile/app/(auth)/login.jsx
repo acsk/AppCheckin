@@ -674,6 +674,13 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
+            <TouchableOpacity
+              onPress={() => router.push("/(auth)/login-dependente")}
+              style={[styles.linkHit, { alignSelf: "center" }]}
+              accessibilityRole="link"
+            >
+              <Text style={styles.link}>Sou dependente: entrar com o e-mail do responsável</Text>
+            </TouchableOpacity>
             <View style={styles.signup}>
               <Text style={styles.signupText}>Não tem uma conta?</Text>
               <TouchableOpacity

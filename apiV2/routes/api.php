@@ -66,6 +66,9 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::get('/auth/tenants-public', [AuthController::class, 'tenantsPublic']);
     Route::post('/auth/register-mobile', [AuthController::class, 'registerMobile']);
+    // Login próprio do dependente: e-mail do responsável → perfil → PIN
+    Route::post('/auth/dependente/perfis', [\App\Http\Controllers\Api\V2\DependenteLoginController::class, 'perfis']);
+    Route::post('/auth/dependente/login', [\App\Http\Controllers\Api\V2\DependenteLoginController::class, 'login']);
     Route::post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
     Route::post('/auth/select-tenant-public', [AuthController::class, 'selectTenantPublic']);
     Route::post('/auth/password-recovery/request', [AuthController::class, 'requestPasswordRecovery']);
@@ -90,6 +93,8 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'index']);
             Route::post('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'store']);
             Route::post('/dependentes/voltar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'voltar']);
+            Route::put('/dependentes/{usuarioId}/pin', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'definirPin'])->whereNumber('usuarioId');
+            Route::delete('/dependentes/{usuarioId}/pin', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'removerPin'])->whereNumber('usuarioId');
             Route::post('/dependentes/{usuarioId}/entrar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'entrar'])->whereNumber('usuarioId');
             Route::get('/perfil', [MobileController::class, 'perfil']);
             Route::post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);

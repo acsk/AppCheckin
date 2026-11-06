@@ -50,6 +50,8 @@ export const CONFIG = {
     "/auth/login",
     "/auth/register",
     "/auth/register-mobile",
+    "/auth/dependente/perfis",
+    "/auth/dependente/login",
     "/auth/tenants-public",
     "/auth/select-tenant-public",
     "/auth/select-tenant-initial",

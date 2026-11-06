@@ -99,6 +99,47 @@ export const dependenteService = {
     }
   },
 
+  /** Perfis liberados (com PIN) do responsável dono deste e-mail: [{ id, nome }]. */
+  async perfisPorEmail(email) {
+    try {
+      const r = await api.post("/auth/dependente/perfis", { email });
+      return { perfis: r.data?.perfis || [], message: r.data?.message || "" };
+    } catch (error) {
+      throw erroDaApi(error);
+    }
+  },
+
+  /** Login próprio do dependente. Pode devolver requires_tenant_selection com a lista de academias. */
+  async loginComPin({ email, dependente_id, pin, tenant_id }) {
+    try {
+      const r = await api.post("/auth/dependente/login", { email, dependente_id, pin, tenant_id });
+      if (r.data?.token) {
+        await gravarSessao(r.data, { usuario_id: dependente_id, nome: r.data.user?.nome || "", responsavel_nome: r.data.user?.responsavel_nome || "", login_proprio: true });
+      }
+      return r.data;
+    } catch (error) {
+      throw erroDaApi(error);
+    }
+  },
+
+  async definirPin(usuarioId, pin) {
+    try {
+      const r = await api.put(`/mobile/dependentes/${usuarioId}/pin`, { pin });
+      return r.data;
+    } catch (error) {
+      throw erroDaApi(error);
+    }
+  },
+
+  async removerPin(usuarioId) {
+    try {
+      const r = await api.delete(`/mobile/dependentes/${usuarioId}/pin`);
+      return r.data;
+    } catch (error) {
+      throw erroDaApi(error);
+    }
+  },
+
   async perfilAtual() {
     try {
       const v = await AsyncStorage.getItem(PERFIL_DEPENDENTE_KEY);

@@ -29,6 +29,8 @@ const isPublicAuthEndpoint = (endpoint = "") =>
   endpoint === "/auth/login" ||
   endpoint === "/auth/register" ||
   endpoint === "/auth/register-mobile" ||
+  endpoint === "/auth/dependente/perfis" ||
+  endpoint === "/auth/dependente/login" ||
   endpoint === "/auth/tenants-public" ||
   endpoint === "/auth/select-tenant-public" ||
   endpoint === "/auth/select-tenant-initial" ||

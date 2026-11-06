@@ -109,7 +109,25 @@ class JwtAuthenticate
             }
         }
 
+        // Login próprio do dependente (PIN): cai se o responsável tirar o acesso ou desfizer o vínculo.
+        // Compras e pagamentos ficam com o responsável (é o CPF dele na cobrança).
+        $dependenteLogin = (int) ($payload['dependente_login'] ?? 0);
+        if ($dependenteLogin > 0) {
+            $liberado = \Illuminate\Support\Facades\DB::table('usuarios')->where('id', $userId)
+                ->where('responsavel_usuario_id', $dependenteLogin)->whereNotNull('dependente_pin_hash')->exists();
+            if (! $liberado) {
+                return ApiError::json('O acesso deste perfil foi encerrado pelo responsável.', 'DEPENDENTE_ACESSO_ENCERRADO', 401);
+            }
+            if ($request->path() === 'v2/auth/select-tenant') {
+                return ApiError::json('Peça ao responsável para trocar de academia.', 'DEPENDENTE_TROCA_TENANT_BLOQUEADA', 403);
+            }
+            if (! $request->isMethod('GET') && self::ehCompraOuPagamento($request->path())) {
+                return ApiError::json('Compras e pagamentos são feitos pelo responsável, no perfil dele.', 'COMPRA_SO_RESPONSAVEL', 403);
+            }
+        }
+
         $request->attributes->set('userId', $userId);
+        $request->attributes->set('dependente_login', $dependenteLogin > 0 ? $dependenteLogin : null);
         $request->attributes->set('responsavel_id', $responsavelId > 0 ? $responsavelId : null);
         $request->attributes->set('userEmail', $payload['email'] ?? $usuario['email']);
         $request->attributes->set('tenantId', $resolvedTenantId ?: null);
@@ -156,5 +174,11 @@ class JwtAuthenticate
         } catch (\RuntimeException) {
             // Sem renovar: o token atual continua valendo até expirar
         }
+    }
+
+    /** Rotas do app que contratam, pagam ou cancelam (bloqueadas no login próprio do dependente). */
+    public static function ehCompraOuPagamento(string $path): bool
+    {
+        return preg_match('#^v2/mobile/(comprar-plano|migrar-plano|pagamento/|pacotes/(\d+/contratar|contratos/\d+/(pagar|cobranca|renovar))|recorrencia/(contratar|contratos/\d+/)|assinatura/\d+/cancelar|diaria/\d+/cancelar)#', $path) === 1;
     }
 }

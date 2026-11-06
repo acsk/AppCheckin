@@ -16,6 +16,12 @@ export default function AuthLayout() {
         }}
       />
       <Stack.Screen
+        name="login-dependente"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="register-success"
         options={{
           headerShown: false,

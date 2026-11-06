@@ -30,6 +30,16 @@ class MobileDependenteController extends Controller
         return $this->comoResponsavel($request, fn (int $u, int $t) => $this->dependentes->entrar($u, $usuarioId, $t));
     }
 
+    public function definirPin(Request $request, int $usuarioId): JsonResponse
+    {
+        return $this->comoResponsavel($request, fn (int $u) => $this->dependentes->definirPin($u, $usuarioId, (string) $request->input('pin', '')));
+    }
+
+    public function removerPin(Request $request, int $usuarioId): JsonResponse
+    {
+        return $this->comoResponsavel($request, fn (int $u) => $this->dependentes->removerPin($u, $usuarioId));
+    }
+
     /** Chamado com o token do dependente: devolve a sessão do responsável. */
     public function voltar(Request $request): JsonResponse
     {
@@ -45,7 +55,7 @@ class MobileDependenteController extends Controller
     /** @param  callable(int, int): array{status: int, body: array<string, mixed>}  $acao */
     private function comoResponsavel(Request $request, callable $acao): JsonResponse
     {
-        if ($request->attributes->get('responsavel_id')) {
+        if ($request->attributes->get('responsavel_id') || $request->attributes->get('dependente_login')) {
             return ApiError::json('Volte para o seu perfil para gerenciar dependentes', 'PERFIL_DEPENDENTE', 403);
         }
         $tenantId = (int) $request->attributes->get('tenantId');

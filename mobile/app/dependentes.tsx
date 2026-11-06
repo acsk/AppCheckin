@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type Dependente = { usuario_id: number; nome: string; idade: number | null; parentesco: string | null; na_academia: boolean };
+type Dependente = { usuario_id: number; nome: string; idade: number | null; parentesco: string | null; na_academia: boolean; tem_pin: boolean };
 
 const SEXO = [
   { value: "feminino", label: "Feminino" },
@@ -95,6 +95,49 @@ export default function DependentesScreen() {
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState("");
   const [entrando, setEntrando] = useState<number | null>(null);
+  // PIN do login próprio (e-mail do responsável + PIN)
+  const [pinPara, setPinPara] = useState<number | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinErro, setPinErro] = useState("");
+  const [pinOk, setPinOk] = useState("");
+  const [pinSalvando, setPinSalvando] = useState(false);
+
+  const abrirPin = (id: number) => {
+    setPinPara(pinPara === id ? null : id);
+    setPin("");
+    setPinErro("");
+    setPinOk("");
+  };
+  const salvarPin = async (d: Dependente) => {
+    if (!/^\d{4,6}$/.test(pin)) {
+      setPinErro("O PIN tem de 4 a 6 números.");
+      return;
+    }
+    setPinSalvando(true);
+    try {
+      const r = await dependenteService.definirPin(d.usuario_id, pin);
+      setPinPara(null);
+      setPinOk(r?.message || "PIN salvo.");
+      await carregar();
+    } catch (err: any) {
+      setPinErro(err?.message || "Não foi possível salvar o PIN.");
+    } finally {
+      setPinSalvando(false);
+    }
+  };
+  const removerPin = async (d: Dependente) => {
+    setPinSalvando(true);
+    try {
+      await dependenteService.removerPin(d.usuario_id);
+      setPinPara(null);
+      setPinOk(`${titulo(d.nome).split(" ")[0]} não entra mais sozinho. Você continua usando o perfil por aqui.`);
+      await carregar();
+    } catch (err: any) {
+      setPinErro(err?.message || "Não foi possível remover o acesso.");
+    } finally {
+      setPinSalvando(false);
+    }
+  };
 
   const carregar = useCallback(async () => {
     setErroLista("");
@@ -180,7 +223,8 @@ export default function DependentesScreen() {
           ) : lista.length ? (
             <Section title="NA SUA CONTA">
               {lista.map((d) => (
-                <View key={d.usuario_id} style={styles.dep}>
+                <View key={d.usuario_id}>
+                <View style={styles.dep}>
                   <View style={styles.avatar}>
                     <Text style={styles.avatarText}>{titulo(d.nome).split(" ").map((w) => w[0]).filter(Boolean).slice(0, 2).join("")}</Text>
                   </View>
@@ -194,10 +238,33 @@ export default function DependentesScreen() {
                     Usar perfil
                   </Button>
                 </View>
+                <Pressable style={styles.acesso} onPress={() => abrirPin(d.usuario_id)} accessibilityRole="button">
+                  <Feather name={d.tem_pin ? "smartphone" : "lock"} size={15} color={d.tem_pin ? ds.success : ds.inkMuted} />
+                  <Text style={styles.acessoText}>
+                    {d.tem_pin ? "Entra sozinho com o seu e-mail e PIN · " : "Não entra sozinho · "}
+                    <Text style={styles.acessoLink}>{d.tem_pin ? "Trocar PIN" : "Criar PIN"}</Text>
+                  </Text>
+                </Pressable>
+                {pinPara === d.usuario_id ? (
+                  <View style={styles.pinBox}>
+                    <Text style={styles.pinInfo}>
+                      {titulo(d.nome).split(" ")[0]} vai entrar em “Sou dependente” na tela de login, com o seu e-mail e este PIN. Não use a data de nascimento. Você recebe um aviso a cada acesso, e compras continuam com você.
+                    </Text>
+                    <TextField label="PIN (4 a 6 números)" icon="lock" keyboardType="number-pad" secureTextEntry maxLength={6} value={pin} error={pinErro || null}
+                      onChangeText={(v) => { setPin(v.replace(/\D/g, "").slice(0, 6)); setPinErro(""); }} editable={!pinSalvando} />
+                    <View style={styles.pinAcoes}>
+                      <Button size="sm" icon="check" loading={pinSalvando} onPress={() => void salvarPin(d)}>Salvar PIN</Button>
+                      {d.tem_pin ? <Button size="sm" variant="danger" icon="x" disabled={pinSalvando} onPress={() => void removerPin(d)}>Tirar acesso</Button> : null}
+                      <Button size="sm" variant="ghost" disabled={pinSalvando} onPress={() => setPinPara(null)}>Cancelar</Button>
+                    </View>
+                  </View>
+                ) : null}
+                </View>
               ))}
             </Section>
           ) : null}
           {erroLista ? <Text style={styles.erro}>{erroLista}</Text> : null}
+          {pinOk ? <Text style={styles.ok}>{pinOk}</Text> : null}
 
           {formAberto ? (
             <Section title="NOVO DEPENDENTE" bare>
@@ -245,4 +312,11 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: ds.inverse, borderColor: ds.inverse },
   chipText: { fontSize: 15, lineHeight: 18, fontWeight: "700", color: ds.ink, textAlign: "center" },
   erro: { ...type.caption, color: ds.danger },
+  ok: { ...type.caption, color: ds.success },
+  acesso: { flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[4], paddingBottom: space[3], marginTop: -space[2] },
+  acessoText: { ...type.caption, color: ds.inkMuted, flex: 1 },
+  acessoLink: { color: ds.brandInk, textDecorationLine: "underline" },
+  pinBox: { paddingHorizontal: space[4], paddingBottom: space[4], gap: space[3] },
+  pinInfo: { ...type.caption, color: ds.ink },
+  pinAcoes: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
 });

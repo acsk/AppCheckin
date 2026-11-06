@@ -127,12 +127,12 @@ export default function ContaScreen() {
   const [photoError, setPhotoError] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   // Perfil de dependente: sem login próprio (senha) e sem gerenciar outros dependentes
-  const [perfilDependente, setPerfilDependente] = useState<{ nome: string } | null>(null);
+  const [perfilDependente, setPerfilDependente] = useState<{ nome: string; login_proprio?: boolean } | null>(null);
   const [qtdDependentes, setQtdDependentes] = useState<number | null>(null);
   useFocusEffect(
     useCallback(() => {
       let vivo = true;
-      void dependenteService.perfilAtual().then(async (p: { nome: string } | null) => {
+      void dependenteService.perfilAtual().then(async (p: { nome: string; login_proprio?: boolean } | null) => {
         if (!vivo) return;
         setPerfilDependente(p);
         if (p) return;
@@ -263,7 +263,7 @@ export default function ContaScreen() {
             icon="shopping-cart"
             tone="brand"
             title="Planos"
-            subtitle="Contratar ou renovar"
+            subtitle={perfilDependente?.login_proprio ? "Contratar e pagar é com o seu responsável" : "Contratar ou renovar"}
             onPress={() => router.push("/planos")}
           />
           {perfilDependente ? null : (

@@ -33,7 +33,8 @@ class MobileDependenteService
             ->where('u.responsavel_usuario_id', $responsavelId)
             ->orderBy('u.data_nascimento', 'desc')
             ->orderBy('u.nome')
-            ->get(['u.id', 'u.nome', 'u.data_nascimento', 'u.sexo', 'u.responsavel_parentesco', 'a.id as aluno_id', 'tup.ativo as ativo_na_academia', Pessoa::select('foto_caminho', 'u', 'a')]);
+            ->get(['u.id', 'u.nome', 'u.data_nascimento', 'u.sexo', 'u.responsavel_parentesco', 'a.id as aluno_id', 'tup.ativo as ativo_na_academia', Pessoa::select('foto_caminho', 'u', 'a'),
+                Pessoa::existe('usuarios', 'dependente_pin_hash') ? DB::raw('CASE WHEN u.dependente_pin_hash IS NULL THEN 0 ELSE 1 END as tem_pin') : DB::raw('0 as tem_pin')]);
 
         $dependentes = $linhas->map(fn ($d) => [
             'usuario_id' => (int) $d->id,
@@ -45,6 +46,8 @@ class MobileDependenteService
             'parentesco' => $d->responsavel_parentesco,
             'foto_caminho' => $d->foto_caminho,
             'na_academia' => (int) ($d->ativo_na_academia ?? 0) === 1,
+            // Login próprio: e-mail do responsável + este PIN (DependenteLoginService)
+            'tem_pin' => (int) $d->tem_pin === 1,
         ])->all();
 
         return ['status' => 200, 'body' => ['success' => true, 'data' => ['dependentes' => $dependentes]]];
@@ -183,6 +186,65 @@ class MobileDependenteService
         }
 
         return $this->sessao($responsavelId, $tenantId, null);
+    }
+
+    /**
+     * Libera (ou troca) o login próprio do dependente: ele entra com o e-mail do responsável e este PIN.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function definirPin(int $responsavelId, int $dependenteId, string $pin): array
+    {
+        $dep = DB::table('usuarios')->where('id', $dependenteId)->where('responsavel_usuario_id', $responsavelId)->first(['id', 'nome', 'data_nascimento']);
+        if (! $dep) {
+            return $this->erro('Dependente não encontrado', 'DEPENDENTE_NAO_ENCONTRADO', 404);
+        }
+        if ($motivo = self::pinFraco($pin, $dep->data_nascimento ? (string) $dep->data_nascimento : null)) {
+            return $this->erro($motivo, 'PIN_FRACO', 422);
+        }
+        DB::table('usuarios')->where('id', $dependenteId)->update([
+            'dependente_pin_hash' => password_hash($pin, PASSWORD_BCRYPT),
+            'dependente_pin_tentativas' => 0,
+            'dependente_pin_bloqueado_ate' => null,
+            'updated_at' => now(),
+        ]);
+
+        return ['status' => 200, 'body' => ['success' => true, 'message' => 'PIN salvo. '.\App\Services\DependenteLoginService::primeiroNome((string) $dep->nome).' já pode entrar com o seu e-mail e este PIN.']];
+    }
+
+    /**
+     * Tira o login próprio. As sessões abertas com o PIN caem na próxima requisição (JwtAuthenticate).
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function removerPin(int $responsavelId, int $dependenteId): array
+    {
+        $n = DB::table('usuarios')->where('id', $dependenteId)->where('responsavel_usuario_id', $responsavelId)
+            ->update(['dependente_pin_hash' => null, 'dependente_pin_tentativas' => 0, 'dependente_pin_bloqueado_ate' => null, 'updated_at' => now()]);
+
+        return $n ? ['status' => 200, 'body' => ['success' => true, 'message' => 'Acesso próprio removido.']]
+            : $this->erro('Dependente não encontrado', 'DEPENDENTE_NAO_ENCONTRADO', 404);
+    }
+
+    /** Motivo de recusa do PIN, ou null se serve: 4 a 6 dígitos, sem sequência, repetição ou data de nascimento. */
+    public static function pinFraco(string $pin, ?string $nascimento): ?string
+    {
+        if (! preg_match('/^\d{4,6}$/', $pin)) {
+            return 'O PIN tem de 4 a 6 números.';
+        }
+        if (preg_match('/^(\d)\1+$/', $pin) || str_contains('0123456789', $pin) || str_contains('9876543210', $pin)) {
+            return 'PIN fácil demais. Evite números repetidos ou em sequência.';
+        }
+        if ($nascimento && ($d = \DateTimeImmutable::createFromFormat('!Y-m-d', substr($nascimento, 0, 10)))) {
+            $datas = [$d->format('dm'), $d->format('md'), $d->format('Y'), $d->format('dmy'), $d->format('ymd'), $d->format('dmY'), $d->format('ymd')];
+            foreach ($datas as $x) {
+                if ($pin === $x || (strlen($pin) >= 4 && str_starts_with($d->format('dmY'), $pin))) {
+                    return 'Não use a data de nascimento no PIN: muita gente sabe.';
+                }
+            }
+        }
+
+        return null;
     }
 
     /** @return array{status: int, body: array<string, mixed>} */

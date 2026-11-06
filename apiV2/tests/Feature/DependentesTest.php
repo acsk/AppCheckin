@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Http\Middleware\JwtAuthenticate;
+use App\Services\DependenteLoginService;
 use App\Services\JwtService;
 use App\Services\Mobile\MobileDependenteService;
 use App\Support\Pagador;
@@ -45,6 +47,9 @@ class DependentesTest extends TestCase
                 $t->string($c)->nullable();
             }
             $t->integer('responsavel_usuario_id')->nullable();
+            $t->string('dependente_pin_hash')->nullable();
+            $t->unsignedTinyInteger('dependente_pin_tentativas')->default(0);
+            $t->dateTime('dependente_pin_bloqueado_ate')->nullable();
             $t->boolean('ativo')->default(true);
             $t->timestamps();
         });
@@ -72,6 +77,18 @@ class DependentesTest extends TestCase
             }
             $t->boolean('ativo')->default(true);
         });
+        Schema::create('notificacoes', function (Blueprint $t) {
+            $t->increments('id');
+            $t->integer('tenant_id');
+            $t->integer('usuario_id');
+            $t->string('tipo');
+            $t->string('titulo');
+            $t->text('mensagem')->nullable();
+            $t->text('dados')->nullable();
+            $t->boolean('lida')->default(false);
+            $t->timestamps();
+        });
+        DB::statement('CREATE TABLE IF NOT EXISTS rate_limits (id INTEGER PRIMARY KEY, ip TEXT, action TEXT, attempts INTEGER, expires_at TEXT, created_at TEXT, updated_at TEXT)');
         Schema::create('papeis', function (Blueprint $t) {
             $t->increments('id');
             $t->string('nome');
@@ -177,5 +194,78 @@ class DependentesTest extends TestCase
 
         // Adulto sem responsável continua pagando como ele mesmo
         $this->assertSame('X', Pagador::aplicar(['usuario_id' => self::PAI, 'aluno_nome' => 'X'])['aluno_nome']);
+    }
+
+    public function test_pin_recusa_sequencia_repeticao_e_data_de_nascimento(): void
+    {
+        $nasc = '2015-08-31';
+        $this->assertNotNull(MobileDependenteService::pinFraco('123', $nasc));
+        $this->assertNotNull(MobileDependenteService::pinFraco('1234', $nasc));
+        $this->assertNotNull(MobileDependenteService::pinFraco('7777', $nasc));
+        $this->assertNotNull(MobileDependenteService::pinFraco('3108', $nasc));
+        $this->assertNotNull(MobileDependenteService::pinFraco('2015', $nasc));
+        $this->assertNotNull(MobileDependenteService::pinFraco('310815', $nasc));
+        $this->assertNull(MobileDependenteService::pinFraco('4826', $nasc));
+    }
+
+    public function test_login_proprio_com_email_do_responsavel_e_pin(): void
+    {
+        $id = $this->service()->criar(self::PAI, self::TENANT, $this->filho())['body']['data']['dependente']['usuario_id'];
+        $login = app(DependenteLoginService::class);
+
+        // Sem PIN o perfil não aparece
+        $this->assertSame([], $login->perfis('andre@exemplo.com', '1.1.1.1')['body']['perfis']);
+
+        $this->assertSame(200, $this->service()->definirPin(self::PAI, $id, '4826')['status']);
+        $this->assertSame(404, $this->service()->definirPin(99, $id, '4826')['status'], 'só o responsável define');
+
+        $perfis = $login->perfis('ANDRE@exemplo.com', '1.1.1.1')['body']['perfis'];
+        $this->assertSame([['id' => $id, 'nome' => 'Joao']], $perfis);
+        $this->assertSame([], $login->perfis('outro@exemplo.com', '1.1.1.1')['body']['perfis']);
+
+        $errado = $login->entrar('andre@exemplo.com', $id, '1111', null, '1.1.1.1');
+        $this->assertSame(401, $errado['status']);
+        $this->assertStringContainsString('Restam 4', $errado['body']['message']);
+
+        $ok = $login->entrar('andre@exemplo.com', $id, '4826', null, '1.1.1.1');
+        $this->assertSame(200, $ok['status'], json_encode($ok['body']));
+        $claims = (array) app(JwtService::class)->decode($ok['body']['token']);
+        $this->assertSame($id, (int) $claims['user_id']);
+        $this->assertSame(self::PAI, (int) $claims['dependente_login']);
+        $this->assertArrayNotHasKey('responsavel_id', $claims, 'não vira o pai');
+        $this->assertSame(1, DB::table('notificacoes')->where('usuario_id', self::PAI)->where('tipo', 'acesso_dependente')->count());
+
+        // O e-mail do pai não abre o perfil de outro dependente nem do próprio pai
+        $this->assertSame(404, $login->entrar('andre@exemplo.com', self::PAI, '4826', null, '1.1.1.1')['status']);
+    }
+
+    public function test_cinco_pins_errados_travam_e_avisam(): void
+    {
+        $id = $this->service()->criar(self::PAI, self::TENANT, $this->filho())['body']['data']['dependente']['usuario_id'];
+        $this->service()->definirPin(self::PAI, $id, '4826');
+        $login = app(DependenteLoginService::class);
+
+        for ($i = 0; $i < 5; $i++) {
+            $r = $login->entrar('andre@exemplo.com', $id, '0001', null, '2.2.2.'.$i);
+        }
+        $this->assertSame('PIN_BLOQUEADO', $r['body']['code']);
+        // Travado: nem o PIN certo entra
+        $this->assertSame('PIN_BLOQUEADO', $login->entrar('andre@exemplo.com', $id, '4826', null, '3.3.3.3')['body']['code']);
+        $this->assertSame(1, DB::table('notificacoes')->where('titulo', 'PIN errado várias vezes')->count());
+
+        // Trocar o PIN destrava
+        $this->service()->definirPin(self::PAI, $id, '5937');
+        $this->assertSame(200, $login->entrar('andre@exemplo.com', $id, '5937', null, '3.3.3.3')['status']);
+    }
+
+    public function test_rotas_de_compra_bloqueadas_no_login_do_dependente(): void
+    {
+        foreach (['v2/mobile/comprar-plano', 'v2/mobile/pagamento/pix', 'v2/mobile/pacotes/3/contratar', 'v2/mobile/pacotes/contratos/9/pagar',
+            'v2/mobile/recorrencia/contratar', 'v2/mobile/recorrencia/contratos/2/cancelar', 'v2/mobile/migrar-plano', 'v2/mobile/assinatura/4/cancelar'] as $p) {
+            $this->assertTrue(JwtAuthenticate::ehCompraOuPagamento($p), $p);
+        }
+        foreach (['v2/mobile/checkin', 'v2/mobile/perfil', 'v2/mobile/simular-migracao', 'v2/mobile/verificar-pagamento'] as $p) {
+            $this->assertFalse(JwtAuthenticate::ehCompraOuPagamento($p), $p);
+        }
     }
 }
