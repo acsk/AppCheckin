@@ -26,7 +26,7 @@ class AdminTurmaFixaService
             if ($gestao->atualizado()) {
                 $turma->situacao = $gestao->situacao($turma);
                 $turma->alunos_vinculados = count($gestao->vinculados($tenantId, (int) $turma->id));
-                $turma->disponivel_matricula = $turma->ativo && ! $turma->vigencia_fim && $turma->vigencia_inicio <= AcademyDateTime::today();
+                $turma->disponivel_matricula = $turma->ativo && ! $turma->deleted_at && ! $turma->vigencia_fim;
             }
         }
 
@@ -36,12 +36,15 @@ class AdminTurmaFixaService
     public function criar(int $tenantId, array $dados, ?string $vigenciaInicio = null): array
     {
         $v = Validator::make($dados, [
-            'nome' => 'required|string|max:255', 'professor_id' => 'required|integer|min:1',
+            'nome' => 'sometimes|nullable|string|max:255', 'professor_id' => 'required|integer|min:1',
             'modalidade_id' => 'required|integer|min:1', 'dias_semana' => 'required|array|min:1|max:7',
             'dias_semana.*' => 'required|integer|between:1,7|distinct',
             'horario_inicio' => 'required|date_format:H:i', 'horario_fim' => 'required|date_format:H:i|after:horario_inicio',
             'capacidade' => 'required|integer|between:1,500', 'checkin_livre' => 'sometimes|boolean',
         ])->validate();
+        $v['nome'] = trim((string) ($v['nome'] ?? '')) ?: $this->nomeAutomatico(
+            $v['dias_semana'], $v['horario_inicio'], $v['horario_fim']
+        );
         if (! app(TurmaRepository::class)->professorPertenceAoTenant((int) $v['professor_id'], $tenantId)) {
             throw ValidationException::withMessages(['professor_id' => 'Professor não pertence ao tenant.']);
         }
@@ -176,7 +179,7 @@ class AdminTurmaFixaService
     public function atualizar(int $tenantId, int $id, array $dados): array
     {
         $v = Validator::make($dados, [
-            'nome' => 'required|string|max:255', 'capacidade' => 'required|integer|between:1,500',
+            'nome' => 'sometimes|nullable|string|max:255', 'capacidade' => 'required|integer|between:1,500',
             'checkin_livre' => 'required|boolean',
         ])->validate();
 
@@ -187,6 +190,11 @@ class AdminTurmaFixaService
             if (app(AdminTurmaFixaGestaoService::class)->atualizado()) {
                 abort_if($grupo->deleted_at || $grupo->substituida_por_id, 422, 'A turma foi excluída/substituída. Edite a turma de destino.');
             }
+            $nome = trim((string) ($v['nome'] ?? '')) ?: $this->nomeAutomatico(
+                json_decode($grupo->dias_semana, true, 512, JSON_THROW_ON_ERROR),
+                substr($grupo->horario_inicio, 0, 5),
+                substr($grupo->horario_fim, 0, 5)
+            );
             $acesso = app(AcessoHibridoService::class);
             $matriculas = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
                 ->where('m.tenant_id', $tenantId)->where('m.tipo_acesso', 'turma_fixa')->where('s.permite_checkin', 1)
@@ -199,7 +207,7 @@ class AdminTurmaFixaService
                 ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [AcademyDateTime::today()])
                 ->lockForUpdate()->get(['m.*']);
             DB::table('turmas_fixas')->where('id', $id)->update([
-                'capacidade' => $v['capacidade'], 'nome' => trim($v['nome']), 'checkin_livre' => $v['checkin_livre'], 'updated_at' => now(),
+                'capacidade' => $v['capacidade'], 'nome' => $nome, 'checkin_livre' => $v['checkin_livre'], 'updated_at' => now(),
             ]);
             foreach ($matriculas as $matricula) {
                 if (! $acesso->podeAtivar($tenantId, (array) $matricula)) {
@@ -214,7 +222,7 @@ class AdminTurmaFixaService
                 if ($v['capacidade'] < $saldo['vagas_fixas'] + $saldo['vagas_livres_ocupadas'] + $saldo['reposicoes_confirmadas']) {
                     throw ValidationException::withMessages(['capacidade' => 'A nova capacidade não comporta as reservas e check-ins existentes.']);
                 }
-                DB::table('turmas')->where('id', $aula->id)->update(['limite_alunos' => $v['capacidade'], 'nome' => trim($v['nome']), 'updated_at' => now()]);
+                DB::table('turmas')->where('id', $aula->id)->update(['limite_alunos' => $v['capacidade'], 'nome' => $nome, 'updated_at' => now()]);
             }
 
             return ['message' => 'Turma atualizada. Contratos e permissões específicas das aulas foram preservados.'];
@@ -262,5 +270,24 @@ class AdminTurmaFixaService
         return ['grade' => app(AcessoHibridoService::class)->grade($tenantId, $id),
             'grade_agendada' => app(AcessoHibridoService::class)->grade($tenantId, $id, null, true),
             'grade_revisao' => (bool) ($m->grade_revisao ?? false), 'frequencia_semanal' => (int) $m->checkins_semanais];
+    }
+
+    /**
+     * @param  list<int>  $dias
+     */
+    private function nomeAutomatico(array $dias, string $inicio, string $fim): string
+    {
+        $abreviacoes = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+        $dias = array_values(array_unique(array_filter(array_map('intval', $dias), fn ($dia) => $dia >= 1 && $dia <= 7)));
+        sort($dias);
+        $formatarHora = static function (string $hora): string {
+            $hora = substr($hora, 0, 5);
+            [$horas, $minutos] = explode(':', $hora);
+
+            return (int) $horas.($minutos === '00' ? '' : ':'.$minutos);
+        };
+
+        return implode('/', array_map(fn ($dia) => $abreviacoes[$dia - 1], $dias))
+            .' '.$formatarHora($inicio).' às '.$formatarHora($fim).'h';
     }
 }

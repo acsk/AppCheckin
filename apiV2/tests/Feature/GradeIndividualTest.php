@@ -92,9 +92,9 @@ class GradeIndividualTest extends TestCase
         $acesso = app(AcessoHibridoService::class);
         $this->assertSame(AcademyDateTime::today(), DB::table('matricula_grade')->where('matricula_id', 1)
             ->where('turma_fixa_id', 1)->value('vigencia_inicio'));
-        $this->assertSame($inicioFuturo, DB::table('matricula_grade')->where('matricula_id', 1)
+        $this->assertSame(AcademyDateTime::today(), DB::table('matricula_grade')->where('matricula_id', 1)
             ->where('turma_fixa_id', 2)->value('vigencia_inicio'));
-        $this->assertCount(1, $acesso->grade(3, 1));
+        $this->assertCount(2, $acesso->grade(3, 1));
         $this->assertCount(2, $acesso->grade(3, 1, null, true));
         $matricula = (array) DB::table('matriculas')->where('tenant_id', 3)->where('id', 1)->first();
         $this->assertCount(2, $acesso->validarEscolha(3, [], $matricula)['grade']);
@@ -102,7 +102,9 @@ class GradeIndividualTest extends TestCase
         $aula = HybridFixture::aula();
         $aula['turma_fixa_id'] = 2;
         $aula['dia_data'] = (new \DateTimeImmutable($inicioFuturo))->modify('-7 days')->format('Y-m-d');
-        $this->assertNull($acesso->matriculaParaAula(1, 3, $aula));
+        $matriculaAntesDoInicio = $acesso->matriculaParaAula(1, 3, $aula);
+        $this->assertNotNull($matriculaAntesDoInicio);
+        $this->assertNotNull($acesso->erroCheckin($aula, 3, $matriculaAntesDoInicio));
         $aula['dia_data'] = $inicioFuturo;
         $this->assertNotNull($acesso->matriculaParaAula(1, 3, $aula));
     }
@@ -127,6 +129,7 @@ class GradeIndividualTest extends TestCase
 
     public function test_capacidade_e_validada_por_dia_individual_da_turma(): void
     {
+        DB::table('planos')->where('id', 1)->update(['checkins_semanais' => 1]);
         DB::table('turmas_fixas')->where('id', 1)->update(['capacidade' => 1]);
         $service = app(AdminTurmaFixaService::class);
         $service->vincularMatricula(3, 1, ['tipo_acesso' => 'turma_fixa', 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 2]]]);

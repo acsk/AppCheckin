@@ -12,10 +12,6 @@ const dias = [
 ];
 
 const horario = (value) => String(value || '').slice(0, 5);
-const hoje = () => {
-  const data = new Date();
-  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
-};
 const diasDaTurma = (turma) => Array.isArray(turma?.dias_semana)
   ? turma.dias_semana.map(Number).filter((dia) => dia >= 1 && dia <= 7)
   : [];
@@ -68,7 +64,7 @@ export default function GradeTurmaEditor({
               disabled={disabled}
               options={gruposDisponiveis(item).map((grupo) => ({
                 value: String(grupo.id),
-                label: `${grupo.nome} · ${horario(grupo.horario_inicio)}–${horario(grupo.horario_fim)}${grupo.vigencia_inicio > hoje() ? ` · início ${new Date(`${grupo.vigencia_inicio}T00:00:00`).toLocaleDateString('pt-BR')}` : ''}`,
+                label: `${grupo.nome} · ${horario(grupo.horario_inicio)}–${horario(grupo.horario_fim)}`,
               }))}
               onChange={(event) => {
                 const next = turmas.find((row) => String(row.id) === event.target.value);

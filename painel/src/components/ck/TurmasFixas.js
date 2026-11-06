@@ -151,7 +151,12 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
             options={modalidades.map((modalidade) => ({ value: String(modalidade.id), label: modalidade.nome }))}
             onChange={(event) => set('modalidade_id', event.target.value)}
           />
-          <TextField label="Nome" value={form.nome} onChange={(event) => set('nome', event.target.value)} />
+          <TextField
+            label="Nome (opcional)"
+            hint="Sugerido automaticamente pelos dias e horários. Você pode personalizar."
+            value={form.nome}
+            onChange={(event) => set('nome', event.target.value)}
+          />
           </section>
           <section className="ck-pc__sec">
           <header><span className="ck-pc__secn">2</span><h3>Dias e horário</h3></header>

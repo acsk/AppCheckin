@@ -39,7 +39,7 @@ As permissões da equipe continuam sendo exigidas. Um tenant de horário livre p
 
 O cadastro mantém:
 
-- nome;
+- nome sugerido automaticamente pelos dias e horário, com personalização opcional;
 - modalidade;
 - professor;
 - dias da semana;
@@ -114,7 +114,7 @@ Uma frequência positiva em `planos.checkins_semanais` determina a quantidade ex
 
 O painel exibe e permite editar a grade. O app exibe a grade individual e a próxima aula elegível.
 
-Turmas ativas com início futuro podem ser escolhidas na matrícula antes do primeiro dia. O vínculo individual começa na vigência da turma; isso permite organizar a grade com antecedência sem liberar check-in antes do início. A frequência 2x, por exemplo, permite selecionar dois pares turma/dia, na mesma turma ou em turmas diferentes.
+Turmas fixas são recorrentes por dia e horário, sem exigir data de término para a matrícula. O aluno pode ser associado imediatamente, mesmo se a versão da turma tiver início futuro; o vínculo individual começa hoje e o check-in só é permitido em ocorrências válidas da turma. As datas internas de versões preservam o histórico quando a grade é alterada. A frequência 2x exige duas escolhas de turma/dia, na mesma turma ou em turmas diferentes.
 
 ### Horário livre
 

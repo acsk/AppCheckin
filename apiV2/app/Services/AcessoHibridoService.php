@@ -173,8 +173,8 @@ class AcessoHibridoService
                     throw ValidationException::withMessages(['grade' => 'Selecione dias distintos de turmas ativas da modalidade do plano neste tenant.']);
                 }
                 if ($this->gradeTemporal()) {
-                    $vigenciaGrade = $dataGrade ?? max(AcademyDateTime::today(), $turma->vigencia_inicio);
-                    if ($turma->deleted_at || $turma->vigencia_inicio > $vigenciaGrade
+                    $vigenciaGrade = $dataGrade ?? AcademyDateTime::today();
+                    if ($turma->deleted_at || ($dataGrade !== null && $turma->vigencia_inicio > $vigenciaGrade)
                         || ($turma->vigencia_fim !== null && ($dataGrade === null || $turma->vigencia_fim < $vigenciaGrade))) {
                         throw ValidationException::withMessages(['grade' => 'A turma não está disponível para os dias selecionados.']);
                     }
@@ -369,13 +369,16 @@ class AcessoHibridoService
         foreach ($grade as $slot) {
             $inicioSlot = max($inicio, $slot['vigencia_inicio'] ?? $inicio);
             $fimSlot = min($fim, $slot['vigencia_fim'] ?? $fim);
+            $grupo = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('id', $slot['turma_fixa_id'])->lockForUpdate()->first();
+            if (! $grupo || ! $grupo->ativo || ($this->gradeTemporal() && $grupo->deleted_at)) {
+                return false;
+            }
+            if ($this->gradeTemporal()) {
+                $inicioSlot = max($inicioSlot, $grupo->vigencia_inicio);
+                $fimSlot = min($fimSlot, $grupo->vigencia_fim ?? $fimSlot);
+            }
             if ($inicioSlot > $fimSlot) {
                 continue;
-            }
-            $grupo = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('id', $slot['turma_fixa_id'])->lockForUpdate()->first();
-            if (! $grupo || ! $grupo->ativo || ($this->gradeTemporal() && ($grupo->deleted_at
-                || $inicioSlot < $grupo->vigencia_inicio || $fimSlot > ($grupo->vigencia_fim ?? $fimSlot)))) {
-                return false;
             }
             $q = DB::table('matriculas as m')->join('matricula_grade as g', 'g.matricula_id', '=', 'm.id')
                 ->join('status_matricula as s', 's.id', '=', 'm.status_id')->where('m.tenant_id', $tenantId)

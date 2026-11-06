@@ -53,6 +53,15 @@ class TurmaFixaGestaoTest extends TestCase
         return AcademyDateTime::now()->modify('+7 days')->format('Y-m-d');
     }
 
+    public function test_criar_turma_sem_nome_gera_nome_a_partir_dos_dias_e_horario(): void
+    {
+        $turma = app(AdminTurmaFixaService::class)->criar(3, [
+            'professor_id' => 2, 'modalidade_id' => 1, 'dias_semana' => [4, 2],
+            'horario_inicio' => '17:00', 'horario_fim' => '18:00', 'capacidade' => 12,
+        ]);
+        $this->assertSame('Ter/Qui 17 às 18h', DB::table('turmas_fixas')->where('id', $turma['id'])->value('nome'));
+    }
+
     public function test_mudanca_grade_preserva_ocorrencias_passadas_e_remapeia_so_dias_confirmados(): void
     {
         DB::table('matricula_grade')->where('dia_semana', '<>', 1)->delete();
