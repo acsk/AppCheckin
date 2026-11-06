@@ -10,23 +10,21 @@ Toda a documentação técnica do projeto, guias e exemplos:
 - **GUIA_CONSUMO_ENDPOINTS_MOBILE_HORARIOS.md** - Exemplos práticos (cURL, JavaScript, HTML)
 
 #### 📚 APIs de Turmas & Replicação
-- **DOCUMENTACAO_API_TURMAS.md** - API de criação/atualização de turmas
-- **DOCUMENTACAO_REPLICACAO.md** - Fluxo de replicação detalhado
-- **REPLICAR_TURMAS_API.md** - Endpoint de replicação
-- **DESATIVAR_TURMAS_E_DIAS.md** - Endpoints de desativação
+- **[Documentação atual e arquivo histórico](../../apiV2/docs/turmas/README.md)** - Turmas na API v2 e documentos Slim arquivados
+- **[DOCUMENTACAO_REPLICACAO.md](../../apiV2/docs/turmas/legacy-api/DOCUMENTACAO_REPLICACAO.md)** - Índice histórico do endpoint Slim
 
 #### 🏗️ Estrutura & Mudanças
 - **ESTRUTURA_AULAS.md** - Modelo de dados de dias/horários/turmas
 - **DIAS_RESUMO.md** - Resumo do sistema de dias
 - **CORRECAO_DIAS_TENANT.md** - Correções aplicadas no tenant isolation
 - **RESUMO_MUDANCAS_HORARIOS.md** - Mudanças nos horários
-- **RESUMO_REPLICACAO_TURMAS.md** - Resumo de replicação
+- **[RESUMO_REPLICACAO_TURMAS.md](../../apiV2/docs/turmas/legacy-api/RESUMO_REPLICACAO_TURMAS.md)** - Resumo histórico de replicação
 - **RESOLUCAO_DUPLICIDADES.md** - Como foram resolvidas duplicidades
 
 #### 🧪 Testes & Seeds
 - **GUIA_TESTES.md** - Como testar os endpoints
 - **SEED_JOBS_DIAS.md** - Seeding de dias/horários
-- **EXEMPLO_REPLICACAO_TURMAS.md** - Exemplos de replicação
+- **[EXEMPLO_REPLICACAO_TURMAS.md](../../apiV2/docs/turmas/legacy-api/EXEMPLO_REPLICACAO_TURMAS.md)** - Exemplos históricos de replicação
 
 #### 💻 Exemplos de Código Frontend
 - **REPLICAR_FRONTEND_EXEMPLO.js** - Exemplos JavaScript de como consumir os endpoints
@@ -78,20 +76,16 @@ Backend/
 ├── docs/                                      # 📚 Documentação
 │   ├── API_MOBILE_ENDPOINTS.md
 │   ├── GUIA_CONSUMO_ENDPOINTS_MOBILE_HORARIOS.md
-│   ├── DOCUMENTACAO_API_TURMAS.md
-│   ├── DOCUMENTACAO_REPLICACAO.md
-│   ├── REPLICAR_TURMAS_API.md
-│   ├── DESATIVAR_TURMAS_E_DIAS.md
 │   ├── ESTRUTURA_AULAS.md
 │   ├── DIAS_RESUMO.md
 │   ├── CORRECAO_DIAS_TENANT.md
 │   ├── RESUMO_MUDANCAS_HORARIOS.md
-│   ├── RESUMO_REPLICACAO_TURMAS.md
 │   ├── RESOLUCAO_DUPLICIDADES.md
 │   ├── GUIA_TESTES.md
 │   ├── SEED_JOBS_DIAS.md
-│   ├── EXEMPLO_REPLICACAO_TURMAS.md
 │   └── REPLICAR_FRONTEND_EXEMPLO.js
+│
+├── apiV2/docs/turmas/                          # Turmas v2 e arquivo histórico da Slim
 │
 ├── scripts/                                   # 🔧 Scripts Utilitários
 │   ├── apagar_replicados.php
@@ -154,12 +148,11 @@ Backend/
 2. Abra **docs/DIAS_RESUMO.md** - Veja o resumo do sistema
 
 ### Para Replicar Turmas
-1. Abra **docs/DOCUMENTACAO_REPLICACAO.md** - Entenda o fluxo
-2. Abra **docs/REPLICAR_TURMAS_API.md** - Veja o endpoint
-3. Use **docs/EXEMPLO_REPLICACAO_TURMAS.md** - Exemplos práticos
+1. Abra **apiV2/docs/turmas/README.md** para a documentação atual
+2. Para consultar a implementação antiga, veja **apiV2/docs/turmas/legacy-api/README.md**
 
 ### Para Desativar Turmas/Dias
-1. Abra **docs/DESATIVAR_TURMAS_E_DIAS.md** - Documentação completa
+1. Consulte **apiV2/docs/turmas/legacy-api/DESATIVAR_TURMAS_E_DIAS.md** - Documentação Slim arquivada
 
 ### Para Executar Scripts
 1. Vá para `scripts/` e escolha o script desejado

@@ -221,7 +221,7 @@ DROP TABLE horarios;
 
 ## 📖 Documentação
 
-Veja `DOCUMENTACAO_API_TURMAS.md` para documentação completa de todos os endpoints.
+Veja [DOCUMENTACAO_API_TURMAS.md](../../apiV2/docs/turmas/legacy-api/DOCUMENTACAO_API_TURMAS.md) para a documentação da API Slim antiga.
 
 Ver `RESUMO_MUDANCAS_HORARIOS.md` para detalhes técnicos da implementação.
 

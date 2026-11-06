@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
+use App\Http\Controllers\Api\V2\Admin\TurmaFixaController;
 use App\Services\AcessoHibridoService;
 use App\Services\Admin\AdminTurmaFixaGestaoService;
 use App\Services\Admin\AdminTurmaFixaService;
@@ -13,6 +14,7 @@ use App\Support\AcademyDateTime;
 use App\Support\Permissao;
 use App\Support\PermissaoRotas;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -62,6 +64,48 @@ class TurmaFixaGestaoTest extends TestCase
         $this->assertSame('Ter/Qui 17 às 18h', DB::table('turmas_fixas')->where('id', $turma['id'])->value('nome'));
     }
 
+    public function test_data_de_vigencia_invalida_retorna_erro_legivel_com_data_minima(): void
+    {
+        $request = Request::create('/api/v2/admin/turmas-fixas/acoes', 'POST', [
+            'acao' => 'grade',
+            'ids' => [1],
+            'dados' => [
+                'from' => AcademyDateTime::today(),
+                'dias_semana' => [2],
+                'horario_inicio' => '18:00',
+                'horario_fim' => '19:00',
+                'professor_id' => 2,
+                'remapeamentos' => [['matricula_id' => 1, 'dias_semana' => [2]]],
+            ],
+        ]);
+        $request->attributes->set('tenantId', 3);
+        $request->attributes->set('userId', 90);
+
+        $response = app(TurmaFixaController::class)->actions($request, app(AdminTurmaFixaGestaoService::class));
+        $esperado = 'A alteração deve começar a partir de '.AcademyDateTime::now()->modify('+1 day')->format('d/m/Y').' para preservar as aulas anteriores. A turma continua recorrente, sem data de término.';
+        $body = $response->getData(true);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame($esperado, $body['message']);
+        $this->assertSame($esperado, $body['errors']['from'][0]);
+    }
+
+    public function test_data_final_da_pausa_anterior_ao_inicio_retorna_erro_legivel(): void
+    {
+        $inicio = $this->vigenciaTeste();
+        $fim = AcademyDateTime::fromYmd($inicio)->modify('-1 day')->format('Y-m-d');
+
+        try {
+            $this->executar('pausar', ['from' => $inicio, 'to' => $fim]);
+            $this->fail('O fim da pausa não pode ser anterior ao início.');
+        } catch (ValidationException $e) {
+            $this->assertSame(
+                'A data de término da pausa deve ser igual ou posterior à data de início.',
+                $e->errors()['to'][0]
+            );
+        }
+    }
+
     public function test_mudanca_grade_preserva_ocorrencias_passadas_e_remapeia_so_dias_confirmados(): void
     {
         DB::table('matricula_grade')->where('dia_semana', '<>', 1)->delete();
@@ -103,6 +147,8 @@ class TurmaFixaGestaoTest extends TestCase
         $novaId = (int) DB::table('turmas_fixas')->where('id', 1)->value('substituida_por_id');
         $nova = DB::table('turmas_fixas')->where('id', $novaId)->first();
         $this->assertSame('Ter 18 às 19h', $nova->nome);
+        $this->assertSame($from, $nova->vigencia_inicio);
+        $this->assertNull($nova->vigencia_fim);
         $this->assertSame(17, (int) $nova->capacidade);
         $this->assertSame(0, (int) $nova->checkin_livre);
         $this->assertSame(17, (int) DB::table('turmas')->where('turma_fixa_id', $novaId)->value('limite_alunos'));

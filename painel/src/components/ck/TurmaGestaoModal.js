@@ -10,7 +10,18 @@ const titulos = { detalhe: 'Detalhe da turma', duplicar: 'Duplicar turma', profe
 const dataLocal = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const hoje = () => dataLocal(new Date());
 const amanha = () => { const date = new Date(); date.setDate(date.getDate() + 1); return dataLocal(date); };
-const erroApi = error => Object.values(error?.response?.data?.errors || {}).flat().join(' ') || error?.response?.data?.message || error?.message || 'Não foi possível concluir a operação.';
+const erroApi = (error, acao) => {
+  const data = error?.response?.data;
+  const message = data?.message;
+  const details = Object.values(data?.errors || {}).flat().join(' ');
+  if (Array.isArray(data?.errors?.from) && data.errors.from.includes('validation.after')) {
+    return acao === 'arquivar'
+      ? 'O arquivamento deve começar amanhã ou em uma data futura para preservar as aulas anteriores.'
+      : 'A alteração deve começar amanhã ou em uma data futura para preservar as aulas anteriores. A turma continua recorrente, sem data de término.';
+  }
+  if (typeof message === 'string' && message !== 'The given data was invalid.' && !message.startsWith('validation.')) return message;
+  return details || message || error?.message || 'Não foi possível concluir a operação.';
+};
 
 export default function TurmaGestaoModal({ acao, turmas, todas, professores, onClose, onSaved, onEdit, onAction }) {
   const router = useRouter();
@@ -78,7 +89,7 @@ export default function TurmaGestaoModal({ acao, turmas, todas, professores, onC
       showSuccess(response.message || 'Operação concluída.');
       onSaved();
     } catch (error) {
-      setErro(erroApi(error));
+      setErro(erroApi(error, acao));
     } finally {
       setSaving(false);
     }
@@ -98,7 +109,7 @@ export default function TurmaGestaoModal({ acao, turmas, todas, professores, onC
       {tab === 'historico' ? <ul className="ck-tu-studs">{detalhes[0]?.historico.length ? detalhes[0].historico.map(evento => <li key={evento.id}><div><strong>{evento.acao} · {evento.created_at}</strong><span>Operador #{evento.usuario_id || 'sistema'}{evento.detalhes?.resultado?.vigencia_inicio ? ` · Vigência ${evento.detalhes.resultado.vigencia_inicio}` : ''}</span></div></li>) : <li>Sem ações registradas nesta nova gestão.</li>}</ul> : null}
       {detalhes[0]?.turma.situacao !== 'arquivada' && !detalhes[0]?.turma.vigencia_fim ? <div className="ck-tu-bar2"><Button onClick={() => onAction('pausar', [inicial])}>Pausar</Button></div> : null}
     </> : <fieldset className="ck-tu-fields" disabled={saving}>
-      {comVigencia ? <><TextField label="A partir de" type="date" min={amanha()} value={form.from} onChange={event => set('from', event.target.value)} /><p className="ck-field__hint">A partir de amanhã ou data futura. Aulas anteriores, presenças e grade histórica não são reescritas.</p></> : null}
+      {comVigencia ? <><TextField label="A partir de" type="date" min={amanha()} value={form.from} onChange={event => set('from', event.target.value)} /><p className="ck-field__hint">Esta data inicia a nova versão; a turma continua recorrente, sem data de término. Aulas anteriores e histórico são preservados.</p></> : null}
       {['professor', 'grade', 'duplicar'].includes(acao) ? <SelectField label="Professor" value={form.professor_id} options={professores.map(prof => ({ value: String(prof.id), label: prof.nome }))} onChange={event => set('professor_id', event.target.value)} /> : null}
       {['grade', 'duplicar'].includes(acao) ? <>
         <TextField label="Nome" value={form.nome} onChange={event => set('nome', event.target.value)} />

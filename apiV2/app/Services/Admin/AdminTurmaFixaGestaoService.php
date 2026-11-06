@@ -72,7 +72,10 @@ class AdminTurmaFixaGestaoService
     {
         abort_unless($this->atualizado(), 409, 'Execute a migração de ciclo de vida das turmas.');
         if ($desde !== null) {
-            Validator::make(['desde' => $desde], ['desde' => 'date_format:Y-m-d|after_or_equal:'.AcademyDateTime::today()])->validate();
+            Validator::make(['desde' => $desde], ['desde' => 'date_format:Y-m-d|after_or_equal:'.AcademyDateTime::today()], [
+                'desde.date_format' => 'Informe a data de consulta no formato AAAA-MM-DD.',
+                'desde.after_or_equal' => 'A data de consulta não pode ser anterior a hoje.',
+            ])->validate();
         }
 
         return DB::transaction(function () use ($tenantId, $id, $desde) {
@@ -138,9 +141,18 @@ class AdminTurmaFixaGestaoService
         }, 3);
     }
 
-    private function dataVigencia(array $dados): string
+    private function dataVigencia(array $dados, bool $arquivamento = false): string
     {
-        return Validator::make($dados, ['from' => 'required|date_format:Y-m-d|after:'.AcademyDateTime::today()])->validate()['from'];
+        $amanha = AcademyDateTime::now()->modify('+1 day')->format('d/m/Y');
+        $mensagemInicio = $arquivamento
+            ? "O arquivamento deve começar a partir de {$amanha} para preservar as aulas anteriores."
+            : "A alteração deve começar a partir de {$amanha} para preservar as aulas anteriores. A turma continua recorrente, sem data de término.";
+
+        return Validator::make($dados, ['from' => 'required|date_format:Y-m-d|after:'.AcademyDateTime::today()], [
+            'from.required' => 'Informe a data de início da nova vigência.',
+            'from.date_format' => 'Informe a data de início no formato AAAA-MM-DD.',
+            'from.after' => $mensagemInicio,
+        ])->validate()['from'];
     }
 
     private function exigirLivreDeReservasPontuais(int $tenantId, int $id, string $inicio, ?string $fim = null): void
@@ -203,8 +215,16 @@ class AdminTurmaFixaGestaoService
         }
         abort_unless($this->situacao($grupo) !== 'arquivada' && ! $grupo->vigencia_fim, 422, 'A turma está arquivada ou já tem uma substituição/arquivamento agendado.');
         if ($acao === 'pausar') {
+            $hoje = AcademyDateTime::now()->format('d/m/Y');
             $v = Validator::make($dados, ['from' => 'required|date_format:Y-m-d|after_or_equal:'.AcademyDateTime::today(),
-                'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'motivo' => 'nullable|string|max:500'])->validate();
+                'to' => 'required|date_format:Y-m-d|after_or_equal:from', 'motivo' => 'nullable|string|max:500'], [
+                    'from.required' => 'Informe a data de início da pausa.',
+                    'from.date_format' => 'Informe a data de início da pausa no formato AAAA-MM-DD.',
+                    'from.after_or_equal' => "A pausa pode começar hoje ({$hoje}) ou em uma data posterior.",
+                    'to.required' => 'Informe a data de término da pausa.',
+                    'to.date_format' => 'Informe a data de término da pausa no formato AAAA-MM-DD.',
+                    'to.after_or_equal' => 'A data de término da pausa deve ser igual ou posterior à data de início.',
+                ])->validate();
             $this->exigirLivreDeReservasPontuais($tenantId, $id, $v['from'], $v['to']);
             if (DB::table('turma_fixa_pausas')->where('tenant_id', $tenantId)->where('turma_fixa_id', $id)->whereNull('cancelada_em')
                 ->where('inicio', '<=', $v['to'])->where('fim', '>=', $v['from'])->lockForUpdate()->exists()) {
@@ -218,7 +238,7 @@ class AdminTurmaFixaGestaoService
 
             return ['id' => $id];
         }
-        $desde = $this->dataVigencia($dados);
+        $desde = $this->dataVigencia($dados, $acao === 'arquivar');
         abort_if($desde < $grupo->vigencia_inicio, 422, 'A mudança não pode começar antes da vigência desta turma.');
         $this->exigirLivreDeReservasPontuais($tenantId, $id, $desde);
         $alunos = $this->vinculados($tenantId, $id, $desde);

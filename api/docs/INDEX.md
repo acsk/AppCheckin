@@ -172,7 +172,7 @@ Qual documento ler?
 │   ├── ARCHITECTURE.md              🏗️ Arquitetura
 │   ├── CHECKLIST.sh                 ✅ Status
 │   ├── INDEX.md                     📚 Este arquivo
-│   ├── ANALISE_CHECKIN_TURMA.md     (criado antes)
+│   ├── apiV2/docs/turmas/legacy-api/ANALISE_CHECKIN_TURMA.md (arquivo Slim)
 │   └── ESTRUTURA_PASTAS.md          (existente)
 │
 ├── 🔧 SCRIPTS

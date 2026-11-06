@@ -48,7 +48,7 @@ Permitir que o frontend crie turmas (classes) com qualquer horário customizado,
   - `PUT /admin/turmas/{id}`
   - `DELETE /admin/turmas/{id}`
 
-### 5. **Documentação - `DOCUMENTACAO_API_TURMAS.md`**
+### 5. **Documentação legada - [DOCUMENTACAO_API_TURMAS.md](../../apiV2/docs/turmas/legacy-api/DOCUMENTACAO_API_TURMAS.md)**
 - ✅ Atualizada documentação de endpoints
 - ✅ Removida documentação do endpoint `/admin/turmas/horarios/{diaId}`
 - ✅ Exemplos de request body agora mostram `horario_inicio` e `horario_fim` como strings (HH:MM ou HH:MM:SS)

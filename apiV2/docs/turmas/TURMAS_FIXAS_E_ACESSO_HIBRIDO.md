@@ -1,4 +1,4 @@
-# Turmas fixas e acesso híbrido — AppCheckin
+# Turmas fixas e acesso híbrido — API v2
 
 Documento consolidado em **06/11/2026**, com o escopo implementado, a correção da grade individual, as regras operacionais, a preservação dos dados e as validações realizadas até este momento.
 
@@ -74,7 +74,9 @@ As ações do layout agora usam a API real:
 - **Excluir:** exclusão lógica apenas se não houver qualquer vínculo de grade, presença ou reposição, inclusive históricos. Ocorrências e auditoria permanecem.
 - **Em lote:** professor, capacidade, pausa, retomada, arquivamento e reativação; máximo de 50 turmas e transação atômica. Duplicação, mudança de grade e exclusão são individuais.
 
-Professor, grade e arquivamento exigem vigência **a partir de amanhã**, nunca anterior ao início da turma. A troca de professor/grade cria um **novo ID de turma**, fecha a versão anterior na véspera e periodiza a grade dos alunos. Não reescreve aulas, presenças ou pagamentos anteriores. A coluna singular de turma na matrícula continua sendo referência legada, não autorização.
+Professor, grade e arquivamento exigem início **a partir de amanhã**, nunca anterior ao início da turma, para preservar as aulas do dia e o histórico. Isso não limita a duração: cada nova versão continua recorrente e sem data de término até outra alteração ou arquivamento. A troca de professor/grade cria um **novo ID de turma**, fecha a versão anterior na véspera e periodiza a grade dos alunos. Não reescreve aulas, presenças ou pagamentos anteriores. A coluna singular de turma na matrícula continua sendo referência legada, não autorização.
+
+Datas de vigência e pausa inválidas retornam HTTP 422 com uma mensagem em português no campo `message` e detalhes legíveis por campo em `errors`; a mensagem de início da alteração informa a primeira data permitida e esclarece que a turma continua sem data de término.
 
 Ocorrências correspondentes com a mesma data/horário preservam capacidade, check-in livre, janelas e cancelamentos manuais. A geração posterior copia essas regras somente para ocorrências novas da versão, sem sobrescrever edições feitas na nova agenda.
 
@@ -216,7 +218,7 @@ Uma simulação de troca iniciada no app antes de a matrícula ser convertida pa
 
 ### Primeira migração
 
-[2026_11_06_100000_acesso_hibrido_aulas.php](apiV2/database/migrations/2026_11_06_100000_acesso_hibrido_aulas.php):
+[2026_11_06_100000_acesso_hibrido_aulas.php](../../database/migrations/2026_11_06_100000_acesso_hibrido_aulas.php):
 
 - cria a estrutura inicial de turmas recorrentes;
 - adiciona o tipo de acesso à matrícula;
@@ -227,7 +229,7 @@ Uma simulação de troca iniciada no app antes de a matrícula ser convertida pa
 
 ### Correção da grade individual
 
-[2026_11_06_140000_grade_individual_reposicoes.php](apiV2/database/migrations/2026_11_06_140000_grade_individual_reposicoes.php):
+[2026_11_06_140000_grade_individual_reposicoes.php](../../database/migrations/2026_11_06_140000_grade_individual_reposicoes.php):
 
 - cria grade individual e reposições;
 - copia **todos os dias** da turma do vínculo singular anterior;
@@ -238,7 +240,7 @@ As grades legadas excedentes permanecem válidas até revisão explícita. Novas
 
 ### Ciclo de vida e grade temporal
 
-[2026_11_06_160000_ciclo_vida_turmas_fixas.php](apiV2/database/migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php):
+[2026_11_06_160000_ciclo_vida_turmas_fixas.php](../../database/migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php):
 
 - adiciona períodos, substituição e exclusão lógica às turmas;
 - mantém grades antigas com início em `1900-01-01` e fim aberto, sem retirar dias;
@@ -355,7 +357,7 @@ Comando focado:
 php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual|TurmaFixaGestao'
 ```
 
-Os testes de concorrência são opt-in e exigem MySQL descartável/isolado. As instruções estão no [README da API](apiV2/README.md). Nunca execute essa suíte destrutiva no banco da aplicação.
+Os testes de concorrência são opt-in e exigem MySQL descartável/isolado. As instruções estão no [README da API](../../README.md). Nunca execute essa suíte destrutiva no banco da aplicação.
 
 Limitações conhecidas:
 
@@ -369,7 +371,7 @@ Limitações conhecidas:
 
 Foi solicitado um seed **sem execução** para o tenant 5:
 
-[Tenant5TurmasFixasAlunosSeeder.php](apiV2/database/seeders/Tenant5TurmasFixasAlunosSeeder.php).
+[Tenant5TurmasFixasAlunosSeeder.php](../../database/seeders/Tenant5TurmasFixasAlunosSeeder.php).
 
 | Nome fictício | E-mail de teste |
 |---|---|
@@ -441,19 +443,19 @@ O PHP padrão do servidor relatado era 7.4; os comandos da API devem utilizar o 
 
 ## 13. Referências de implementação
 
-- [Regras de acesso, grade e vagas](apiV2/app/Services/AcessoHibridoService.php)
-- [Cadastro de turma e vínculo de grade](apiV2/app/Services/Admin/AdminTurmaFixaService.php)
-- [Gestão, períodos e auditoria de turmas](apiV2/app/Services/Admin/AdminTurmaFixaGestaoService.php)
-- [Ações de gestão no painel](painel/src/components/ck/TurmaGestaoModal.js)
-- [Testes de ciclo de vida](apiV2/tests/Feature/TurmaFixaGestaoTest.php)
-- [Criação e alteração de matrícula](apiV2/app/Services/Admin/AdminMatriculaService.php)
-- [Reposição pelo professor](apiV2/app/Services/Mobile/MobileProfessorService.php)
-- [Autorização do check-in](apiV2/app/Services/Mobile/MobileCheckinService.php)
-- [Agenda e grade do aluno](apiV2/app/Services/Mobile/MobileHorariosService.php)
-- [Histórico de presença](apiV2/app/Repositories/CheckinRepository.php)
-- [Editor de grade do painel](painel/src/components/ck/GradeTurmaEditor.js)
-- [Menu do painel](painel/src/components/LayoutBase.js)
-- [Aula no app do professor](mobile/app/checkin-turma.tsx)
-- [Testes de grade individual](apiV2/tests/Feature/GradeIndividualTest.php)
-- [Testes de concorrência](apiV2/tests/Feature/AcessoHibridoConcurrencyTest.php)
-- [Testes do seed](apiV2/tests/Feature/Tenant5TurmasFixasAlunosSeederTest.php)
+- [Regras de acesso, grade e vagas](../../app/Services/AcessoHibridoService.php)
+- [Cadastro de turma e vínculo de grade](../../app/Services/Admin/AdminTurmaFixaService.php)
+- [Gestão, períodos e auditoria de turmas](../../app/Services/Admin/AdminTurmaFixaGestaoService.php)
+- [Ações de gestão no painel](../../../painel/src/components/ck/TurmaGestaoModal.js)
+- [Testes de ciclo de vida](../../tests/Feature/TurmaFixaGestaoTest.php)
+- [Criação e alteração de matrícula](../../app/Services/Admin/AdminMatriculaService.php)
+- [Reposição pelo professor](../../app/Services/Mobile/MobileProfessorService.php)
+- [Autorização do check-in](../../app/Services/Mobile/MobileCheckinService.php)
+- [Agenda e grade do aluno](../../app/Services/Mobile/MobileHorariosService.php)
+- [Histórico de presença](../../app/Repositories/CheckinRepository.php)
+- [Editor de grade do painel](../../../painel/src/components/ck/GradeTurmaEditor.js)
+- [Menu do painel](../../../painel/src/components/LayoutBase.js)
+- [Aula no app do professor](../../../mobile/app/checkin-turma.tsx)
+- [Testes de grade individual](../../tests/Feature/GradeIndividualTest.php)
+- [Testes de concorrência](../../tests/Feature/AcessoHibridoConcurrencyTest.php)
+- [Testes do seed](../../tests/Feature/Tenant5TurmasFixasAlunosSeederTest.php)

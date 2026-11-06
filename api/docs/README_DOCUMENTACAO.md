@@ -1,5 +1,8 @@
 # 📖 Documentação AppCheckin API
 
+Os documentos de turmas foram centralizados em [apiV2/docs/turmas](../../apiV2/docs/turmas/README.md).
+Os arquivos marcados como históricos nessa pasta descrevem apenas a API Slim antiga.
+
 ## 🚀 Comece Aqui
 
 ### Para Novo Desenvolvedor
@@ -49,14 +52,14 @@
 - [DASHBOARD_ENDPOINTS.md](./DASHBOARD_ENDPOINTS.md) - Endpoints do dashboard
 - [API_MOBILE_ENDPOINTS.md](./API_MOBILE_ENDPOINTS.md) - Endpoints mobile
 - [MOBILE_WOD_ENDPOINT.md](./MOBILE_WOD_ENDPOINT.md) - Endpoints de WOD
-- [ENDPOINT_DETALHES_TURMA.md](./ENDPOINT_DETALHES_TURMA.md) - Detalhes de turmas
+- [ENDPOINT_DETALHES_TURMA.md](../../apiV2/docs/turmas/legacy-api/ENDPOINT_DETALHES_TURMA.md) - Detalhes de turma (API Slim antiga)
 
 ### 🎓 Funcionalidades Específicas
 - [CONTROLE_PRESENCA.md](./CONTROLE_PRESENCA.md) - Sistema de presença
 - [CHECKLIST_IMPLEMENTACAO.md](./CHECKLIST_IMPLEMENTACAO.md) - Implementação de funcionalidades
 - [ABATER_CREDITO_PAGAMENTO.md](./ABATER_CREDITO_PAGAMENTO.md) - Sistema de créditos
 - [DESFAZER_CHECKIN.md](./DESFAZER_CHECKIN.md) - Desfazer check-ins
-- [DESATIVAR_TURMAS_E_DIAS.md](./DESATIVAR_TURMAS_E_DIAS.md) - Desativar turmas
+- [DESATIVAR_TURMAS_E_DIAS.md](../../apiV2/docs/turmas/legacy-api/DESATIVAR_TURMAS_E_DIAS.md) - Desativar turmas (API Slim antiga)
 
 ### 💳 Pagamentos
 - [IMPLEMENTACAO_PAGAMENTOS.md](./IMPLEMENTACAO_PAGAMENTOS.md) - Sistema de pagamentos
@@ -68,11 +71,11 @@
 - [EXECUTAR_SEED.md](./EXECUTAR_SEED.md) - Executar seeders
 - [FALTANDO_MIGRATIONS.md](./FALTANDO_MIGRATIONS.md) - Migrations faltantes
 - [MIGRATION_058_NOTES.md](./MIGRATION_058_NOTES.md) - Notas de migration
-- [DOCUMENTACAO_REPLICACAO.md](./DOCUMENTACAO_REPLICACAO.md) - Replicação de dados
+- [DOCUMENTACAO_REPLICACAO.md](../../apiV2/docs/turmas/legacy-api/DOCUMENTACAO_REPLICACAO.md) - Índice histórico de replicação
 
 ### 🐛 Troubleshooting
 - [GUIA_TESTES.md](./GUIA_TESTES.md) - Guia completo de testes
-- [ANÁLISE_CHECKIN_TURMA.md](./ANÁLISE_CHECKIN_TURMA.md) - Análise de check-ins
+- [ANALISE_CHECKIN_TURMA.md](../../apiV2/docs/turmas/legacy-api/ANALISE_CHECKIN_TURMA.md) - Análise de check-ins (API Slim antiga)
 - [CONCLUSAO.md](./CONCLUSAO.md) - Conclusões e lições aprendidas
 - [RELATORIO_FINAL.md](./RELATORIO_FINAL.md) - Relatório final
 
@@ -80,7 +83,7 @@
 - [QUICKSTART_MULTITENANT.md](./QUICKSTART_MULTITENANT.md) - Setup multi-tenant
 - [ANALISE_CONSTRAINTS_USUARIO.md](./ANALISE_CONSTRAINTS_USUARIO.md) - Constraints de usuários
 - [CORRECAO_DIAS_TENANT.md](./CORRECAO_DIAS_TENANT.md) - Correção de dias por tenant
-- [EXEMPLO_REPLICACAO_TURMAS.md](./EXEMPLO_REPLICACAO_TURMAS.md) - Exemplo de replicação
+- [EXEMPLO_REPLICACAO_TURMAS.md](../../apiV2/docs/turmas/legacy-api/EXEMPLO_REPLICACAO_TURMAS.md) - Exemplo de replicação (API Slim antiga)
 - [REGRA_MATRICULAS_UNICA_ATIVA.md](./REGRA_MATRICULAS_UNICA_ATIVA.md) - Regra de matrícula única
 
 ### ⏰ Horários & Planejamento
@@ -208,4 +211,3 @@ Para deploy:
 **Última atualização**: 2026-01-19
 **Versão API**: 1.0.0
 **Status**: Em desenvolvimento
-

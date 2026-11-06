@@ -1,35 +1,33 @@
-# 📚 Documentação: Endpoint de Replicação de Turmas
+# 📚 Documentação histórica: Replicação de Turmas na API Slim
+
+Este material descreve a API Slim antiga. Os documentos relacionados foram organizados em
+[apiV2/docs/turmas/legacy-api](README.md) e não representam
+o contrato atual da API v2.
 
 ## 📋 Índice de Documentação
 
-### 1. **QUICK_START_REPLICACAO.sh** ⚡
-   - Guia rápido com exemplos de uso
-   - Comandos curl prontos para usar
-   - Dicas e troubleshooting
-   - **Comece aqui se quer usar o endpoint agora**
-
-### 2. **REPLICAR_TURMAS_API.md** 📖
+### 1. **REPLICAR_TURMAS_API.md** 📖
    - Referência técnica completa
    - Parâmetros detalhados
    - Respostas e códigos HTTP
    - Comportamento de conflitos
    - **Leia isto para entender todos os detalhes da API**
 
-### 3. **EXEMPLO_REPLICACAO_TURMAS.md** 💡
+### 2. **EXEMPLO_REPLICACAO_TURMAS.md** 💡
    - Cenários práticos de uso
    - Exemplo com dados reais da academia
    - Como lidar com conflitos
    - Próximos passos e otimizações
    - **Leia isto para ver exemplos do mundo real**
 
-### 4. **RESUMO_REPLICACAO_TURMAS.md** 📊
+### 3. **RESUMO_REPLICACAO_TURMAS.md** 📊
    - Visão geral da implementação
    - Arquivos modificados/criados
    - Status dos testes
    - Roadmap futuro
    - **Leia isto para entender o que foi feito**
 
-### 5. **RESUMO_REPLICACAO_TURMAS.md** (este arquivo) 📚
+### 4. **DOCUMENTACAO_REPLICACAO.md** (este arquivo) 📚
    - Índice e navegação
    - Links para outras documentações
 
@@ -38,7 +36,7 @@
 ## 🎯 Por Onde Começar?
 
 ### Se você quer **usar o endpoint agora**:
-1. Leia [QUICK_START_REPLICACAO.sh](QUICK_START_REPLICACAO.sh)
+1. Leia [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md)
 2. Execute um dos exemplos curl fornecidos
 3. Verifique a resposta
 
@@ -48,9 +46,8 @@
 3. Consulte [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md) para detalhes
 
 ### Se você quer **verificar a implementação**:
-1. Execute `php verify_replication_endpoint.php`
-2. Revise os testes em [verify_replication_endpoint.php](verify_replication_endpoint.php)
-3. Leia os comentários no código em [app/Controllers/TurmaController.php](app/Controllers/TurmaController.php)
+1. Leia a implementação em [TurmaController.php](../../../../api/app/Controllers/TurmaController.php)
+2. Consulte os cenários em [EXEMPLO_REPLICACAO_TURMAS.md](EXEMPLO_REPLICACAO_TURMAS.md)
 
 ### Se você quer **integrar com seu frontend**:
 1. Leia [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md) para request/response
@@ -76,17 +73,12 @@ curl -X POST http://localhost:8080/admin/turmas/replicar \
 ## 📁 Arquivos Relacionados
 
 ### Documentação
-- `QUICK_START_REPLICACAO.sh` - Exemplos pronto para usar
-- `REPLICAR_TURMAS_API.md` - Referência técnica
-- `EXEMPLO_REPLICACAO_TURMAS.md` - Cenários práticos
-- `RESUMO_REPLICACAO_TURMAS.md` - Visão geral
-
-### Testes
-- `test_replicar_turmas.php` - Teste básico de replicação
-- `verify_replication_endpoint.php` - Verificação completa (✅ TODOS OS TESTES PASSARAM)
+- [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md) - Referência técnica
+- [EXEMPLO_REPLICACAO_TURMAS.md](EXEMPLO_REPLICACAO_TURMAS.md) - Cenários práticos
+- [RESUMO_REPLICACAO_TURMAS.md](RESUMO_REPLICACAO_TURMAS.md) - Visão geral
 
 ### Código
-- `app/Controllers/TurmaController.php` - Métodos `replicarPorDiasSemana()` e `buscarDiasDoMes()`
+- [TurmaController.php](../../../../api/app/Controllers/TurmaController.php) - Métodos `replicarPorDiasSemana()` e `buscarDiasDoMes()`
 - `routes/api.php` - Rota `POST /admin/turmas/replicar`
 
 ---
@@ -171,10 +163,10 @@ curl -X POST http://localhost:8080/admin/turmas/replicar \
 → Veja [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md)
 
 ### Erro ao usar?
-→ Veja seção "Troubleshooting" em [QUICK_START_REPLICACAO.sh](QUICK_START_REPLICACAO.sh)
+→ Confira as respostas e conflitos em [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md)
 
 ### Quer verificar a implementação?
-→ Execute `php verify_replication_endpoint.php`
+→ Consulte a [implementação antiga](../../../../api/app/Controllers/TurmaController.php)
 
 ---
 

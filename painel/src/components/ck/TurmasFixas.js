@@ -9,7 +9,16 @@ import GradeTurmaEditor from './GradeTurmaEditor';
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const diasAbreviados = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const vazio = { nome: '', professor_id: '', modalidade_id: '', horario_inicio: '', horario_fim: '', capacidade: '12', dias_semana: [], checkin_livre: false };
-const erroApi = (e) => Object.values(e?.response?.data?.errors || {}).flat().join(' ') || e?.response?.data?.message || e.message;
+const erroApi = (e) => {
+  const data = e?.response?.data;
+  const message = data?.message;
+  const details = Object.values(data?.errors || {}).flat().join(' ');
+  if (Array.isArray(data?.errors?.from) && data.errors.from.includes('validation.after')) {
+    return 'A alteração deve começar amanhã ou em uma data futura para preservar as aulas anteriores. A turma continua recorrente, sem data de término.';
+  }
+  if (typeof message === 'string' && message !== 'The given data was invalid.' && !message.startsWith('validation.')) return message;
+  return details || message || e.message;
+};
 const hora = (value) => String(value || '').slice(0, 5);
 const minutosDoDia = (value) => {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
@@ -278,7 +287,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
           </div>
           {gradeAlterada ? <>
             <TextField label="Aplicar a partir de" type="date" min={amanha()} value={desde} onChange={(event) => setDesde(event.target.value)} />
-            <p className="ck-field__hint">Aulas anteriores e histórico ficam preservados. Os alunos afetados abaixo serão transferidos para a nova grade.</p>
+            <p className="ck-field__hint">Esta data inicia a nova versão; a turma continua recorrente, sem data de término. Aulas anteriores e histórico ficam preservados.</p>
             {erroVinculos ? <Callout tone="danger" title="Não foi possível carregar os vínculos">{erroVinculos}<Button size="sm" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></Callout> : null}
             {loadingVinculos ? <p role="status">Carregando alunos afetados…</p> : (detalhe?.alunos || []).map((aluno) => {
               const item = remapeamentos[String(aluno.matricula_id)] || { dias_semana: [] };

@@ -7,6 +7,7 @@ use App\Services\Admin\AdminTurmaFixaGestaoService;
 use App\Services\Admin\AdminTurmaFixaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class TurmaFixaController extends Controller
 {
@@ -32,7 +33,14 @@ class TurmaFixaController extends Controller
 
     public function actions(Request $request, AdminTurmaFixaGestaoService $service): JsonResponse
     {
-        return response()->json($service->executar($this->tenant($request), (int) $request->attributes->get('userId') ?: null, $request->all()));
+        try {
+            return response()->json($service->executar($this->tenant($request), (int) $request->attributes->get('userId') ?: null, $request->all()));
+        } catch (ValidationException $exception) {
+            $errors = $exception->errors();
+            $message = reset($errors)[0];
+
+            return response()->json(['message' => $message, 'errors' => $errors], 422);
+        }
     }
 
     public function store(Request $request, AdminTurmaFixaService $service): JsonResponse

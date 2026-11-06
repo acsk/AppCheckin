@@ -389,4 +389,4 @@ const results = await Promise.all([
 ## Ver Também
 
 - [ROTAS_POR_PAPEL.md](ROTAS_POR_PAPEL.md) - Documentação completa de todas as rotas por role
-- [REPLICAR_TURMAS_API.md](REPLICAR_TURMAS_API.md) - Endpoint para replicar turmas
+- [REPLICAR_TURMAS_API.md](../../apiV2/docs/turmas/legacy-api/REPLICAR_TURMAS_API.md) - Endpoint legado para replicar turmas

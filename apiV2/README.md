@@ -52,7 +52,7 @@ Pagamentos usam `App\Services\MercadoPagoService` (portado da Slim) com credenci
 
 ### Acesso híbrido às aulas
 
-Consulte a [documentação consolidada de turmas fixas, grade individual, reposições e seed do tenant 5](../TURMAS_FIXAS_E_ACESSO_HIBRIDO.md) para o histórico da implementação, regras operacionais, evidências e roteiro de publicação.
+Toda a documentação de turmas está organizada no [índice de turmas da API v2](docs/turmas/README.md).
 
 O mesmo tenant pode combinar **horário livre** e **turma fixa**, sem configuração específica para a Aqua4Styles:
 
@@ -69,7 +69,7 @@ O mesmo tenant pode combinar **horário livre** e **turma fixa**, sem configura�
 
 Rotas administrativas: `GET/POST /v2/admin/turmas-fixas`, `PUT /v2/admin/turmas-fixas/{id}`, `GET /v2/admin/matriculas/{id}/grade` e `PUT /v2/admin/matriculas/{id}/tipo-acesso`. A criação de matrícula e a alteração de acesso recebem `grade: [{turma_fixa_id, dia_semana}]`. Exigem JWT de administrador e tenant selecionado. `POST /v2/mobile/professor/reposicoes` recebe `turma_id` da ocorrência e `aluno_id`, validando tenant, professor responsável, modalidade, vigência e capacidade no backend.
 
-**Gestão de Turmas:** `GET /v2/admin/turmas-fixas/{id}?desde=AAAA-MM-DD` retorna detalhe, vínculos afetados na data, próximas aulas com ocupação, pausas e auditoria. `POST /v2/admin/turmas-fixas/acoes` recebe `{acao, ids, dados}` para duplicar, professor, grade, capacidade, pausar, retomar, arquivar, reativar e excluir. A permissão da equipe é `aulas.gerenciar`, com tenant obrigatório. Professor/grade/arquivamento exigem data futura; mudanças criam nova versão da turma e períodos da grade, sem reescrever histórico ou contrato. Grade exige remapeamento por matrícula; arquivamento exige transferência ou retirada explícita. Lotes de até 50 IDs são atômicos e podem receber `dados.por_turma: [{id, dados}]` para conferências específicas. Pausas mantêm cobrança/vigência; avisos opcionais usam a Central de Comunicação e sua falha desfaz a operação. Exclusão é lógica e bloqueada por qualquer vínculo/presença/reposição histórica. Consulte o [documento completo](../TURMAS_FIXAS_E_ACESSO_HIBRIDO.md).
+**Gestão de Turmas:** `GET /v2/admin/turmas-fixas/{id}?desde=AAAA-MM-DD` retorna detalhe, vínculos afetados na data, próximas aulas com ocupação, pausas e auditoria. `POST /v2/admin/turmas-fixas/acoes` recebe `{acao, ids, dados}` para duplicar, professor, grade, capacidade, pausar, retomar, arquivar, reativar e excluir. A permissão da equipe é `aulas.gerenciar`, com tenant obrigatório. Professor/grade/arquivamento exigem data futura; mudanças criam nova versão da turma e períodos da grade, sem reescrever histórico ou contrato. Grade exige remapeamento por matrícula; arquivamento exige transferência ou retirada explícita. Lotes de até 50 IDs são atômicos e podem receber `dados.por_turma: [{id, dados}]` para conferências específicas. Pausas mantêm cobrança/vigência; avisos opcionais usam a Central de Comunicação e sua falha desfaz a operação. Exclusão é lógica e bloqueada por qualquer vínculo/presença/reposição histórica. Consulte o [documento completo](docs/turmas/TURMAS_FIXAS_E_ACESSO_HIBRIDO.md).
 
 **Publicação:** faça backup e publique a API antes dos clientes. Não foi executada migração em produção nesta implementação.
 
