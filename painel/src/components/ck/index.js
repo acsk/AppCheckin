@@ -1112,6 +1112,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
                   x.durationDays != null ? h('span', { className: 'ck-nm__planmeta' }, h(Icon, { name: 'clock', size: 14 }), x.durationDays + (x.durationDays === 1 ? ' dia de acesso' : ' dias de acesso')) : null,
                   h('span', { className: 'ck-tile__check', 'aria-hidden': true }, h(Icon, { name: 'check', size: 14, strokeWidth: 3 })));
               })) : h('p', { className: 'ck-nm__wait' }, 'Escolha a modalidade para ver os planos.')),
+            p.schedule ? step(n++, 'Turmas na semana', !!p.scheduleComplete, p.schedule) : null,
             step(n++, 'Ciclo de pagamento', !!cycObj, p.loadingCycles ? h('p', { role: 'status' }, 'Carregando ciclos…') : planObj ? h('div', { className: 'ck-nm__cycles', role: 'radiogroup', 'aria-label': 'Ciclo de pagamento' }, planCycles.length ? planCycles.map(function (c) {
                 var on = c.id === cyc[0];
                 var monthly = c.months ? c.price / c.months : c.price;
@@ -1138,6 +1139,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
             kind[0] === 'plano' ? h(React.Fragment, null,
               h('div', null, h('dt', null, 'Modalidade'), h('dd', { className: modObj ? null : 'is-empty' }, modObj ? modObj.name : 'Não escolhida')),
               h('div', null, h('dt', null, 'Plano'), h('dd', { className: planObj ? null : 'is-empty' }, planObj ? planObj.name : 'Não escolhido')),
+              p.scheduleSummary ? h('div', null, h('dt', null, 'Turmas'), h('dd', { className: p.scheduleSummary === 'Não escolhidas' ? 'is-empty' : null }, p.scheduleSummary)) : null,
               h('div', null, h('dt', null, 'Ciclo'), h('dd', { className: cycObj ? null : 'is-empty' }, cycObj ? cycObj.label : 'Não escolhido'))) :
               h('div', null, h('dt', null, 'Pacote'), h('dd', { className: pkgObj ? null : 'is-empty' }, pkgObj ? pkgObj.name : 'Não escolhido'))),
           h('div', { className: 'ck-nm__start' },

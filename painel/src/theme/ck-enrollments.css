@@ -149,6 +149,43 @@
 .ck-nm__summary .ck-btn--ghost { color: var(--sidebar-muted); }
 .ck-nm__summary .ck-btn--ghost:hover:not(:disabled) { background: var(--sidebar-hover); color: var(--sidebar-ink); }
 
+/* Class selection during enrollment */
+.ck-nmt { display: grid; gap: var(--space-4); }
+.ck-nmt__access { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.ck-nmt__mode { display: grid; gap: 4px; padding: var(--space-4); text-align: left; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); cursor: pointer; }
+.ck-nmt__mode strong { font-size: 15px; }
+.ck-nmt__mode span { color: var(--ink-muted); font-size: 13px; line-height: 18px; }
+.ck-nmt__mode[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary); }
+.ck-nmt__mode:focus-visible, .ck-nmt__opt:focus-visible, .ck-nmt__sugg:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.ck-nmt__selector { display: grid; gap: var(--space-3); }
+.ck-nmt__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.ck-nmt__hint { margin: 0; color: var(--ink-muted); font-size: 13px; }
+.ck-nmt__clear { border: 0; padding: 4px 8px; border-radius: var(--radius-sm); background: transparent; color: var(--primary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ck-nmt__clear:hover { background: var(--surface-hover); }
+.ck-nmt__sugg { justify-self: start; padding: 6px 12px; border: 1px dashed var(--primary); border-radius: var(--radius-full); background: var(--primary-soft); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ck-nmt__days { display: grid; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.ck-nmt__day { display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: start; gap: var(--space-3); padding: 10px 12px; }
+.ck-nmt__day + .ck-nmt__day { border-top: 1px solid var(--line); }
+.ck-nmt__day.is-taken { background: color-mix(in srgb, var(--primary) 4%, var(--surface)); }
+.ck-nmt__dname { padding-top: 10px; color: var(--ink-muted); font-size: 13px; }
+.ck-nmt__day.is-taken .ck-nmt__dname { color: var(--ink); }
+.ck-nmt__opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ck-nmt__opt { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; max-width: 100%; padding: 6px 12px 6px 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.ck-nmt__opt:hover:not(:disabled) { border-color: var(--ink-subtle); }
+.ck-nmt__opt[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--primary); }
+.ck-nmt__opt:disabled { cursor: not-allowed; opacity: .5; }
+.ck-nmt__check { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border: 1.5px solid var(--control-border); border-radius: var(--radius-full); color: transparent; }
+.ck-nmt__opt[aria-pressed="true"] .ck-nmt__check { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.ck-nmt__class { display: grid; min-width: 0; }
+.ck-nmt__class strong { font-size: 13px; line-height: 17px; }
+.ck-nmt__class small { color: var(--ink-muted); font-size: 12px; line-height: 16px; }
+.ck-nmt__empty { margin: 0; padding: var(--space-4); border: 1px dashed var(--line-strong); border-radius: var(--radius-lg); color: var(--ink-muted); font-size: 14px; }
+@media (max-width: 560px) {
+  .ck-nmt__access { grid-template-columns: 1fr; }
+  .ck-nmt__day { grid-template-columns: 1fr; gap: 6px; }
+  .ck-nmt__dname { padding-top: 0; }
+  .ck-nmt__opt { flex: 1 1 100%; }
+}
 
 /* ---------- ExcluirMatriculaModal (ck-xm) ---------- */
 .ck-xm__icon { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: var(--radius-lg); background: var(--danger-soft); color: var(--danger); }

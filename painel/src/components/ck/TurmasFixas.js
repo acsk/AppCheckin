@@ -39,7 +39,7 @@ function formTurma(turma) {
   };
 }
 
-export function TurmasFixas({ onClose, onSaved, initialId }) {
+export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [form, setForm] = useState(vazio);
@@ -170,7 +170,10 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
             <TextField label="Início" type="time" disabled={!!form.id} value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
             <TextField label="Fim" type="time" disabled={!!form.id} value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
           </div>
-          {form.id ? <p className="ck-field__hint">Para alterar dias ou horários, crie outra turma e transfira a grade dos alunos pela matrícula.</p> : null}
+          {form.id ? <div className="ck-field__hint">
+            <p>Para preservar o histórico, a mudança de dias e horário cria uma nova versão da turma e permite remapear os alunos.</p>
+            {onChangeSchedule ? <Button size="sm" icon="calendar" onClick={() => onChangeSchedule(form.id)}>Alterar dias e horário</Button> : null}
+          </div> : null}
           </section>
           <section className="ck-pc__sec">
           <header><span className="ck-pc__secn">3</span><h3>Professor e vagas</h3></header>
