@@ -117,7 +117,7 @@ class AcessoHibridoService
                 'tenant_id' => $tenantId, 'matricula_id' => $matriculaId,
                 'turma_fixa_id' => $g['turma_fixa_id'], 'dia_semana' => $g['dia_semana'],
                 'created_at' => now(), 'updated_at' => now(),
-                ...($this->gradeTemporal() ? ['vigencia_inicio' => AcademyDateTime::today()] : []),
+                ...($this->gradeTemporal() ? ['vigencia_inicio' => $g['vigencia_inicio'] ?? AcademyDateTime::today()] : []),
             ]);
         }
         DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $matriculaId)->update(['grade_revisao' => false]);
@@ -149,7 +149,8 @@ class AcessoHibridoService
             if (! $plano) {
                 throw ValidationException::withMessages(['plano_id' => 'Plano não pertence ao tenant.']);
             }
-            $grade = array_key_exists('grade', $dados) ? $dados['grade'] : (! empty($atual['id']) ? $this->grade($tenantId, (int) $atual['id']) : []);
+            $grade = array_key_exists('grade', $dados) ? $dados['grade'] : (! empty($atual['id'])
+                ? $this->grade($tenantId, (int) $atual['id'], null, $this->gradeTemporal()) : []);
             if (! $this->gradeAtualizada()) {
                 $turma = DB::table('turmas_fixas')->where('id', $id)->where('tenant_id', $tenantId)->first();
                 $grade = $turma ? array_map(fn ($d) => ['turma_fixa_id' => $id, 'dia_semana' => $d], json_decode($turma->dias_semana, true)) : [];
@@ -158,7 +159,7 @@ class AcessoHibridoService
                 throw ValidationException::withMessages(['grade' => 'Selecione ao menos um horário recorrente.']);
             }
             $vistos = [];
-            foreach ($grade as $g) {
+            foreach ($grade as $indice => $g) {
                 if (! is_array($g) || ! isset($g['turma_fixa_id'], $g['dia_semana'])
                     || filter_var($g['turma_fixa_id'], FILTER_VALIDATE_INT) === false
                     || filter_var($g['dia_semana'], FILTER_VALIDATE_INT) === false) {
@@ -171,16 +172,20 @@ class AcessoHibridoService
                     || isset($vistos[$key])) {
                     throw ValidationException::withMessages(['grade' => 'Selecione dias distintos de turmas ativas da modalidade do plano neste tenant.']);
                 }
-                if ($this->gradeTemporal() && ($turma->deleted_at || $turma->vigencia_inicio > ($dataGrade ?? AcademyDateTime::today())
-                    || ($turma->vigencia_fim !== null && ($dataGrade === null || $turma->vigencia_fim < $dataGrade)))) {
-                    throw ValidationException::withMessages(['grade' => 'A turma foi arquivada ou possui substituição agendada. Use a gestão de Turmas para conferir os vínculos.']);
+                if ($this->gradeTemporal()) {
+                    $vigenciaGrade = $dataGrade ?? max(AcademyDateTime::today(), $turma->vigencia_inicio);
+                    if ($turma->deleted_at || $turma->vigencia_inicio > $vigenciaGrade
+                        || ($turma->vigencia_fim !== null && ($dataGrade === null || $turma->vigencia_fim < $vigenciaGrade))) {
+                        throw ValidationException::withMessages(['grade' => 'A turma não está disponível para os dias selecionados.']);
+                    }
+                    $grade[$indice]['vigencia_inicio'] = $vigenciaGrade;
                 }
                 $vistos[$key] = true;
             }
             $alterando = array_key_exists('grade', $dados) || isset($dados['plano_id']) || ! $atual;
             $limite = (int) ($plano->checkins_semanais ?? 0);
-            if ($alterando && ! $preservarFrequencia && $limite > 0 && count($grade) > $limite) {
-                throw ValidationException::withMessages(['grade' => "O plano permite até {$limite} horários fixos por semana."]);
+            if ($alterando && ! $preservarFrequencia && $limite > 0 && count($grade) !== $limite) {
+                throw ValidationException::withMessages(['grade' => "O plano exige exatamente {$limite} horários fixos por semana."]);
             }
             if (! empty($dados['pacote_id'])) {
                 throw ValidationException::withMessages(['pacote_id' => 'Turma fixa exige um plano individual.']);

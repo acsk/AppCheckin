@@ -47,6 +47,8 @@ O cadastro mantém:
 - capacidade;
 - atividade e configuração de check-in livre.
 
+Ao selecionar dias e horários, o painel sugere automaticamente um nome como `Ter/Qui 17 às 18h`. O nome pode ser personalizado.
+
 O campo **Planos disponíveis** foi removido da interface e das validações de contratação/vínculo. Uma mesma turma pode receber alunos de planos 1x, 2x e 3x por semana, com valores distintos.
 
 Uma turma recorrente possui um horário e vários dias. Para horários diferentes, cadastre turmas distintas e combine os dias na grade do aluno.
@@ -108,9 +110,11 @@ São validados:
 - frequência semanal do plano;
 - capacidade de cada dia/horário e ocorrências afetadas.
 
-Uma frequência positiva em `planos.checkins_semanais` limita a quantidade de horários recorrentes. Zero preserva a regra de frequência ilimitada.
+Uma frequência positiva em `planos.checkins_semanais` determina a quantidade exata de horários recorrentes da matrícula (plano 2x exige duas escolhas). Zero preserva a regra de frequência ilimitada.
 
 O painel exibe e permite editar a grade. O app exibe a grade individual e a próxima aula elegível.
+
+Turmas ativas com início futuro podem ser escolhidas na matrícula antes do primeiro dia. O vínculo individual começa na vigência da turma; isso permite organizar a grade com antecedência sem liberar check-in antes do início. A frequência 2x, por exemplo, permite selecionar dois pares turma/dia, na mesma turma ou em turmas diferentes.
 
 ### Horário livre
 

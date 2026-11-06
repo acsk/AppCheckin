@@ -7,9 +7,23 @@ import { showSuccess } from '../../utils/toast';
 import GradeTurmaEditor from './GradeTurmaEditor';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const diasAbreviados = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const vazio = { nome: '', professor_id: '', modalidade_id: '', horario_inicio: '', horario_fim: '', capacidade: '12', dias_semana: [], checkin_livre: false };
 const erroApi = (e) => Object.values(e?.response?.data?.errors || {}).flat().join(' ') || e?.response?.data?.message || e.message;
 const hora = (value) => String(value || '').slice(0, 5);
+const horaNome = (value) => {
+  const [horas, minutos] = hora(value).split(':');
+  if (!horas || !minutos) return '';
+  return `${Number(horas)}${minutos === '00' ? '' : `:${minutos}`}`;
+};
+
+function nomeAutomatico(turma) {
+  const diasSelecionados = turma.dias_semana.map(Number).filter((dia) => dia >= 1 && dia <= 7).sort((a, b) => a - b);
+  const inicio = horaNome(turma.horario_inicio);
+  const fim = horaNome(turma.horario_fim);
+  if (!diasSelecionados.length || !inicio || !fim) return '';
+  return `${diasSelecionados.map((dia) => diasAbreviados[dia - 1]).join('/')} ${inicio} às ${fim}h`;
+}
 
 function formTurma(turma) {
   return {
@@ -29,6 +43,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [form, setForm] = useState(vazio);
+  const [nomePersonalizado, setNomePersonalizado] = useState(false);
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -49,6 +64,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
         setProfessores(Array.isArray(professoresLista) ? professoresLista : []);
         setModalidades(Array.isArray(modalidadesLista) ? modalidadesLista : []);
         setForm(selecionada ? formTurma(selecionada) : vazio);
+        setNomePersonalizado(!!selecionada);
         setReady(true);
       })
       .catch((e) => { if (active) setErro(erroApi(e)); })
@@ -56,7 +72,24 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
     return () => { active = false; };
   }, [reload, initialId]);
 
-  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const set = (key, value) => {
+    if (key === 'nome') {
+      const personalizado = !!value.trim();
+      setNomePersonalizado(personalizado);
+      setForm((current) => ({
+        ...current,
+        nome: personalizado ? value : nomeAutomatico(current),
+      }));
+      return;
+    }
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (!nomePersonalizado && ['dias_semana', 'horario_inicio', 'horario_fim'].includes(key)) {
+        next.nome = nomeAutomatico(next);
+      }
+      return next;
+    });
+  };
   const toggleDia = (dia) => set('dias_semana', form.dias_semana.includes(dia)
     ? form.dias_semana.filter((item) => item !== dia)
     : [...form.dias_semana, dia]);
@@ -80,6 +113,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
       else await acessoHibridoService.criarTurma(dados);
       showSuccess('Turma recorrente salva. Matrículas, valores e pagamentos existentes foram preservados.');
       setForm(vazio);
+      setNomePersonalizado(false);
       setReload((value) => value + 1);
       onSaved?.();
     } catch (e) {
@@ -241,7 +275,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
         return;
       }
       if (maximo != null && selecionados.length > maximo) {
-        setErro(`A frequência do plano permite até ${maximo} dia(s) por semana.`);
+        setErro(`O plano exige exatamente ${maximo} dia(s) e horário(s) por semana.`);
         return;
       }
       const chaves = selecionados.map((item) => `${item.turma_fixa_id}:${item.dia_semana}`);

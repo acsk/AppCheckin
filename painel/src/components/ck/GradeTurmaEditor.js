@@ -12,6 +12,10 @@ const dias = [
 ];
 
 const horario = (value) => String(value || '').slice(0, 5);
+const hoje = () => {
+  const data = new Date();
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+};
 const diasDaTurma = (turma) => Array.isArray(turma?.dias_semana)
   ? turma.dias_semana.map(Number).filter((dia) => dia >= 1 && dia <= 7)
   : [];
@@ -36,7 +40,9 @@ export default function GradeTurmaEditor({
   const gruposDisponiveis = (item) => turmas.filter((turma) => (
     (!modalidadeId || Number(turma.modalidade_id) === Number(modalidadeId))
     && ((dataVigencia ? (!turma.vigencia_inicio || turma.vigencia_inicio <= dataVigencia)
-      && (!turma.vigencia_fim || turma.vigencia_fim >= dataVigencia) : turma.disponivel_matricula !== false)
+      && (!turma.vigencia_fim || turma.vigencia_fim >= dataVigencia)
+      : turma.disponivel_matricula !== false
+        || (Number(turma.ativo) === 1 && !turma.deleted_at && !turma.vigencia_fim))
       || String(turma.id) === String(item.turma_fixa_id))
     && (turma.ativo == null || Number(turma.ativo) === 1 || String(turma.id) === String(item.turma_fixa_id))
   ));
@@ -45,7 +51,7 @@ export default function GradeTurmaEditor({
     <section className="ck-grade-editor" aria-label="Grade recorrente da matrícula">
       <header>
         <strong>Grade semanal</strong>
-        {frequencia > 0 ? <span>Frequência do plano: {frequencia}x por semana</span> : null}
+        {frequencia > 0 ? <span>O plano exige {frequencia} horário(s) por semana</span> : null}
       </header>
       {selecionados.map((item, indice) => {
         const turma = turmas.find((row) => String(row.id) === String(item.turma_fixa_id));
@@ -62,7 +68,7 @@ export default function GradeTurmaEditor({
               disabled={disabled}
               options={gruposDisponiveis(item).map((grupo) => ({
                 value: String(grupo.id),
-                label: `${grupo.nome} · ${horario(grupo.horario_inicio)}–${horario(grupo.horario_fim)}`,
+                label: `${grupo.nome} · ${horario(grupo.horario_inicio)}–${horario(grupo.horario_fim)}${grupo.vigencia_inicio > hoje() ? ` · início ${new Date(`${grupo.vigencia_inicio}T00:00:00`).toLocaleDateString('pt-BR')}` : ''}`,
               }))}
               onChange={(event) => {
                 const next = turmas.find((row) => String(row.id) === event.target.value);
@@ -108,7 +114,7 @@ export default function GradeTurmaEditor({
       >
         Adicionar dia ou turma
       </Button>
-      {maximo != null ? <p>A grade permite até {maximo} dia(s) por semana.</p> : null}
+      {maximo != null ? <p>Selecione exatamente {maximo} dia(s) e horário(s) por semana, conforme o plano.</p> : null}
       {!turmas.length ? <p>Nenhuma turma recorrente ativa foi cadastrada.</p> : null}
     </section>
   );

@@ -157,7 +157,7 @@ export default function FormMatriculaScreen() {
     if (tipoAcesso === 'turma_fixa') {
       if (tipo !== 'plano') return 'Turma fixa exige uma matrícula por plano.';
       if (!grade.length || grade.some((item) => !item.turma_fixa_id || !item.dia_semana)) return 'Selecione uma turma e um dia para cada entrada da grade.';
-      if (maximoGrade != null && grade.length > maximoGrade) return `A frequência do plano permite até ${maximoGrade} dia(s) por semana.`;
+      if (maximoGrade != null && grade.length !== maximoGrade) return `O plano exige exatamente ${maximoGrade} dia(s) e horário(s) por semana.`;
       const chaves = grade.map((item) => `${item.turma_fixa_id}:${item.dia_semana}`);
       if (new Set(chaves).size !== chaves.length) return 'A mesma turma e o mesmo dia não podem aparecer mais de uma vez.';
       if (grade.some((item) => {

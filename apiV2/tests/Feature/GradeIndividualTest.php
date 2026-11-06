@@ -53,6 +53,14 @@ class GradeIndividualTest extends TestCase
     public function test_dois_horarios_em_turmas_diferentes_e_dias_individuais(): void
     {
         $grade = [['turma_fixa_id' => 1, 'dia_semana' => 2], ['turma_fixa_id' => 2, 'dia_semana' => 4]];
+        try {
+            app(AdminTurmaFixaService::class)->vincularMatricula(3, 1, [
+                'tipo_acesso' => 'turma_fixa', 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 2]],
+            ]);
+            $this->fail('Plano 2x aceitou uma grade com apenas um horário.');
+        } catch (ValidationException $e) {
+            $this->assertNotEmpty($e->errors());
+        }
         app(AdminTurmaFixaService::class)->vincularMatricula(3, 1, ['tipo_acesso' => 'turma_fixa', 'grade' => $grade]);
         $acesso = app(AcessoHibridoService::class);
         $this->assertCount(2, $acesso->grade(3, 1));
@@ -68,6 +76,35 @@ class GradeIndividualTest extends TestCase
         $this->expectException(ValidationException::class);
         app(AdminTurmaFixaService::class)->vincularMatricula(3, 1, ['tipo_acesso' => 'turma_fixa',
             'grade' => [...$grade, ['turma_fixa_id' => 2, 'dia_semana' => 6]]]);
+    }
+
+    public function test_aluno_pode_ser_vinculado_hoje_a_turma_com_inicio_futuro_sem_checkin_antecipado(): void
+    {
+        (require database_path('migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php'))->up();
+        $inicioFuturo = AcademyDateTime::now()->modify('next Thursday')->format('Y-m-d');
+        DB::table('turmas_fixas')->where('id', 2)->update(['vigencia_inicio' => $inicioFuturo]);
+
+        app(AdminTurmaFixaService::class)->vincularMatricula(3, 1, ['tipo_acesso' => 'turma_fixa', 'grade' => [
+            ['turma_fixa_id' => 1, 'dia_semana' => 2],
+            ['turma_fixa_id' => 2, 'dia_semana' => 4],
+        ]]);
+
+        $acesso = app(AcessoHibridoService::class);
+        $this->assertSame(AcademyDateTime::today(), DB::table('matricula_grade')->where('matricula_id', 1)
+            ->where('turma_fixa_id', 1)->value('vigencia_inicio'));
+        $this->assertSame($inicioFuturo, DB::table('matricula_grade')->where('matricula_id', 1)
+            ->where('turma_fixa_id', 2)->value('vigencia_inicio'));
+        $this->assertCount(1, $acesso->grade(3, 1));
+        $this->assertCount(2, $acesso->grade(3, 1, null, true));
+        $matricula = (array) DB::table('matriculas')->where('tenant_id', 3)->where('id', 1)->first();
+        $this->assertCount(2, $acesso->validarEscolha(3, [], $matricula)['grade']);
+
+        $aula = HybridFixture::aula();
+        $aula['turma_fixa_id'] = 2;
+        $aula['dia_data'] = (new \DateTimeImmutable($inicioFuturo))->modify('-7 days')->format('Y-m-d');
+        $this->assertNull($acesso->matriculaParaAula(1, 3, $aula));
+        $aula['dia_data'] = $inicioFuturo;
+        $this->assertNotNull($acesso->matriculaParaAula(1, 3, $aula));
     }
 
     public function test_mesma_turma_admite_planos_diferentes_sem_pivot(): void
