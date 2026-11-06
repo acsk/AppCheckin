@@ -603,6 +603,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
         h(MtPlanCard, { enrollment: e, today: p.today }),
         h(MtFinance, { invoices: p.invoices }),
         h(MtDiscounts, { discounts: p.discounts, onAdd: p.onAddDiscount, onEdit: p.onEditDiscount, onRemove: p.onRemoveDiscount })),
+      p.accessSection || null,
       h(MtInvoices, { invoices: p.invoices, counts: p.counts, today: p.today, onSettle: p.onSettle, onEdit: p.onEditInvoice, onDelete: p.onDeleteInvoice, onRefund: p.onRefundInvoice, onReload: p.onReload, menu: p.invoiceMenu }),
       p.children || null);
   }

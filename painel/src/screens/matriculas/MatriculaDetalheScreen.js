@@ -1439,11 +1439,11 @@ export default function MatriculaDetalheScreen() {
 
   return (
     <LayoutBase title={`Matrícula #${matricula.id}`} pageHeader={false}>
-      <TipoAcessoMatricula matricula={matricula} onSaved={carregarDados} />
       {/* O conteúdo já rola dentro do AppShell */}
       <div className="ck-mt-page">
           <Matricula
             enrollment={enrollmentDs}
+            accessSection={<TipoAcessoMatricula key={matricula.id} matricula={matricula} onSaved={carregarDados} onChangePlan={podeExibirAlterarPlano ? handleAbrirAlterarPlano : undefined} />}
             pkg={pacoteDs}
             invoices={invoicesDs}
             counts={countsDs}

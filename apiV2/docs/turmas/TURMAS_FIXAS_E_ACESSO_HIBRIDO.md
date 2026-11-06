@@ -114,7 +114,11 @@ São validados:
 
 Uma frequência positiva em `planos.checkins_semanais` determina a quantidade exata de horários recorrentes da matrícula (plano 2x exige duas escolhas). Zero preserva a regra de frequência ilimitada.
 
-O painel exibe e permite editar a grade. O app exibe a grade individual e a próxima aula elegível.
+O painel exibe e permite editar a grade. O detalhe da matrícula apresenta **Horários na semana** entre o resumo do contrato e as parcelas, com dias, horários, turmas e aviso de frequência incompleta. **Alterar horários** abre a seleção por dia, compartilhada com a nova matrícula, com prévia da mudança e validação da frequência exata antes do envio. O layout adapta a semana para lista em telas menores.
+
+A edição pelo endpoint `PUT /admin/matriculas/{id}/tipo-acesso` tem efeito imediato; os controles de data futura e aviso pelo app do protótipo `Matricula-horarios.html` não são oferecidos nesse fluxo, pois esse endpoint não aceita essas opções. Mudanças futuras já agendadas pela gestão de turmas continuam visíveis e bloqueiam a edição direta.
+
+O app exibe a grade individual e a próxima aula elegível.
 
 Turmas fixas são recorrentes por dia e horário, sem exigir data de término para a matrícula. O aluno pode ser associado imediatamente, mesmo se a versão da turma tiver início futuro; o vínculo individual começa hoje e o check-in só é permitido em ocorrências válidas da turma. As datas internas de versões preservam o histórico quando a grade é alterada. A frequência 2x exige duas escolhas de turma/dia, na mesma turma ou em turmas diferentes.
 

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Callout, Modal, SelectField, TextField } from './index';
+import { Badge, Button, Callout, Modal, SelectField, TextField } from './index';
 import { acessoHibridoService } from '../../services/acessoHibridoService';
 import modalidadeService from '../../services/modalidadeService';
 import { professorService } from '../../services/professorService';
 import { showSuccess } from '../../utils/toast';
-import GradeTurmaEditor from './GradeTurmaEditor';
+import TurmasNaSemana from './TurmasNaSemana';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const diasAbreviados = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
@@ -343,7 +343,7 @@ export function TurmasFixas({ onClose, onSaved, initialId, duplicateFromId }) {
 
 const diaNome = (dia) => dias[Number(dia) - 1] || `Dia ${dia}`;
 
-export function TipoAcessoMatricula({ matricula, onSaved }) {
+export function TipoAcessoMatricula({ matricula, onSaved, onChangePlan }) {
   const agora = new Date();
   const dataHoje = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
   const [open, setOpen] = useState(false);
@@ -354,11 +354,14 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
   const [erro, setErro] = useState('');
   const [saving, setSaving] = useState(false);
   const [loadingGrade, setLoadingGrade] = useState(true);
+  const [loadingEditor, setLoadingEditor] = useState(false);
+  const [erroCarregamento, setErroCarregamento] = useState(false);
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let active = true;
     setLoadingGrade(true);
+    setErro('');
     acessoHibridoService.gradeMatricula(matricula.id)
       .then((response) => {
         if (!active) return;
@@ -377,6 +380,9 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
   useEffect(() => {
     if (!open) return;
     let active = true;
+    setLoadingEditor(true);
+    setErroCarregamento(false);
+    setErro('');
     Promise.all([
       acessoHibridoService.listarTurmas(),
       acessoHibridoService.gradeMatricula(matricula.id),
@@ -398,12 +404,13 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
         setTipo(matricula.tipo_acesso || 'horario_livre');
         setErro('');
       })
-      .catch((e) => { if (active) setErro(erroApi(e)); });
+      .catch((e) => { if (active) { setErro(erroApi(e)); setErroCarregamento(true); } })
+      .finally(() => { if (active) setLoadingEditor(false); });
     return () => { active = false; };
   }, [open, matricula.id, matricula.tipo_acesso, matricula.checkins_semanais]);
 
   const salvar = async () => {
-    if (saving) return;
+    if (saving || loadingEditor || erroCarregamento) return;
     const selecionados = grade.filter((item) => item.turma_fixa_id && item.dia_semana);
     const frequencia = Number(gradeAtual.frequencia_semanal);
     const maximo = frequencia > 0 ? frequencia : null;
@@ -412,7 +419,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
         setErro('Escolha uma turma e um dia para cada entrada da grade.');
         return;
       }
-      if (maximo != null && selecionados.length > maximo) {
+      if (maximo != null && selecionados.length !== maximo) {
         setErro(`O plano exige exatamente ${maximo} dia(s) e horário(s) por semana.`);
         return;
       }
@@ -452,60 +459,77 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
   };
 
   const registrosGrade = gradeAtual.grade || [];
+  const fixa = matricula.tipo_acesso === 'turma_fixa';
+  const limite = Number(gradeAtual.frequencia_semanal) || 0;
+  const faltam = fixa && limite > 0 ? limite - registrosGrade.length : 0;
+  const resumoGrade = (itens, lista) => itens.map(item => {
+    const turma = lista.find(row => String(row.id) === String(item.turma_fixa_id)) || item;
+    return `${diaNome(item.dia_semana)} ${hora(turma.horario_inicio)}`;
+  }).join(', ') || 'Sem horário';
+  const antes = fixa ? resumoGrade(registrosGrade, []) : 'Horário livre';
+  const depois = tipo === 'turma_fixa' ? resumoGrade(grade, turmas) : 'Horário livre';
   return (
-    <section className="ck-card ck-mt-access">
-      <header>
-        <strong>Tipo de acesso: {matricula.tipo_acesso === 'turma_fixa' ? 'Turma fixa' : 'Horário livre'}</strong>
-        <Button size="sm" disabled={loadingGrade || gradeAtual.grade_agendada?.length > 0} onClick={() => setOpen(true)}>Editar acesso e grade</Button>
-      </header>
+    <section className="ck-card ck-mt-box ck-ma" aria-label="Horários na semana">
+      <div className="ck-mt-box__head">
+        <div className="ck-ma__titles">
+          <h2 className="ck-mt-box__title">Horários na semana</h2>
+          <span className="ck-ma__mode"><Badge tone={fixa ? 'neutral' : 'info'} icon={fixa ? 'calendar' : 'clock'}>{fixa ? 'Turma fixa' : 'Horário livre'}</Badge>
+            <span>{limite > 0 ? (fixa ? `${registrosGrade.length} de ${limite} horários do plano` : `Até ${limite}x por semana`) : 'Plano sem limite por semana'}</span>
+          </span>
+        </div>
+        <Button variant="secondary" size="sm" icon="pencil" disabled={loadingGrade || gradeAtual.grade_agendada?.length > 0} onClick={() => setOpen(true)}>{fixa ? 'Alterar horários' : 'Mudar para turma fixa'}</Button>
+      </div>
       {loadingGrade ? <p role="status">Carregando grade…</p> : (
         <>
           {erro && !open ? <Callout tone="danger" title="Não foi possível carregar a grade">{erro}</Callout> : null}
           {matricula.status_codigo === 'aguardando_vaga' ? <Callout tone="warning" title="Pagamento recebido, aguardando vaga">O pagamento está preservado; conclua o vínculo de turmas e dias quando houver disponibilidade.</Callout> : null}
-          {matricula.tipo_acesso === 'turma_fixa' && registrosGrade.length ? (
-            <div className="ck-mt-access__grade">
-              <strong>Grade semanal · frequência contratada {Number(gradeAtual.frequencia_semanal) > 0 ? `${gradeAtual.frequencia_semanal}x por semana` : 'livre'}</strong>
-              <ul>{registrosGrade.map((item, index) => (
-                <li key={`${item.turma_fixa_id}-${item.dia_semana}-${index}`}>
-                  {diaNome(item.dia_semana)} · {item.nome} · {hora(item.horario_inicio)}–{hora(item.horario_fim)}
-                </li>
-              ))}</ul>
-            </div>
-          ) : matricula.tipo_acesso === 'turma_fixa' ? <p>Nenhuma grade recorrente vinculada.</p> : null}
+          {fixa ? <div className="ck-ma__week">
+            {dias.map((dia, index) => {
+              const horarios = registrosGrade.filter(item => Number(item.dia_semana) === index + 1);
+              return <div className={`ck-ma__d${horarios.length ? ' is-on' : ''}`} key={dia}>
+                <span className="ck-ma__dn">{diasAbreviados[index]}</span>
+                {horarios.length ? horarios.map((item, i) => <div className="ck-ma__slot" key={`${item.turma_fixa_id}-${i}`}>
+                  <b>{hora(item.horario_inicio)}–{hora(item.horario_fim)}</b><span>{item.nome}</span>
+                </div>) : <i aria-hidden="true" />}
+              </div>;
+            })}
+          </div> : <p className="ck-ma__free">Faz check-in nas aulas da modalidade com vaga{limite > 0 ? `, até ${limite}x por semana` : ''}, respeitando as regras do plano.</p>}
+          {fixa && !registrosGrade.length ? <p className="ck-ma__foot">Nenhuma grade recorrente vinculada.</p> : null}
+          {faltam > 0 ? <Callout tone="warning" title={`Faltam ${faltam} horário(s) para completar o plano`}>Escolha os dias e horários da matrícula.</Callout> : null}
           {gradeAtual.grade_revisao ? <Callout tone="warning" title="Grade precisa de revisão">Confira a frequência semanal contratada e ajuste os dias vinculados à matrícula.</Callout> : null}
           {gradeAtual.grade_agendada?.length ? <Callout tone="info" title="Mudança de grade agendada">Confira a gestão de Turmas antes de editar.<ul>{gradeAtual.grade_agendada.map((item, index) => <li key={index}>{diaNome(item.dia_semana)} · {item.nome} · {hora(item.horario_inicio)}–{hora(item.horario_fim)} · {item.vigencia_fim ? `Até ${item.vigencia_fim}` : `A partir de ${item.vigencia_inicio}`}</li>)}</ul></Callout> : null}
         </>
       )}
       <Modal
         open={open}
-        title="Tipo de acesso e grade da matrícula"
+        title={`Horários de ${matricula.aluno_nome || matricula.usuario_nome || 'aluno'}`}
+        size="lg"
+        dialogClassName="ck-ma-dlg"
+        description={limite > 0 ? `O plano exige exatamente ${limite} horário(s) por semana.` : 'Plano sem limite de horários por semana.'}
         dismissable={!saving}
         onClose={() => setOpen(false)}
         footer={<>
+          {onChangePlan ? <Button variant="ghost" icon="repeat" disabled={saving} onClick={() => { setOpen(false); onChangePlan(); }}>Alterar plano</Button> : null}
           <Button disabled={saving} onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button variant="primary" loading={saving} onClick={salvar}>Salvar grade</Button>
+          <Button variant="primary" loading={saving} disabled={loadingEditor || erroCarregamento} onClick={salvar}>Salvar horários</Button>
         </>}
       >
-        <SelectField
-          label="Tipo de acesso"
-          value={tipo}
-          options={[{ value: 'horario_livre', label: 'Horário livre' }, { value: 'turma_fixa', label: 'Turma fixa' }]}
-          onChange={(event) => {
-            setTipo(event.target.value);
-            if (event.target.value === 'horario_livre') setGrade([]);
-          }}
-        />
-        {tipo === 'turma_fixa' ? (
-          <GradeTurmaEditor
-            grade={grade.length ? grade : [{ turma_fixa_id: '', dia_semana: '' }]}
-            onChange={setGrade}
+        {loadingEditor ? <p role="status">Carregando horários…</p> : erroCarregamento ? <Callout tone="danger" title="Não foi possível carregar os horários">Feche e abra novamente para tentar carregar.</Callout> : <fieldset disabled={saving} className="ck-ma__fieldset">
+          <TurmasNaSemana
+            tipoAcesso={tipo}
+            onTipoAcessoChange={setTipo}
+            grade={grade}
+            onGradeChange={setGrade}
             turmas={turmas}
             modalidadeId={matricula.modalidade_id}
-            frequenciaSemanal={gradeAtual.frequencia_semanal}
-            disabled={saving}
+            plano={{ checkins_semanais: gradeAtual.frequencia_semanal }}
           />
-        ) : <p>A modalidade, o plano e os pagamentos permanecem vinculados à matrícula.</p>}
-        <p>A frequência máxima segue o plano contratado. Alterar a grade não muda valores, ciclo ou pagamentos.</p>
+        </fieldset>}
+        {!loadingEditor && !erroCarregamento && antes !== depois ? <div className="ck-ma__diff" aria-live="polite">
+          <div className="ck-ma__diffrow"><span>Hoje</span><s>{antes}</s></div>
+          <div className="ck-ma__diffrow"><span>Fica</span><strong>{depois}</strong></div>
+        </div> : null}
+        <p className="ck-ma__note">A alteração vale imediatamente. Aulas já realizadas permanecem no histórico. Plano, valores e pagamentos são preservados.</p>
         {erro ? <p role="alert">{erro}</p> : null}
       </Modal>
     </section>
