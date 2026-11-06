@@ -113,7 +113,7 @@ export default function TurmasFixasScreen() {
   const menus = turma => [
     { label: 'Ver alunos e aulas', icon: 'users', onClick: () => acao('detalhe', [turma]) },
     { label: 'Ver na agenda', icon: 'calendar', onClick: () => router.push('/turmas') },
-    { label: 'Duplicar', icon: 'copy', onClick: () => acao('duplicar', [turma]) },
+    { label: 'Duplicar', icon: 'copy', onClick: () => setModal({ duplicateFromId: turma.id }) },
     ...(!turma.substituida_por_id ? [{ label: 'Ajustar vagas', icon: 'users', onClick: () => acao('capacidade', [turma]) }] : []),
     ...(status(turma) !== 'arquivada' && !turma.vigencia_fim ? [
       { label: 'Pausar por um período', icon: 'clock', onClick: () => acao('pausar', [turma]) },
@@ -168,6 +168,6 @@ export default function TurmasFixasScreen() {
         ) : null}
       </section>
     </div>
-    {modal?.acao ? <TurmaGestaoModal key={`${modal.acao}-${modal.turmas.map(turma => turma.id).join('-')}`} acao={modal.acao} turmas={modal.turmas} todas={linhas} professores={professores} onClose={() => setModal(null)} onSaved={salvar} onEdit={editar} onAction={acao} /> : modal ? <TurmasFixas key={modal.id || 'nova'} initialId={modal.id} onClose={() => setModal(null)} onSaved={salvar} /> : null}
+    {modal?.acao ? <TurmaGestaoModal key={`${modal.acao}-${modal.turmas.map(turma => turma.id).join('-')}`} acao={modal.acao} turmas={modal.turmas} todas={linhas} professores={professores} onClose={() => setModal(null)} onSaved={salvar} onEdit={editar} onAction={acao} /> : modal ? <TurmasFixas key={modal.id || modal.duplicateFromId || 'nova'} initialId={modal.id} duplicateFromId={modal.duplicateFromId} onClose={() => setModal(null)} onSaved={salvar} /> : null}
   </LayoutBase>;
 }

@@ -57,7 +57,7 @@ function formTurma(turma) {
   };
 }
 
-export function TurmasFixas({ onClose, onSaved, initialId }) {
+export function TurmasFixas({ onClose, onSaved, initialId, duplicateFromId }) {
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [form, setForm] = useState(vazio);
@@ -83,20 +83,25 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
       .then(([lista, professoresLista, modalidadesLista]) => {
         if (!active) return;
         const grupos = Array.isArray(lista) ? lista : [];
-        const selecionada = initialId ? grupos.find((turma) => Number(turma.id) === Number(initialId)) : null;
-        if (initialId && !selecionada) throw new Error('Turma não encontrada. Feche o formulário e atualize a listagem.');
+        const sourceId = duplicateFromId || initialId;
+        const selecionada = sourceId ? grupos.find((turma) => Number(turma.id) === Number(sourceId)) : null;
+        if (sourceId && !selecionada) throw new Error('Turma não encontrada. Feche o formulário e atualize a listagem.');
         setProfessores(Array.isArray(professoresLista) ? professoresLista : []);
         setModalidades(Array.isArray(modalidadesLista) ? modalidadesLista : []);
         const dadosForm = selecionada ? formTurma(selecionada) : vazio;
+        if (duplicateFromId && selecionada) {
+          delete dadosForm.id;
+          dadosForm.nome = `${selecionada.nome} (cópia)`;
+        }
         setForm(dadosForm);
-        setOriginal(selecionada ? dadosForm : null);
-        setNomePersonalizado(!!selecionada && String(selecionada.nome || '').trim() !== nomeAutomatico(dadosForm));
+        setOriginal(selecionada && !duplicateFromId ? dadosForm : null);
+        setNomePersonalizado(!!selecionada && (!!duplicateFromId || String(selecionada.nome || '').trim() !== nomeAutomatico(dadosForm)));
         setReady(true);
       })
       .catch((e) => { if (active) setErro(erroApi(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [reload, initialId]);
+  }, [reload, initialId, duplicateFromId]);
 
   useEffect(() => {
     if (!initialId) return undefined;
@@ -232,15 +237,15 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
   return (
     <Modal
       open
-      title={initialId ? 'Editar turma' : 'Nova turma'}
+      title={duplicateFromId ? 'Duplicar turma' : initialId ? 'Editar turma' : 'Nova turma'}
       size="lg"
       dialogClassName="ck-tu-dlg"
-      description={initialId ? 'Edite os dados e a grade semanal em uma única ação. Alterações na grade criam uma nova versão e preservam o histórico.' : 'Horário fixo que se repete toda semana. As aulas entram na agenda sozinhas.'}
+      description={duplicateFromId ? 'Revise e personalize os mesmos dados da criação da turma. A cópia não inclui alunos, presenças ou reposições.' : initialId ? 'Edite os dados e a grade semanal em uma única ação. Alterações na grade criam uma nova versão e preservam o histórico.' : 'Horário fixo que se repete toda semana. As aulas entram na agenda sozinhas.'}
       onClose={onClose}
       dismissable={!saving}
       footer={<>
         <Button disabled={saving} onClick={onClose}>Fechar</Button>
-        <Button variant="primary" loading={saving} disabled={loading || !ready || (gradeAlterada && (loadingVinculos || !!erroVinculos))} onClick={salvar}>{initialId ? 'Salvar turma' : 'Criar turma'}</Button>
+        <Button variant="primary" loading={saving} disabled={loading || !ready || (gradeAlterada && (loadingVinculos || !!erroVinculos))} onClick={salvar}>{duplicateFromId ? 'Criar cópia' : initialId ? 'Salvar turma' : 'Criar turma'}</Button>
       </>}
     >
       {erro ? <Callout tone="danger" title="Não foi possível concluir">{erro}<Button onClick={() => setReload((value) => value + 1)}>Recarregar</Button></Callout> : null}
