@@ -107,6 +107,9 @@ class AdminParametroService
      */
     public function updateMultiple(int $tenantId, array $parametros, ?int $usuarioId): array
     {
+        if (array_key_exists('tipo_acesso_padrao', $parametros) && ! in_array($parametros['tipo_acesso_padrao'], ['horario_livre', 'turma_fixa'], true)) {
+            return ['status' => 422, 'body' => ['success' => false, 'message' => 'Tipo padrão de matrícula inválido.']];
+        }
         if ($parametros === []) {
             return [
                 'status' => 400,
@@ -140,6 +143,9 @@ class AdminParametroService
      */
     public function update(int $tenantId, string $codigo, mixed $valor, ?int $usuarioId): array
     {
+        if ($codigo === 'tipo_acesso_padrao' && ! in_array($valor, ['horario_livre', 'turma_fixa'], true)) {
+            return ['status' => 422, 'body' => ['success' => false, 'message' => 'Tipo padrão de matrícula inválido.']];
+        }
         if ($codigo === '') {
             return [
                 'status' => 400,
@@ -214,6 +220,9 @@ class AdminParametroService
      */
     public function toggle(int $tenantId, string $codigo, ?int $usuarioId): array
     {
+        if ($codigo === 'tipo_acesso_padrao') {
+            return ['status' => 422, 'body' => ['success' => false, 'message' => 'Selecione horário livre ou turma fixa. Este parâmetro não é booleano.']];
+        }
         if ($codigo === '') {
             return [
                 'status' => 400,

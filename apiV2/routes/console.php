@@ -17,8 +17,8 @@ Schedule::command('asaas:sincronizar-matriculas')->everyFifteenMinutes()->withou
 // Pendências abandonadas no app (checkout, simulação de troca de plano, assinatura não ativada)
 Schedule::command('cobrancas:limpar-pendentes')->dailyAt('04:30')->withoutOverlapping();
 Schedule::command('recorrencia:processar')->dailyAt('05:45')->withoutOverlapping();
-// Reajuste de preço: parcela em aberto de quem venceu passa ao preço novo (docs/CREDITOS_E_TROCA_DE_PLANO.md)
-Schedule::command('reajuste:aplicar-renovacoes')->hourlyAt(20)->withoutOverlapping();
+// Reajustes de contratos existentes são ações explícitas; editar tabela de preços não os agenda.
+Schedule::command('turmas:gerar-aulas-fixas')->dailyAt('03:30')->withoutOverlapping();
 
 // Status das matrículas (vencida/cancelada/pendente/ativa) sem esperar o aluno abrir o app.
 // Desligado até conferir `php artisan matriculas:atualizar-status --simular` (MATRICULAS_STATUS_AUTOMATICO=true)

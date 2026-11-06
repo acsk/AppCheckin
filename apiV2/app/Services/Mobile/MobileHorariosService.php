@@ -10,6 +10,37 @@ use App\Support\CheckinToleranciaAntes;
 
 class MobileHorariosService
 {
+    public function proximaAulaFixa(int $tenantId, int $userId): ?array
+    {
+        if (! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            return null;
+        }
+        $agora = AcademyDateTime::now();
+        $aula = \Illuminate\Support\Facades\DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')
+            ->join('matriculas as m', 'm.turma_fixa_id', '=', 't.turma_fixa_id')
+            ->join('status_matricula as s', 's.id', '=', 'm.status_id')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->where('t.tenant_id', $tenantId)->where('m.tenant_id', $tenantId)->where('a.usuario_id', $userId)
+            ->where('m.tipo_acesso', 'turma_fixa')->where('s.permite_checkin', 1)->where('s.ativo', 1)
+            ->where('t.ativo', 1)->where('d.ativo', 1)->whereColumn('d.data', '>=', 'm.data_inicio')
+            ->whereRaw('d.data <= COALESCE(m.proxima_data_vencimento, m.data_vencimento)')
+            ->where(fn ($q) => $q->where('d.data', '>', $agora->format('Y-m-d'))->orWhere(fn ($q) => $q
+                ->where('d.data', $agora->format('Y-m-d'))->where('t.horario_fim', '>', $agora->format('H:i:s'))))
+            ->orderBy('d.data')->orderBy('t.horario_inicio')->first(['t.id', 't.nome', 'd.data', 't.horario_inicio', 't.horario_fim']);
+
+        return $aula ? (array) $aula : null;
+    }
+
+    public function aguardandoVaga(int $tenantId, int $userId): bool
+    {
+        if (! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->join('status_matricula as s', 's.id', '=', 'm.status_id')->where('m.tenant_id', $tenantId)
+            ->where('a.usuario_id', $userId)->where('s.codigo', 'aguardando_vaga')->exists();
+    }
+
     public function __construct(
         private readonly TurmaRepository $turmas,
         private readonly TurmaCheckinBloqueioService $bloqueios,
@@ -58,6 +89,20 @@ class MobileHorariosService
         $turmasFormatadas = [];
         foreach ($turmasRaw as $turma) {
             $turma = (array) $turma;
+            $acesso = app(\App\Services\AcessoHibridoService::class);
+            $matriculaAula = null;
+            $saldo = null;
+            if ($acesso->atualizado()) {
+                $completa = $this->turmas->findById((int) $turma['id'], $tenantId);
+                $turma = array_replace($turma, $completa ?? []);
+                $alunoId = (int) \Illuminate\Support\Facades\DB::table('alunos')->where('usuario_id', $userId)->value('id');
+                $matriculaAula = $acesso->matriculaParaAula($alunoId, $tenantId, $turma);
+                if (! $this->bloqueios->usuarioEhStaffNoTenant($userId, $tenantId)
+                    && (! $matriculaAula || ($matriculaAula['tipo_acesso'] === 'horario_livre' && ! $turma['checkin_livre']))) {
+                    continue;
+                }
+                $saldo = $acesso->vagas($turma, $tenantId);
+            }
             $checkinsCount = $this->turmas->contarCheckinsNaTurma((int) $turma['id'], $tenantId);
 
             $horarioInicio = $turma['horario_inicio'];
@@ -76,11 +121,17 @@ class MobileHorariosService
             $horarioFechamento = CheckinJanela::fechamento($dataHoraTurma, $turma);
             $limiteCancelamento = CheckinJanela::limiteCancelamento($dataHoraTurma, $turma);
 
-            $checkinDisponivel = $agora >= $horarioAbertura && $agora <= $horarioFechamento;
+            $fixa = ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa';
+            $checkinDisponivel = $agora >= $horarioAbertura && $agora <= $horarioFechamento
+                && ($fixa || ($saldo['vagas_livres'] ?? 1) > 0);
 
             $turmasFormatadas[] = [
                 'id' => (int) $turma['id'],
                 'nome' => $turma['nome'],
+                'tipo_acesso' => $matriculaAula['tipo_acesso'] ?? 'horario_livre',
+                'turma_fixa_id' => $turma['turma_fixa_id'] ?? null,
+                'vaga_reservada' => $fixa,
+                'vagas_fixas' => $saldo['vagas_fixas'] ?? 0,
                 'professor' => [
                     'id' => (int) $turma['professor_id'],
                     'nome' => $turma['professor_nome'],
@@ -111,7 +162,7 @@ class MobileHorariosService
                 ],
                 'limite_alunos' => (int) $turma['limite_alunos'],
                 'alunos_inscritos' => $checkinsCount,
-                'vagas_disponiveis' => (int) $turma['limite_alunos'] - $checkinsCount,
+                'vagas_disponiveis' => $fixa ? 1 : ($saldo['vagas_livres'] ?? max(0, (int) $turma['limite_alunos'] - $checkinsCount)),
                 'ativo' => (bool) $turma['ativo'],
                 'created_at' => $turma['created_at'],
                 'updated_at' => $turma['updated_at'],

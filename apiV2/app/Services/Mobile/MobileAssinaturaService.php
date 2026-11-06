@@ -277,6 +277,12 @@ class MobileAssinaturaService
                 }
             }
 
+            if (($row['matricula_status_codigo'] ?? '') === 'aguardando_vaga') {
+                $item['status']['nome'] = 'Pago - aguardando vaga';
+                $item['status']['cor'] = '#FFA500';
+                $item['aguardando_vaga'] = true;
+                $item['pode_pagar'] = false;
+            }
             $assinaturas[] = $item;
         }
 
@@ -293,7 +299,7 @@ class MobileAssinaturaService
             ->leftJoin('assinatura_frequencias as f', 'f.id', '=', 'pc.assinatura_frequencia_id')
             ->where('m.aluno_id', $alunoId)
             ->where('m.tenant_id', $tenantId)
-            ->where('sm.codigo', 'ativa')
+            ->whereIn('sm.codigo', ['ativa', 'aguardando_vaga'])
             ->whereNotExists(function ($query) {
                 $query->selectRaw('1')
                     ->from('assinaturas as a')
@@ -305,6 +311,9 @@ class MobileAssinaturaService
                 'm.plano_id',
                 'm.plano_ciclo_id',
                 'm.status_id',
+                'sm.codigo as matricula_status_codigo',
+                'sm.nome as matricula_status_nome',
+                'sm.cor as matricula_status_cor',
                 'm.valor',
                 'm.tipo_cobranca',
                 'm.data_inicio',
@@ -340,9 +349,9 @@ class MobileAssinaturaService
                 'modalidade_id' => $matricula->modalidade_id !== null ? (int) $matricula->modalidade_id : null,
                 'status' => [
                     'id' => (int) $matricula->status_id,
-                    'codigo' => 'ativa',
-                    'nome' => 'Ativa',
-                    'cor' => '#16A34A',
+                    'codigo' => $matricula->matricula_status_codigo,
+                    'nome' => $matricula->matricula_status_nome,
+                    'cor' => $matricula->matricula_status_cor,
                 ],
                 'cancelamento' => [
                     'cancelado_por_id' => null,

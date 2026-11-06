@@ -17,6 +17,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
 import TrocaPlanoModal from '../../components/ck/TrocaPlanoModal';
+import { TipoAcessoMatricula } from '../../components/ck/TurmasFixas';
 import CancelarMatriculaModal from '../../components/ck/CancelarMatriculaModal';
 import { EditarPagamentoModal, EstornoModal, isBaixaAutomatica, provedorDaBaixa } from '../../components/ck/pagamento';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
@@ -1438,6 +1439,7 @@ export default function MatriculaDetalheScreen() {
 
   return (
     <LayoutBase title={`Matrícula #${matricula.id}`} pageHeader={false}>
+      <TipoAcessoMatricula matricula={matricula} onSaved={carregarDados} />
       {/* O conteúdo já rola dentro do AppShell */}
       <div className="ck-mt-page">
           <Matricula

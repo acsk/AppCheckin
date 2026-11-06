@@ -73,7 +73,12 @@ class RecorrenciaAcesso
             $update['data_vencimento'] = $acesso;
             $update['proxima_data_vencimento'] = $acesso;
         }
-        DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update($update);
+        if ($statusId) {
+            unset($update['status_id']);
+            app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $matriculaId, (int) $statusId, $update);
+        } else {
+            DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update($update);
+        }
 
         return true;
     }

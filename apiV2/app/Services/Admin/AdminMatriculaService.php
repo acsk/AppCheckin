@@ -367,7 +367,9 @@ class AdminMatriculaService
             return $this->error("Status '{$novoStatus}' não configurado no sistema.", 500);
         }
 
-        $this->matriculas->atualizarStatusObservacoes($id, $statusRestauradoId, $observacoesAtualizadas);
+        $statusRestauradoId = app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $id, $statusRestauradoId,
+            ['observacoes' => $observacoesAtualizadas]);
+        $novoStatus = (string) DB::table('status_matricula')->where('id', $statusRestauradoId)->value('codigo');
 
         $matriculaAtualizada = $this->matriculas->findResposta($id);
         if (! $matriculaAtualizada || ($matriculaAtualizada['status_codigo'] ?? '') !== $novoStatus) {
@@ -581,6 +583,36 @@ class AdminMatriculaService
      * @return array{status: int, body: array<string, mixed>}
      */
     public function criar(int $tenantId, ?int $adminId, array $data): array
+    {
+        if (! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            return $this->criarMatricula($tenantId, $adminId, $data);
+        }
+
+        return DB::transaction(function () use ($tenantId, $adminId, $data) {
+            $escolha = app(\App\Services\AcessoHibridoService::class)->validarEscolha($tenantId, $data);
+            if ($escolha['turma_fixa_id']) {
+                DB::table('turmas_fixas')->where('id', $escolha['turma_fixa_id'])->where('tenant_id', $tenantId)->lockForUpdate()->first();
+            }
+            $resultado = $this->criarMatricula($tenantId, $adminId, array_key_exists('tipo_acesso', $data) ? array_replace($data, $escolha) : $data);
+            if ($resultado['status'] === 201 && isset($resultado['body']['matricula']['id'])) {
+                $id = (int) $resultado['body']['matricula']['id'];
+                $m = DB::table('matriculas')->where('id', $id)->where('tenant_id', $tenantId)->first();
+                app(\App\Services\AcessoHibridoService::class)->validarEscolha($tenantId, [], (array) $m);
+                if (DB::table('status_matricula')->where('id', $m->status_id)->value('codigo') === 'ativa'
+                    && ! app(\App\Services\AcessoHibridoService::class)->podeAtivar($tenantId, (array) $m)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['turma_fixa_id' => 'Não há vaga para ativar esta matrícula.']);
+                }
+                $status = app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $id, (int) $m->status_id);
+                $resultado['body']['matricula']['tipo_acesso'] = $m->tipo_acesso;
+                $resultado['body']['matricula']['turma_fixa_id'] = $m->turma_fixa_id;
+                $resultado['body']['matricula']['status_id'] = $status;
+            }
+
+            return $resultado;
+        }, 3);
+    }
+
+    private function criarMatricula(int $tenantId, ?int $adminId, array $data): array
     {
         $errors = [];
         $alunoIdInput = $data['aluno_id'] ?? null;
@@ -863,6 +895,7 @@ class AdminMatriculaService
             }
 
             $this->matriculas->atualizarMatriculaReuse($matriculaId, $tenantId, [
+                ...array_intersect_key($data, array_flip(['tipo_acesso', 'turma_fixa_id'])),
                 'plano_id' => $planoId,
                 'plano_ciclo_id' => $planoCicloId,
                 'data_matricula' => $dataMatricula,
@@ -881,6 +914,7 @@ class AdminMatriculaService
             ]);
         } else {
             $matriculaId = $this->matriculas->inserirMatricula([
+                ...array_intersect_key($data, array_flip(['tipo_acesso', 'turma_fixa_id'])),
                 'tenant_id' => $tenantId,
                 'aluno_id' => $alunoId,
                 'plano_id' => $planoId,
@@ -932,6 +966,9 @@ class AdminMatriculaService
                 ]);
             } catch (\Throwable $e) {
                 Log::error('AdminMatriculaService::criar pagamento_plano: '.$e->getMessage());
+                if (app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+                    throw $e;
+                }
             }
         }
 
@@ -1510,6 +1547,10 @@ class AdminMatriculaService
         $matricula = $this->matriculas->findParaAlterarPlano($id, $tenantId);
         if (! $matricula) {
             return $this->error('Matrícula não encontrada', 404);
+        }
+        if (app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            $atual = (array) DB::table('matriculas')->where('id', $id)->where('tenant_id', $tenantId)->first();
+            app(\App\Services\AcessoHibridoService::class)->validarEscolha($tenantId, ['plano_id' => $novoPlanoId], $atual);
         }
 
         if (($matricula['status_codigo'] ?? '') === 'finalizada') {

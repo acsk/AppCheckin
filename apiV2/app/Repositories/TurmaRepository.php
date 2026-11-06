@@ -396,6 +396,7 @@ class TurmaRepository
     public function criar(array $data): int
     {
         return (int) DB::table('turmas')->insertGetId([
+            ...array_intersect_key($data, array_flip(['turma_fixa_id', 'checkin_livre'])),
             'tenant_id' => $data['tenant_id'],
             'professor_id' => $data['professor_id'],
             'modalidade_id' => $data['modalidade_id'],
@@ -421,7 +422,7 @@ class TurmaRepository
     {
         $permitidos = [
             'professor_id', 'modalidade_id', 'dia_id', 'horario_inicio', 'horario_fim',
-            'nome', 'limite_alunos', 'tolerancia_minutos', 'tolerancia_antes_minutos', 'ativo',
+            'nome', 'limite_alunos', 'tolerancia_minutos', 'tolerancia_antes_minutos', 'ativo', 'checkin_livre',
         ];
 
         $updates = [];

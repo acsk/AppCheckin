@@ -362,6 +362,10 @@ class MobileController extends Controller
                 $this->userId($request),
                 $request->query('data', AcademyDateTime::today()),
             );
+            if ($result['status'] === 200 && $this->tenantId($request)) {
+                $result['body']['data']['proxima_aula_fixa'] = $this->horarios->proximaAulaFixa($this->tenantId($request), $this->userId($request));
+                $result['body']['data']['aguardando_vaga'] = $this->horarios->aguardandoVaga($this->tenantId($request), $this->userId($request));
+            }
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
         } catch (\Throwable $e) {
@@ -737,6 +741,7 @@ class MobileController extends Controller
                 $this->tenantId($request),
                 $turmaId,
                 $request->query('data'),
+                $this->userId($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);

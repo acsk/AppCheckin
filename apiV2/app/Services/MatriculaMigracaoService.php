@@ -366,6 +366,7 @@ class MatriculaMigracaoService
 
         try {
             DB::beginTransaction();
+            app(AcessoHibridoService::class)->validarMigracaoAutomatica($tenantId, $matriculaId);
 
             // PDO da transação capturado uma vez e reutilizado em todos os statements abaixo.
             $pdo = $this->db();
@@ -1172,6 +1173,7 @@ class MatriculaMigracaoService
 
         try {
             DB::beginTransaction();
+            app(AcessoHibridoService::class)->validarMigracaoAutomatica($tenantId, $matriculaId);
             $this->cancelarMigracoesSimuladasAbertas($tenantId, $matriculaId);
             $stmtPagamento = $this->db()->prepare('
                 INSERT INTO pagamentos_plano
@@ -1361,6 +1363,7 @@ class MatriculaMigracaoService
             $motivo,
             $pagamentoId,
         ): void {
+            app(AcessoHibridoService::class)->validarMigracaoAutomatica($tenantId, $matriculaId);
             $this->pagamentosPlano->cancelarParcelasAbertas(
                 $tenantId,
                 $matriculaId,

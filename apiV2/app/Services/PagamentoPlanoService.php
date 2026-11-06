@@ -488,10 +488,9 @@ class PagamentoPlanoService
             return;
         }
 
-        DB::table('matriculas')
-            ->where('tenant_id', $tenantId)
-            ->where('id', $matriculaId)
-            ->update(['status_id' => $statusId, 'updated_at' => now()]);
+        $statusId = app(AcessoHibridoService::class)->aplicarStatus($tenantId, $matriculaId, (int) $statusId,
+            $acessoAte ? ['data_vencimento' => $acessoAte, 'proxima_data_vencimento' => $acessoAte] : []);
+        $novoStatus = (string) DB::table('status_matricula')->where('id', $statusId)->value('codigo');
 
         if ($ehAvulso) {
             if ($acessoAte) {

@@ -25,7 +25,7 @@ class ReajustePrecoService
     }
 
     /**
-     * Chamado quando o valor do ciclo muda no painel.
+     * Chamado por ação explícita; editar o preço de tabela não chama este método.
      *
      * @return array{matriculas: int, parcelas: int}
      */
@@ -38,12 +38,15 @@ class ReajustePrecoService
             return $r;
         }
 
+        $autorizacao = Schema::hasColumn('matriculas', 'reajuste_autorizado_em');
         $matriculas = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
             ->where('m.tenant_id', $tenantId)->where('m.plano_ciclo_id', $cicloId)
             ->where('m.tipo_cobranca', 'avulso')->whereNull('m.pacote_contrato_id')
             ->whereIn('s.codigo', ['ativa', 'vencida'])
             // preço de tabela anterior (ou já reajustado antes e ainda não renovado)
-            ->where(fn ($q) => $q->where(fn ($a) => $a->whereNull('m.valor_renovacao')->whereRaw('ROUND(m.valor * 100) = ?', [$anterior]))
+            ->where(fn ($q) => $q->where(fn ($a) => $a
+                ->where(fn ($v) => $v->whereNull('m.valor_renovacao')->when($autorizacao, fn ($v) => $v->orWhereNull('m.reajuste_autorizado_em')))
+                ->whereRaw('ROUND(m.valor * 100) = ?', [$anterior]))
                 ->orWhereRaw('ROUND(m.valor_renovacao * 100) = ?', [$anterior]))
             ->when(Schema::hasTable('contratos_recorrencia'), fn ($q) => $q->whereNotExists(
                 fn ($c) => $c->selectRaw('1')->from('contratos_recorrencia as cr')->whereColumn('cr.matricula_id', 'm.id')
@@ -53,7 +56,10 @@ class ReajustePrecoService
         $temOriginal = Schema::hasColumn('pagamentos_plano', 'valor_original');
         foreach ($matriculas as $m) {
             $voltou = (int) round((float) $m->valor * 100) === $novo;
-            DB::table('matriculas')->where('id', $m->id)->update(['valor_renovacao' => $voltou ? null : $valorNovo, 'updated_at' => now()]);
+            DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $m->id)->update([
+                'valor_renovacao' => $voltou ? null : $valorNovo, 'updated_at' => now(),
+                ...($autorizacao ? ['reajuste_autorizado_em' => now()] : []),
+            ]);
             $r['matriculas']++;
 
             // Próximas parcelas já geradas (baixa no painel gera a seguinte) e ainda sem cobrança no provedor
@@ -142,7 +148,9 @@ class ReajustePrecoService
         if (! $this->disponivel()) {
             return null;
         }
-        $v = DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->value('valor_renovacao');
+        $v = DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)
+            ->when(Schema::hasColumn('matriculas', 'reajuste_autorizado_em'), fn ($q) => $q->whereNotNull('reajuste_autorizado_em'))
+            ->value('valor_renovacao');
 
         return $v === null ? null : (float) $v;
     }
@@ -155,7 +163,9 @@ class ReajustePrecoService
             return null;
         }
         DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)
-            ->update(['valor' => $novo, 'valor_renovacao' => null, 'updated_at' => now()]);
+            ->update(['valor' => $novo, 'valor_renovacao' => null, 'updated_at' => now(),
+                ...(Schema::hasColumn('matriculas', 'reajuste_autorizado_em') ? ['reajuste_autorizado_em' => null] : []),
+            ]);
 
         return $novo;
     }

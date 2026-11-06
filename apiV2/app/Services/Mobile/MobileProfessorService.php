@@ -111,6 +111,25 @@ class MobileProfessorService
      */
     public function registrarCheckinManual(int $professorId, ?int $tenantId, array $body): array
     {
+        if (! $tenantId || empty($body['turma_id']) || ! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            return $this->registrarManualInterno($professorId, $tenantId, $body);
+        }
+
+        $turma = $this->turmas->findById((int) $body['turma_id'], $tenantId);
+        return DB::transaction(function () use ($professorId, $tenantId, $body, $turma) {
+            if ($turma) {
+                app(\App\Services\AcessoHibridoService::class)->bloquearAula($turma, $tenantId);
+            }
+            $q = DB::table('alunos');
+            ! empty($body['aluno_id']) ? $q->where('id', $body['aluno_id']) : $q->where('usuario_id', $body['usuario_id'] ?? 0);
+            $q->lockForUpdate()->first();
+
+            return $this->registrarManualInterno($professorId, $tenantId, $body);
+        }, 3);
+    }
+
+    private function registrarManualInterno(int $professorId, ?int $tenantId, array $body): array
+    {
         if (! $tenantId) {
             return $this->fail('Nenhum tenant selecionado', 400);
         }
@@ -177,6 +196,13 @@ class MobileProfessorService
         if (! $turma || ! ($turma['ativo'] ?? true)) {
             return $this->fail('Turma inválida ou inativa', 400);
         }
+        $hibrido = app(\App\Services\AcessoHibridoService::class);
+        if ($hibrido->atualizado()) {
+            $matricula = $hibrido->matriculaParaAula($alunoId, $tenantId, $turma);
+            if (($erro = $hibrido->erroCheckin($turma, $tenantId, $matricula)) !== null) {
+                return $this->fail($erro, 403, 'ACESSO_AULA_NEGADO');
+            }
+        }
 
         $checkinExistente = $this->checkins->findUltimoCheckinUsuarioNaTurma($usuarioId, $turmaId);
         if ($checkinExistente) {
@@ -220,7 +246,7 @@ class MobileProfessorService
         }
 
         $planoInfo = $this->checkins->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
-        if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0 && $planoInfo['permite_reposicao']) {
+        if (($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $planoInfo['tem_plano'] && $planoInfo['limite'] > 0 && $planoInfo['permite_reposicao']) {
             $detalhesLimite = $this->matriculas->avaliarLimiteMensalPorMatricula(
                 (int) $matricula['id'],
                 false,
@@ -238,7 +264,7 @@ class MobileProfessorService
         }
 
         $limite = (int) ($turma['limite_alunos'] ?? 0);
-        if ($limite > 0) {
+        if ($limite > 0 && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
             $ocupados = $this->checkins->contarCheckinsTurmaNoDia($turmaId, $tenantId, $diaAula);
             if ($ocupados >= $limite) {
                 return [
@@ -275,7 +301,7 @@ class MobileProfessorService
                 if ($this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, bloquear: true) !== null) {
                     throw new \RuntimeException('COMUNICACOES_PENDENTES');
                 }
-                if ($limite > 0) {
+                if ($limite > 0 && ! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
                     $ocupados = $this->checkins->contarCheckinsTurmaNoDiaComLock($turmaId, $tenantId, $diaAula);
                     if ($ocupados >= $limite) {
                         throw new \RuntimeException('TURMA_LOTADA');

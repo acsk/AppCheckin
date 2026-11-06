@@ -116,7 +116,7 @@ function modColor(value) { return /^#[0-9a-f]{3,8}$/i.test(value) ? value : ({az
   function AulaModal(p) {
     var a = p.aula || {};
     var edit = a.id != null;
-    var init = useState(function () { return { modality: a.modality ? a.modality.id : '', teacher: a.teacherId || '', date: a.date || p.date || '', start: a.start || '', end: a.end || '', cap: a.capacity != null ? String(a.capacity) : '', openBefore: a.openBefore != null ? String(a.openBefore) : '480', lateAfter: a.lateAfter != null ? String(a.lateAfter) : '10', closeBefore: a.closeBefore != null ? String(a.closeBefore) : '', cancelBefore: a.cancelBefore != null ? String(a.cancelBefore) : '', active: a.active !== false }; })[0];
+    var init = useState(function () { return { modality: a.modality ? a.modality.id : '', teacher: a.teacherId || '', date: a.date || p.date || '', start: a.start || '', end: a.end || '', cap: a.capacity != null ? String(a.capacity) : '', openBefore: a.openBefore != null ? String(a.openBefore) : '480', lateAfter: a.lateAfter != null ? String(a.lateAfter) : '10', closeBefore: a.closeBefore != null ? String(a.closeBefore) : '', cancelBefore: a.cancelBefore != null ? String(a.cancelBefore) : '', active: a.active !== false, freeCheckin: a.freeCheckin !== false }; })[0];
     var fm = useState(init), f = fm[0], tried = useState(false), rules = useState(false);
     function set(k, v) { var n = Object.assign({}, f); n[k] = v; fm[1](n); }
     var mods = p.modalities || [], teachers = p.teachers || [];
@@ -139,7 +139,7 @@ function modColor(value) { return /^#[0-9a-f]{3,8}$/i.test(value) ? value : ({az
       tried[1](true);
       if (Object.keys(err).length || p.saving) return;
       var n = function (v) { return v === '' ? null : +v; };
-      p.onSave && p.onSave({ id: a.id, modalityId: f.modality, teacherId: f.teacher, date: f.date || null, start: f.start, end: f.end, capacity: +f.cap, openBefore: n(f.openBefore), lateAfter: n(f.lateAfter), closeBefore: n(f.closeBefore), cancelBefore: n(f.cancelBefore), active: f.active });
+      p.onSave && p.onSave({ id: a.id, modalityId: f.modality, teacherId: f.teacher, date: f.date || null, start: f.start, end: f.end, capacity: +f.cap, openBefore: n(f.openBefore), lateAfter: n(f.lateAfter), closeBefore: n(f.closeBefore), cancelBefore: n(f.cancelBefore), active: f.active, freeCheckin: f.freeCheckin });
     }
     var modSel = mods.filter(function (m) { return String(m.id) === String(f.modality); })[0];
     return h(Modal, { open: p.open, inline: p.inline, onClose: p.onCancel, dismissable: !p.saving, sheet: true, size: 'md',
@@ -177,6 +177,7 @@ function modColor(value) { return /^#[0-9a-f]{3,8}$/i.test(value) ? value : ({az
               h(TextField, { label: 'Aceita atraso de até', inputMode: 'numeric', value: f.lateAfter, suffix: h('span', { className: 'ck-sp-unit' }, 'min'), hint: 'Depois do início', onChange: function (e) { set('lateAfter', e.target.value.replace(/\D/g, '')); } }),
               h(TextField, { label: 'Fecha quanto antes do início', inputMode: 'numeric', value: f.closeBefore, placeholder: 'Segue o atraso aceito', suffix: h('span', { className: 'ck-sp-unit' }, 'min'), hint: 'Vazio: início mais a tolerância de atraso', onChange: function (e) { set('closeBefore', e.target.value.replace(/\D/g, '')); } }),
               h(TextField, { label: 'Cancelamento até', inputMode: 'numeric', value: f.cancelBefore, placeholder: 'Até o início', suffix: h('span', { className: 'ck-sp-unit' }, 'min antes'), hint: 'Vazio: cancelamento até o início', onChange: function (e) { set('cancelBefore', e.target.value.replace(/\D/g, '')); } }))) : null),
+        h('div', { className: 'ck-al-active' }, h(Switch, { label: 'Permitir check-in de horário livre', description: 'Somente vagas que não estejam reservadas por matrículas fixas.', checked: f.freeCheckin, onChange: function (v) { set('freeCheckin', v); } })),
         h('div', { className: 'ck-al-active' }, h(Switch, { label: 'Aula ativa', description: f.active ? 'Aparece no app e aceita check-in.' : 'Fica escondida do app.', checked: f.active, onChange: function (v) { set('active', v); } }))));
   }
 

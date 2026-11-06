@@ -587,13 +587,7 @@ class AsaasWebhookService
             return;
         }
 
-        DB::table('matriculas')
-            ->where('id', $matriculaId)
-            ->where('tenant_id', $tenantId)
-            ->update([
-                'status_id' => (int) $ativaId,
-                'updated_at' => now(),
-            ]);
+        app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $matriculaId, (int) $ativaId);
     }
 
     private function formaPagamentoId(string $billingType): ?int

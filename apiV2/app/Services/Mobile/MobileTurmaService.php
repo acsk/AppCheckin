@@ -151,7 +151,7 @@ class MobileTurmaService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function detalhe(?int $tenantId, int $turmaId, ?string $dataAulaParam): array
+    public function detalhe(?int $tenantId, int $turmaId, ?string $dataAulaParam, ?int $userId = null): array
     {
         if (! $tenantId) {
             return [
@@ -182,6 +182,18 @@ class MobileTurmaService
         $totalAlunos = $this->turmas->contarCheckinsPorTurmaId($turmaId);
         $limite = (int) $turma['limite_alunos'];
         $vagasDisponiveis = max(0, $limite - $totalAlunos);
+        $acesso = app(\App\Services\AcessoHibridoService::class);
+        $matriculaAula = null;
+        $saldo = null;
+        if ($acesso->atualizado()) {
+            $completa = $this->turmas->findById($turmaId, $tenantId);
+            $turma = array_replace($turma, $completa);
+            $dataAula = $turma['dia_data'];
+            $saldo = $acesso->vagas($turma, $tenantId);
+            $alunoId = (int) DB::table('alunos')->where('usuario_id', $userId)->value('id');
+            $matriculaAula = $acesso->matriculaParaAula($alunoId, $tenantId, $turma);
+            $vagasDisponiveis = ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa' ? 1 : $saldo['vagas_livres'];
+        }
         $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
         $checkinBloqueado = $this->bloqueios->isBloqueada($turmaId, $tenantId);
 
@@ -206,6 +218,9 @@ class MobileTurmaService
             $limiteCancelamentoFmt = CheckinJanela::limiteCancelamento($dataHoraTurma, $turma)->format('Y-m-d H:i:s');
 
             $checkinDisponivel = $agora >= $horarioAbertura && $agora <= $horarioFechamento;
+            if ($saldo !== null) {
+                $checkinDisponivel = $checkinDisponivel && $acesso->erroCheckin($turma, $tenantId, $matriculaAula) === null;
+            }
             $checkinJaAbriu = $agora >= $horarioAbertura;
             $checkinJaFechou = $agora > $horarioFechamento;
             $horarioAberturaFmt = $horarioAbertura->format('Y-m-d H:i:s');
@@ -296,6 +311,9 @@ class MobileTurmaService
                         'alunos_inscritos' => $totalAlunos,
                         'total_alunos_matriculados' => $totalAlunos,
                         'vagas_disponiveis' => $vagasDisponiveis,
+                        'vagas_fixas' => $saldo['vagas_fixas'] ?? 0,
+                        'vaga_reservada' => ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa',
+                        'tipo_acesso' => $matriculaAula['tipo_acesso'] ?? 'horario_livre',
                         'percentual_ocupacao' => $percentualOcupacao,
                         'total_checkins' => $totalAlunos,
                     ],

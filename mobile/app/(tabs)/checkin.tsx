@@ -9,6 +9,7 @@ import {
     Animated,
     Image,
     Modal,
+    Pressable,
     ScrollView,
     StyleSheet,
     Text,
@@ -69,6 +70,10 @@ function CheckinScreenContent() {
     return parsed ?? new Date();
   });
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
+  const [proximaAulaFixa, setProximaAulaFixa] = useState<{
+    id: number; nome: string; data: string; horario_inicio: string; horario_fim: string;
+  } | null>(null);
+  const [aguardandoVaga, setAguardandoVaga] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
   const [participants, setParticipants] = useState<any[]>([]);
@@ -580,6 +585,8 @@ function CheckinScreenContent() {
         data.data.turmas.forEach((turma: any, index: number) => {
         });
         setAvailableSchedules(data.data.turmas);
+        setProximaAulaFixa(data.data.proxima_aula_fixa || null);
+        setAguardandoVaga(data.data.aguardando_vaga === true);
       } else {
         console.warn("⚠️ Resposta inválida ou sem turmas");
         setAvailableSchedules([]);
@@ -1437,9 +1444,7 @@ function CheckinScreenContent() {
     if (turma?.checkin_bloqueado) return "blocked";
     if (turma?.meu_checkin_id) return "checked";
     if (isTurmaDisabled(turma, selectedDate)) return "closed";
-    const lotada =
-      Number(turma.limite_alunos) > 0 &&
-      Number(turma.alunos_inscritos) >= Number(turma.limite_alunos);
+    const lotada = !turma.vaga_reservada && Number(turma.vagas_disponiveis) <= 0;
     if (lotada) return "full";
     if (getMinutosParaAbrirCheckin(turma) > 0) return "soon";
     return "open";
@@ -1507,7 +1512,9 @@ function CheckinScreenContent() {
       attendees: Array.isArray(turma.participantes_preview)
         ? turma.participantes_preview.map((n: string) => normalizeUtf8(String(n)))
         : [],
-      note: cancelarAte ? `Cancele até ${cancelarAte}` : null,
+      note: turma.vaga_reservada
+        ? `Turma fixa — sua vaga está reservada${cancelarAte ? `. Cancele até ${cancelarAte}` : ""}`
+        : cancelarAte ? `Cancele até ${cancelarAte}` : `${turma.vagas_disponiveis} vagas livres`,
       action,
       onPress: disabled ? undefined : () => openParticipants(turma),
     };
@@ -1698,6 +1705,15 @@ function CheckinScreenContent() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.schedulesSection}>
+            {aguardandoVaga ? <Text style={styles.emptySubtitle}>Pagamento recebido. Sua matrícula aguarda uma vaga na turma; procure a secretaria. Não é necessário pagar novamente.</Text> : null}
+            {proximaAulaFixa && !isProfessorOuAdmin ? (
+              <Pressable onPress={() => setSelectedDate(new Date(`${proximaAulaFixa.data}T12:00:00`))}
+                accessibilityRole="button" accessibilityLabel="Ver próxima aula da sua turma fixa">
+                <Text style={styles.emptyTitle}>Próxima aula da sua turma</Text>
+                <Text style={styles.emptySubtitle}>{proximaAulaFixa.nome} — {proximaAulaFixa.data.split("-").reverse().join("/")} às {proximaAulaFixa.horario_inicio.slice(0, 5)}</Text>
+                <Text style={styles.emptySubtitle}>Sua vaga está reservada. Toque para ver a aula.</Text>
+              </Pressable>
+            ) : null}
             {loading ? (
               <Text style={styles.loadingText}>Carregando...</Text>
             ) : slots.length > 0 ? (

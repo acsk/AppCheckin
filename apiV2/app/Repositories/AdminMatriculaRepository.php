@@ -406,6 +406,12 @@ class AdminMatriculaRepository
             $payload['status_id'] = $statusId;
         }
 
+        $matricula = DB::table('matriculas')->where('id', $id)->where('tenant_id', $tenantId)->first();
+        if ($matricula && ($matricula->tipo_acesso ?? '') === 'turma_fixa') {
+            app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $id, $statusId ?? (int) $matricula->status_id, $payload);
+            return ['ok' => true];
+        }
+
         $affected = DB::table('matriculas')
             ->where('id', $id)
             ->where('tenant_id', $tenantId)
@@ -889,6 +895,9 @@ class AdminMatriculaRepository
         if (Schema::hasColumn('matriculas', 'valor_renovacao')) {
             $payload['valor_renovacao'] = null;
         }
+        if (Schema::hasColumn('matriculas', 'reajuste_autorizado_em')) {
+            $payload['reajuste_autorizado_em'] = null;
+        }
         DB::table('matriculas')
             ->where('id', $id)
             ->where('tenant_id', $tenantId)
@@ -1036,6 +1045,15 @@ class AdminMatriculaRepository
 
     public function ativarMatriculaSePendente(int $matriculaId): void
     {
+        $matricula = DB::table('matriculas')->where('id', $matriculaId)->first();
+        if ($matricula && ($matricula->tipo_acesso ?? '') === 'turma_fixa') {
+            $pendente = DB::table('status_matricula')->where('codigo', 'pendente')->value('id');
+            if ((int) $matricula->status_id === (int) $pendente) {
+                $ativa = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
+                app(\App\Services\AcessoHibridoService::class)->aplicarStatus((int) $matricula->tenant_id, $matriculaId, (int) $ativa);
+            }
+            return;
+        }
         DB::update(
             "UPDATE matriculas
              SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
@@ -1048,6 +1066,11 @@ class AdminMatriculaRepository
 
     public function atualizarProximaDataVencimentoSimples(int $matriculaId, string $proximaData): void
     {
+        $matricula = DB::table('matriculas')->where('id', $matriculaId)->first();
+        if ($matricula && ($matricula->tipo_acesso ?? '') === 'turma_fixa') {
+            app(\App\Services\AcessoHibridoService::class)->aplicarStatus((int) $matricula->tenant_id, $matriculaId, (int) $matricula->status_id, ['proxima_data_vencimento' => $proximaData]);
+            return;
+        }
         DB::table('matriculas')->where('id', $matriculaId)->update([
             'proxima_data_vencimento' => $proximaData,
             'updated_at' => now(),
@@ -1152,6 +1175,13 @@ class AdminMatriculaRepository
         $payload['motivo_cancelamento'] = null;
         $payload['updated_at'] = now();
 
+        if (app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            $status = (int) $payload['status_id'];
+            unset($payload['status_id']);
+            app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $id, $status, $payload);
+
+            return;
+        }
         DB::table('matriculas')
             ->where('id', $id)
             ->where('tenant_id', $tenantId)

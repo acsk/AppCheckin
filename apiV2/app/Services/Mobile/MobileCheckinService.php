@@ -38,6 +38,23 @@ class MobileCheckinService
      */
     public function registrar(int $userId, ?int $tenantId, array $body, ?int $alunoIdJwt = null): array
     {
+        if (empty($body['turma_id']) || ! $tenantId || ! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+            return $this->registrarInterno($userId, $tenantId, $body, $alunoIdJwt);
+        }
+
+        $turma = $this->turmas->findById((int) $body['turma_id'], $tenantId);
+        return DB::transaction(function () use ($userId, $tenantId, $body, $alunoIdJwt, $turma) {
+            if ($turma) {
+                app(\App\Services\AcessoHibridoService::class)->bloquearAula($turma, $tenantId);
+            }
+            DB::table('alunos')->where('usuario_id', $userId)->lockForUpdate()->first();
+
+            return $this->registrarInterno($userId, $tenantId, $body, $alunoIdJwt);
+        }, 3);
+    }
+
+    private function registrarInterno(int $userId, ?int $tenantId, array $body, ?int $alunoIdJwt = null): array
+    {
         if (! $tenantId) {
             return $this->fail('Nenhum tenant selecionado', 400);
         }
@@ -84,6 +101,29 @@ class MobileCheckinService
             ];
         }
 
+        // Comunicação obrigatória pendente (comunicado não confirmado / enquete não enviada) trava o check-in
+        if ($alunoId > 0 && ($pendente = $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $userId)) !== null) {
+            return $pendente;
+        }
+
+        $turmaId = isset($body['turma_id']) ? (int) $body['turma_id'] : 0;
+        if ($turmaId <= 0) {
+            return $this->fail('turma_id é obrigatório', 400);
+        }
+
+        $turma = $this->turmas->findById($turmaId, $tenantId);
+        if (! $turma) {
+            return $this->fail('Turma não encontrada', 404);
+        }
+
+        $hibrido = app(\App\Services\AcessoHibridoService::class);
+        if ($hibrido->atualizado()) {
+            $matricula = $hibrido->matriculaParaAula($alunoId, $tenantId, $turma);
+            if (($erro = $hibrido->erroCheckin($turma, $tenantId, $matricula)) !== null) {
+                return $this->fail($erro, 403, 'ACESSO_AULA_NEGADO');
+            }
+        }
+
         $hoje = AcademyDateTime::today();
         $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
         if ($acessoAte && $acessoAte < $hoje) {
@@ -98,21 +138,6 @@ class MobileCheckinService
                     'data_vencimento' => $acessoAte,
                 ],
             ];
-        }
-
-        // Comunicação obrigatória pendente (comunicado não confirmado / enquete não enviada) trava o check-in
-        if ($alunoId > 0 && ($pendente = $this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $userId)) !== null) {
-            return $pendente;
-        }
-
-        $turmaId = isset($body['turma_id']) ? (int) $body['turma_id'] : 0;
-        if ($turmaId <= 0) {
-            return $this->fail('turma_id é obrigatório', 400);
-        }
-
-        $turma = $this->turmas->findById($turmaId, $tenantId);
-        if (! $turma) {
-            return $this->fail('Turma não encontrada', 404);
         }
 
         if ($this->bloqueios->isBloqueada($turmaId, $tenantId)) {
@@ -149,19 +174,19 @@ class MobileCheckinService
         }
 
         $planoInfo = $this->checkins->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
-        $limiteErro = $this->validarLimitePlano(
+        $limiteErro = ($matricula['tipo_acesso'] ?? 'horario_livre') === 'turma_fixa' ? null : $this->validarLimitePlano(
             $planoInfo,
             $userId,
             $modalidadeTurma,
             $turma,
             isset($matricula['id']) ? (int) $matricula['id'] : null,
         );
-        if ($limiteErro !== null) {
+        if ($limiteErro !== null && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
             return $limiteErro;
         }
 
-        $alunosCount = $this->turmas->contarAlunosInscritos($turmaId);
-        if ($alunosCount >= (int) $turma['limite_alunos']) {
+        $alunosCount = $this->turmas->contarCheckinsNaTurma($turmaId, $tenantId);
+        if (($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $alunosCount >= (int) $turma['limite_alunos']) {
             return $this->fail('Sem vagas disponíveis nesta turma', 400);
         }
 
@@ -193,7 +218,7 @@ class MobileCheckinService
         }
 
         // Empatou o limite do ciclo → pendente (próximo check-in recebe o aviso).
-        if (! empty($matricula['id'])) {
+        if (! empty($matricula['id']) && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
             $this->matriculas->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
         }
 
@@ -217,7 +242,7 @@ class MobileCheckinService
                         'modalidade' => $turma['modalidade_nome'],
                     ],
                     'data_checkin' => AcademyDateTime::nowFormatted(),
-                    'vagas_atualizadas' => (int) $turma['limite_alunos'] - ($alunosCount + 1),
+                    'vagas_atualizadas' => $hibrido->atualizado() ? $hibrido->vagas($turma, $tenantId)['vagas_livres'] : (int) $turma['limite_alunos'] - ($alunosCount + 1),
                 ],
             ],
         ];
@@ -468,25 +493,23 @@ class MobileCheckinService
 
         // Prazo configurado na turma: após ele, só inclusão manual (professor/admin).
         $fechamentoAntes = CheckinJanela::fechamentoAntesMinutos($turma);
-        if ($fechamentoAntes !== null) {
-            $fechamento = CheckinJanela::fechamento($dataHorarioInicio, $turma);
-            if ($agora > $fechamento) {
-                return [
-                    'status' => 400,
-                    'body' => [
-                        'success' => false,
-                        'error' => "O check-in desta aula encerrou às {$fechamento->format('H:i')} ({$fechamentoAntes} min antes do início). Procure o professor para inclusão manual.",
-                        'code' => 'CHECKIN_ENCERRADO',
-                        'detalhes' => [
-                            'turma_id' => (int) $turma['id'],
-                            'data_aula' => $dia->data,
-                            'horario_inicio' => $turma['horario_inicio'],
-                            'fechamento_checkin' => $fechamento->format('Y-m-d H:i:s'),
-                            'tolerancia_antes_checkin_minutos' => $fechamentoAntes,
-                        ],
+        $fechamento = CheckinJanela::fechamento($dataHorarioInicio, $turma);
+        if ($agora > $fechamento) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => "O check-in desta aula encerrou às {$fechamento->format('H:i')}. Procure o professor para inclusão manual.",
+                    'code' => 'CHECKIN_ENCERRADO',
+                    'detalhes' => [
+                        'turma_id' => (int) $turma['id'],
+                        'data_aula' => $dia->data,
+                        'horario_inicio' => $turma['horario_inicio'],
+                        'fechamento_checkin' => $fechamento->format('Y-m-d H:i:s'),
+                        'tolerancia_antes_checkin_minutos' => $fechamentoAntes,
                     ],
-                ];
-            }
+                ],
+            ];
         }
 
         return null;

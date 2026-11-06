@@ -35,6 +35,7 @@ class MobileMigracaoPlanoService
      */
     public function migrar(int $userId, int $tenantId, array $data, bool $podeSandbox = false): array
     {
+        app(\App\Services\AcessoHibridoService::class)->exigirContratacaoSecretaria($userId, $tenantId, (int) ($data['plano_id'] ?? 0));
         return $this->core()->migrar($userId, $tenantId, $data, $podeSandbox);
     }
 

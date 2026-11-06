@@ -48,6 +48,7 @@ class MobileCompraPlanoService
         }
 
         $planoId = (int) $data['plano_id'];
+        app(\App\Services\AcessoHibridoService::class)->exigirContratacaoSecretaria($userId, $tenantId, $planoId);
         $planoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
         $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
         $metodoPagamento = strtolower(trim((string) ($data['metodo_pagamento'] ?? 'checkout')));

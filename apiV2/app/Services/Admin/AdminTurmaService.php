@@ -154,6 +154,23 @@ class AdminTurmaService
      */
     public function update(int $id, int $tenantId, array $data): array
     {
+        return DB::transaction(function () use ($id, $tenantId, $data) {
+            $turma = $this->turmas->findById($id, $tenantId);
+            if ($turma && app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+                $acesso = app(\App\Services\AcessoHibridoService::class);
+                $acesso->bloquearAula($turma, $tenantId);
+                $saldo = $acesso->vagas($turma, $tenantId);
+                if (isset($data['limite_alunos']) && (int) $data['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['vagas_livres_ocupadas']) {
+                    return $this->error('Capacidade menor que as vagas fixas reservadas e check-ins livres existentes.', 422);
+                }
+            }
+
+            return $this->atualizarAula($id, $tenantId, $data);
+        }, 3);
+    }
+
+    private function atualizarAula(int $id, int $tenantId, array $data): array
+    {
         $turma = $this->turmas->findById($id, $tenantId);
         if (! $turma) {
             return $this->error('Turma não encontrada', 404);
@@ -959,6 +976,18 @@ class AdminTurmaService
         $puladas = [];
 
         foreach ($this->turmas->listarEquivalentesFuturas($tenantId, $original) as $futura) {
+            if (($futura['turma_fixa_id'] ?? null) !== ($original['turma_fixa_id'] ?? null)) {
+                continue;
+            }
+            if (app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+                $acesso = app(\App\Services\AcessoHibridoService::class);
+                $acesso->bloquearAula($futura, $tenantId);
+                $saldo = $acesso->vagas($futura, $tenantId);
+                if (isset($alteracoes['limite_alunos']) && $alteracoes['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['vagas_livres_ocupadas']) {
+                    $puladas[] = ['turma_id' => (int) $futura['id'], 'data' => $futura['dia_data'], 'motivo' => 'Vagas reservadas'];
+                    continue;
+                }
+            }
             if ($mudaAgenda) {
                 $conflitos = $this->turmas->verificarHorarioOcupado(
                     $tenantId,
@@ -991,6 +1020,7 @@ class AdminTurmaService
     private function tolerancias(array $turma): array
     {
         return [
+            ...array_intersect_key($turma, array_flip(['turma_fixa_id', 'checkin_livre'])),
             'tolerancia_minutos' => $turma['tolerancia_minutos'] ?? null,
             'tolerancia_antes_minutos' => $turma['tolerancia_antes_minutos'] ?? null,
             CheckinJanela::CAMPO_FECHAMENTO => $turma[CheckinJanela::CAMPO_FECHAMENTO] ?? null,

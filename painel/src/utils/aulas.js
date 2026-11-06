@@ -16,6 +16,7 @@ export function officialAula(row, date) {
     start: row.horario_inicio?.slice(0, 5) || '', end: row.horario_fim?.slice(0, 5) || '',
     capacity: Number(row.limite_alunos), booked: Number(row.total_checkins ?? 0),
     active: isEnabled(row.ativo), checkinLocked: isEnabled(row.checkin_bloqueado),
+    freeCheckin: row.checkin_livre == null || isEnabled(row.checkin_livre),
     openBefore: row.tolerancia_antes_minutos ?? 480, lateAfter: row.tolerancia_minutos ?? 10,
     closeBefore: row.tolerancia_antes_checkin_minutos ?? '', cancelBefore: row.tolerancia_cancelamento_minutos ?? '',
     api: row,
@@ -40,6 +41,7 @@ export function aulaPayload(values, modalities, teachers, diaId) {
     ...(!values.id ? { dia_id: Number(diaId) } : {}),
     horario_inicio: `${values.start}:00`, horario_fim: `${values.end}:00`,
     limite_alunos: values.capacity, ativo: values.active ? 1 : 0,
+    checkin_livre: values.freeCheckin ? 1 : 0,
     tolerancia_antes_minutos: values.openBefore ?? 0, tolerancia_minutos: values.lateAfter ?? 0,
     tolerancia_antes_checkin_minutos: values.closeBefore, tolerancia_cancelamento_minutos: values.cancelBefore,
   };

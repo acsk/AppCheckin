@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import { NovaMatricula, Button, Modal, TextField } from '../../components/ck';
+import { NovaMatricula, Button, Modal, TextField, SelectField } from '../../components/ck';
+import { acessoHibridoService } from '../../services/acessoHibridoService';
+import parametrosService from '../../services/parametrosService';
 import { matriculaService } from '../../services/matriculaService';
 import usuarioService from '../../services/usuarioService';
 import alunoService from '../../services/alunoService';
@@ -34,6 +36,9 @@ export default function FormMatriculaScreen() {
   const [planos, setPlanos] = useState([]);
   const [ciclos, setCiclos] = useState([]);
   const [pacotes, setPacotes] = useState([]);
+  const [turmasFixas, setTurmasFixas] = useState([]);
+  const [tipoAcesso, setTipoAcesso] = useState('horario_livre');
+  const [turmaFixaId, setTurmaFixaId] = useState('');
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [loadingCycles, setLoadingCycles] = useState(false);
   const [tipo, setTipo] = useState('plano');
@@ -49,14 +54,18 @@ export default function FormMatriculaScreen() {
       setLoading(true);
       setLoadError('');
       try {
-        const [users, mods, basic, packages] = await Promise.all([
+        const [users, mods, basic, packages, fixas, parametros] = await Promise.all([
           usuarioService.listar(), modalidadeService.listar(), alunoService.listarBasico(), pacoteService.listar(),
+          acessoHibridoService.listarTurmas(), parametrosService.listar(),
         ]);
         if (!active) return;
         setAlunos(asList(users, 'usuarios').filter((user) => Number(user.papel_id) === 1 && (user.ativo === true || Number(user.ativo) === 1)));
         setModalidades(asList(mods, 'modalidades'));
         setAlunosBasico(asList(basic, 'alunos'));
         setPacotes(asList(packages, 'pacotes'));
+        setTurmasFixas(fixas.filter(t => Number(t.ativo) === 1));
+        const padrao = parametros.data.flatMap(c => c.parametros || []).find(p => p.codigo === 'tipo_acesso_padrao');
+        setTipoAcesso(padrao?.valor || 'horario_livre');
       } catch (err) {
         if (!active) return;
         console.error('Erro ao carregar dados da matrícula:', err);
@@ -80,14 +89,14 @@ export default function FormMatriculaScreen() {
     setLoadingPlans(true);
     planoService.listar(true).then((response) => {
       if (active) setPlanos(asList(response, 'planos').filter((p) =>
-        String(p.modalidade_id) === form.modalidade_id && p.ativo && p.atual));
+        String(p.modalidade_id) === form.modalidade_id && p.ativo && (tipoAcesso === 'turma_fixa' || p.atual)));
     }).catch((err) => {
       if (!active) return;
       console.error('Erro ao carregar planos:', err);
       setSelectionError(obterMensagemErro(err, 'Não foi possível carregar os planos.'));
     }).finally(() => { if (active) setLoadingPlans(false); });
     return () => { active = false; };
-  }, [form.modalidade_id, reload]);
+  }, [form.modalidade_id, reload, tipoAcesso]);
 
   useEffect(() => {
     let active = true;
@@ -141,6 +150,7 @@ export default function FormMatriculaScreen() {
     change('dependentes', exists ? form.dependentes.filter((v) => v !== value) : [...form.dependentes, value]);
   };
   const validate = () => {
+    if (tipoAcesso === 'turma_fixa' && (tipo !== 'plano' || !turmaFixaId || !turmasFixas.find(t => String(t.id) === turmaFixaId)?.planos.some(p => String(p.id) === form.plano_id))) return 'Selecione uma turma fixa e um plano oferecido por ela.';
     if (!aluno) return 'Selecione um aluno.';
     if (tipo === 'plano' && (!plano || !ciclo || loadingPlans || loadingCycles)) return 'Selecione modalidade, plano e ciclo de pagamento.';
     if (tipo === 'pacote') {
@@ -174,6 +184,8 @@ export default function FormMatriculaScreen() {
         pacote_id: Number(form.pacote_id),
         dependentes: form.dependentes.map(Number),
       } : {
+        tipo_acesso: tipoAcesso,
+        turma_fixa_id: tipoAcesso === 'turma_fixa' ? Number(turmaFixaId) : null,
         usuario_id: Number(form.usuario_id),
         plano_id: Number(form.plano_id),
         plano_ciclo_id: Number(form.plano_ciclo_id),
@@ -205,10 +217,19 @@ export default function FormMatriculaScreen() {
       ) : (
         <>
           {selectionError ? <div role="alert"><p>{selectionError}</p><Button onClick={() => setReload((v) => v + 1)}>Tentar novamente</Button></div> : null}
+          <SelectField label="Tipo de acesso da matrícula" value={tipoAcesso} options={[{ value: 'horario_livre', label: 'Horário livre' }, { value: 'turma_fixa', label: 'Turma fixa' }]} onChange={e => {
+            setTipoAcesso(e.target.value); setTurmaFixaId(''); setTipo('plano');
+            setForm(f => ({ ...f, plano_id: '', plano_ciclo_id: '', modalidade_id: '' }));
+          }} />
+          {tipoAcesso === 'turma_fixa' ? <SelectField label="Turma fixa" placeholder="Selecione a turma" value={turmaFixaId} options={turmasFixas.map(t => ({ value: String(t.id), label: `${t.nome} — ${t.horario_inicio.slice(0, 5)} (${t.capacidade} vagas)` }))} onChange={e => {
+            const t = turmasFixas.find(t => String(t.id) === e.target.value);
+            setTurmaFixaId(e.target.value);
+            setForm(f => ({ ...f, modalidade_id: t ? String(t.modalidade_id) : '', plano_id: '', plano_ciclo_id: '' }));
+          }} /> : null}
           <NovaMatricula
             students={alunos.map((a) => ({ id: String(a.id), name: a.nome, email: a.email || '' }))}
             modalities={modalidades.map((m) => ({ id: String(m.id), name: m.nome, icon: m.icone, color: m.cor }))}
-            plans={planos.map((p) => ({ id: String(p.id), modalityId: String(p.modalidade_id), name: p.nome, price: Number(p.valor), frequency: `${p.checkins_semanais}x por semana`, durationDays: p.duracao_dias }))}
+            plans={planos.filter(p => tipoAcesso !== 'turma_fixa' || turmasFixas.find(t => String(t.id) === turmaFixaId)?.planos.some(oferta => oferta.id === p.id)).map((p) => ({ id: String(p.id), modalityId: String(p.modalidade_id), name: p.nome, price: Number(p.valor), frequency: `${p.checkins_semanais}x por semana`, durationDays: p.duracao_dias }))}
             cycles={ciclos.map((c) => ({ id: String(c.id), planId: form.plano_id, label: c.frequencia_nome || c.nome || 'Ciclo', months: Number(c.meses), price: Number(c.valor), discountPct: Number(c.desconto_percentual), note: c.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso' }))}
             packages={pacotes.map((p) => ({ id: String(p.id), name: p.nome, people: Number(p.qtd_beneficiarios || 0), price: Number(p.valor_total), durationDays: p.duracao_dias }))}
             studentId={form.usuario_id}
@@ -266,6 +287,7 @@ export default function FormMatriculaScreen() {
             </>}
           >
             <div className="ck-enrollment-review"><dl>
+              <div><dt>Tipo de acesso</dt><dd>{tipoAcesso === 'turma_fixa' ? `Turma fixa — ${turmasFixas.find(t => String(t.id) === turmaFixaId)?.nome}` : 'Horário livre'}</dd></div>
               <div><dt>Aluno</dt><dd>{aluno?.nome}<br />{aluno?.email}</dd></div>
               {tipo === 'plano' ? <>
                 <div><dt>Modalidade</dt><dd>{modalidades.find((m) => String(m.id) === form.modalidade_id)?.nome}</dd></div>
