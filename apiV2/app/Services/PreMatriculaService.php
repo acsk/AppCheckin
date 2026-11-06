@@ -10,8 +10,6 @@ use Illuminate\Validation\ValidationException;
 
 class PreMatriculaService
 {
-    private const PUBLICOS = ['sem_matricula', 'com_matricula', 'ambos'];
-
     /** @return array{configuracao: array<string, mixed>, solicitacoes: list<array<string, mixed>>} */
     public function painel(int $tenantId): array
     {
@@ -32,31 +30,30 @@ class PreMatriculaService
             'tenant_id' => 'required|integer|min:1|exists:tenants,id',
             'ativa' => 'required|boolean',
             'obrigatoria' => 'required|boolean',
-            'publico' => 'required|string|in:'.implode(',', self::PUBLICOS),
         ], [
             'tenant_id.required' => 'Selecione uma academia.',
             'tenant_id.exists' => 'A academia selecionada não foi encontrada.',
             'ativa.required' => 'Informe se a pré-matrícula está ativa.',
             'obrigatoria.required' => 'Informe se o envio é obrigatório.',
-            'publico.required' => 'Selecione quais alunos podem enviar a pré-matrícula.',
-            'publico.in' => 'O público selecionado é inválido.',
         ])->validate();
 
         $tenantId = (int) $validados['tenant_id'];
         if ($validados['ativa']) {
             $ofertas = $this->planosDisponiveis($tenantId);
-            if ($ofertas === []) {
+            if (! collect($ofertas)->contains(
+                fn (array $plano) => $plano['dias_disponiveis'] >= $plano['checkins_semanais'],
+            )) {
                 throw ValidationException::withMessages(['ativa' => 'Cadastre planos de valor zero com aulas semanais e turmas fixas disponíveis antes de ativar a pré-matrícula.']);
             }
         }
 
         $linha = [
-                'ativa' => (bool) $validados['ativa'],
-                'obrigatoria' => (bool) $validados['obrigatoria'],
-                'publico' => $validados['publico'],
-                'atualizada_por' => $userId,
-                'updated_at' => now(),
-            ];
+            'ativa' => (bool) $validados['ativa'],
+            'obrigatoria' => (bool) $validados['obrigatoria'],
+            'publico' => 'ambos',
+            'atualizada_por' => $userId,
+            'updated_at' => now(),
+        ];
         DB::transaction(function () use ($tenantId, $linha) {
             $existente = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->lockForUpdate()->first();
             if ($existente) {
@@ -87,13 +84,16 @@ class PreMatriculaService
     public function paraAluno(int $tenantId, int $userId): ?array
     {
         $config = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->where('ativa', 1)->first();
-        if (! $config || ! $this->alunoDaAcademia($tenantId, $userId)) {
+        if (! $config) {
             return null;
         }
 
-        $temMatricula = $this->temMatriculaAtiva($tenantId, $userId);
-        if (! $this->publicoAlvo((string) $config->publico, $temMatricula)) {
-            return null;
+        if (! $this->alunoDaAcademia($tenantId, $userId)) {
+            return $this->indisponivel(
+                $tenantId,
+                (bool) $config->obrigatoria,
+                'Esta conta não está vinculada como aluno ativo nesta academia. Peça à academia para conferir seu cadastro.',
+            );
         }
 
         $ultima = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('usuario_id', $userId)
@@ -101,6 +101,7 @@ class PreMatriculaService
         if ($ultima && in_array($ultima->status, ['pendente', 'aprovada'], true)) {
             return [
                 'tenant_id' => $tenantId,
+                'disponivel' => true,
                 'obrigatoria' => (bool) $config->obrigatoria,
                 'status' => (string) $ultima->status,
                 'solicitacao_id' => (int) $ultima->id,
@@ -112,12 +113,29 @@ class PreMatriculaService
 
         return [
             'tenant_id' => $tenantId,
+            'disponivel' => true,
             'obrigatoria' => (bool) $config->obrigatoria,
             'status' => $ultima?->status === 'reprovada' ? 'reprovada' : null,
             'solicitacao_id' => $ultima ? (int) $ultima->id : null,
             'observacao' => $ultima?->observacao,
             'planos' => $this->planosDisponiveis($tenantId),
             'turmas' => $this->turmasDisponiveis($tenantId),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function indisponivel(int $tenantId, bool $obrigatoria, string $motivo): array
+    {
+        return [
+            'tenant_id' => $tenantId,
+            'disponivel' => false,
+            'obrigatoria' => $obrigatoria,
+            'status' => null,
+            'solicitacao_id' => null,
+            'observacao' => null,
+            'motivo' => $motivo,
+            'planos' => [],
+            'turmas' => [],
         ];
     }
 
@@ -146,9 +164,6 @@ class PreMatriculaService
             $config = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->where('ativa', 1)->lockForUpdate()->first();
             if (! $config || ! $this->alunoDaAcademia($tenantId, $userId)) {
                 throw ValidationException::withMessages(['pre_matricula' => 'A pré-matrícula não está disponível para esta conta.']);
-            }
-            if (! $this->publicoAlvo((string) $config->publico, $this->temMatriculaAtiva($tenantId, $userId))) {
-                throw ValidationException::withMessages(['pre_matricula' => 'Sua conta não faz parte do público desta pré-matrícula.']);
             }
             $anterior = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('usuario_id', $userId)
                 ->orderByDesc('id')->lockForUpdate()->first();
@@ -242,7 +257,7 @@ class PreMatriculaService
             'configurada' => $row !== null,
             'ativa' => (bool) ($row->ativa ?? false),
             'obrigatoria' => (bool) ($row->obrigatoria ?? false),
-            'publico' => (string) ($row->publico ?? 'sem_matricula'),
+            'publico' => 'ambos',
         ];
     }
 
@@ -309,14 +324,13 @@ class PreMatriculaService
             ->where('p.tenant_id', $tenantId)->where('p.ativo', 1)->where('p.valor', 0)->where('p.checkins_semanais', '>', 0)
             ->orderBy('p.checkins_semanais')->orderBy('p.id')
             ->get(['p.id', 'p.descricao', 'p.checkins_semanais', 'p.modalidade_id', 'm.nome as modalidade_nome'])
-            ->filter(fn ($plano) => count(array_unique($diasPorModalidade[(int) $plano->modalidade_id] ?? [])) >= (int) $plano->checkins_semanais)
-            ->values()
             ->map(fn ($plano) => [
                 'id' => (int) $plano->id,
                 'descricao' => $this->descricaoPlano($plano->descricao),
                 'checkins_semanais' => (int) $plano->checkins_semanais,
                 'modalidade_id' => (int) $plano->modalidade_id,
                 'modalidade_nome' => (string) $plano->modalidade_nome,
+                'dias_disponiveis' => count(array_unique($diasPorModalidade[(int) $plano->modalidade_id] ?? [])),
             ])->all();
     }
 
@@ -343,19 +357,6 @@ class PreMatriculaService
         return DB::table('usuarios as u')->join('tenant_usuario_papel as tup', 'tup.usuario_id', '=', 'u.id')
             ->where('u.id', $userId)->where('u.ativo', 1)->where('tup.tenant_id', $tenantId)
             ->where('tup.papel_id', Papel::ALUNO)->where('tup.ativo', 1)->exists();
-    }
-
-    private function temMatriculaAtiva(int $tenantId, int $userId): bool
-    {
-        return DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
-            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
-            ->where('m.tenant_id', $tenantId)->where('a.usuario_id', $userId)->where('sm.codigo', 'ativa')->exists();
-    }
-
-    private function publicoAlvo(string $publico, bool $temMatricula): bool
-    {
-        return $publico === 'ambos' || ($publico === 'com_matricula' && $temMatricula)
-            || ($publico === 'sem_matricula' && ! $temMatricula);
     }
 
     private function descricaoPlano(?string $descricao): ?string

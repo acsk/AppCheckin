@@ -6,18 +6,13 @@ import preMatriculaService from '../../services/preMatriculaService';
 import { showError, showSuccess } from '../../utils/toast';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-const publicoLabel = {
-  sem_matricula: 'Sem matrícula ativa',
-  com_matricula: 'Com matrícula ativa',
-  ambos: 'Com ou sem matrícula ativa',
-};
 const statusLabel = { pendente: 'Pendente', aprovada: 'Aprovada', reprovada: 'Reprovada' };
 
 export default function PreMatriculaPanel() {
   const [academias, setAcademias] = useState([]);
   const [tenantId, setTenantId] = useState('');
   const [dados, setDados] = useState(null);
-  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula' });
+  const [config, setConfig] = useState({ ativa: false, obrigatoria: false });
   const [configAberta, setConfigAberta] = useState(false);
   const [excluirConfig, setExcluirConfig] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState('pendente');
@@ -34,7 +29,10 @@ export default function PreMatriculaPanel() {
     try {
       const resultado = await preMatriculaService.listar(id);
       setDados(resultado);
-      setConfig(resultado.configuracao);
+      setConfig({
+        ativa: !!resultado.configuracao.ativa,
+        obrigatoria: !!resultado.configuracao.obrigatoria,
+      });
     } catch (error) {
       setErro(error.message);
     } finally {
@@ -137,13 +135,13 @@ export default function PreMatriculaPanel() {
               <strong>Configuração da pré-matrícula</strong>
               <p className="ck-mc-hint">
                 {dados?.configuracao?.configurada
-                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula}`
+                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · disponível para alunos vinculados à academia`
                   : 'Ainda não configurada para esta academia.'}
               </p>
             </div>
             <div className="ck-cad-table__actions">
               <Button variant="primary" icon={dados?.configuracao?.configurada ? 'pencil' : 'plus'} disabled={carregando} onClick={() => {
-                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false, publico: 'sem_matricula' });
+                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false });
                 setConfigAberta(true);
               }}>{dados?.configuracao?.configurada ? 'Editar configuração' : 'Montar pré-matrícula'}</Button>
               {dados?.configuracao?.configurada ? <Button variant="danger" disabled={salvando || carregando} onClick={() => setExcluirConfig(true)}>Excluir</Button> : null}
@@ -195,11 +193,7 @@ export default function PreMatriculaPanel() {
         <div className="ck-mc-form">
           <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão enviar o pedido pelo app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
           <Switch label="Envio obrigatório" description="Quando ativo, o app exige o envio antes de continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
-          <SelectField label="Público" hint="“Com matrícula ativa” considera matrículas ativas nesta academia. Para incluir alunos sem matrícula, escolha “Sem matrícula ativa” ou “Com ou sem matrícula ativa”." value={config.publico} options={[
-            { value: 'sem_matricula', label: publicoLabel.sem_matricula },
-            { value: 'com_matricula', label: publicoLabel.com_matricula },
-            { value: 'ambos', label: publicoLabel.ambos },
-          ]} onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
+          <p className="ck-mc-hint">O pedido aparecerá para os alunos vinculados a esta academia, tenham ou não matrícula ativa.</p>
         </div>
       </Modal>
 

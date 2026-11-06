@@ -32,10 +32,12 @@ type Pendente = {
 };
 type PreMatricula = {
   tenant_id: number;
+  disponivel: boolean;
   obrigatoria: boolean;
   status: "pendente" | "aprovada" | "reprovada" | null;
   observacao: string | null;
-  planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string }[];
+  motivo?: string | null;
+  planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];
   turmas: { id: number; nome: string; modalidade_id: number; dias_semana: number[]; horario_inicio: string; horario_fim: string }[];
 };
 
@@ -105,6 +107,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [diaVencimento, setDiaVencimento] = useState("");
   const [erroPreMatricula, setErroPreMatricula] = useState("");
   const [salvandoPreMatricula, setSalvandoPreMatricula] = useState(false);
+  const [carregandoPreMatricula, setCarregandoPreMatricula] = useState(false);
   const [valores, setValores] = useState<Record<string, string>>({});
   const [erros, setErros] = useState<Record<string, string>>({});
   const [erroGeral, setErroGeral] = useState("");
@@ -157,6 +160,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         if (versao !== versaoBusca.current) return;
         // Sem conexão ou API antiga: não bloqueia o app por causa disso
       }
+      setCarregandoPreMatricula(true);
       try {
         const resposta: any = await api.get("/mobile/pre-matricula");
         if (versao !== versaoBusca.current) return;
@@ -172,6 +176,8 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         if (versao !== versaoBusca.current) return;
         setErroPreMatricula(error?.response?.data?.message || "Não foi possível carregar a pré-matrícula.");
         console.error("[PreMatriculaGate] Falha ao carregar pré-matrícula", error);
+      } finally {
+        if (versao === versaoBusca.current) setCarregandoPreMatricula(false);
       }
     } finally {
       if (versao === versaoBusca.current) buscando.current = false;
@@ -192,6 +198,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
       setGradePreMatricula([]);
       setDiaVencimento("");
       setErroPreMatricula("");
+      setCarregandoPreMatricula(false);
       setValores({});
       setErros({});
       setErroGeral("");
@@ -347,10 +354,14 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const planoSelecionado = preMatricula?.planos.find((plano) => plano.id === planoPreMatricula) || null;
   const modalidadesPermitidas = planoSelecionado ? preMatricula?.turmas.filter((turma) => turma.modalidade_id === planoSelecionado.modalidade_id) || [] : [];
   const visivelCadastro = enabled && !!pendente && adiada !== pendente.id;
+  const statusResolvido = !!preMatricula && ["pendente", "aprovada"].includes(preMatricula.status || "");
+  const podeAdiarPreMatricula = !!preMatricula
+    && (!preMatricula.obrigatoria || !preMatricula.disponivel || statusResolvido || !preMatricula.planos.length);
+  const exigeEnvioAgora = !!preMatricula?.obrigatoria && preMatricula.disponivel && !statusResolvido && !!preMatricula.planos.length;
   const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula
-    && !["pendente", "aprovada"].includes(preMatricula.status || "")
-    && (preMatricula.obrigatoria || preMatriculaAdiada !== preMatricula.tenant_id);
-  if (!visivelCadastro && !visivelPreMatricula) return null;
+    && (exigeEnvioAgora || preMatriculaAdiada !== preMatricula.tenant_id);
+  const visivelErroPreMatricula = enabled && !visivelCadastro && !preMatricula && !!erroPreMatricula;
+  if (!visivelCadastro && !visivelPreMatricula && !visivelErroPreMatricula) return null;
 
   return <>
     {visivelCadastro && pendente ? (
@@ -487,48 +498,63 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
     </Modal>
     ) : null}
     {visivelPreMatricula && preMatricula ? (
-      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (!preMatricula.obrigatoria) setPreMatriculaAdiada(preMatricula.tenant_id); }}>
+      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (podeAdiarPreMatricula) setPreMatriculaAdiada(preMatricula.tenant_id); }}>
         <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
               <View style={styles.head}>
                 <View style={styles.icon}><Feather name="clipboard" size={24} color={ds.brandInk} /></View>
                 <Text style={styles.title} accessibilityRole="header">Pré-matrícula</Text>
-                <Text style={styles.text}>Informe o plano e os dias/horários desejados. A solicitação será analisada pela academia; não cria matrícula, não gera cobrança e não reserva vaga.</Text>
+                <Text style={styles.text}>
+                  {!preMatricula.disponivel
+                    ? preMatricula.motivo || "Esta pré-matrícula não está disponível para sua conta."
+                    : preMatricula.status === "pendente"
+                      ? "Seu pedido foi recebido e está aguardando análise da academia."
+                      : preMatricula.status === "aprovada"
+                        ? "Seu pedido foi aprovado. A academia ainda precisa criar sua matrícula; a aprovação não gera cobrança."
+                        : "Informe o plano e os dias/horários desejados. A solicitação será analisada pela academia; não cria matrícula, não gera cobrança e não reserva vaga."}
+                </Text>
               </View>
-              {preMatricula.status === "reprovada" ? (
+              {preMatricula.disponivel && preMatricula.status === "reprovada" ? (
                 <View style={styles.alert} accessibilityRole="alert">
                   <Feather name="alert-circle" size={18} color={ds.danger} />
                   <Text style={styles.alertText}>{preMatricula.observacao || "Sua solicitação anterior não foi aprovada. Confira seus dados e envie novamente."}</Text>
                 </View>
               ) : null}
-              {erroPreMatricula ? (
+              {preMatricula.disponivel && erroPreMatricula ? (
                 <View style={styles.alert} accessibilityRole="alert">
                   <Feather name="alert-circle" size={18} color={ds.danger} />
                   <Text style={styles.alertText}>{erroPreMatricula}</Text>
                 </View>
               ) : null}
-              <Section title="ESCOLHA O PLANO" padded>
+              {preMatricula.disponivel && !statusResolvido ? <Section title="ESCOLHA O PLANO" padded>
                 <View style={styles.fields}>
                   {preMatricula.planos.map((plano) => {
                     const selecionado = planoPreMatricula === plano.id;
                     const descricao = String(plano.descricao || "").replace(/\bfree\b/gi, "").trim();
                     return (
-                      <Pressable key={plano.id} onPress={() => {
-                        setPlanoPreMatricula(plano.id);
-                        setGradePreMatricula([]);
-                        setErroPreMatricula("");
-                      }} accessibilityRole="radio" accessibilityState={{ checked: selecionado }} style={[styles.opt, selecionado && styles.optOn]}>
-                        <Text style={[styles.optText, selecionado && { color: ds.onInverse }]}>
-                          {plano.checkins_semanais}x por semana · {plano.modalidade_nome}{descricao ? `\n${descricao}` : ""}
-                        </Text>
-                      </Pressable>
+                      <View key={plano.id}>
+                        <Pressable onPress={() => {
+                          setPlanoPreMatricula(plano.id);
+                          setGradePreMatricula([]);
+                          setErroPreMatricula("");
+                        }} accessibilityRole="radio" accessibilityState={{ checked: selecionado }} style={[styles.opt, selecionado && styles.optOn]}>
+                          <Text style={[styles.optText, selecionado && { color: ds.onInverse }]}>
+                            {plano.checkins_semanais}x por semana · {plano.modalidade_nome}{descricao ? `\n${descricao}` : ""}
+                          </Text>
+                        </Pressable>
+                        {selecionado && plano.dias_disponiveis !== undefined && plano.dias_disponiveis < plano.checkins_semanais ? (
+                          <Text style={styles.hint}>
+                            Há turmas em {plano.dias_disponiveis} dia(s) diferente(s), mas este plano precisa de {plano.checkins_semanais}. Peça à academia para disponibilizar horários em mais dias.
+                          </Text>
+                        ) : null}
+                      </View>
                     );
                   })}
                   {!preMatricula.planos.length ? <Text style={styles.text}>Não há planos disponíveis para esta pré-matrícula. Fale com a academia.</Text> : null}
                 </View>
-              </Section>
-              {planoSelecionado ? (
+              </Section> : null}
+              {preMatricula.disponivel && !statusResolvido && planoSelecionado ? (
                 <Section title="ESCOLHA OS DIAS E HORÁRIOS" padded>
                   <View style={styles.fields}>
                     <Text style={styles.text}>Escolha {planoSelecionado.checkins_semanais} horário(s) em dias diferentes.</Text>
@@ -564,13 +590,31 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                 </Section>
               ) : null}
               <View style={styles.fields}>
-                <Button variant="primary" icon="check" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais)} onPress={() => void salvarPreMatricula()}>
-                  Enviar para análise
-                </Button>
-                {!preMatricula.obrigatoria ? <Button variant="secondary" onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>Agora não</Button> : null}
+                {preMatricula.disponivel && !statusResolvido ? <Button variant="primary" icon="check" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais)} onPress={() => void salvarPreMatricula()}>
+                  Enviar pedido para análise
+                </Button> : null}
+                {podeAdiarPreMatricula ? <Button variant="secondary" onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
+                  {statusResolvido ? "Entendi" : "Fechar"}
+                </Button> : null}
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+    ) : null}
+    {visivelErroPreMatricula ? (
+      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => {}}>
+        <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
+          <View style={[styles.body, styles.flex]}>
+            <View style={styles.head}>
+              <View style={styles.icon}><Feather name="alert-circle" size={24} color={ds.danger} /></View>
+              <Text style={styles.title} accessibilityRole="header">Não foi possível abrir a pré-matrícula</Text>
+              <Text style={styles.text}>{erroPreMatricula}</Text>
+            </View>
+            <View style={styles.fields}>
+              <Button variant="primary" loading={carregandoPreMatricula} onPress={() => void carregar()}>Tentar novamente</Button>
+            </View>
+          </View>
         </SafeAreaView>
       </Modal>
     ) : null}

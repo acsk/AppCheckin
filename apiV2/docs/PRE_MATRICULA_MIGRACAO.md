@@ -2,11 +2,13 @@
 
 O Super Admin configura o fluxo por academia em **App Mobile →
 Pré-matrícula de migração**. A tela permite criar, editar e excluir a
-configuração da academia. A configuração define se o fluxo está ativo, se o
-envio é obrigatório no app e se o público-alvo são alunos com matrícula ativa,
-sem matrícula ativa ou ambos. Antes de ativar, a academia precisa ter planos
-ativos de valor zero e turmas fixas ativas com dias suficientes para cumprir a
-frequência semanal dos planos.
+configuração da academia. A configuração define se o fluxo está ativo e se o
+envio é obrigatório no app. Quando ativo, o pré-cadastro aparece para os alunos
+com vínculo ativo na academia selecionada, tenham ou não matrícula ativa.
+O app lista os planos ativos de valor zero, sem ocultar uma opção cuja
+frequência ainda não tenha dias distintos suficientes na grade. Nesse caso,
+informa ao aluno que a academia precisa disponibilizar mais horários. Para
+ativar o fluxo, ao menos um plano precisa ter uma grade compatível.
 
 O app mostra a descrição e a frequência dos planos elegíveis, sem exibir preço
 ou o termo `FREE`. O aluno escolhe uma turma em cada dia da semana, sem repetir
@@ -38,7 +40,8 @@ As rotas do painel exigem autenticação de Super Admin:
 
 - `GET /v2/superadmin/pre-matriculas?tenant_id={id}`: configuração e fila.
 - `PUT /v2/superadmin/pre-matriculas/configuracao`: grava `tenant_id`, `ativa`,
-  `obrigatoria` e `publico`.
+  `obrigatoria`. A pré-matrícula é sempre oferecida aos alunos vinculados à
+  academia selecionada, independentemente de possuírem matrícula ativa.
 - `DELETE /v2/superadmin/pre-matriculas/configuracao?tenant_id={id}`: remove a
   configuração e desativa novos pedidos, preservando as solicitações recebidas.
 - `POST /v2/superadmin/pre-matriculas/{id}/aprovar` e

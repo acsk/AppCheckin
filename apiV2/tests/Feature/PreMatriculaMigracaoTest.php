@@ -120,15 +120,34 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertCount(1, $this->service->paraAluno(1, 1)['planos']);
     }
 
-    public function test_publico_com_matricula_exige_matricula_ativa_na_academia(): void
+    public function test_exibe_todos_os_planos_gratuitos_mesmo_quando_nao_ha_dias_para_a_frequencia(): void
+    {
+        DB::table('turmas_fixas')->where('id', 2)->update(['dias_semana' => '[1]']);
+        DB::table('planos')->insert([
+            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => '1x por Semana FREE',
+                'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true],
+            ['id' => 4, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => '3x por Semana FREE',
+            'valor' => 0, 'checkins_semanais' => 3, 'ativo' => true,
+            ],
+        ]);
+
+        $planos = $this->service->paraAluno(1, 1)['planos'];
+
+        $this->assertCount(3, $planos);
+        $this->assertSame([1, 2, 3], array_column($planos, 'checkins_semanais'));
+        $this->assertSame(2, $planos[2]['dias_disponiveis']);
+    }
+
+    public function test_pre_matricula_fica_disponivel_para_alunos_vinculados_com_ou_sem_matricula(): void
     {
         $this->service->salvarConfiguracao([
             'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => true, 'publico' => 'com_matricula',
         ], 99);
-        $this->assertNull($this->service->paraAluno(1, 1));
+        $this->assertTrue($this->service->paraAluno(1, 1)['disponivel']);
+        $this->assertSame('ambos', $this->service->painel(1)['configuracao']['publico']);
 
         DB::table('matriculas')->insert(['tenant_id' => 1, 'aluno_id' => 1, 'status_id' => 1]);
-        $this->assertNotNull($this->service->paraAluno(1, 1));
+        $this->assertTrue($this->service->paraAluno(1, 1)['disponivel']);
     }
 
     public function test_envio_exige_dias_distintos_e_aprovacao_nao_cria_matricula(): void
