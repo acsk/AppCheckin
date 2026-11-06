@@ -11,6 +11,10 @@ const diasAbreviados = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const vazio = { nome: '', professor_id: '', modalidade_id: '', horario_inicio: '', horario_fim: '', capacidade: '12', dias_semana: [], checkin_livre: false };
 const erroApi = (e) => Object.values(e?.response?.data?.errors || {}).flat().join(' ') || e?.response?.data?.message || e.message;
 const hora = (value) => String(value || '').slice(0, 5);
+const minutosDoDia = (value) => {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
 const horaNome = (value) => {
   const [horas, minutos] = hora(value).split(':');
   if (!horas || !minutos) return '';
@@ -77,7 +81,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
         const dadosForm = selecionada ? formTurma(selecionada) : vazio;
         setForm(dadosForm);
         setOriginal(selecionada ? dadosForm : null);
-        setNomePersonalizado(!!selecionada && selecionada.nome.trim() !== nomeAutomatico(dadosForm));
+        setNomePersonalizado(!!selecionada && String(selecionada.nome || '').trim() !== nomeAutomatico(dadosForm));
         setReady(true);
       })
       .catch((e) => { if (active) setErro(erroApi(e)); })
@@ -130,10 +134,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
       return next;
     });
   };
-  const toggleDia = (dia) => {
-    const novosDias = form.dias_semana.includes(dia)
-      ? form.dias_semana.filter((item) => item !== dia)
-      : [...form.dias_semana, dia];
+  const atualizarDias = (novosDias) => {
     set('dias_semana', novosDias);
     setRemapeamentos((current) => Object.fromEntries(Object.entries(current).map(([id, item]) => {
       const mantidos = item.dias_semana.filter((value) => novosDias.includes(value));
@@ -142,6 +143,22 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
       return [id, { ...item, dias_semana: preenchidos }];
     })));
   };
+  const toggleDia = (dia) => atualizarDias(form.dias_semana.includes(dia)
+    ? form.dias_semana.filter((item) => item !== dia)
+    : [...form.dias_semana, dia]);
+  const inicioEmMinutos = minutosDoDia(form.horario_inicio);
+  const definirDuracao = (minutos) => {
+    if (inicioEmMinutos == null) return;
+    const total = inicioEmMinutos + minutos;
+    if (total >= 24 * 60) return;
+    set('horario_fim', `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`);
+  };
+  const duracaoAtual = (() => {
+    const fim = minutosDoDia(form.horario_fim);
+    if (inicioEmMinutos == null || fim == null) return null;
+    const minutos = fim - inicioEmMinutos;
+    return minutos > 0 ? minutos : null;
+  })();
   const alterarDiasAluno = (matriculaId, dia) => setRemapeamentos((current) => {
     const item = current[String(matriculaId)];
     const diasSelecionados = item.dias_semana.includes(dia)
@@ -220,7 +237,7 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
       {erro ? <Callout tone="danger" title="Não foi possível concluir">{erro}<Button onClick={() => setReload((value) => value + 1)}>Recarregar</Button></Callout> : null}
       {loading ? <p role="status">Carregando…</p> : (
         <div className="ck-tu-form">
-        <fieldset className="ck-tu-fields" disabled={saving || !ready}>
+        <fieldset className="ck-tu-fields" disabled={saving}>
           <section className="ck-pc__sec">
           <header><span className="ck-pc__secn">1</span><h3>Modalidade e nome</h3></header>
           <SelectField
@@ -242,6 +259,11 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
           <header><span className="ck-pc__secn">2</span><h3>Dias e horário</h3></header>
           <div className="ck-field">
             <span className="ck-field__label">Dias recorrentes</span>
+            <div className="ck-tu-presets" role="group" aria-label="Atalhos de dias recorrentes">
+              <button type="button" onClick={() => atualizarDias([1, 2, 3, 4, 5])} aria-pressed={form.dias_semana.length === 5 && [1, 2, 3, 4, 5].every(dia => form.dias_semana.includes(dia))}>Seg–Sex</button>
+              <button type="button" onClick={() => atualizarDias([6, 7])} aria-pressed={form.dias_semana.length === 2 && [6, 7].every(dia => form.dias_semana.includes(dia))}>Fim de semana</button>
+              <button type="button" onClick={() => atualizarDias([1, 2, 3, 4, 5, 6, 7])} aria-pressed={form.dias_semana.length === 7}>Todos</button>
+            </div>
             <div className="ck-tu-dayset" role="group" aria-label="Dias recorrentes">
             {dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day" aria-label={dia} aria-pressed={form.dias_semana.includes(index + 1)} onClick={() => toggleDia(index + 1)}>{dia.slice(0, 3)}</button>)}
             </div>
@@ -249,6 +271,10 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
           <div className="ck-al-grid">
             <TextField label="Início" type="time" value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
             <TextField label="Fim" type="time" value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
+          </div>
+          <div className="ck-tu-presets" role="group" aria-label="Duração da aula">
+            <span>Duração:</span>
+            {[45, 60, 90].map(minutos => <button key={minutos} type="button" disabled={inicioEmMinutos == null || inicioEmMinutos + minutos >= 24 * 60} aria-pressed={duracaoAtual === minutos} onClick={() => definirDuracao(minutos)}>{minutos} min</button>)}
           </div>
           {gradeAlterada ? <>
             <TextField label="Aplicar a partir de" type="date" min={amanha()} value={desde} onChange={(event) => setDesde(event.target.value)} />

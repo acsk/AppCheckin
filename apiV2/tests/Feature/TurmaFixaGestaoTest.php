@@ -85,6 +85,30 @@ class TurmaFixaGestaoTest extends TestCase
         $this->assertSame(1, DB::table('turma_fixa_eventos')->count());
     }
 
+    public function test_editar_grade_aceita_nome_vazio_e_salva_dados_da_nova_versao(): void
+    {
+        $from = $this->vigenciaTeste();
+        $this->executar('grade', [
+            'from' => $from,
+            'nome' => null,
+            'dias_semana' => [2],
+            'horario_inicio' => '18:00',
+            'horario_fim' => '19:00',
+            'professor_id' => 2,
+            'capacidade' => 17,
+            'checkin_livre' => false,
+            'remapeamentos' => [['matricula_id' => 1, 'dias_semana' => [2]]],
+        ]);
+
+        $novaId = (int) DB::table('turmas_fixas')->where('id', 1)->value('substituida_por_id');
+        $nova = DB::table('turmas_fixas')->where('id', $novaId)->first();
+        $this->assertSame('Ter 18 às 19h', $nova->nome);
+        $this->assertSame(17, (int) $nova->capacidade);
+        $this->assertSame(0, (int) $nova->checkin_livre);
+        $this->assertSame(17, (int) DB::table('turmas')->where('turma_fixa_id', $novaId)->value('limite_alunos'));
+        $this->assertSame(0, (int) DB::table('turmas')->where('turma_fixa_id', $novaId)->value('checkin_livre'));
+    }
+
     public function test_remapeamento_incompleto_ou_excesso_nao_aplica_nenhuma_alteracao(): void
     {
         $dados = ['from' => $this->vigenciaTeste(), 'dias_semana' => [2, 4], 'horario_inicio' => '18:00', 'horario_fim' => '19:00', 'professor_id' => 2, 'remapeamentos' => []];
@@ -210,6 +234,14 @@ class TurmaFixaGestaoTest extends TestCase
         $this->assertSame('capacidade', $evento->acao);
         $this->expectException(HttpException::class);
         app(AdminTurmaFixaGestaoService::class)->detalhe(4, 1);
+    }
+
+    public function test_listagem_calcula_ocupacao_semanal_por_dia_vinculado(): void
+    {
+        $turma = app(AdminTurmaFixaService::class)->listar(3)['turmas'][0];
+
+        $this->assertSame(1, $turma->alunos_vinculados);
+        $this->assertSame(3, $turma->vagas_ocupadas);
     }
 
     public function test_professor_preserva_excesso_legado_e_sinalizacao_de_revisao(): void

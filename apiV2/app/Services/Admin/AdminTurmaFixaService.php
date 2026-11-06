@@ -25,7 +25,12 @@ class AdminTurmaFixaService
             $turma->dias_semana = json_decode($turma->dias_semana, true);
             if ($gestao->atualizado()) {
                 $turma->situacao = $gestao->situacao($turma);
-                $turma->alunos_vinculados = count($gestao->vinculados($tenantId, (int) $turma->id));
+                $vinculados = $gestao->vinculados($tenantId, (int) $turma->id);
+                $turma->alunos_vinculados = count($vinculados);
+                $turma->vagas_ocupadas = array_sum(array_map(
+                    fn (array $matricula) => count($matricula['dias_semana']),
+                    $vinculados
+                ));
                 $turma->disponivel_matricula = $turma->ativo && ! $turma->deleted_at && ! $turma->vigencia_fim;
             }
         }
