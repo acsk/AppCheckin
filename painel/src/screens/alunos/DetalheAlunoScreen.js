@@ -34,6 +34,7 @@ const toStudent = (a) => ({
   avatar: fotoUrl(a.foto_caminho, API_V2_BASE_URL),
   address: { cep: a.cep, street: a.logradouro, number: a.numero, complement: a.complemento, district: a.bairro, city: a.cidade, uf: a.estado },
   guardianAccount: a.responsavel_conta || null,
+  dependents: (a.dependentes || []).map((d) => ({ userId: d.usuario_id, id: d.aluno_id, name: d.nome, age: d.idade, relation: d.parentesco, hasPin: !!d.tem_pin })),
   guardian: a.responsavel_nome ? { name: a.responsavel_nome, cpf: a.responsavel_cpf || '', email: a.responsavel_email || '', phone: a.responsavel_telefone || '', relation: a.responsavel_parentesco || '' } : null,
   createdAt: isoDateTime(a.created_at),
   updatedAt: isoDateTime(a.updated_at),
@@ -85,6 +86,12 @@ export default function DetalheAlunoScreen() {
   const [verApp, setVerApp] = useState(false);
   const [motivoApp, setMotivoApp] = useState('');
   const [abrindoApp, setAbrindoApp] = useState(false);
+  // PIN do login próprio do menor (definido pela academia)
+  const [pinModal, setPinModal] = useState(false);
+  const [pin, setPin] = useState('');
+  const [pinErro, setPinErro] = useState('');
+  const [salvandoPin, setSalvandoPin] = useState(false);
+  const [confirmRemoverPin, setConfirmRemoverPin] = useState(false);
 
   // Sessão do aluno vai no fragmento (#d=): não chega ao servidor do app nem aos logs
   const abrirApp = async () => {
@@ -202,6 +209,38 @@ export default function DetalheAlunoScreen() {
     }
   };
 
+  const salvarPin = async () => {
+    if (!/^\d{4,6}$/.test(pin)) {
+      setPinErro('O PIN tem de 4 a 6 números.');
+      return;
+    }
+    setSalvandoPin(true);
+    try {
+      const r = await alunoService.definirPinDependente(alunoId, pin);
+      showSuccess(r?.message || 'PIN salvo');
+      setPinModal(false);
+      await loadAluno();
+    } catch (error) {
+      setPinErro(error?.message || error?.error || 'Não foi possível salvar o PIN');
+    } finally {
+      setSalvandoPin(false);
+    }
+  };
+
+  const removerPin = async () => {
+    setSalvandoPin(true);
+    try {
+      const r = await alunoService.removerPinDependente(alunoId);
+      showSuccess(r?.message || 'Acesso removido');
+      setConfirmRemoverPin(false);
+      await loadAluno();
+    } catch (error) {
+      showError(error?.message || error?.error || 'Não foi possível remover o PIN');
+    } finally {
+      setSalvandoPin(false);
+    }
+  };
+
   const addCredit = async () => {
     const valor = parseFloat(String(creditForm.valor).replace(/\./g, '').replace(',', '.'));
     if (!valor || valor <= 0) {
@@ -305,6 +344,46 @@ export default function DetalheAlunoScreen() {
         onToggleActive={() => setConfirmToggle(true)}
         onAddCredit={() => setCreditModal(true)}
         onViewApp={podeVerApp ? () => { setMotivoApp(''); setVerApp(true); } : undefined}
+        onSetPin={() => { setPin(''); setPinErro(''); setPinModal(true); }}
+        onRemovePin={() => setConfirmRemoverPin(true)}
+        onOpenStudent={(id) => router.push(`/alunos/${id}`)}
+      />
+
+      <Modal
+        open={pinModal}
+        size="sm"
+        title={`PIN de acesso de ${name.split(' ')[0]}`}
+        description={`${name.split(' ')[0]} entra no app em “Sou dependente”, com o e-mail do responsável e este PIN. O responsável recebe um aviso no app e pode trocar o PIN por lá.`}
+        dismissable={!salvandoPin}
+        onClose={() => setPinModal(false)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={salvandoPin} onClick={() => setPinModal(false)}>Cancelar</Button>
+            <Button variant="primary" icon="key" loading={salvandoPin} onClick={salvarPin}>Salvar PIN</Button>
+          </>
+        )}
+      >
+        <TextField label="PIN" inputMode="numeric" placeholder="4 a 6 números" icon="lock" value={pin} error={pinErro || undefined}
+          hint={!pinErro ? 'Não use a data de nascimento nem sequências como 1234.' : undefined}
+          onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setPinErro(''); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); salvarPin(); } }} />
+      </Modal>
+
+      <Modal
+        open={confirmRemoverPin}
+        size="sm"
+        title={`Tirar o acesso próprio de ${name.split(' ')[0]}?`}
+        description="O PIN deixa de valer e quem estiver logado com ele sai na hora. O responsável continua usando o perfil pelo app dele."
+        dismissable={!salvandoPin}
+        onClose={() => setConfirmRemoverPin(false)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={salvandoPin} onClick={() => setConfirmRemoverPin(false)}>Cancelar</Button>
+            <Button variant="danger" icon="x" loading={salvandoPin} onClick={removerPin}>Tirar acesso</Button>
+          </>
+        )}
       />
 
       <Modal

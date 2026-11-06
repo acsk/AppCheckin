@@ -134,6 +134,28 @@ class AlunoController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function definirPinDependente(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+        $result = $this->service->definirPinDependente($id, $tenantId, (string) $request->input('pin', ''));
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function removerPinDependente(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+        $result = $this->service->removerPinDependente($id, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function buscarResponsavel(Request $request, string $cpf): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\AdminAlunoRepository;
 use App\Repositories\UsuarioRepository;
 use App\Support\Documento;
+use App\Support\Pessoa;
 use App\Support\ResponsavelLegal;
 use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
@@ -104,6 +105,7 @@ class AdminAlunoService
 
         $aluno = $this->enriquecerAluno($aluno, $tenantId);
         $aluno['responsavel_conta'] = $this->contaDoResponsavel((int) $aluno['usuario_id'], $tenantId);
+        $aluno['dependentes'] = $this->dependentesDe((int) $aluno['usuario_id'], $tenantId);
 
         return [
             'status' => 200,
@@ -680,6 +682,108 @@ class AdminAlunoService
             'tem_pin' => $temPin,
             'tem_email' => (bool) $u->email,
         ];
+    }
+
+    /**
+     * Define ou troca, pelo painel, o PIN do login próprio do menor (e-mail do responsável + PIN).
+     * O responsável recebe um aviso no app.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function definirPinDependente(int $alunoId, int $tenantId, string $pin): array
+    {
+        $dep = $this->dependenteDoTenant($alunoId, $tenantId);
+        if (isset($dep['erro'])) {
+            return $dep['erro'];
+        }
+        $r = app(\App\Services\Mobile\MobileDependenteService::class)->definirPin((int) $dep['responsavel_usuario_id'], (int) $dep['usuario_id'], $pin);
+        if ($r['status'] !== 200) {
+            return ['status' => $r['status'], 'body' => ['type' => 'error', 'message' => $r['body']['message'] ?? 'Não foi possível salvar o PIN']];
+        }
+        $this->avisarResponsavel((int) $dep['responsavel_usuario_id'], $tenantId, (int) $dep['usuario_id'],
+            'PIN de '.\App\Services\DependenteLoginService::primeiroNome((string) $dep['nome']).' definido pela academia',
+            'A academia definiu o PIN de acesso de '.\App\Services\DependenteLoginService::primeiroNome((string) $dep['nome']).'. Ele entra em "Sou dependente" com o seu e-mail. Você pode trocar o PIN em Dependentes.');
+
+        return ['status' => 200, 'body' => ['type' => 'success', 'message' => 'PIN salvo. O responsável foi avisado no app.']];
+    }
+
+    /** @return array{status: int, body: array<string, mixed>} */
+    public function removerPinDependente(int $alunoId, int $tenantId): array
+    {
+        $dep = $this->dependenteDoTenant($alunoId, $tenantId);
+        if (isset($dep['erro'])) {
+            return $dep['erro'];
+        }
+        app(\App\Services\Mobile\MobileDependenteService::class)->removerPin((int) $dep['responsavel_usuario_id'], (int) $dep['usuario_id']);
+
+        return ['status' => 200, 'body' => ['type' => 'success', 'message' => 'Acesso próprio removido. Sessões abertas com o PIN foram encerradas.']];
+    }
+
+    /** @return array<string, mixed> */
+    private function dependenteDoTenant(int $alunoId, int $tenantId): array
+    {
+        $aluno = $this->alunos->findById($alunoId, $tenantId);
+        if (! $aluno) {
+            return ['erro' => $this->error('Aluno não encontrado', 404)];
+        }
+        if (! Pessoa::existe('usuarios', 'dependente_pin_hash')) {
+            return ['erro' => $this->error('Recurso indisponível: rode as migrations de dependentes.', 409)];
+        }
+        $this->usuarios->ligarAoResponsavel((int) $aluno['usuario_id']);
+        $u = DB::table('usuarios')->where('id', $aluno['usuario_id'])->first(['id', 'nome', 'data_nascimento', 'responsavel_usuario_id']);
+        if (! $u || ! $u->responsavel_usuario_id) {
+            return ['erro' => $this->error('Este aluno não está ligado à conta de um responsável. Confira o CPF do responsável no cadastro.', 422)];
+        }
+        if (! ResponsavelLegal::ehMenor($u->data_nascimento ? (string) $u->data_nascimento : null)) {
+            return ['erro' => $this->error('O PIN é só para menores de idade. Maiores entram com o próprio e-mail.', 422)];
+        }
+
+        return ['usuario_id' => (int) $u->id, 'nome' => (string) $u->nome, 'responsavel_usuario_id' => (int) $u->responsavel_usuario_id];
+    }
+
+    private function avisarResponsavel(int $responsavelId, int $tenantId, int $dependenteId, string $titulo, string $mensagem): void
+    {
+        try {
+            DB::table('notificacoes')->insert([
+                'tenant_id' => $tenantId, 'usuario_id' => $responsavelId, 'tipo' => 'acesso_dependente',
+                'titulo' => $titulo, 'mensagem' => $mensagem, 'dados' => json_encode(['dependente_id' => $dependenteId]),
+                'lida' => 0, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Dependentes ligados a esta pessoa (para o detalhe do responsável no painel).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function dependentesDe(int $usuarioId, int $tenantId): array
+    {
+        if (! Pessoa::existe('usuarios', 'responsavel_usuario_id')) {
+            return [];
+        }
+        $this->usuarios->ligarDependentesPorCpf($usuarioId);
+        $temPin = Pessoa::existe('usuarios', 'dependente_pin_hash');
+
+        return DB::table('usuarios as u')
+            ->leftJoin('alunos as a', 'a.usuario_id', '=', 'u.id')
+            ->leftJoin('tenant_usuario_papel as tup', function ($j) use ($tenantId) {
+                $j->on('tup.usuario_id', '=', 'u.id')->where('tup.tenant_id', $tenantId)->where('tup.papel_id', 1);
+            })
+            ->where('u.responsavel_usuario_id', $usuarioId)
+            ->orderBy('u.nome')
+            ->get(['u.id', 'u.nome', 'u.data_nascimento', 'u.responsavel_parentesco', 'a.id as aluno_id', 'tup.ativo as na_academia',
+                $temPin ? DB::raw('CASE WHEN u.dependente_pin_hash IS NULL THEN 0 ELSE 1 END as tem_pin') : DB::raw('0 as tem_pin')])
+            ->map(fn ($d) => [
+                'usuario_id' => (int) $d->id,
+                'aluno_id' => (int) ($d->na_academia ?? 0) === 1 ? (int) $d->aluno_id : null,
+                'nome' => $d->nome,
+                'idade' => ResponsavelLegal::idade($d->data_nascimento ? (string) $d->data_nascimento : null),
+                'parentesco' => $d->responsavel_parentesco,
+                'tem_pin' => (int) $d->tem_pin === 1,
+            ])->all();
     }
 
     /** @param  array<string, mixed>  $efetivo */

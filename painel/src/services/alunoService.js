@@ -71,6 +71,25 @@ const alunoService = {
    * @param {string} cpf - CPF do aluno (apenas números)
    * @returns {Promise<Object>} { found, aluno, tenants, ja_associado, pode_associar }
    */
+  /** PIN do login próprio do menor ("Sou dependente" no app: e-mail do responsável + PIN). */
+  async definirPinDependente(id, pin) {
+    try {
+      const response = await api.put(`/admin/alunos/${id}/pin-dependente`, { pin });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Erro ao salvar o PIN' };
+    }
+  },
+
+  async removerPinDependente(id) {
+    try {
+      const response = await api.delete(`/admin/alunos/${id}/pin-dependente`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: 'Erro ao remover o PIN' };
+    }
+  },
+
   /** Responsável já conhecido pelo CPF (de outro aluno menor ou com conta própria). */
   async buscarResponsavel(cpf) {
     try {

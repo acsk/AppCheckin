@@ -187,6 +187,8 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/alunos/basico', [AdminAlunoController::class, 'listarBasico']);
             Route::get('/alunos/buscar-cpf/{cpf}', [AdminAlunoController::class, 'buscarPorCpf']);
             Route::get('/alunos/responsavel/{cpf}', [AdminAlunoController::class, 'buscarResponsavel']);
+            Route::put('/alunos/{id}/pin-dependente', [AdminAlunoController::class, 'definirPinDependente'])->whereNumber('id');
+            Route::delete('/alunos/{id}/pin-dependente', [AdminAlunoController::class, 'removerPinDependente'])->whereNumber('id');
             Route::post('/alunos/associar', [AdminAlunoController::class, 'associar']);
             Route::get('/alunos/{id}', [AdminAlunoController::class, 'show']);
             Route::get('/alunos/{id}/historico-planos', [AdminAlunoController::class, 'historicoPlanos']);

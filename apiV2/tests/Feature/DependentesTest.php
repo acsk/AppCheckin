@@ -307,4 +307,24 @@ class DependentesTest extends TestCase
         $this->service()->definirPin(self::PAI, 459, '4826');
         $this->assertSame([['id' => 459, 'nome' => 'Filho']], app(DependenteLoginService::class)->perfis('andre@exemplo.com', '9.9.9.9')['body']['perfis']);
     }
+
+    public function test_admin_define_e_remove_o_pin_pelo_painel(): void
+    {
+        $dep = $this->service()->criar(self::PAI, self::TENANT, $this->filho())['body']['data']['dependente'];
+        $admin = app(\App\Services\Admin\AdminAlunoService::class);
+
+        $this->assertSame(422, $admin->definirPinDependente($dep['aluno_id'], self::TENANT, '1234')['status'], 'PIN fraco');
+        $ok = $admin->definirPinDependente($dep['aluno_id'], self::TENANT, '4826');
+        $this->assertSame(200, $ok['status'], json_encode($ok['body']));
+        $this->assertSame(1, DB::table('notificacoes')->where('usuario_id', self::PAI)->where('titulo', 'like', 'PIN de Joao%')->count());
+        $this->assertSame([['id' => $dep['usuario_id'], 'nome' => 'Joao']], app(DependenteLoginService::class)->perfis('andre@exemplo.com', '8.8.8.8')['body']['perfis']);
+
+        // Outra academia não mexe; o pai (adulto) não recebe PIN
+        $this->assertSame(404, $admin->definirPinDependente($dep['aluno_id'], 999, '4826')['status']);
+        $alunoPai = (int) DB::table('alunos')->where('usuario_id', self::PAI)->value('id');
+        $this->assertSame(422, $admin->definirPinDependente($alunoPai, self::TENANT, '4826')['status']);
+
+        $this->assertSame(200, $admin->removerPinDependente($dep['aluno_id'], self::TENANT)['status']);
+        $this->assertSame([], app(DependenteLoginService::class)->perfis('andre@exemplo.com', '8.8.8.8')['body']['perfis']);
+    }
 }

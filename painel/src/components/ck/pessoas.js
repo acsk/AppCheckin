@@ -296,7 +296,11 @@ import { Sparkline } from './graficos';
               ['CPF', s.cpf, 'clipboard'], ['Nascimento', s.birthDate ? fdate(s.birthDate) + (age != null ? ', ' + age + ' anos' : '') : null, 'calendar'],
               ['Telefone', s.phone, 'phone'], ['E-mail', s.email, 'mail'],
               ['Sexo', (GENDERS.filter(function (g) { return g.value === s.gender; })[0] || {}).label, 'user'], ['ID do usuário', s.userId != null ? '#' + s.userId : null, 'key']] })),
-          guardian && guardian.name ? h(Panel, { title: 'Responsável', description: age != null && age < 18 ? 'Aluno menor de idade.' : null },
+          guardian && guardian.name ? h(Panel, { title: 'Responsável', description: age != null && age < 18 ? 'Aluno menor de idade.' : null,
+            // PIN do login próprio ("Sou dependente"): só para menor ligado à conta do responsável
+            actions: s.guardianAccount && s.guardianAccount.ligado && age != null && age < 18 && p.onSetPin ? h('div', { style: { display: 'flex', gap: 8 } },
+              h(Button, { size: 'sm', variant: 'ghost', icon: 'key', onClick: p.onSetPin }, s.guardianAccount.tem_pin ? 'Trocar PIN' : 'Definir PIN'),
+              s.guardianAccount.tem_pin && p.onRemovePin ? h(Button, { size: 'sm', variant: 'ghost', icon: 'x', onClick: p.onRemovePin }, 'Tirar acesso') : null) : null },
             h(AlDl, { items: [
               ['Nome', titleCase(guardian.name), 'users'], ['Parentesco', (RELATIONS.filter(function (r) { return r.value === guardian.relation; })[0] || {}).label, 'user'],
               ['CPF', guardian.cpf ? maskCpf(guardian.cpf) : null, 'clipboard'], ['E-mail', guardian.email, 'mail'],
@@ -306,12 +310,24 @@ import { Sparkline } from './graficos';
               ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: s.guardianAccount.tem_pin ? 'check-circle' : 'info', size: 15 }),
                   s.guardianAccount.tem_pin
                     ? 'Ligado à conta de ' + titleCase(s.guardianAccount.nome) + '. Entra sozinho no app em “Sou dependente”, com o e-mail ' + s.guardianAccount.email + ' e o PIN.'
-                    : 'Ligado à conta de ' + titleCase(s.guardianAccount.nome) + (s.guardianAccount.aluno_id ? ' (aluno #' + s.guardianAccount.aluno_id + ')' : '') + '. Ainda sem PIN: para entrar sozinho, o responsável cria o PIN no app, em Menu › Família › Dependentes. Ele também pode usar o perfil da criança por lá.')
+                    : 'Ligado à conta de ' + titleCase(s.guardianAccount.nome) + (s.guardianAccount.aluno_id ? ' (aluno #' + s.guardianAccount.aluno_id + ')' : '') + '. Ainda sem PIN: defina aqui em “Definir PIN” ou o responsável cria no app, em Menu › Família › Dependentes.')
               : h('p', { className: 'ck-al-hint is-error' }, h(Icon, { name: 'alert-triangle', size: 15 }),
                   'O CPF do responsável não corresponde a nenhuma conta no app. Confira o CPF ou peça para o responsável se cadastrar; a criança aparece para ele assim que o CPF bater.')) : null)
             : age != null && age < 18 ? h(Callout, { tone: 'warning', title: 'Menor de idade sem responsável',
               action: p.onEdit ? h(Button, { size: 'sm', onClick: p.onEdit }, 'Informar responsável') : null },
               'Cadastre nome, CPF e e-mail do responsável legal para contratos e cobranças.') : null,
+          // Responsável: os menores ligados à conta dele
+          (s.dependents || []).length ? h(Panel, { title: 'Dependentes', description: 'Menores ligados à conta deste aluno. Ele usa o perfil deles no app e paga as cobranças.' },
+            h('ul', { className: 'ck-al-feed' }, s.dependents.map(function (d) {
+              var rel = (RELATIONS.filter(function (r) { return r.value === d.relation; })[0] || {}).label;
+              var open = d.id && p.onOpenStudent ? function () { p.onOpenStudent(d.id); } : null;
+              return h('li', { key: d.userId, className: open ? 'ck-ml__row' : undefined, style: open ? { cursor: 'pointer' } : undefined, onClick: open || undefined,
+                role: open ? 'button' : undefined, tabIndex: open ? 0 : undefined, onKeyDown: open ? function (e) { if (e.key === 'Enter') open(); } : undefined },
+                h('span', { className: 'ck-al-feed__icon', 'aria-hidden': true }, h(Icon, { name: 'user', size: 16 })),
+                h('span', { className: 'ck-al-feed__main' }, h('strong', null, titleCase(d.name)),
+                  h('span', null, [d.age != null ? d.age + ' anos' : null, rel ? 'ele é: ' + rel.toLowerCase() : null, d.id ? 'aluno #' + d.id : 'não é aluno desta academia'].filter(Boolean).join(' · '))),
+                h(Badge, { tone: d.hasPin ? 'success' : 'outline', dot: d.hasPin }, d.hasPin ? 'Entra com PIN' : 'Sem PIN'));
+            }))) : null,
           h(Panel, { title: 'Endereço', actions: p.onEdit && missingAddr.length ? h(Button, { size: 'sm', variant: 'ghost', icon: 'pencil', onClick: p.onEdit }, 'Completar') : null },
             missingAddr.length >= 4 && (a.city || a.uf) ? h('div', { className: 'ck-al-addr' },
               h('span', { className: 'ck-al-addr__icon', 'aria-hidden': true }, h(Icon, { name: 'map-pin', size: 18 })),
