@@ -161,8 +161,11 @@ class AcessoHibridoTest extends TestCase
             \Mockery::mock(MatriculaRepository::class), \Mockery::mock(AdminPacoteService::class),
             \Mockery::mock(AdminPagamentoPlanoService::class), \Mockery::mock(AdminAssinaturaRepository::class),
             \Mockery::mock(MatriculaMigracaoAptidaoService::class));
-        $novo = $service->criar(3, 5, ['aluno_id' => 15, 'plano_id' => 1, 'plano_ciclo_id' => 1, 'tipo_acesso' => 'horario_livre']);
+        (require database_path('migrations/2026_11_06_140000_grade_individual_reposicoes.php'))->up();
+        $novo = $service->criar(3, 5, ['aluno_id' => 15, 'plano_id' => 1, 'plano_ciclo_id' => 1, 'tipo_acesso' => 'turma_fixa',
+            'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 1, 'dia_semana' => 3]]]);
         $this->assertSame(201, $novo['status'], json_encode($novo));
+        $this->assertCount(2, $novo['body']['matricula']['grade']);
         $this->assertEquals(120, $novo['body']['matricula']['valor']);
         $this->assertEquals(120, $novo['body']['pagamentos'][0]['valor']);
         $this->assertEquals(100, DB::table('matriculas')->where('id', 1)->value('valor'));
@@ -275,11 +278,11 @@ class AcessoHibridoTest extends TestCase
         $this->assertEquals(100, DB::table('matriculas')->where('id', 11)->value('valor'));
     }
 
-    public function test_vinculo_nao_aceita_plano_falso_para_contornar_a_oferta(): void
+    public function test_vinculo_nao_altera_o_plano_contratado(): void
     {
         DB::table('turma_fixa_planos')->where('turma_fixa_id', 1)->update(['plano_id' => 2]);
-        $this->expectException(ValidationException::class);
         app(AdminTurmaFixaService::class)->vincularMatricula(3, 1, ['tipo_acesso' => 'turma_fixa', 'turma_fixa_id' => 1, 'plano_id' => 2]);
+        $this->assertEquals(1, DB::table('matriculas')->where('id', 1)->value('plano_id'));
     }
 
     public function test_migracao_automatica_nao_sobrepoe_vinculo_fixo_alterado_pela_secretaria(): void

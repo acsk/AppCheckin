@@ -174,7 +174,7 @@ class MobileCheckinService
         }
 
         $planoInfo = $this->checkins->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
-        $limiteErro = ($matricula['tipo_acesso'] ?? 'horario_livre') === 'turma_fixa' ? null : $this->validarLimitePlano(
+        $limiteErro = !empty($matricula['reposicao']) || ($matricula['tipo_acesso'] ?? 'horario_livre') === 'turma_fixa' ? null : $this->validarLimitePlano(
             $planoInfo,
             $userId,
             $modalidadeTurma,
@@ -186,7 +186,7 @@ class MobileCheckinService
         }
 
         $alunosCount = $this->turmas->contarCheckinsNaTurma($turmaId, $tenantId);
-        if (($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $alunosCount >= (int) $turma['limite_alunos']) {
+        if (empty($matricula['reposicao']) && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $alunosCount >= (int) $turma['limite_alunos']) {
             return $this->fail('Sem vagas disponíveis nesta turma', 400);
         }
 
@@ -218,7 +218,7 @@ class MobileCheckinService
         }
 
         // Empatou o limite do ciclo → pendente (próximo check-in recebe o aviso).
-        if (! empty($matricula['id']) && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
+        if (empty($matricula['reposicao']) && ! empty($matricula['id']) && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
             $this->matriculas->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
         }
 
@@ -229,6 +229,7 @@ class MobileCheckinService
                 'message' => 'Check-in realizado com sucesso!',
                 'data' => [
                     'checkin_id' => $checkinId,
+                    'tipo_presenca' => !empty($matricula['reposicao']) ? 'Reposição' : 'Regular',
                     'usuario' => [
                         'id' => $userId,
                         'nome' => $usuario['nome'],

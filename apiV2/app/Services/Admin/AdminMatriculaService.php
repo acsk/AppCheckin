@@ -589,6 +589,7 @@ class AdminMatriculaService
         }
 
         return DB::transaction(function () use ($tenantId, $adminId, $data) {
+            app(\App\Services\AcessoHibridoService::class)->bloquearGrupos($tenantId);
             $escolha = app(\App\Services\AcessoHibridoService::class)->validarEscolha($tenantId, $data);
             if ($escolha['turma_fixa_id']) {
                 DB::table('turmas_fixas')->where('id', $escolha['turma_fixa_id'])->where('tenant_id', $tenantId)->lockForUpdate()->first();
@@ -597,14 +598,17 @@ class AdminMatriculaService
             if ($resultado['status'] === 201 && isset($resultado['body']['matricula']['id'])) {
                 $id = (int) $resultado['body']['matricula']['id'];
                 $m = DB::table('matriculas')->where('id', $id)->where('tenant_id', $tenantId)->first();
+                if (array_key_exists('tipo_acesso', $data)) {
+                    app(\App\Services\AcessoHibridoService::class)->salvarGrade($tenantId, $id, $escolha['grade']);
+                }
                 app(\App\Services\AcessoHibridoService::class)->validarEscolha($tenantId, [], (array) $m);
-                if (DB::table('status_matricula')->where('id', $m->status_id)->value('codigo') === 'ativa'
-                    && ! app(\App\Services\AcessoHibridoService::class)->podeAtivar($tenantId, (array) $m)) {
+                if (! app(\App\Services\AcessoHibridoService::class)->podeAtivar($tenantId, (array) $m)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['turma_fixa_id' => 'Não há vaga para ativar esta matrícula.']);
                 }
                 $status = app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenantId, $id, (int) $m->status_id);
                 $resultado['body']['matricula']['tipo_acesso'] = $m->tipo_acesso;
                 $resultado['body']['matricula']['turma_fixa_id'] = $m->turma_fixa_id;
+                $resultado['body']['matricula']['grade'] = app(\App\Services\AcessoHibridoService::class)->grade($tenantId, $id);
                 $resultado['body']['matricula']['status_id'] = $status;
             }
 

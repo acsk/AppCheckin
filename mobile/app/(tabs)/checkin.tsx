@@ -73,6 +73,7 @@ function CheckinScreenContent() {
   const [proximaAulaFixa, setProximaAulaFixa] = useState<{
     id: number; nome: string; data: string; horario_inicio: string; horario_fim: string;
   } | null>(null);
+  const [gradeFixa, setGradeFixa] = useState<any[]>([]);
   const [aguardandoVaga, setAguardandoVaga] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
@@ -586,10 +587,13 @@ function CheckinScreenContent() {
         });
         setAvailableSchedules(data.data.turmas);
         setProximaAulaFixa(data.data.proxima_aula_fixa || null);
+        const grade = data.data.grade_fixa;
+        setGradeFixa(Array.isArray(grade) ? grade : Array.isArray(grade?.grade) ? grade.grade : []);
         setAguardandoVaga(data.data.aguardando_vaga === true);
       } else {
         console.warn("⚠️ Resposta inválida ou sem turmas");
         setAvailableSchedules([]);
+        setGradeFixa([]);
       }
     } catch (error) {
       console.error("❌ ERRO AO CARREGAR HORÁRIOS");
@@ -1506,6 +1510,7 @@ function CheckinScreenContent() {
       booked: turma.alunos_inscritos,
       capacity: turma.limite_alunos,
       status,
+      reposicao: turma.reposicao === true || Number(turma.reposicao) === 1,
       inProgress: isDurantePeriodo(turma),
       deadline: getHoraLimiteCheckin(turma),
       opensIn: minutosParaAbrir > 0 ? formatMinutos(minutosParaAbrir) : null,
@@ -1713,6 +1718,16 @@ function CheckinScreenContent() {
                 <Text style={styles.emptySubtitle}>{proximaAulaFixa.nome} — {proximaAulaFixa.data.split("-").reverse().join("/")} às {proximaAulaFixa.horario_inicio.slice(0, 5)}</Text>
                 <Text style={styles.emptySubtitle}>Sua vaga está reservada. Toque para ver a aula.</Text>
               </Pressable>
+            ) : null}
+            {gradeFixa.length > 0 && !isProfessorOuAdmin ? (
+              <View accessibilityLabel="Sua grade semanal de turmas fixas" style={styles.gradeFixaCard}>
+                <Text style={styles.gradeFixaTitle}>Sua grade semanal</Text>
+                {gradeFixa.map((item, index) => (
+                  <Text key={`${item.matricula_id || ""}-${item.turma_fixa_id}-${item.dia_semana}-${index}`} style={styles.gradeFixaItem}>
+                    {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][Number(item.dia_semana) - 1] || "Dia"} · {item.nome} · {String(item.horario_inicio || "").slice(0, 5)}–{String(item.horario_fim || "").slice(0, 5)}
+                  </Text>
+                ))}
+              </View>
             ) : null}
             {loading ? (
               <Text style={styles.loadingText}>Carregando...</Text>
@@ -2209,6 +2224,25 @@ const styles = StyleSheet.create({
   schedulesSection: {
     padding: 16,
     paddingBottom: 32,
+  },
+  gradeFixaCard: {
+    marginBottom: 12,
+    padding: 14,
+    gap: 6,
+    borderRadius: 14,
+    backgroundColor: ds.surface,
+    borderWidth: 1,
+    borderColor: ds.line,
+  },
+  gradeFixaTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: ds.ink,
+  },
+  gradeFixaItem: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: ds.ink,
   },
   schedulesList: {
     gap: 12,

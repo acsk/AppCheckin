@@ -10,6 +10,7 @@ use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\Comunicacao\PendenciaComunicacaoService;
 use App\Services\Mobile\MobileCheckinService;
+use App\Services\Mobile\MobileProfessorService;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
 use App\Support\CheckinToleranciaAntes;
@@ -36,6 +37,7 @@ class HybridFixture
             $t->string('nome');
             $t->decimal('valor', 10, 2);
             $t->boolean('ativo')->default(true);
+            $t->integer('checkins_semanais')->default(0);
         });
         Schema::create('alunos', function (Blueprint $t) {
             $t->increments('id');
@@ -174,7 +176,7 @@ class HybridFixture
             }
             $ids = DB::table('checkins as c')->join('turmas as t', 't.id', '=', 'c.turma_id')
                 ->join('dias as d', 'd.id', '=', 't.dia_id')->where('c.aluno_id', $user)
-                ->where('c.tenant_id', 3)->where('d.data', $dia)->where('t.modalidade_id', $modalidade)->pluck('c.id');
+                ->where('c.tenant_id', 3)->where('d.data', $dia)->where('t.modalidade_id', $modalidade)->lockForUpdate()->pluck('c.id');
 
             return ['total' => $ids->count(), 'ultimo_checkin_id' => $ids->last()];
         });
@@ -199,5 +201,15 @@ class HybridFixture
             'database.connections.mysql.database' => 'appcheckin_hybrid_test', 'database.connections.mysql.username' => 'root',
             'database.connections.mysql.password' => getenv('HYBRID_MYSQL_PASSWORD'), 'database.connections.mysql.port' => 3306]);
         DB::purge('mysql');
+    }
+
+    public static function reposicaoService(): MobileProfessorService
+    {
+        $alunos = \Mockery::mock(AlunoRepository::class);
+        $alunos->shouldReceive('findAlunoNoTenantPorId')->andReturnUsing(fn ($id, $tenant) => $tenant === 3 ? ['aluno_id' => $id, 'usuario_id' => $id] : null);
+        $turmas = \Mockery::mock(TurmaRepository::class);
+        $turmas->shouldReceive('findById')->andReturnUsing(fn ($id, $tenant) => $tenant === 3 ? self::aula($id) : null);
+
+        return new MobileProfessorService($alunos, \Mockery::mock(MatriculaRepository::class), $turmas, \Mockery::mock(CheckinRepository::class));
     }
 }

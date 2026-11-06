@@ -120,13 +120,11 @@ class CheckinRepository
             $query->where('t.modalidade_id', $modalidadeId);
         }
 
-        $row = $query
-            ->selectRaw('COUNT(*) as total, MAX(c.id) as ultimo_checkin_id')
-            ->first();
+        $ids = $query->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())->pluck('c.id');
 
         return [
-            'total' => (int) ($row->total ?? 0),
-            'ultimo_checkin_id' => ! empty($row->ultimo_checkin_id) ? (int) $row->ultimo_checkin_id : null,
+            'total' => $ids->count(),
+            'ultimo_checkin_id' => $ids->isEmpty() ? null : (int) $ids->max(),
         ];
     }
 
@@ -145,7 +143,7 @@ class CheckinRepository
                 ->where('t.modalidade_id', $modalidadeId);
         }
 
-        return (int) $query->count();
+        return $query->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())->pluck('c.id')->count();
     }
 
     public function contarCheckinsNoMes(int $usuarioId, ?int $modalidadeId = null): int
@@ -165,7 +163,7 @@ class CheckinRepository
             $query->where('t.modalidade_id', $modalidadeId);
         }
 
-        return (int) $query->count();
+        return $query->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())->pluck('c.id')->count();
     }
 
     /**
@@ -360,7 +358,13 @@ class CheckinRepository
                 't.horario_inicio as hora',
                 't.nome as turma_nome',
             ])
-            ->map(fn ($row) => (array) $row)
+            ->map(function ($row) {
+                $reposicao = \Illuminate\Support\Facades\Schema::hasTable('aula_reposicoes')
+                    && DB::table('aula_reposicoes as r')->join('checkins as c', function ($join) {
+                        $join->on('c.turma_id', '=', 'r.turma_id')->on('c.aluno_id', '=', 'r.aluno_id')->on('c.tenant_id', '=', 'r.tenant_id');
+                    })->where('c.id', $row->id)->exists();
+                return (array) $row + ['tipo_presenca' => $reposicao ? 'Reposição' : 'Regular'];
+            })
             ->all();
 
         $total = (int) (clone $base)->count('c.id');

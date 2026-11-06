@@ -12,10 +12,12 @@ import planoService from '../../services/planoService';
 import pacoteService from '../../services/pacoteService';
 import { obterMensagemErro } from '../../utils/errorHandler';
 import { showSuccess } from '../../utils/toast';
+import GradeTurmaEditor from '../../components/ck/GradeTurmaEditor';
 
 const asList = (response, key) => Array.isArray(response) ? response : response?.[key] || response?.data?.[key] || [];
 const money = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 const initialForm = { usuario_id: '', modalidade_id: '', plano_id: '', plano_ciclo_id: '', pacote_id: '', dependentes: [] };
+const diasSemana = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo'];
 
 export default function FormMatriculaScreen() {
   const router = useRouter();
@@ -38,7 +40,7 @@ export default function FormMatriculaScreen() {
   const [pacotes, setPacotes] = useState([]);
   const [turmasFixas, setTurmasFixas] = useState([]);
   const [tipoAcesso, setTipoAcesso] = useState('horario_livre');
-  const [turmaFixaId, setTurmaFixaId] = useState('');
+  const [grade, setGrade] = useState([{ turma_fixa_id: '', dia_semana: '' }]);
   const [loadingPlans, setLoadingPlans] = useState(false);
   const [loadingCycles, setLoadingCycles] = useState(false);
   const [tipo, setTipo] = useState('plano');
@@ -63,7 +65,7 @@ export default function FormMatriculaScreen() {
         setModalidades(asList(mods, 'modalidades'));
         setAlunosBasico(asList(basic, 'alunos'));
         setPacotes(asList(packages, 'pacotes'));
-        setTurmasFixas(fixas.filter(t => Number(t.ativo) === 1));
+        setTurmasFixas(fixas);
         const padrao = parametros.data.flatMap(c => c.parametros || []).find(p => p.codigo === 'tipo_acesso_padrao');
         setTipoAcesso(padrao?.valor || 'horario_livre');
       } catch (err) {
@@ -136,6 +138,8 @@ export default function FormMatriculaScreen() {
   const search = searchDependentes.trim().toLowerCase();
   const filteredDependentes = dependentes.filter((a) => `${a.nome || ''} ${a.email || ''}`.toLowerCase().includes(search));
   const selectedDependentes = dependentes.filter((a) => form.dependentes.includes(String(a.id)));
+  const frequenciaPlano = Number(plano?.checkins_semanais) || 0;
+  const maximoGrade = frequenciaPlano > 0 ? frequenciaPlano : null;
   const change = (key, value, reset = {}) => {
     setError('');
     setForm((prev) => ({ ...prev, [key]: value || '', ...reset }));
@@ -150,7 +154,19 @@ export default function FormMatriculaScreen() {
     change('dependentes', exists ? form.dependentes.filter((v) => v !== value) : [...form.dependentes, value]);
   };
   const validate = () => {
-    if (tipoAcesso === 'turma_fixa' && (tipo !== 'plano' || !turmaFixaId || !turmasFixas.find(t => String(t.id) === turmaFixaId)?.planos.some(p => String(p.id) === form.plano_id))) return 'Selecione uma turma fixa e um plano oferecido por ela.';
+    if (tipoAcesso === 'turma_fixa') {
+      if (tipo !== 'plano') return 'Turma fixa exige uma matrícula por plano.';
+      if (!grade.length || grade.some((item) => !item.turma_fixa_id || !item.dia_semana)) return 'Selecione uma turma e um dia para cada entrada da grade.';
+      if (maximoGrade != null && grade.length > maximoGrade) return `A frequência do plano permite até ${maximoGrade} dia(s) por semana.`;
+      const chaves = grade.map((item) => `${item.turma_fixa_id}:${item.dia_semana}`);
+      if (new Set(chaves).size !== chaves.length) return 'A mesma turma e o mesmo dia não podem aparecer mais de uma vez.';
+      if (grade.some((item) => {
+        const turma = turmasFixas.find((row) => String(row.id) === String(item.turma_fixa_id));
+        return !turma
+          || Number(turma.modalidade_id) !== Number(form.modalidade_id)
+          || !turma.dias_semana?.map(Number).includes(Number(item.dia_semana));
+      })) return 'A grade deve usar turmas da modalidade contratada e dias cadastrados nelas.';
+    }
     if (!aluno) return 'Selecione um aluno.';
     if (tipo === 'plano' && (!plano || !ciclo || loadingPlans || loadingCycles)) return 'Selecione modalidade, plano e ciclo de pagamento.';
     if (tipo === 'pacote') {
@@ -185,7 +201,10 @@ export default function FormMatriculaScreen() {
         dependentes: form.dependentes.map(Number),
       } : {
         tipo_acesso: tipoAcesso,
-        turma_fixa_id: tipoAcesso === 'turma_fixa' ? Number(turmaFixaId) : null,
+        grade: tipoAcesso === 'turma_fixa' ? grade.map((item) => ({
+          turma_fixa_id: Number(item.turma_fixa_id),
+          dia_semana: Number(item.dia_semana),
+        })) : [],
         usuario_id: Number(form.usuario_id),
         plano_id: Number(form.plano_id),
         plano_ciclo_id: Number(form.plano_ciclo_id),
@@ -218,18 +237,33 @@ export default function FormMatriculaScreen() {
         <>
           {selectionError ? <div role="alert"><p>{selectionError}</p><Button onClick={() => setReload((v) => v + 1)}>Tentar novamente</Button></div> : null}
           <SelectField label="Tipo de acesso da matrícula" value={tipoAcesso} options={[{ value: 'horario_livre', label: 'Horário livre' }, { value: 'turma_fixa', label: 'Turma fixa' }]} onChange={e => {
-            setTipoAcesso(e.target.value); setTurmaFixaId(''); setTipo('plano');
+            setTipoAcesso(e.target.value); setGrade([{ turma_fixa_id: '', dia_semana: '' }]); setTipo('plano');
             setForm(f => ({ ...f, plano_id: '', plano_ciclo_id: '', modalidade_id: '' }));
           }} />
-          {tipoAcesso === 'turma_fixa' ? <SelectField label="Turma fixa" placeholder="Selecione a turma" value={turmaFixaId} options={turmasFixas.map(t => ({ value: String(t.id), label: `${t.nome} — ${t.horario_inicio.slice(0, 5)} (${t.capacidade} vagas)` }))} onChange={e => {
-            const t = turmasFixas.find(t => String(t.id) === e.target.value);
-            setTurmaFixaId(e.target.value);
-            setForm(f => ({ ...f, modalidade_id: t ? String(t.modalidade_id) : '', plano_id: '', plano_ciclo_id: '' }));
-          }} /> : null}
+          {tipoAcesso === 'turma_fixa' ? (
+            <GradeTurmaEditor
+              grade={grade}
+              onChange={setGrade}
+              turmas={turmasFixas}
+              modalidadeId={form.modalidade_id}
+              frequenciaSemanal={plano?.checkins_semanais}
+              onGroupChange={(turma) => {
+                if (turma && String(turma.modalidade_id) !== form.modalidade_id) {
+                  setForm((current) => ({
+                    ...current,
+                    modalidade_id: String(turma.modalidade_id),
+                    plano_id: '',
+                    plano_ciclo_id: '',
+                  }));
+                }
+              }}
+            />
+          ) : null}
           <NovaMatricula
             students={alunos.map((a) => ({ id: String(a.id), name: a.nome, email: a.email || '' }))}
             modalities={modalidades.map((m) => ({ id: String(m.id), name: m.nome, icon: m.icone, color: m.cor }))}
-            plans={planos.filter(p => tipoAcesso !== 'turma_fixa' || turmasFixas.find(t => String(t.id) === turmaFixaId)?.planos.some(oferta => oferta.id === p.id)).map((p) => ({ id: String(p.id), modalityId: String(p.modalidade_id), name: p.nome, price: Number(p.valor), frequency: `${p.checkins_semanais}x por semana`, durationDays: p.duracao_dias }))}
+            plans={planos.map((p) => ({ id: String(p.id), modalityId: String(p.modalidade_id), name: p.nome, price: Number(p.valor), frequency: `${p.checkins_semanais}x por semana`, durationDays: p.duracao_dias }))}
+            hidePackages={tipoAcesso === 'turma_fixa'}
             cycles={ciclos.map((c) => ({ id: String(c.id), planId: form.plano_id, label: c.frequencia_nome || c.nome || 'Ciclo', months: Number(c.meses), price: Number(c.valor), discountPct: Number(c.desconto_percentual), note: c.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso' }))}
             packages={pacotes.map((p) => ({ id: String(p.id), name: p.nome, people: Number(p.qtd_beneficiarios || 0), price: Number(p.valor_total), durationDays: p.duracao_dias }))}
             studentId={form.usuario_id}
@@ -239,7 +273,10 @@ export default function FormMatriculaScreen() {
             packageId={form.pacote_id}
             type={tipo}
             onStudentChange={(value) => change('usuario_id', value, { dependentes: [] })}
-            onModalityChange={(value) => change('modalidade_id', value, { plano_id: '', plano_ciclo_id: '' })}
+            onModalityChange={(value) => {
+              if (tipoAcesso === 'turma_fixa') setGrade([{ turma_fixa_id: '', dia_semana: '' }]);
+              change('modalidade_id', value, { plano_id: '', plano_ciclo_id: '' });
+            }}
             onPlanChange={(value) => change('plano_id', value, { plano_ciclo_id: '' })}
             onCycleChange={(value) => change('plano_ciclo_id', value)}
             onPackageChange={(value) => change('pacote_id', value, { dependentes: [] })}
@@ -287,11 +324,15 @@ export default function FormMatriculaScreen() {
             </>}
           >
             <div className="ck-enrollment-review"><dl>
-              <div><dt>Tipo de acesso</dt><dd>{tipoAcesso === 'turma_fixa' ? `Turma fixa — ${turmasFixas.find(t => String(t.id) === turmaFixaId)?.nome}` : 'Horário livre'}</dd></div>
+              <div><dt>Tipo de acesso</dt><dd>{tipoAcesso === 'turma_fixa' ? 'Turma fixa' : 'Horário livre'}</dd></div>
               <div><dt>Aluno</dt><dd>{aluno?.nome}<br />{aluno?.email}</dd></div>
               {tipo === 'plano' ? <>
                 <div><dt>Modalidade</dt><dd>{modalidades.find((m) => String(m.id) === form.modalidade_id)?.nome}</dd></div>
                 <div><dt>Plano</dt><dd>{plano?.nome}</dd></div>
+                {tipoAcesso === 'turma_fixa' ? <div><dt>Grade semanal</dt><dd>{grade.map((item) => {
+                  const turma = turmasFixas.find((row) => String(row.id) === String(item.turma_fixa_id));
+                  return `${turma?.nome || 'Turma'} · ${diasSemana[Number(item.dia_semana) - 1] || 'Dia não selecionado'}${turma ? ` · ${String(turma.horario_inicio || '').slice(0, 5)}–${String(turma.horario_fim || '').slice(0, 5)}` : ''}`;
+                }).join('; ')}</dd></div> : null}
                 <div><dt>Ciclo</dt><dd>{ciclo?.frequencia_nome || ciclo?.nome} · {ciclo?.meses} mês(es)</dd></div>
                 <div><dt>Primeira cobrança</dt><dd>{money(ciclo?.valor)}</dd></div>
               </> : <>

@@ -3,20 +3,44 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\TurmaRepository;
+use App\Services\AcessoHibridoService;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
 use App\Support\CheckinJanela;
 use App\Support\CheckinToleranciaAntes;
+use Illuminate\Support\Facades\DB;
 
 class MobileHorariosService
 {
     public function proximaAulaFixa(int $tenantId, int $userId): ?array
     {
-        if (! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+        if (! app(AcessoHibridoService::class)->atualizado()) {
             return null;
         }
         $agora = AcademyDateTime::now();
-        $aula = \Illuminate\Support\Facades\DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')
+        $acesso = app(AcessoHibridoService::class);
+        if ($acesso->gradeAtualizada()) {
+            $grade = $this->gradeAluno($tenantId, $userId);
+            $aulas = DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')
+                ->where('t.tenant_id', $tenantId)->whereIn('t.turma_fixa_id', array_column($grade, 'turma_fixa_id'))->where('t.ativo', 1)->where('d.ativo', 1)
+                ->where(fn ($q) => $q->where('d.data', '>', $agora->format('Y-m-d'))->orWhere(fn ($q) => $q
+                    ->where('d.data', $agora->format('Y-m-d'))->where('t.horario_fim', '>', $agora->format('H:i:s'))))
+                ->orderBy('d.data')->orderBy('t.horario_inicio')->get(['t.*', 'd.data as dia_data']);
+            $aluno = (int) DB::table('alunos')->where('usuario_id', $userId)->value('id');
+            foreach ($aulas as $t) {
+                $dia = (int) (new \DateTimeImmutable($t->dia_data))->format('N');
+                if (! array_filter($grade, fn ($g) => (int) $g['turma_fixa_id'] === (int) $t->turma_fixa_id && (int) $g['dia_semana'] === $dia)) {
+                    continue;
+                }
+                $m = $acesso->matriculaParaAula($aluno, $tenantId, (array) $t);
+                if ($m && $m['tipo_acesso'] === 'turma_fixa' && empty($m['reposicao'])) {
+                    return ['id' => $t->id, 'nome' => $t->nome, 'data' => $t->dia_data, 'horario_inicio' => $t->horario_inicio, 'horario_fim' => $t->horario_fim];
+                }
+            }
+
+            return null;
+        }
+        $aula = DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')
             ->join('matriculas as m', 'm.turma_fixa_id', '=', 't.turma_fixa_id')
             ->join('status_matricula as s', 's.id', '=', 'm.status_id')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
             ->where('t.tenant_id', $tenantId)->where('m.tenant_id', $tenantId)->where('a.usuario_id', $userId)
@@ -30,13 +54,33 @@ class MobileHorariosService
         return $aula ? (array) $aula : null;
     }
 
+    public function gradeAluno(int $tenantId, int $userId): array
+    {
+        $acesso = app(AcessoHibridoService::class);
+        if (! $acesso->atualizado()) {
+            return [];
+        }
+        $ids = DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->join('status_matricula as s', 's.id', '=', 'm.status_id')->where('m.tenant_id', $tenantId)->where('a.usuario_id', $userId)
+            ->where('m.tipo_acesso', 'turma_fixa')->whereIn('s.codigo', ['ativa', 'pendente', 'aguardando_vaga'])
+            ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [AcademyDateTime::today()])->pluck('m.id');
+        $grade = [];
+        foreach ($ids as $id) {
+            foreach ($acesso->grade($tenantId, (int) $id) as $slot) {
+                $grade[] = $slot + ['matricula_id' => (int) $id];
+            }
+        }
+
+        return $grade;
+    }
+
     public function aguardandoVaga(int $tenantId, int $userId): bool
     {
-        if (! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+        if (! app(AcessoHibridoService::class)->atualizado()) {
             return false;
         }
 
-        return \Illuminate\Support\Facades\DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+        return DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
             ->join('status_matricula as s', 's.id', '=', 'm.status_id')->where('m.tenant_id', $tenantId)
             ->where('a.usuario_id', $userId)->where('s.codigo', 'aguardando_vaga')->exists();
     }
@@ -89,16 +133,16 @@ class MobileHorariosService
         $turmasFormatadas = [];
         foreach ($turmasRaw as $turma) {
             $turma = (array) $turma;
-            $acesso = app(\App\Services\AcessoHibridoService::class);
+            $acesso = app(AcessoHibridoService::class);
             $matriculaAula = null;
             $saldo = null;
             if ($acesso->atualizado()) {
                 $completa = $this->turmas->findById((int) $turma['id'], $tenantId);
                 $turma = array_replace($turma, $completa ?? []);
-                $alunoId = (int) \Illuminate\Support\Facades\DB::table('alunos')->where('usuario_id', $userId)->value('id');
+                $alunoId = (int) DB::table('alunos')->where('usuario_id', $userId)->value('id');
                 $matriculaAula = $acesso->matriculaParaAula($alunoId, $tenantId, $turma);
                 if (! $this->bloqueios->usuarioEhStaffNoTenant($userId, $tenantId)
-                    && (! $matriculaAula || ($matriculaAula['tipo_acesso'] === 'horario_livre' && ! $turma['checkin_livre']))) {
+                    && (! $matriculaAula || (empty($matriculaAula['reposicao']) && $matriculaAula['tipo_acesso'] === 'horario_livre' && ! $turma['checkin_livre']))) {
                     continue;
                 }
                 $saldo = $acesso->vagas($turma, $tenantId);
@@ -121,7 +165,7 @@ class MobileHorariosService
             $horarioFechamento = CheckinJanela::fechamento($dataHoraTurma, $turma);
             $limiteCancelamento = CheckinJanela::limiteCancelamento($dataHoraTurma, $turma);
 
-            $fixa = ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa';
+            $fixa = ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa' || ! empty($matriculaAula['reposicao']);
             $checkinDisponivel = $agora >= $horarioAbertura && $agora <= $horarioFechamento
                 && ($fixa || ($saldo['vagas_livres'] ?? 1) > 0);
 
@@ -131,6 +175,8 @@ class MobileHorariosService
                 'tipo_acesso' => $matriculaAula['tipo_acesso'] ?? 'horario_livre',
                 'turma_fixa_id' => $turma['turma_fixa_id'] ?? null,
                 'vaga_reservada' => $fixa,
+                'reposicao' => (bool) ($matriculaAula['reposicao'] ?? false),
+                'reposicoes_confirmadas' => $saldo['reposicoes_confirmadas'] ?? 0,
                 'vagas_fixas' => $saldo['vagas_fixas'] ?? 0,
                 'professor' => [
                     'id' => (int) $turma['professor_id'],

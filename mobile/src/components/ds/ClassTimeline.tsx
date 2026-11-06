@@ -30,6 +30,7 @@ export type ClassSlotProps = {
   booked?: number | null;
   capacity?: number | null;
   status?: SlotStatus;
+  reposicao?: boolean;
   /** Destaque visual independente das permissões de check-in/cancelamento. */
   inProgress?: boolean;
   /** HH:mm limite do check-in, para "Aberta até …". */
@@ -175,12 +176,15 @@ export function ClassSlot(p: ClassSlotProps & { first?: boolean; last?: boolean 
           (muted || p.compact) && { backgroundColor: ds.surfaceSunken },
         ]}
       >
-        {!p.compact && chip ? (
+        {!p.compact && (chip || p.reposicao) ? (
           <View style={styles.status}>
-            <View style={[styles.statusChip, { backgroundColor: chipColors.bg }]}>
-              {live ? <Blink /> : <Feather name={s.icon} size={12} color={chipColors.fg} />}
-              <Text style={[styles.statusText, { color: chipColors.fg }]} maxFontSizeMultiplier={1.3}>{chip}</Text>
-            </View>
+            {chip ? (
+              <View style={[styles.statusChip, { backgroundColor: chipColors.bg }]}>
+                {live ? <Blink /> : <Feather name={s.icon} size={12} color={chipColors.fg} />}
+                <Text style={[styles.statusText, { color: chipColors.fg }]} maxFontSizeMultiplier={1.3}>{chip}</Text>
+              </View>
+            ) : null}
+            {p.reposicao ? <Badge tone="warning" icon="repeat">Reposição</Badge> : null}
             {live && (st === "checked" || st === "full") ? <Badge tone={st === "checked" ? "success" : "warning"}>{s.text}</Badge> : null}
           </View>
         ) : null}

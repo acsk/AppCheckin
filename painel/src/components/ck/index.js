@@ -1095,7 +1095,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
           step(n++, 'Tipo de matrícula', true,
             h(ChoiceGroup, { label: 'Tipo de matrícula', className: 'ck-nm__two' },
               h(ChoiceCard, { checked: kind[0] === 'plano', onSelect: function () { kind[1]('plano'); }, title: 'Plano', description: 'Uma modalidade, cobrada por ciclo.' }),
-              h(ChoiceCard, { checked: kind[0] === 'pacote', onSelect: function () { kind[1]('pacote'); }, title: 'Pacote', description: 'Grupo ou família com valor rateado.' }))),
+              p.hidePackages ? null : h(ChoiceCard, { checked: kind[0] === 'pacote', onSelect: function () { kind[1]('pacote'); }, title: 'Pacote', description: 'Grupo ou família com valor rateado.' }))),
           kind[0] === 'plano' ? h(React.Fragment, null,
             step(n++, 'Modalidade', !!modObj,
               h('div', { className: 'ck-nm__mods', role: 'radiogroup', 'aria-label': 'Modalidade' }, mods.map(function (m) {

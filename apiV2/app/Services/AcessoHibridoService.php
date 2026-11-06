@@ -20,9 +20,7 @@ class AcessoHibridoService
         return DB::transaction(function () use ($tenantId, $matriculaId, $statusId, $campos) {
             $m = DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $matriculaId)->first();
             abort_unless($m, 404, 'Matrícula não encontrada.');
-            if (($m->tipo_acesso ?? self::LIVRE) === self::FIXA) {
-                DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('id', $m->turma_fixa_id)->lockForUpdate()->first();
-            }
+            $this->bloquearGrupos($tenantId);
             $m = DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $matriculaId)->lockForUpdate()->first();
             $codigo = DB::table('status_matricula')->where('id', $statusId)->value('codigo');
             if ($m && $codigo === 'ativa' && ! $this->podeAtivar($tenantId, array_replace((array) $m, $campos))) {
@@ -44,6 +42,53 @@ class AcessoHibridoService
         return Schema::hasColumn('matriculas', 'tipo_acesso');
     }
 
+    public function gradeAtualizada(): bool
+    {
+        return Schema::hasTable('matricula_grade');
+    }
+
+    public function bloquearGrupos(int $tenantId): void
+    {
+        if ($this->atualizado()) {
+            DB::table('turmas_fixas')->where('tenant_id', $tenantId)->orderBy('id')->lockForUpdate()->get();
+        }
+    }
+
+    public function grade(int $tenantId, int $matriculaId): array
+    {
+        if (! $this->gradeAtualizada()) {
+            $m = DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $matriculaId)->first();
+            $t = $m && $m->turma_fixa_id ? DB::table('turmas_fixas')->where('id', $m->turma_fixa_id)->where('tenant_id', $tenantId)->first() : null;
+
+            return $t ? array_map(fn ($dia) => ['turma_fixa_id' => (int) $t->id, 'dia_semana' => (int) $dia,
+                'nome' => $t->nome, 'horario_inicio' => $t->horario_inicio, 'horario_fim' => $t->horario_fim,
+                'modalidade_id' => (int) $t->modalidade_id], json_decode($t->dias_semana, true)) : [];
+        }
+
+        return DB::table('matricula_grade as g')->join('turmas_fixas as t', 't.id', '=', 'g.turma_fixa_id')
+            ->where('g.tenant_id', $tenantId)->where('g.matricula_id', $matriculaId)->where('t.tenant_id', $tenantId)
+            ->orderBy('g.dia_semana')->orderBy('t.horario_inicio')
+            ->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
+            ->get(['g.turma_fixa_id', 'g.dia_semana', 't.nome', 't.horario_inicio', 't.horario_fim', 't.modalidade_id'])
+            ->map(fn ($g) => (array) $g)->all();
+    }
+
+    public function salvarGrade(int $tenantId, int $matriculaId, array $grade): void
+    {
+        if (! $this->gradeAtualizada()) {
+            return;
+        }
+        DB::table('matricula_grade')->where('tenant_id', $tenantId)->where('matricula_id', $matriculaId)->delete();
+        foreach ($grade as $g) {
+            DB::table('matricula_grade')->insert([
+                'tenant_id' => $tenantId, 'matricula_id' => $matriculaId,
+                'turma_fixa_id' => $g['turma_fixa_id'], 'dia_semana' => $g['dia_semana'],
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        DB::table('matriculas')->where('tenant_id', $tenantId)->where('id', $matriculaId)->update(['grade_revisao' => false]);
+    }
+
     public function validarMigracaoAutomatica(int $tenantId, int $matriculaId): void
     {
         if (! $this->atualizado()) {
@@ -63,39 +108,71 @@ class AcessoHibridoService
             throw ValidationException::withMessages(['tipo_acesso' => 'Tipo de acesso inválido.']);
         }
         $id = $tipo === self::FIXA ? (int) ($dados['turma_fixa_id'] ?? $atual['turma_fixa_id'] ?? 0) : null;
+        $grade = [];
         if ($tipo === self::FIXA) {
-            $turma = DB::table('turmas_fixas')->where('id', $id)->where('tenant_id', $tenantId)->where('ativo', 1)->first();
             $planoId = (int) ($dados['plano_id'] ?? $atual['plano_id'] ?? 0);
-            $oferecido = DB::table('turma_fixa_planos as tp')->join('planos as p', 'p.id', '=', 'tp.plano_id')
-                ->where('tp.turma_fixa_id', $id)->where('p.id', $planoId)->where('p.tenant_id', $tenantId)
-                ->where('p.ativo', 1)->exists();
-            if (! $turma || ! $oferecido) {
-                throw ValidationException::withMessages(['turma_fixa_id' => 'Selecione uma turma deste tenant e um plano oferecido por ela.']);
+            $plano = DB::table('planos')->where('id', $planoId)->where('tenant_id', $tenantId)->first();
+            if (! $plano) {
+                throw ValidationException::withMessages(['plano_id' => 'Plano não pertence ao tenant.']);
+            }
+            $grade = array_key_exists('grade', $dados) ? $dados['grade'] : (! empty($atual['id']) ? $this->grade($tenantId, (int) $atual['id']) : []);
+            if (! $this->gradeAtualizada()) {
+                $turma = DB::table('turmas_fixas')->where('id', $id)->where('tenant_id', $tenantId)->first();
+                $grade = $turma ? array_map(fn ($d) => ['turma_fixa_id' => $id, 'dia_semana' => $d], json_decode($turma->dias_semana, true)) : [];
+            }
+            if (! is_array($grade) || ! array_is_list($grade) || count($grade) === 0) {
+                throw ValidationException::withMessages(['grade' => 'Selecione ao menos um horário recorrente.']);
+            }
+            $vistos = [];
+            foreach ($grade as $g) {
+                if (! is_array($g) || ! isset($g['turma_fixa_id'], $g['dia_semana'])
+                    || filter_var($g['turma_fixa_id'], FILTER_VALIDATE_INT) === false
+                    || filter_var($g['dia_semana'], FILTER_VALIDATE_INT) === false) {
+                    throw ValidationException::withMessages(['grade' => 'Horário da grade inválido.']);
+                }
+                $turma = DB::table('turmas_fixas')->where('id', $g['turma_fixa_id'])->where('tenant_id', $tenantId)->where('ativo', 1)->first();
+                $key = $g['turma_fixa_id'].':'.$g['dia_semana'];
+                if (! $turma || (int) $turma->modalidade_id !== (int) $plano->modalidade_id
+                    || ! in_array((int) $g['dia_semana'], json_decode($turma->dias_semana, true))
+                    || isset($vistos[$key])) {
+                    throw ValidationException::withMessages(['grade' => 'Selecione dias distintos de turmas ativas da modalidade do plano neste tenant.']);
+                }
+                $vistos[$key] = true;
+            }
+            $alterando = array_key_exists('grade', $dados) || isset($dados['plano_id']) || ! $atual;
+            $limite = (int) ($plano->checkins_semanais ?? 0);
+            if ($alterando && $limite > 0 && count($grade) > $limite) {
+                throw ValidationException::withMessages(['grade' => "O plano permite até {$limite} horários fixos por semana."]);
             }
             if (! empty($dados['pacote_id'])) {
                 throw ValidationException::withMessages(['pacote_id' => 'Turma fixa exige um plano individual.']);
             }
+            $id = (int) $grade[0]['turma_fixa_id'];
         }
 
-        return ['tipo_acesso' => $tipo, 'turma_fixa_id' => $id];
+        return ['tipo_acesso' => $tipo, 'turma_fixa_id' => $id, 'grade' => $grade];
     }
 
     /** O mesmo mutex é usado na ativação, na edição da turma e em todos os check-ins. */
     public function bloquearAula(array $turma, int $tenantId): void
     {
-        if (! empty($turma['turma_fixa_id'])) {
-            DB::table('turmas_fixas')->where('id', $turma['turma_fixa_id'])->where('tenant_id', $tenantId)->lockForUpdate()->first();
-        }
+        $this->bloquearGrupos($tenantId);
         DB::table('turmas')->where('id', $turma['id'])->where('tenant_id', $tenantId)->lockForUpdate()->first();
     }
 
     private function fixas(int $tenantId, int $grupoId, string $data): Builder
     {
-        return DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
-            ->where('m.tenant_id', $tenantId)->where('m.turma_fixa_id', $grupoId)->where('m.tipo_acesso', self::FIXA)
+        $q = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
+            ->where('m.tenant_id', $tenantId)->where('m.tipo_acesso', self::FIXA)
             ->where('s.permite_checkin', 1)->where('s.ativo', 1)
             ->whereDate('m.data_inicio', '<=', $data)
             ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [$data]);
+
+        return $this->gradeAtualizada()
+            ? $q->join('matricula_grade as g', 'g.matricula_id', '=', 'm.id')
+                ->where('g.tenant_id', $tenantId)->where('g.turma_fixa_id', $grupoId)
+                ->where('g.dia_semana', (int) (new \DateTimeImmutable($data))->format('N'))
+            : $q->where('m.turma_fixa_id', $grupoId);
     }
 
     public function vagas(array $turma, int $tenantId, ?int $excluirMatricula = null): array
@@ -108,13 +185,17 @@ class AcessoHibridoService
         $checkins = DB::table('checkins')->where('tenant_id', $tenantId)->where('turma_id', $turma['id'])
             ->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
             ->distinct()->pluck('aluno_id')->map(fn ($id) => (int) $id)->all();
-        $livres = count(array_diff($checkins, $fixos));
-        $saldo = max(0, (int) $turma['limite_alunos'] - count($fixos) - $livres);
+        $reposicoes = $this->gradeAtualizada() ? DB::table('aula_reposicoes')->where('tenant_id', $tenantId)->where('turma_id', $turma['id'])
+            ->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())->pluck('aluno_id')->map(fn ($id) => (int) $id)->all() : [];
+        $reposicoes = array_values(array_diff($reposicoes, $fixos));
+        $livres = count(array_diff($checkins, $fixos, $reposicoes));
+        $saldo = max(0, (int) $turma['limite_alunos'] - count($fixos) - count($reposicoes) - $livres);
 
-        return ['vagas_fixas' => count($fixos), 'vagas_livres_ocupadas' => $livres, 'vagas_livres' => $saldo, 'alunos_fixos' => $fixos];
+        return ['vagas_fixas' => count($fixos), 'reposicoes_confirmadas' => count($reposicoes), 'vagas_livres_ocupadas' => $livres,
+            'vagas_livres' => $saldo, 'alunos_fixos' => $fixos, 'alunos_reposicao' => $reposicoes];
     }
 
-    public function matriculaParaAula(int $alunoId, int $tenantId, array $turma): ?array
+    public function matriculaParaAula(int $alunoId, int $tenantId, array $turma, bool $ignorarGrade = false): ?array
     {
         $data = substr((string) $turma['dia_data'], 0, 10);
         $row = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
@@ -123,12 +204,35 @@ class AcessoHibridoService
             ->where('p.modalidade_id', $turma['modalidade_id'])->where('s.permite_checkin', 1)->where('s.ativo', 1)
             ->whereDate('m.data_inicio', '<=', $data)
             ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [$data])
-            ->where(fn ($q) => $q->where('m.tipo_acesso', self::LIVRE)->orWhere(fn ($f) => $f
-                ->where('m.tipo_acesso', self::FIXA)->where('m.turma_fixa_id', $turma['turma_fixa_id'] ?? 0)))
+            ->when(! $ignorarGrade, function ($query) use ($tenantId, $turma, $data) {
+                $query->where(function ($q) use ($tenantId, $turma, $data) {
+                    $q->where('m.tipo_acesso', self::LIVRE)->orWhere(function ($f) use ($tenantId, $turma, $data) {
+                        $f->where('m.tipo_acesso', self::FIXA);
+                        if ($this->gradeAtualizada()) {
+                            $f->whereExists(fn ($g) => $g->selectRaw('1')->from('matricula_grade as g')
+                                ->whereColumn('g.matricula_id', 'm.id')->where('g.tenant_id', $tenantId)
+                                ->where('g.turma_fixa_id', $turma['turma_fixa_id'] ?? 0)
+                                ->where('g.dia_semana', (int) (new \DateTimeImmutable($data))->format('N')));
+                        } else {
+                            $f->where('m.turma_fixa_id', $turma['turma_fixa_id'] ?? 0);
+                        }
+                    });
+                    if ($this->gradeAtualizada()) {
+                        $q->orWhereExists(fn ($r) => $r->selectRaw('1')->from('aula_reposicoes as r')
+                            ->whereColumn('r.matricula_id', 'm.id')->where('r.tenant_id', $tenantId)->where('r.turma_id', $turma['id']));
+                    }
+                });
+            })
             ->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())
+            ->orderByRaw("CASE WHEN m.tipo_acesso = 'turma_fixa' THEN 0 ELSE 1 END")
             ->orderByDesc('m.id')->first(['m.*']);
 
-        return $row ? (array) $row : null;
+        if (! $row) {
+            return null;
+        }
+
+        return (array) $row + ['reposicao' => $this->gradeAtualizada() && DB::table('aula_reposicoes')
+            ->where('tenant_id', $tenantId)->where('turma_id', $turma['id'])->where('matricula_id', $row->id)->exists()];
     }
 
     public function erroCheckin(array $turma, int $tenantId, ?array $matricula): ?string
@@ -136,7 +240,7 @@ class AcessoHibridoService
         if (! $matricula || empty($turma['ativo'])) {
             return 'Você não possui matrícula ativa com acesso a esta turma e data.';
         }
-        if ($matricula['tipo_acesso'] === self::FIXA) {
+        if (! empty($matricula['reposicao']) || $matricula['tipo_acesso'] === self::FIXA) {
             return null; // Presença na vaga já reservada; não consome saldo livre.
         }
         if (! ($turma['checkin_livre'] ?? true)) {
@@ -151,6 +255,9 @@ class AcessoHibridoService
     {
         if (($matricula['tipo_acesso'] ?? self::LIVRE) !== self::FIXA) {
             return true;
+        }
+        if ($this->gradeAtualizada()) {
+            return $this->podeReservarGrade($tenantId, $matricula);
         }
         $grupo = DB::table('turmas_fixas')->where('id', $matricula['turma_fixa_id'])->where('tenant_id', $tenantId)->lockForUpdate()->first();
         if (! $grupo || ! $grupo->ativo) {
@@ -185,6 +292,59 @@ class AcessoHibridoService
                 ->where('aluno_id', $matricula['aluno_id'])->lockForUpdate()->exists();
             if (! in_array((int) $matricula['aluno_id'], $vagas['alunos_fixos']) && ! $jaPresente && $vagas['vagas_livres'] < 1) {
                 return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function podeReservarGrade(int $tenantId, array $matricula): bool
+    {
+        $grade = $matricula['grade'] ?? $this->grade($tenantId, (int) $matricula['id']);
+        if (! $grade) {
+            return false;
+        }
+        $inicio = max(AcademyDateTime::today(), substr((string) $matricula['data_inicio'], 0, 10));
+        $fim = substr((string) ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento']), 0, 10);
+        foreach ($grade as $slot) {
+            $grupo = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('id', $slot['turma_fixa_id'])->lockForUpdate()->first();
+            if (! $grupo || ! $grupo->ativo) {
+                return false;
+            }
+            $reservas = DB::table('matriculas as m')->join('matricula_grade as g', 'g.matricula_id', '=', 'm.id')
+                ->join('status_matricula as s', 's.id', '=', 'm.status_id')->where('m.tenant_id', $tenantId)
+                ->where('g.tenant_id', $tenantId)->where('g.turma_fixa_id', $grupo->id)->where('g.dia_semana', $slot['dia_semana'])
+                ->where('m.tipo_acesso', self::FIXA)->where('s.permite_checkin', 1)->where('s.ativo', 1)
+                ->where('m.id', '<>', $matricula['id'])->whereDate('m.data_inicio', '<=', $fim)
+                ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [$inicio])
+                ->lockForUpdate()->get(['m.aluno_id', 'm.data_inicio', 'm.data_vencimento', 'm.proxima_data_vencimento']);
+            $datas = [$inicio, ...$reservas->pluck('data_inicio')->all()];
+            foreach ($datas as $data) {
+                $dia = new \DateTimeImmutable(max($inicio, $data));
+                $dia = $dia->modify('+'.(((int) $slot['dia_semana'] - (int) $dia->format('N') + 7) % 7).' days')->format('Y-m-d');
+                if ($dia > $fim) {
+                    continue;
+                }
+                $alunos = $reservas->filter(fn ($r) => $r->data_inicio <= $dia && ($r->proxima_data_vencimento ?? $r->data_vencimento) >= $dia)
+                    ->pluck('aluno_id')->map(fn ($id) => (int) $id)->unique()->all();
+                if (! in_array((int) $matricula['aluno_id'], $alunos) && count($alunos) >= $grupo->capacidade) {
+                    return false;
+                }
+            }
+            $aulas = DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')->where('t.tenant_id', $tenantId)
+                ->where('t.turma_fixa_id', $grupo->id)->where('t.ativo', 1)->whereBetween('d.data', [$inicio, $fim])
+                ->lockForUpdate()->get(['t.*', 'd.data as dia_data']);
+            foreach ($aulas as $aula) {
+                if ((int) (new \DateTimeImmutable($aula->dia_data))->format('N') !== (int) $slot['dia_semana']) {
+                    continue;
+                }
+                $vagas = $this->vagas((array) $aula, $tenantId, (int) $matricula['id']);
+                $presente = DB::table('checkins')->where('tenant_id', $tenantId)->where('turma_id', $aula->id)
+                    ->where('aluno_id', $matricula['aluno_id'])->lockForUpdate()->exists();
+                if (! in_array((int) $matricula['aluno_id'], [...$vagas['alunos_fixos'], ...$vagas['alunos_reposicao']])
+                    && ! $presente && $vagas['vagas_livres'] < 1) {
+                    return false;
+                }
             }
         }
 

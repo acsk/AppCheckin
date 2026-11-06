@@ -123,6 +123,7 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin']);
             Route::get('/alunos/{alunoId}/resumo-financeiro', [MobileController::class, 'resumoFinanceiroAluno']);
             Route::post('/checkin/manual', [MobileController::class, 'registrarCheckinManual'])->middleware('funcionalidade:checkin');
+            Route::post('/professor/reposicoes', [MobileController::class, 'adicionarReposicao'])->middleware('funcionalidade:checkin');
             Route::delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin'])->middleware('funcionalidade:checkin');
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
@@ -205,6 +206,7 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::post('/turmas-fixas', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'store']);
             Route::put('/turmas-fixas/{id}', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'update'])->whereNumber('id');
             Route::put('/matriculas/{id}/tipo-acesso', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'acesso']);
+            Route::get('/matriculas/{id}/grade', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'grade'])->whereNumber('id');
             Route::get('/matriculas', [AdminMatriculaController::class, 'index']);
             Route::post('/matriculas', [AdminMatriculaController::class, 'store']);
             Route::get('/matriculas/{id}/delete-preview', [AdminMatriculaController::class, 'deletePreview']);

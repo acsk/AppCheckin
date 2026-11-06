@@ -20,6 +20,7 @@ export type StudentResult = {
   detail?: string | null;
   avatarUri?: string | null;
   added?: boolean;
+  addedLabel?: string;
   loading?: boolean;
   extra?: React.ReactNode;
 };
@@ -35,6 +36,7 @@ type Props = {
   error?: string | null;
   /** Mostra a lista (com "Nenhum aluno encontrado" quando vazia) só depois de buscar. */
   searched?: boolean;
+  addLabel?: string;
 };
 
 // Busca de aluno por nome, CPF ou e-mail para adicionar à turma.
@@ -48,6 +50,7 @@ export default function StudentSearch({
   searching,
   error,
   searched,
+  addLabel = "Adicionar",
 }: Props) {
   const [focused, setFocused] = useState(false);
   const has = !!value && value.trim().length > 0;
@@ -118,11 +121,11 @@ export default function StudentSearch({
                 </View>
                 {r.added ? (
                   <Badge tone="success" icon="check">
-                    Na turma
+                    {r.addedLabel || "Na turma"}
                   </Badge>
                 ) : (
                   <Button size="sm" variant="dark" icon="plus" loading={r.loading} onPress={() => onAdd?.(r)}>
-                    Adicionar
+                    {addLabel}
                   </Button>
                 )}
               </View>

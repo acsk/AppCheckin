@@ -36,4 +36,9 @@ class TurmaFixaController extends Controller
     {
         return response()->json($service->atualizar($this->tenant($request), $id, $request->all()));
     }
+
+    public function grade(Request $request, int $id, AdminTurmaFixaService $service): JsonResponse
+    {
+        return response()->json($service->gradeMatricula($this->tenant($request), $id));
+    }
 }

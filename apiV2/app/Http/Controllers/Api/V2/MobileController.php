@@ -139,6 +139,12 @@ class MobileController extends Controller
         }
     }
 
+    public function adicionarReposicao(Request $request): JsonResponse
+    {
+        $result = $this->professor->adicionarReposicao($this->userId($request), $this->tenantId($request), $request->all());
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function desfazerCheckinManual(Request $request, int $checkinId): JsonResponse
     {
         try {
@@ -365,6 +371,7 @@ class MobileController extends Controller
             if ($result['status'] === 200 && $this->tenantId($request)) {
                 $result['body']['data']['proxima_aula_fixa'] = $this->horarios->proximaAulaFixa($this->tenantId($request), $this->userId($request));
                 $result['body']['data']['aguardando_vaga'] = $this->horarios->aguardandoVaga($this->tenantId($request), $this->userId($request));
+                $result['body']['data']['grade_fixa'] = $this->horarios->gradeAluno($this->tenantId($request), $this->userId($request));
             }
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);

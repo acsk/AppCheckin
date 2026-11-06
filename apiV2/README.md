@@ -52,27 +52,34 @@ Pagamentos usam `App\Services\MercadoPagoService` (portado da Slim) com credenci
 
 ### Acesso híbrido às aulas
 
+Consulte a [documentação consolidada de turmas fixas, grade individual, reposições e seed do tenant 5](../TURMAS_FIXAS_E_ACESSO_HIBRIDO.md) para o histórico da implementação, regras operacionais, evidências e roteiro de publicação.
+
 O mesmo tenant pode combinar **horário livre** e **turma fixa**, sem configuração específica para a Aqua4Styles:
 
 - Em **Configurações Gerais → Matrículas**, `tipo_acesso_padrao` pré-seleciona o formulário do painel. A escolha é gravada em `matriculas.tipo_acesso`; mudar o padrão não altera contratos existentes. O cadastro público continua igual.
-- Em **Aulas → Turmas fixas**, a secretaria cadastra nome, professor, modalidade, dias ISO (segunda=1, domingo=7), horários, capacidade e planos existentes. Os preços vêm do plano/ciclo escolhido e são contratados na matrícula. A grade recorrente materializa ocorrências na agenda existente para os próximos 90 dias.
-- A matrícula fixa exige turma e plano ofertado. Matrículas pendentes não reservam vaga: a reserva acontece na ativação/pagamento. Pagamento confirmado sem capacidade fica em **Pago - aguardando vaga**, sem apagar a baixa; o painel permite alterar o vínculo, sem mudar o preço. A sincronização financeira pode tentar novamente quando houver vaga.
-- Cada aula pode habilitar check-in livre. O saldo é `capacidade - alunos fixos vigentes - check-ins livres`; ausência ou cancelamento de presença de aluno fixo não libera sua reserva. A inclusão manual da equipe continua disponível, respeitando vínculo e lotação.
+- A secretaria cadastra turmas com nome, professor, modalidade, dias ISO (segunda=1, domingo=7), horários e capacidade. **Não há planos associados à turma.** O plano, o ciclo e o preço contratado pertencem à matrícula. A grade recorrente materializa ocorrências na agenda existente para os próximos 90 dias.
+- A matrícula fixa possui uma **grade individual** (`matricula_grade`) com um ou mais pares turma/dia da semana, inclusive de turmas diferentes da mesma modalidade. Selecionar terça não reserva quinta. Novas grades e trocas de plano respeitam `planos.checkins_semanais` (zero mantém a regra existente de frequência ilimitada). A secretaria vê a grade e os casos legados sinalizados para revisão.
+- O painel oferece o menu **Turmas** quando o tenant tem turmas cadastradas ou utiliza `turma_fixa` como tipo padrão, respeitando as permissões da equipe. Tenants de horário livre podem cadastrar a primeira turma pela área de Aulas. O app exibe a grade individual do aluno.
+- Matrículas pendentes não reservam vaga: a reserva acontece na ativação/pagamento. Pagamento confirmado sem capacidade fica em **Pago - aguardando vaga**, sem apagar a baixa; o painel permite alterar a grade, sem mudar o preço. A sincronização financeira pode tentar novamente quando houver vaga.
+- Cada aula pode habilitar check-in livre. O saldo é `capacidade - alunos fixos vigentes naquele dia - reposições confirmadas - check-ins livres`, contando cada aluno apenas uma vez; ausência de aluno fixo não libera sua reserva. O professor responsável pela aula (ou administrador) pode **Adicionar aluno para reposição**. A inclusão em `aula_reposicoes` reserva apenas aquela ocorrência e autoriza o check-in dentro da janela, sem registrar presença antecipadamente nem alterar grade, plano ou cobrança. O histórico da presença identifica **Reposição**. A inclusão manual regular da equipe continua disponível.
 - No app, o aluno vê a próxima aula fixa e a indicação da vaga reservada; o horário livre mantém seus limites de plano. Troca/contratação de plano de matrícula fixa é feita pela secretaria; o pagamento da mensalidade continua no fluxo atual.
 - Uma simulação de troca iniciada no app antes de a secretaria converter a matrícula para fixa não pode sobrescrever esse vínculo no retorno do pagamento. A confirmação é recusada explicitamente para conferência da secretaria, sem apagar o pagamento recebido.
-- O check-in móvel serializa grupo, aula e aluno em transação, relê reservas sob lock e aplica turma, tenant, vigência, duplicidade e janela. Aulas existentes ficam abertas ao horário livre. Diminuir capacidade abaixo das reservas/ocupação é recusado.
+- O check-in móvel, a edição de grade e a reposição compartilham locks ordenados dos grupos do tenant, da ocorrência e do aluno. Reservas e limites de presença usam leituras correntes na transação, inclusive no MySQL. Aulas existentes ficam abertas ao horário livre. Diminuir capacidade abaixo das reservas/ocupação é recusado.
 - A edição de uma turma recorrente preserva dias, horários, contratos e permissões específicas das aulas. Para outra grade, crie nova turma e transfira os vínculos explicitamente. A edição de ocorrência permite habilitar check-in livre pontualmente.
 
-Rotas administrativas: `GET/POST /v2/admin/turmas-fixas`, `PUT /v2/admin/turmas-fixas/{id}` e `PUT /v2/admin/matriculas/{id}/tipo-acesso`. Exigem JWT de administrador e tenant selecionado.
+Rotas administrativas: `GET/POST /v2/admin/turmas-fixas`, `PUT /v2/admin/turmas-fixas/{id}`, `GET /v2/admin/matriculas/{id}/grade` e `PUT /v2/admin/matriculas/{id}/tipo-acesso`. A criação de matrícula e a alteração de acesso recebem `grade: [{turma_fixa_id, dia_semana}]`. Exigem JWT de administrador e tenant selecionado. `POST /v2/mobile/professor/reposicoes` recebe `turma_id` da ocorrência e `aluno_id`, validando tenant, professor responsável, modalidade, vigência e capacidade no backend.
 
 **Publicação:** faça backup e publique a API antes dos clientes. Não foi executada migração em produção nesta implementação.
 
 ```bash
 /opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_100000_acesso_hibrido_aulas.php --force
+/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_140000_grade_individual_reposicoes.php --force
 /opt/alt/php84/usr/bin/php artisan optimize:clear
 ```
 
 A migração mantém todos os registros, preços, cobranças e status anteriores; atribui `horario_livre` a matrículas existentes e `checkin_livre=true` às aulas anteriores. É irreversível para evitar apagar contratos/aulas: restauração exige backup validado. O cron Laravel existente deve executar `schedule:run` a cada minuto; `turmas:gerar-aulas-fixas` mantém a grade diariamente. Falhas/conflitos de agenda são explícitos e precisam ser corrigidos.
+
+A segunda migração preserva **todos os dias** da turma em cada vínculo fixo antigo e marca `grade_revisao=true` quando excedem a frequência do plano (ou quando ela não pode ser identificada). Não corta dias nem muda plano, valor, status ou histórico de check-ins. As referências singulares e a pivot antiga permanecem apenas para auditoria; a autorização/reserva nova utiliza a grade individual. Matrículas legadas acima da frequência continuam com sua grade até revisão explícita da secretaria; alterações devem respeitar o limite.
 
 **Reajuste:** editar preço de tabela não reajusta contratos, parcelas ou recorrências. O agendamento automático `reajuste:aplicar-renovacoes` foi removido. Marcações antigas em `valor_renovacao` são preservadas, mas não são aplicadas sem `reajuste_autorizado_em`. Para contratos avulsos, o operador pode simular e confirmar explicitamente, por tenant/ciclo/preço anterior:
 
@@ -86,7 +93,7 @@ Valores negociados, pacotes e contratos com fidelização não são abrangidos p
 Testes da funcionalidade:
 
 ```bash
-php vendor/bin/phpunit --filter AcessoHibrido
+php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual'
 ```
 
 `AcessoHibridoConcurrencyTest` é opt-in e exige um MySQL **descartável e isolado**, sem portas expostas. Ele usa somente o banco `appcheckin_hybrid_test`, cria/remove suas tabelas e inicia processos PHP simultâneos. Nunca execute em um banco da aplicação.
@@ -98,7 +105,7 @@ docker run --rm --name appcheckin-hybrid-test -e MYSQL_ROOT_PASSWORD=local-test-
 docker run --rm --network container:appcheckin-hybrid-test -e HYBRID_MYSQL_TEST=1 -e HYBRID_MYSQL_PASSWORD=local-test-only -v "$PWD/apiV2:/app" -w /app appcheckin-php-v2 php vendor/bin/phpunit --filter AcessoHibridoConcurrencyTest
 ```
 
-A suíte cobre migração/legados, autenticação/tenant, planos por turma, grade recorrente, reservas com ausências (12/10/2), janela e turma correta, duplicidade, pagamento sem vaga, prorrogação manual, novas contratações/preços antigos e simulação/confirmação de reajustes. No MySQL, verifica a última vaga, ativações concorrentes e o limite diário do mesmo aluno entre aulas diferentes. Os testes de check-in isolam comunicação e regras auxiliares com fixtures; o MySQL executa os locks, consultas de presença diária e inserts reais. Android/iOS e gateways de pagamento em produção exigem homologação após publicação.
+A suíte cobre migração/legados, autenticação/tenant, planos distintos na mesma turma, grade individual entre turmas/dias, frequência semanal, reservas com ausências (12/10/2), janela, duplicidade, reposição pontual e histórico, pagamento sem vaga, prorrogação manual, novas contratações/preços antigos e simulação/confirmação de reajustes. No MySQL, verifica a última vaga, ativações/grades concorrentes, limite diário entre aulas diferentes, duas reposições simultâneas e reposição disputando a última vaga com check-in livre. Os testes isolam comunicação e regras auxiliares com fixtures; o MySQL executa locks, consultas e inserts reais. Android/iOS e gateways de pagamento em produção exigem homologação após publicação.
 
 ### Persistência de recordes
 

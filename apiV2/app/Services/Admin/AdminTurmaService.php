@@ -160,7 +160,7 @@ class AdminTurmaService
                 $acesso = app(\App\Services\AcessoHibridoService::class);
                 $acesso->bloquearAula($turma, $tenantId);
                 $saldo = $acesso->vagas($turma, $tenantId);
-                if (isset($data['limite_alunos']) && (int) $data['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['vagas_livres_ocupadas']) {
+                if (isset($data['limite_alunos']) && (int) $data['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['reposicoes_confirmadas'] + $saldo['vagas_livres_ocupadas']) {
                     return $this->error('Capacidade menor que as vagas fixas reservadas e check-ins livres existentes.', 422);
                 }
             }
@@ -983,7 +983,7 @@ class AdminTurmaService
                 $acesso = app(\App\Services\AcessoHibridoService::class);
                 $acesso->bloquearAula($futura, $tenantId);
                 $saldo = $acesso->vagas($futura, $tenantId);
-                if (isset($alteracoes['limite_alunos']) && $alteracoes['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['vagas_livres_ocupadas']) {
+                if (isset($alteracoes['limite_alunos']) && $alteracoes['limite_alunos'] < $saldo['vagas_fixas'] + $saldo['reposicoes_confirmadas'] + $saldo['vagas_livres_ocupadas']) {
                     $puladas[] = ['turma_id' => (int) $futura['id'], 'data' => $futura['dia_data'], 'motivo' => 'Vagas reservadas'];
                     continue;
                 }

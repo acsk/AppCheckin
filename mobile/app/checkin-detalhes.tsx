@@ -60,6 +60,7 @@ function CheckinDetalhesScreenContent() {
   const presente = presenteRaw === "true" ? true : presenteRaw === "false" ? false : null;
   const presencaConfirmadaEm = normalizeUtf8(String(params.presencaConfirmadaEm || ""));
   const dataCheckin = normalizeUtf8(String(params.dataCheckin || ""));
+  const tipoPresenca = normalizeUtf8(String(params.tipoPresenca || ""));
   const foto = typeof params.foto === "string" ? params.foto : "";
   const photoUrl = getPhotoUrl(foto);
   const alunoId = Number(params.alunoId || 0);
@@ -77,13 +78,14 @@ function CheckinDetalhesScreenContent() {
   }
 
   const linhas = [
+    tipoPresenca ? { icon: "repeat" as const, label: "Tipo de check-in", value: tipoPresenca } : null,
     dataCheckin ? { icon: "check-square" as const, label: "Check-in feito em", value: formatDataHora(dataCheckin) } : null,
     {
       icon: "user-check" as const,
       label: "Presença",
       value: presencaConfirmadaEm ? `Confirmada em ${formatDataHora(presencaConfirmadaEm)}` : "Ainda não confirmada pelo professor",
     },
-  ].filter(Boolean) as { icon: "check-square" | "user-check"; label: string; value: string | null }[];
+  ].filter(Boolean) as { icon: "check-square" | "user-check" | "repeat"; label: string; value: string | null }[];
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>

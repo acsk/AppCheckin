@@ -192,7 +192,7 @@ class MobileTurmaService
             $saldo = $acesso->vagas($turma, $tenantId);
             $alunoId = (int) DB::table('alunos')->where('usuario_id', $userId)->value('id');
             $matriculaAula = $acesso->matriculaParaAula($alunoId, $tenantId, $turma);
-            $vagasDisponiveis = ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa' ? 1 : $saldo['vagas_livres'];
+            $vagasDisponiveis = !empty($matriculaAula['reposicao']) || ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa' ? 1 : $saldo['vagas_livres'];
         }
         $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
         $checkinBloqueado = $this->bloqueios->isBloqueada($turmaId, $tenantId);
@@ -243,12 +243,14 @@ class MobileTurmaService
         }, $alunosRaw);
 
         $checkinsRaw = $this->turmas->listarCheckinsRecentesMobile($turmaId);
-        $checkinsFormatados = array_map(function (array $c): array {
+        $checkinsFormatados = array_map(function (array $c) use ($acesso, $tenantId, $turmaId): array {
             $aniversario = AniversarioUtil::payload($c['data_nascimento'] ?? null);
 
             return [
                 'checkin_id' => (int) $c['checkin_id'],
                 'aluno_id' => (int) $c['aluno_id'],
+                'tipo_presenca' => $acesso->gradeAtualizada() && DB::table('aula_reposicoes')->where('tenant_id', $tenantId)
+                    ->where('turma_id', $turmaId)->where('aluno_id', $c['aluno_id'])->exists() ? 'Reposição' : 'Regular',
                 'usuario_nome' => $c['usuario_nome'],
                 'data_checkin' => $c['data_checkin'],
                 'hora_checkin' => $c['hora_checkin'],
@@ -263,11 +265,16 @@ class MobileTurmaService
             ];
         }, $checkinsRaw);
 
+        $reposicoes = $acesso->gradeAtualizada() ? DB::table('aula_reposicoes as r')->join('alunos as a', 'a.id', '=', 'r.aluno_id')
+            ->where('r.tenant_id', $tenantId)->where('r.turma_id', $turmaId)
+            ->get(['r.aluno_id', 'a.nome', 'r.created_at'])->map(fn ($r) => (array) $r + ['tipo_presenca' => 'Reposição'])->all() : [];
+
         return [
             'status' => 200,
             'body' => [
                 'success' => true,
                 'data' => [
+                    'reposicoes' => $reposicoes,
                     'turma' => [
                         'id' => (int) $turma['id'],
                         'nome' => $turma['nome'],
@@ -311,8 +318,10 @@ class MobileTurmaService
                         'alunos_inscritos' => $totalAlunos,
                         'total_alunos_matriculados' => $totalAlunos,
                         'vagas_disponiveis' => $vagasDisponiveis,
+                        'reposicao' => (bool) ($matriculaAula['reposicao'] ?? false),
+                        'reposicoes_confirmadas' => $saldo['reposicoes_confirmadas'] ?? 0,
                         'vagas_fixas' => $saldo['vagas_fixas'] ?? 0,
-                        'vaga_reservada' => ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa',
+                        'vaga_reservada' => !empty($matriculaAula['reposicao']) || ($matriculaAula['tipo_acesso'] ?? '') === 'turma_fixa',
                         'tipo_acesso' => $matriculaAula['tipo_acesso'] ?? 'horario_livre',
                         'percentual_ocupacao' => $percentualOcupacao,
                         'total_checkins' => $totalAlunos,

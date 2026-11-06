@@ -7,6 +7,7 @@ use App\Repositories\AlunoRepository;
 use App\Repositories\CheckinRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\TurmaRepository;
+use App\Services\AcessoHibridoService;
 use App\Services\Comunicacao\PendenciaComunicacaoService;
 use App\Support\AcademyDateTime;
 use App\Support\AniversarioUtil;
@@ -111,20 +112,88 @@ class MobileProfessorService
      */
     public function registrarCheckinManual(int $professorId, ?int $tenantId, array $body): array
     {
-        if (! $tenantId || empty($body['turma_id']) || ! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+        if (! $tenantId || empty($body['turma_id']) || ! app(AcessoHibridoService::class)->atualizado()) {
             return $this->registrarManualInterno($professorId, $tenantId, $body);
         }
 
         $turma = $this->turmas->findById((int) $body['turma_id'], $tenantId);
+
         return DB::transaction(function () use ($professorId, $tenantId, $body, $turma) {
             if ($turma) {
-                app(\App\Services\AcessoHibridoService::class)->bloquearAula($turma, $tenantId);
+                app(AcessoHibridoService::class)->bloquearAula($turma, $tenantId);
             }
             $q = DB::table('alunos');
             ! empty($body['aluno_id']) ? $q->where('id', $body['aluno_id']) : $q->where('usuario_id', $body['usuario_id'] ?? 0);
             $q->lockForUpdate()->first();
 
             return $this->registrarManualInterno($professorId, $tenantId, $body);
+        }, 3);
+    }
+
+    public function adicionarReposicao(int $professorId, ?int $tenantId, array $body): array
+    {
+        if (! $tenantId) {
+            return $this->fail('Nenhum tenant selecionado', 400);
+        }
+        if ($denied = $this->exigirStaff($professorId, $tenantId)) {
+            return $denied;
+        }
+        $turmaId = filter_var($body['turma_id'] ?? null, FILTER_VALIDATE_INT);
+        $alunoId = filter_var($body['aluno_id'] ?? null, FILTER_VALIDATE_INT);
+        if (! $turmaId || ! $alunoId || $turmaId < 1 || $alunoId < 1) {
+            return $this->fail('Informe turma_id e aluno_id válidos.', 422);
+        }
+        $acesso = app(AcessoHibridoService::class);
+        if (! $acesso->gradeAtualizada()) {
+            return $this->fail('Execute a migração de grade individual antes de incluir reposições.', 409);
+        }
+        $turma = $this->turmas->findById($turmaId, $tenantId);
+        if (! $turma) {
+            return $this->fail('Aula não encontrada neste tenant.', 404);
+        }
+
+        return DB::transaction(function () use ($professorId, $tenantId, $turma, $alunoId, $acesso) {
+            $acesso->bloquearAula($turma, $tenantId);
+            $aluno = $this->alunos->findAlunoNoTenantPorId($alunoId, $tenantId);
+            if (! $aluno) {
+                return $this->fail('Aluno não encontrado neste tenant.', 404);
+            }
+            DB::table('alunos')->where('id', $alunoId)->lockForUpdate()->first();
+            $aula = $this->turmas->findById((int) $turma['id'], $tenantId);
+            $admin = DB::table('tenant_usuario_papel')->where('tenant_id', $tenantId)->where('usuario_id', $professorId)
+                ->where('ativo', 1)->whereIn('papel_id', Papel::HIERARQUICOS)->max('papel_id');
+            $responsavel = DB::table('professores')->where('id', $aula['professor_id'])->where('usuario_id', $professorId)->exists();
+            if ((int) $admin < 3 && ! $responsavel) {
+                return $this->fail('Somente o professor da aula ou administrador pode incluir reposição.', 403);
+            }
+            $fim = AcademyDateTime::fromDateAndTime($aula['dia_data'], $aula['horario_fim']);
+            if (! $aula['ativo'] || ! DB::table('dias')->where('id', $aula['dia_id'])->where('ativo', 1)->exists()
+                || ! $fim || AcademyDateTime::now() > $fim) {
+                return $this->fail('Não é possível reservar reposição em aula inativa ou encerrada.', 422);
+            }
+            $matricula = $acesso->matriculaParaAula($alunoId, $tenantId, $aula, true);
+            if (! $matricula) {
+                return $this->fail('Aluno sem matrícula ativa da modalidade e válida para esta data.', 403);
+            }
+            $saldo = $acesso->vagas($aula, $tenantId);
+            if (in_array($alunoId, $saldo['alunos_fixos']) || DB::table('checkins')->where('tenant_id', $tenantId)
+                ->where('turma_id', $aula['id'])->where('aluno_id', $alunoId)->exists()) {
+                return $this->fail('Aluno já possui vaga regular ou presença nesta aula.', 409);
+            }
+            $existe = DB::table('aula_reposicoes')->where('tenant_id', $tenantId)->where('turma_id', $aula['id'])->where('aluno_id', $alunoId)->exists();
+            if (! $existe) {
+                if ($saldo['vagas_livres'] < 1) {
+                    return $this->fail('Não há vaga para reposição nesta aula.', 403, 'TURMA_LOTADA');
+                }
+                DB::table('aula_reposicoes')->insert([
+                    'tenant_id' => $tenantId, 'turma_id' => $aula['id'], 'aluno_id' => $alunoId,
+                    'matricula_id' => $matricula['id'], 'criado_por' => $professorId, 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+
+            return ['status' => $existe ? 200 : 201, 'body' => ['success' => true,
+                'message' => 'Reposição reservada somente nesta aula. O aluno pode realizar check-in dentro da janela.',
+                'data' => ['turma_id' => $aula['id'], 'aluno_id' => $alunoId, 'tipo_presenca' => 'Reposição']]];
         }, 3);
     }
 
@@ -196,7 +265,7 @@ class MobileProfessorService
         if (! $turma || ! ($turma['ativo'] ?? true)) {
             return $this->fail('Turma inválida ou inativa', 400);
         }
-        $hibrido = app(\App\Services\AcessoHibridoService::class);
+        $hibrido = app(AcessoHibridoService::class);
         if ($hibrido->atualizado()) {
             $matricula = $hibrido->matriculaParaAula($alunoId, $tenantId, $turma);
             if (($erro = $hibrido->erroCheckin($turma, $tenantId, $matricula)) !== null) {
@@ -246,7 +315,7 @@ class MobileProfessorService
         }
 
         $planoInfo = $this->checkins->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
-        if (($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $planoInfo['tem_plano'] && $planoInfo['limite'] > 0 && $planoInfo['permite_reposicao']) {
+        if (empty($matricula['reposicao']) && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa' && $planoInfo['tem_plano'] && $planoInfo['limite'] > 0 && $planoInfo['permite_reposicao']) {
             $detalhesLimite = $this->matriculas->avaliarLimiteMensalPorMatricula(
                 (int) $matricula['id'],
                 false,
@@ -264,7 +333,7 @@ class MobileProfessorService
         }
 
         $limite = (int) ($turma['limite_alunos'] ?? 0);
-        if ($limite > 0 && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
+        if (empty($matricula['reposicao']) && $limite > 0 && ($matricula['tipo_acesso'] ?? 'horario_livre') !== 'turma_fixa') {
             $ocupados = $this->checkins->contarCheckinsTurmaNoDia($turmaId, $tenantId, $diaAula);
             if ($ocupados >= $limite) {
                 return [
@@ -301,7 +370,7 @@ class MobileProfessorService
                 if ($this->comunicacoes()->verificarPermissaoCheckin($tenantId, $alunoId, $usuarioId, bloquear: true) !== null) {
                     throw new \RuntimeException('COMUNICACOES_PENDENTES');
                 }
-                if ($limite > 0 && ! app(\App\Services\AcessoHibridoService::class)->atualizado()) {
+                if ($limite > 0 && ! app(AcessoHibridoService::class)->atualizado()) {
                     $ocupados = $this->checkins->contarCheckinsTurmaNoDiaComLock($turmaId, $tenantId, $diaAula);
                     if ($ocupados >= $limite) {
                         throw new \RuntimeException('TURMA_LOTADA');

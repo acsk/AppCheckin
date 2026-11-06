@@ -134,6 +134,7 @@ class AdminMatriculaRepository
                 Pessoa::col('foto_caminho'),
                 'p.nome as plano_nome',
                 'p.valor as plano_valor_base',
+                'p.modalidade_id',
                 'p.duracao_dias',
                 'p.checkins_semanais',
                 'modalidade.nome as modalidade_nome',

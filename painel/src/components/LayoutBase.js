@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { authService, PAPEL_COMERCIAL, PAPEL_FINANCEIRO } from '../services/authService';
+import { acessoHibridoService } from '../services/acessoHibridoService';
+import parametrosService from '../services/parametrosService';
 import { AppShell, AppHeader, Button, Icon, IconButton, PageHeader, Sidebar } from './ck';
 
 // Menu do painel em seções (design system: Geral · Gestão · Sistema).
@@ -82,6 +84,7 @@ const SECTIONS = [
           { id: 'wods', label: 'WOD', path: '/wods', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'turmas-fixas', label: 'Turmas', path: '/turmas-fixas', roles: [3], perm: 'aulas.gerenciar' },
         ],
       },
       {
@@ -166,8 +169,8 @@ const papelLabel = (papelId, user) => (papelId === 4 ? 'Super admin' : papelId =
 // Super admin (fora do "acessar como academia"): itens com papel 4. Equipe da academia: itens cuja
 // permissão `perm` ela tem (lista de authService.getPermissoes(); '*' = qualquer pessoa da equipe).
 // A API confere a mesma permissão em cada rota (App\Support\PermissaoRotas).
-function buildSections(role, perms, suporte = false) {
-  const itemVisivel = (it) => (role === 4
+function buildSections(role, perms, suporte = false, usaTurmas = false) {
+  const itemVisivel = (it) => (it.id !== 'turmas-fixas' || usaTurmas) && (role === 4
     ? it.roles.includes(4)
     : it.soSuporte ? suporte : !!it.perm && (it.perm === '*' ? perms.length > 0 : perms.includes(it.perm)));
   return SECTIONS.map((s) => ({
@@ -209,6 +212,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const [usuarioInfo, setUsuarioInfo] = useState(null);
   const [tenantAtual, setTenantAtual] = useState(null);
   const [perms, setPerms] = useState(null); // null = carregando
+  const [usaTurmas, setUsaTurmas] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -231,7 +235,33 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   const role = authService.getEffectivePapelId(usuarioInfo);
   const emSuporte = !!usuarioInfo?.acesso_suporte;
-  const sections = useMemo(() => buildSections(role, perms || [], emSuporte), [role, perms, emSuporte]);
+  const podeGerenciarAulas = role !== 4 && (perms || []).includes('aulas.gerenciar');
+
+  useEffect(() => {
+    let active = true;
+    setUsaTurmas(false);
+    if (!podeGerenciarAulas) return;
+
+    Promise.allSettled([
+      acessoHibridoService.listarTurmas(),
+      parametrosService.listar().then((response) => {
+        if (!Array.isArray(response?.data)) throw new Error('Resposta inválida ao consultar parâmetros do tenant.');
+        return response.data.flatMap((categoria) => categoria.parametros || [])
+          .some((parametro) => parametro.codigo === 'tipo_acesso_padrao' && parametro.valor === 'turma_fixa');
+      }),
+    ]).then(([turmas, padrao]) => {
+      if (turmas.status === 'rejected') console.error('Erro ao consultar turmas para visibilidade do menu Turmas:', turmas.reason);
+      if (padrao.status === 'rejected') console.error('Erro ao consultar tipo de acesso padrão para visibilidade do menu Turmas:', padrao.reason);
+      if (active) setUsaTurmas(
+        (turmas.status === 'fulfilled' && turmas.value.length > 0)
+        || (padrao.status === 'fulfilled' && padrao.value === true),
+      );
+    });
+
+    return () => { active = false; };
+  }, [podeGerenciarAulas, pathname]);
+
+  const sections = useMemo(() => buildSections(role, perms || [], emSuporte, usaTurmas), [role, perms, emSuporte, usaTurmas]);
 
   // Tela fora das permissões da pessoa (ex.: comercial no dashboard): vai para a primeira tela permitida.
   // Telas fora do menu (perfil, parâmetros, detalhes) seguem a regra do item pai ou da própria API.
@@ -239,11 +269,12 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
     if (!usuarioInfo || perms === null || role === 4) return;
     const caminho = (pathname || '/').startsWith('/dashboard') ? '/' : pathname || '/';
     if (['/minha-conta', '/parametros', '/login'].some((p) => caminho.startsWith(p))) return;
+    if (podeGerenciarAulas && (caminho === '/turmas-fixas' || caminho.startsWith('/turmas-fixas/'))) return;
     if (findActive(sections, caminho)) return;
     const nos = sections.flatMap((sec) => sec.items.flatMap((it) => (it.children ? it.children : [it])));
     const primeira = nos.find((n) => n.path !== '/minha-conta') || nos[0]; // tela de trabalho antes do perfil
     if (primeira?.path && primeira.path !== caminho) router.replace(primeira.path);
-  }, [usuarioInfo, perms, role, pathname, sections]);
+  }, [usuarioInfo, perms, role, pathname, sections, podeGerenciarAulas]);
   const active = useMemo(() => findActive(sections, pathname || '/'), [sections, pathname]);
 
   const allNodes = useMemo(

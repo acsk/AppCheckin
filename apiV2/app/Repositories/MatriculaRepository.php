@@ -273,13 +273,12 @@ class MatriculaRepository
                             $statusAtivaId = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
                             $statusPendenteId = DB::table('status_matricula')->where('codigo', 'pendente')->value('id');
                             if ($statusAtivaId && $statusPendenteId) {
-                                DB::table('matriculas')
-                                    ->where('id', $matriculaId)
-                                    ->where('status_id', $statusPendenteId)
-                                    ->update([
-                                        'status_id' => $statusAtivaId,
-                                        'updated_at' => now(),
-                                    ]);
+                                $tenant = (int) DB::table('matriculas')->where('id', $matriculaId)->value('tenant_id');
+                                $status = app(\App\Services\AcessoHibridoService::class)->aplicarStatus($tenant, $matriculaId, (int) $statusAtivaId);
+                                if ($status !== (int) $statusAtivaId) {
+                                    return ['code' => 'AGUARDANDO_VAGA', 'mensagem' => 'Pagamento recebido. A matrícula aguarda vaga na grade; procure a secretaria.',
+                                        'matricula_id' => $matriculaId, 'status_codigo' => 'aguardando_vaga'];
+                                }
                             }
 
                             return null;
@@ -379,6 +378,9 @@ class MatriculaRepository
      */
     private function avaliarLimiteCicloMatriculaRaw(int $matriculaId): ?array
     {
+        if (Schema::hasColumn('matriculas', 'tipo_acesso') && DB::table('matriculas')->where('id', $matriculaId)->value('tipo_acesso') === 'turma_fixa') {
+            return null;
+        }
         $row = DB::table('matriculas as m')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
@@ -433,7 +435,7 @@ class MatriculaRepository
         $bonusCincoSemanas = $semanasNoMes >= 5 ? 1 : 0;
         $limiteMensal = ($checkinsSemanais * 4) + $bonusCincoSemanas;
 
-        $checkinsNoMes = (int) DB::table('checkins as c')
+        $checkinsNoMes = DB::table('checkins as c')
             ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
             ->join('turmas as t', function ($join) {
                 $join->on('c.turma_id', '=', 't.id')
@@ -446,7 +448,7 @@ class MatriculaRepository
                 $q->whereNull('c.presente')->orWhere('c.presente', 1);
             })
             ->when($modalidadeId !== null, fn ($q) => $q->where('t.modalidade_id', $modalidadeId))
-            ->count();
+            ->when(DB::transactionLevel() > 0, fn ($q) => $q->lockForUpdate())->pluck('c.id')->count();
 
         if ($checkinsNoMes < $limiteMensal) {
             return null;
@@ -745,4 +747,3 @@ class MatriculaRepository
         return $row ? (array) $row : [];
     }
 }
-

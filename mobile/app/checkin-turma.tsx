@@ -161,6 +161,7 @@ function CheckinTurmaScreenContent() {
   const [participantsTurma, setParticipantsTurma] = useState<any | null>(null);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [checkinsRecentes, setCheckinsRecentes] = useState<any[]>([]);
+  const [reposicoes, setReposicoes] = useState<any[]>([]);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [alunosTotal, setAlunosTotal] = useState<number>(0);
   const [toastVisible, setToastVisible] = useState(false);
@@ -219,6 +220,7 @@ function CheckinTurmaScreenContent() {
   const [turmaCheckinBloqueioLoading, setTurmaCheckinBloqueioLoading] =
     useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [manualSearchMode, setManualSearchMode] = useState<"regular" | "reposicao">("regular");
   const [manualSearchResults, setManualSearchResults] = useState<any[]>([]);
   const [manualSearchLoading, setManualSearchLoading] = useState(false);
   const [manualSearchError, setManualSearchError] = useState<string | null>(
@@ -392,6 +394,7 @@ function CheckinTurmaScreenContent() {
       setParticipantsLoading(true);
       setParticipants([]);
       setCheckinsRecentes([]);
+      setReposicoes([]);
       setAlunosTotal(0);
       setManualSearchQuery("");
       setManualSearchResults([]);
@@ -430,6 +433,7 @@ function CheckinTurmaScreenContent() {
       const turmaApi = payload.turma || turma;
       const alunosLista = payload.alunos?.lista || payload.participantes || [];
       const checkinsLista = payload.checkins_recentes?.lista || [];
+      const reposicoesLista = Array.isArray(payload.reposicoes) ? payload.reposicoes : [];
       const alunosCount =
         payload.alunos?.total ??
         alunosLista.length ??
@@ -438,6 +442,7 @@ function CheckinTurmaScreenContent() {
 
       setParticipants(alunosLista);
       setCheckinsRecentes(checkinsLista);
+      setReposicoes(reposicoesLista);
       setAlunosTotal(alunosCount);
       setParticipantsTurma({
         ...turma,
@@ -1264,6 +1269,63 @@ function CheckinTurmaScreenContent() {
     }
   };
 
+  const handleAdicionarReposicao = async (aluno: any) => {
+    if (!participantsTurma?.id || !aluno?.id) return;
+    if (manualCheckinLoading[aluno.id]) return;
+
+    setManualCheckinLoading((prev) => ({ ...prev, [aluno.id]: true }));
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showErrorModal("Token não encontrado. Faça login novamente.", "error");
+        return;
+      }
+
+      const response = await fetch(
+        `${getApiUrlRuntime()}/mobile/professor/reposicoes`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            turma_id: participantsTurma.id,
+            aluno_id: aluno.id,
+          }),
+        },
+      );
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok || data?.success === false) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
+        const apiMessage = data?.error || data?.message || text || "Não foi possível adicionar o aluno para reposição.";
+        showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+        return;
+      }
+
+      showErrorModal(
+        normalizeUtf8(data?.message || "Aluno adicionado à lista de reposição. O check-in ainda não foi registrado."),
+        "success",
+      );
+      await loadParticipantsForTurma(participantsTurma);
+    } catch (error) {
+      console.error("Erro ao adicionar aluno para reposição:", error);
+      showErrorModal("Falha ao adicionar o aluno para reposição.", "error");
+    } finally {
+      setManualCheckinLoading((prev) => ({ ...prev, [aluno.id]: false }));
+    }
+  };
+
   const openManualConfirm = (aluno: any) => {
     setConfirmManualModal({ visible: true, aluno });
   };
@@ -1403,6 +1465,7 @@ function CheckinTurmaScreenContent() {
         turmaId: String(participantsTurma?.id || ""),
         turmaNome: normalizeUtf8(participantsTurma?.nome || "Turma"),
         dataAula: selectedDate ? new Date(selectedDate).toISOString() : "",
+        tipoPresenca: String(c.tipo_presenca || ""),
         horario:
           horarioInicio && horarioFim
             ? `${horarioInicio} - ${horarioFim}`
@@ -1447,6 +1510,9 @@ function CheckinTurmaScreenContent() {
                     : []),
                   ...(participantsTurma.checkin_bloqueado
                     ? [{ icon: "lock" as const, text: "Check-in bloqueado", tone: "dark" as const }]
+                    : []),
+                  ...(participantsTurma.reposicao
+                    ? [{ icon: "repeat" as const, text: "Aula de reposição" }]
                     : []),
                   ...(Number(participantsTurma.limite_alunos) > 0
                     ? [{ icon: "users" as const, text: `${checkinsRecentes.length}/${participantsTurma.limite_alunos}` }]
@@ -1508,8 +1574,23 @@ function CheckinTurmaScreenContent() {
 
               {/* Adicionar aluno (professor) */}
               {isProfessorOuAdmin && !participantsTurma?.checkin_bloqueado ? (
-                <Section title="Adicionar aluno" bare>
+                <Section title={manualSearchMode === "reposicao" ? "Adicionar aluno para reposição" : "Adicionar aluno"} bare>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                    <Button
+                      size="sm"
+                      variant={manualSearchMode === "regular" ? "primary" : "secondary"}
+                      onPress={() => setManualSearchMode("regular")}
+                      disabled={confirmManualModal.visible || Object.values(manualCheckinLoading).some(Boolean)}
+                    >Check-in manual</Button>
+                    <Button
+                      size="sm"
+                      variant={manualSearchMode === "reposicao" ? "primary" : "secondary"}
+                      onPress={() => setManualSearchMode("reposicao")}
+                      disabled={confirmManualModal.visible || Object.values(manualCheckinLoading).some(Boolean)}
+                    >Adicionar aluno para reposição</Button>
+                  </View>
                   <StudentSearch
+                    addLabel={manualSearchMode === "reposicao" ? "Reposição" : "Adicionar"}
                     value={manualSearchQuery}
                     onChangeText={(text) => {
                       setManualSearchQuery(text);
@@ -1530,13 +1611,15 @@ function CheckinTurmaScreenContent() {
                         checkinsRecentes.some((c) => Number(c.aluno_id) === alunoId) ||
                         participants.some(
                           (p) => Number(p.aluno_id) === alunoId && Number(p.checkins) > 0,
-                        );
+                        ) ||
+                        (manualSearchMode === "reposicao" && reposicoes.some((item) => Number(item.aluno_id) === alunoId));
                       return {
                         key: alunoId || idx,
                         name: normalizeUtf8(aluno.nome || aluno.usuario_nome || "Aluno"),
                         detail: aluno.email ? normalizeUtf8(aluno.email) : null,
                         avatarUri: getUserPhotoUrl(aluno.foto_caminho || null),
                         added: alreadyCheckedIn,
+                        addedLabel: manualSearchMode === "reposicao" ? "Já reservado" : "Adicionado",
                         loading: !!manualCheckinLoading[alunoId],
                         extra: <BirthdayBadge show={!!aluno.aniversario_hoje} />,
                         _aluno: { ...aluno, id: alunoId || aluno.id },
@@ -1544,6 +1627,24 @@ function CheckinTurmaScreenContent() {
                     })}
                     onAdd={(r: any) => openManualConfirm(r._aluno)}
                   />
+                </Section>
+              ) : null}
+
+              {reposicoes.length > 0 ? (
+                <Section
+                  title="Reposições reservadas"
+                  aside={`${reposicoes.length} ${reposicoes.length === 1 ? "reserva" : "reservas"}`}
+                >
+                  {reposicoes.map((item: any, index: number) => (
+                    <View key={item.id || `${item.aluno_id || item.aluno?.id}-${index}`} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                      <Text style={{ color: ds.ink, fontWeight: "800" }}>
+                        {normalizeUtf8(item.nome || "Aluno")}
+                      </Text>
+                      <Text style={{ color: ds.inkMuted, fontSize: 12, marginTop: 2 }}>
+                        {item.tipo_presenca || "Reposição"} reservada · aguardando check-in do aluno
+                      </Text>
+                    </View>
+                  ))}
                 </Section>
               ) : null}
 
@@ -1566,7 +1667,10 @@ function CheckinTurmaScreenContent() {
                         name={formatParticipantName(c.usuario_nome || "Aluno")}
                         avatarUri={getUserPhotoUrl(c.foto_caminho || alunoFoto || null)}
                         state={state}
-                        note={c.presenca_confirmada_em ? "confirmada" : null}
+                        note={[
+                          c.tipo_presenca || null,
+                          c.presenca_confirmada_em ? "confirmada" : null,
+                        ].filter(Boolean).join(" · ") || null}
                         extra={<BirthdayBadge show={isAniversariante(c.aluno_id, c, participants)} />}
                         onPress={() => navigateToCheckinDetalhes(c)}
                         onPresent={
@@ -1593,7 +1697,7 @@ function CheckinTurmaScreenContent() {
                     );
                   })}
                 </Section>
-              ) : participants.length === 0 && manualSearchResults.length === 0 && !manualSearchLoading ? (
+              ) : participants.length === 0 && reposicoes.length === 0 && manualSearchResults.length === 0 && !manualSearchLoading ? (
                 <View style={styles.emptyTurma}>
                   <Feather name="users" size={32} color={ds.inkMuted} />
                   <Text style={styles.emptyTurmaText}>Nenhum aluno na turma ainda</Text>
@@ -1916,21 +2020,27 @@ function CheckinTurmaScreenContent() {
 
       <DesignModal
         visible={confirmManualModal.visible}
-        title="Confirmar check-in"
+        title={manualSearchMode === "reposicao" ? "Adicionar para reposição" : "Confirmar check-in"}
         eyebrow={`${getHoraInicio(participantsTurma) ? `Turma das ${String(getHoraInicio(participantsTurma)).slice(0, 5)}` : "Turma"} · ${normalizeUtf8(participantsTurma?.modalidade?.nome || "Check-in manual")}`}
-        icon="check-square"
+        icon={manualSearchMode === "reposicao" ? "calendar" : "check-square"}
         onClose={closeManualConfirm}
         primary={{
-          label: "Confirmar check-in",
-          icon: "check",
+          label: manualSearchMode === "reposicao" ? "Adicionar aluno" : "Confirmar check-in",
+          icon: manualSearchMode === "reposicao" ? "plus" : "check",
           onPress: () => {
             const aluno = confirmManualModal.aluno;
             closeManualConfirm();
-            if (aluno?.id) void handleManualCheckin(aluno);
+            if (aluno?.id) {
+              if (manualSearchMode === "reposicao") void handleAdicionarReposicao(aluno);
+              else void handleManualCheckin(aluno);
+            }
           },
         }}
       >
-        {confirmManualModal.visible && isProfessorOuAdmin ? (
+        {manualSearchMode === "reposicao" ? <Text style={{ color: ds.ink }}>
+          Adicionar {normalizeUtf8(confirmManualModal.aluno?.nome || confirmManualModal.aluno?.usuario_nome || "o aluno")} para reposição em {String(getHoraInicio(participantsTurma) || "").slice(0, 5) || "esta turma"}?
+          {"\n\n"}Isso não registra presença; o aluno fará o check-in normalmente com autorização.
+        </Text> : confirmManualModal.visible && isProfessorOuAdmin ? (
           <AlunoResumoFinanceiro
             compact
             studentName={normalizeUtf8(confirmManualModal.aluno?.nome || confirmManualModal.aluno?.usuario_nome || "Aluno")}

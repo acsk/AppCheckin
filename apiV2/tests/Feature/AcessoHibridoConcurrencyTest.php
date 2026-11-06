@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Services\AcessoHibridoService;
 use App\Support\AcademyDateTime;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Process\Process;
@@ -84,10 +86,83 @@ class AcessoHibridoConcurrencyTest extends TestCase
     protected function tearDown(): void
     {
         if (getenv('HYBRID_MYSQL_TEST') === '1' && config('database.connections.mysql.database') === 'appcheckin_hybrid_test') {
-            foreach (['turma_fixa_planos', 'turmas_fixas', 'checkins', 'turmas', 'dias', 'matriculas', 'alunos', 'planos', 'status_matricula', 'parametros', 'tipos_parametro'] as $table) {
+            foreach (['aula_reposicoes', 'matricula_grade', 'tenant_usuario_papel', 'professores', 'turma_fixa_planos', 'turmas_fixas', 'checkins', 'turmas', 'dias', 'matriculas', 'alunos', 'planos', 'status_matricula', 'parametros', 'tipos_parametro'] as $table) {
                 Schema::dropIfExists($table);
             }
         }
         parent::tearDown();
+    }
+
+    public function test_mysql_reposicao_e_checkin_livre_disputam_a_mesma_ultima_vaga(): void
+    {
+        if (getenv('HYBRID_MYSQL_TEST') !== '1') {
+            $this->markTestSkipped('Execute no MySQL isolado.');
+        }
+        HybridFixture::mysql();
+        HybridFixture::create();
+        HybridFixture::migrate();
+        HybridFixture::seed();
+        DB::table('turmas_fixas')->update(['dias_semana' => json_encode([(int) AcademyDateTime::now()->format('N')])]);
+        (require database_path('migrations/2026_11_06_140000_grade_individual_reposicoes.php'))->up();
+        Schema::create('tenant_usuario_papel', function (Blueprint $t) {
+            $t->integer('usuario_id');
+            $t->integer('tenant_id');
+            $t->integer('papel_id');
+            $t->boolean('ativo');
+        });
+        Schema::create('professores', function (Blueprint $t) {
+            $t->integer('id');
+            $t->integer('usuario_id');
+        });
+        DB::table('tenant_usuario_papel')->insert(['usuario_id' => 90, 'tenant_id' => 3, 'papel_id' => 2, 'ativo' => true]);
+        DB::table('professores')->insert(['id' => 1, 'usuario_id' => 90]);
+        DB::table('turmas')->update(['limite_alunos' => 11, 'horario_inicio' => AcademyDateTime::now()->format('H:i:s'), 'horario_fim' => '23:59:59']);
+        $workers = [
+            new Process([PHP_BINARY, base_path('tests/Fixtures/hybrid-checkin-worker.php'), '12', 'reposicao'], base_path(), [], null, 30),
+            new Process([PHP_BINARY, base_path('tests/Fixtures/hybrid-checkin-worker.php'), '13'], base_path(), [], null, 30),
+        ];
+        foreach ($workers as $worker) {
+            $worker->start();
+        }
+        $statuses = [];
+        foreach ($workers as $worker) {
+            $worker->wait();
+            $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput().$worker->getOutput());
+            $statuses[] = json_decode($worker->getOutput(), true, 512, JSON_THROW_ON_ERROR)['status'];
+        }
+        sort($statuses);
+        $this->assertSame([201, 403], $statuses);
+        $this->assertSame(1, DB::table('aula_reposicoes')->count() + DB::table('checkins')->count());
+        $this->assertSame(0, app(AcessoHibridoService::class)->vagas(HybridFixture::aula(), 3)['vagas_livres']);
+        DB::table('checkins')->delete();
+        DB::table('aula_reposicoes')->delete();
+        $workers = array_map(fn ($id) => new Process([PHP_BINARY, base_path('tests/Fixtures/hybrid-checkin-worker.php'), (string) $id, 'reposicao'], base_path(), [], null, 30), [12, 13]);
+        foreach ($workers as $worker) {
+            $worker->start();
+        }
+        $statuses = [];
+        foreach ($workers as $worker) {
+            $worker->wait();
+            $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput().$worker->getOutput());
+            $statuses[] = json_decode($worker->getOutput(), true, 512, JSON_THROW_ON_ERROR)['status'];
+        }
+        sort($statuses);
+        $this->assertSame([201, 403], $statuses);
+        $this->assertSame(1, DB::table('aula_reposicoes')->count());
+        DB::table('aula_reposicoes')->delete();
+        DB::table('turmas_fixas')->where('id', 1)->update(['capacidade' => 11]);
+        $workers = array_map(fn ($id) => new Process([PHP_BINARY, base_path('tests/Fixtures/hybrid-checkin-worker.php'), (string) $id, 'grade'], base_path(), [], null, 30), [12, 13]);
+        foreach ($workers as $worker) {
+            $worker->start();
+        }
+        $statuses = [];
+        foreach ($workers as $worker) {
+            $worker->wait();
+            $this->assertTrue($worker->isSuccessful(), $worker->getErrorOutput().$worker->getOutput());
+            $statuses[] = json_decode($worker->getOutput(), true, 512, JSON_THROW_ON_ERROR)['status'];
+        }
+        sort($statuses);
+        $this->assertSame([200, 422], $statuses);
+        $this->assertSame(11, DB::table('matricula_grade')->count());
     }
 }
