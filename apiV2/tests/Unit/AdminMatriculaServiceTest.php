@@ -116,6 +116,20 @@ class AdminMatriculaServiceTest extends TestCase
         $this->assertNotContains('Dia de vencimento é obrigatório', $result['body']['errors']);
     }
 
+    public function test_criar_rejeita_dia_vencimento_fora_da_faixa(): void
+    {
+        $service = $this->makeService();
+
+        $result = $service->criar(3, 5, [
+            'usuario_id' => 1,
+            'pacote_id' => 1,
+            'dia_vencimento' => 0,
+        ]);
+
+        $this->assertSame(422, $result['status']);
+        $this->assertContains('Dia de vencimento deve estar entre 1 e 31', $result['body']['errors']);
+    }
+
     public function test_dar_baixa_requer_data_vencimento(): void
     {
         $repo = Mockery::mock(AdminMatriculaRepository::class);

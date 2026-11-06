@@ -15,7 +15,7 @@ import { showSuccess } from '../../utils/toast';
 
 const asList = (response, key) => Array.isArray(response) ? response : response?.[key] || response?.data?.[key] || [];
 const money = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
-const initialForm = { usuario_id: '', modalidade_id: '', plano_id: '', plano_ciclo_id: '', pacote_id: '', dependentes: [] };
+const initialForm = { usuario_id: '', modalidade_id: '', plano_id: '', plano_ciclo_id: '', pacote_id: '', dia_vencimento: '', dependentes: [] };
 const diasSemana = ['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo'];
 const diasTurma = [
   { value: 1, short: 'Seg', name: 'Segunda-feira' },
@@ -266,6 +266,10 @@ export default function FormMatriculaScreen() {
     }
     if (!aluno) return 'Selecione um aluno.';
     if (tipo === 'plano' && (!plano || !ciclo || loadingPlans || loadingCycles)) return 'Selecione modalidade, plano e ciclo de pagamento.';
+    if (form.dia_vencimento !== '') {
+      const diaVencimento = Number(form.dia_vencimento);
+      if (!Number.isInteger(diaVencimento) || diaVencimento < 1 || diaVencimento > 31) return 'Informe um dia de vencimento entre 1 e 31.';
+    }
     if (tipo === 'pacote') {
       if (!pacote) return 'Selecione um pacote.';
       if (maxDependentes > 0 && !form.dependentes.length) return 'Selecione ao menos 1 dependente.';
@@ -292,10 +296,12 @@ export default function FormMatriculaScreen() {
     setError('');
     try {
       const basic = alunosBasico.find((a) => String(a.usuario_id) === form.usuario_id);
+      const diaVencimento = form.dia_vencimento === '' ? undefined : Number(form.dia_vencimento);
       const payload = tipo === 'pacote' ? {
         ...(basic?.id ? { aluno_id: Number(basic.id) } : { usuario_id: Number(form.usuario_id) }),
         pacote_id: Number(form.pacote_id),
         dependentes: form.dependentes.map(Number),
+        ...(diaVencimento ? { dia_vencimento: diaVencimento } : {}),
       } : {
         tipo_acesso: tipoAcesso,
         grade: tipoAcesso === 'turma_fixa' ? grade.map((item) => ({
@@ -305,6 +311,7 @@ export default function FormMatriculaScreen() {
         usuario_id: Number(form.usuario_id),
         plano_id: Number(form.plano_id),
         plano_ciclo_id: Number(form.plano_ciclo_id),
+        ...(diaVencimento ? { dia_vencimento: diaVencimento } : {}),
         ...(permitirCobrancaNoPeriodo ? { permitir_cobranca_no_periodo: true } : {}),
       };
       await matriculaService.criar(payload);
@@ -391,6 +398,22 @@ export default function FormMatriculaScreen() {
             onCancel={() => router.push('/matriculas')}
             onCreateStudent={() => router.push('/alunos/novo')}
           >
+            <section className="ck-nm__step">
+              <header className="ck-nm__stephead"><span className="ck-nm__num" aria-hidden="true">•</span><h2>Vencimento das cobranças</h2></header>
+              <div className="ck-nm__stepbody">
+                <TextField
+                  label="Dia fixo de vencimento (opcional)"
+                  type="number"
+                  min="1"
+                  max="31"
+                  inputMode="numeric"
+                  placeholder="Ex.: 10"
+                  value={form.dia_vencimento}
+                  onChange={(e) => change('dia_vencimento', e.target.value)}
+                  hint="Se deixar em branco, o vencimento acompanha a data de início e o ciclo."
+                />
+              </div>
+            </section>
             {tipo === 'pacote' && pacote ? (
               <section className="ck-nm__step">
                 <header className="ck-nm__stephead"><span className="ck-nm__num" aria-hidden="true">4</span><h2>Dependentes ({form.dependentes.length}{maxDependentes > 0 ? `/${maxDependentes}` : ''})</h2></header>
@@ -439,6 +462,7 @@ export default function FormMatriculaScreen() {
                 <div><dt>Valor</dt><dd>{money(pacote?.valor_total)}</dd></div>
                 <div><dt>Dependentes</dt><dd>{selectedDependentes.map((a) => a.nome).join(', ') || 'Nenhum'}</dd></div>
               </>}
+              <div><dt>Dia fixo de vencimento</dt><dd>{form.dia_vencimento || 'Não definido'}</dd></div>
             </dl></div>
           </Modal>
           <Modal

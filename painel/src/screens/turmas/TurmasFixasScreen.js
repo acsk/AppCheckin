@@ -76,10 +76,6 @@ export default function TurmasFixasScreen() {
     && normalizar(`${turma.nome} ${turma.modalidade?.nome || ''} ${turma.professor?.nome || ''}`).includes(normalizar(query.trim())),
   ).sort((a, b) => hora(a.horario_inicio).localeCompare(hora(b.horario_inicio)) || a.nome.localeCompare(b.nome));
   const editar = turma => setModal({ id: turma.id });
-  const alterarGrade = id => {
-    const turma = linhas.find(item => Number(item.id) === Number(id));
-    if (turma) setModal({ acao: 'grade', turmas: [turma] });
-  };
   const acao = (nome, grupos) => setModal({ acao: nome, turmas: grupos });
   const selecionados = rows.filter(turma => selecionadas.includes(Number(turma.id)));
   const menus = turma => [
@@ -88,8 +84,6 @@ export default function TurmasFixasScreen() {
     { label: 'Duplicar', icon: 'copy', onClick: () => acao('duplicar', [turma]) },
     ...(!turma.substituida_por_id ? [{ label: 'Ajustar vagas', icon: 'users', onClick: () => acao('capacidade', [turma]) }] : []),
     ...(status(turma) !== 'arquivada' && !turma.vigencia_fim ? [
-      { label: 'Trocar professor', icon: 'user', onClick: () => acao('professor', [turma]) },
-      { label: 'Alterar dias e horário', icon: 'calendar', onClick: () => acao('grade', [turma]) },
       { label: 'Pausar por um período', icon: 'clock', onClick: () => acao('pausar', [turma]) },
       { label: 'Retomar / cancelar pausas', icon: 'refresh-cw', onClick: () => acao('retomar', [turma]) },
       { label: 'Arquivar', icon: 'layers', onClick: () => acao('arquivar', [turma]) },
@@ -142,6 +136,6 @@ export default function TurmasFixasScreen() {
         ) : null}
       </section>
     </div>
-    {modal?.acao ? <TurmaGestaoModal key={`${modal.acao}-${modal.turmas.map(turma => turma.id).join('-')}`} acao={modal.acao} turmas={modal.turmas} todas={linhas} professores={professores} onClose={() => setModal(null)} onSaved={salvar} onEdit={editar} onAction={acao} /> : modal ? <TurmasFixas key={modal.id || 'nova'} initialId={modal.id} onClose={() => setModal(null)} onSaved={salvar} onChangeSchedule={alterarGrade} /> : null}
+    {modal?.acao ? <TurmaGestaoModal key={`${modal.acao}-${modal.turmas.map(turma => turma.id).join('-')}`} acao={modal.acao} turmas={modal.turmas} todas={linhas} professores={professores} onClose={() => setModal(null)} onSaved={salvar} onEdit={editar} onAction={acao} /> : modal ? <TurmasFixas key={modal.id || 'nova'} initialId={modal.id} onClose={() => setModal(null)} onSaved={salvar} /> : null}
   </LayoutBase>;
 }

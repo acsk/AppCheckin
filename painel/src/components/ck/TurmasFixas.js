@@ -16,6 +16,11 @@ const horaNome = (value) => {
   if (!horas || !minutos) return '';
   return `${Number(horas)}${minutos === '00' ? '' : `:${minutos}`}`;
 };
+const amanha = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
 
 function nomeAutomatico(turma) {
   const diasSelecionados = turma.dias_semana.map(Number).filter((dia) => dia >= 1 && dia <= 7).sort((a, b) => a - b);
@@ -39,10 +44,16 @@ function formTurma(turma) {
   };
 }
 
-export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
+export function TurmasFixas({ onClose, onSaved, initialId }) {
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [form, setForm] = useState(vazio);
+  const [original, setOriginal] = useState(null);
+  const [desde, setDesde] = useState(amanha);
+  const [detalhe, setDetalhe] = useState(null);
+  const [remapeamentos, setRemapeamentos] = useState({});
+  const [loadingVinculos, setLoadingVinculos] = useState(false);
+  const [erroVinculos, setErroVinculos] = useState('');
   const [nomePersonalizado, setNomePersonalizado] = useState(false);
   const [erro, setErro] = useState('');
   const [loading, setLoading] = useState(true);
@@ -63,14 +74,43 @@ export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
         if (initialId && !selecionada) throw new Error('Turma não encontrada. Feche o formulário e atualize a listagem.');
         setProfessores(Array.isArray(professoresLista) ? professoresLista : []);
         setModalidades(Array.isArray(modalidadesLista) ? modalidadesLista : []);
-        setForm(selecionada ? formTurma(selecionada) : vazio);
-        setNomePersonalizado(!!selecionada);
+        const dadosForm = selecionada ? formTurma(selecionada) : vazio;
+        setForm(dadosForm);
+        setOriginal(selecionada ? dadosForm : null);
+        setNomePersonalizado(!!selecionada && selecionada.nome.trim() !== nomeAutomatico(dadosForm));
         setReady(true);
       })
       .catch((e) => { if (active) setErro(erroApi(e)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [reload, initialId]);
+
+  useEffect(() => {
+    if (!initialId) return undefined;
+    let active = true;
+    setLoadingVinculos(true);
+    setErroVinculos('');
+    setDetalhe(null);
+    acessoHibridoService.detalheTurma(Number(initialId), desde)
+      .then((response) => {
+        if (!active) return;
+        setDetalhe(response);
+        setRemapeamentos(Object.fromEntries((response.alunos || []).map((aluno) => [
+          String(aluno.matricula_id),
+          { matricula_id: Number(aluno.matricula_id), dias_semana: aluno.dias_semana.map(Number) },
+        ])));
+      })
+      .catch((e) => { if (active) setErroVinculos(erroApi(e)); })
+      .finally(() => { if (active) setLoadingVinculos(false); });
+    return () => { active = false; };
+  }, [initialId, desde, reload]);
+
+  const gradeAlterada = !!(form.id && original && (
+    form.dias_semana.slice().sort().join(',') !== original.dias_semana.slice().sort().join(',')
+    || form.horario_inicio !== original.horario_inicio
+    || form.horario_fim !== original.horario_fim
+    || form.professor_id !== original.professor_id
+  ));
 
   const set = (key, value) => {
     if (key === 'nome') {
@@ -90,27 +130,67 @@ export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
       return next;
     });
   };
-  const toggleDia = (dia) => set('dias_semana', form.dias_semana.includes(dia)
-    ? form.dias_semana.filter((item) => item !== dia)
-    : [...form.dias_semana, dia]);
+  const toggleDia = (dia) => {
+    const novosDias = form.dias_semana.includes(dia)
+      ? form.dias_semana.filter((item) => item !== dia)
+      : [...form.dias_semana, dia];
+    set('dias_semana', novosDias);
+    setRemapeamentos((current) => Object.fromEntries(Object.entries(current).map(([id, item]) => {
+      const mantidos = item.dias_semana.filter((value) => novosDias.includes(value));
+      const quantidade = Math.min(item.dias_semana.length || 1, novosDias.length);
+      const preenchidos = [...mantidos, ...novosDias.filter((value) => !mantidos.includes(value)).slice(0, Math.max(0, quantidade - mantidos.length))];
+      return [id, { ...item, dias_semana: preenchidos }];
+    })));
+  };
+  const alterarDiasAluno = (matriculaId, dia) => setRemapeamentos((current) => {
+    const item = current[String(matriculaId)];
+    const diasSelecionados = item.dias_semana.includes(dia)
+      ? item.dias_semana.filter((value) => value !== dia)
+      : [...item.dias_semana, dia];
+    return { ...current, [String(matriculaId)]: { ...item, dias_semana: diasSelecionados } };
+  });
 
   const salvar = async () => {
     if (saving || !ready) return;
     setSaving(true);
     setErro('');
     try {
-      const dados = {
-        nome: form.nome.trim(),
-        professor_id: Number(form.professor_id),
-        modalidade_id: Number(form.modalidade_id),
-        horario_inicio: form.horario_inicio,
-        horario_fim: form.horario_fim,
-        capacidade: Number(form.capacidade),
-        dias_semana: form.dias_semana.map(Number),
-        checkin_livre: form.checkin_livre,
-      };
-      if (form.id) await acessoHibridoService.atualizarTurma(form.id, dados);
-      else await acessoHibridoService.criarTurma(dados);
+      if (!form.dias_semana.length) throw new Error('Selecione ao menos um dia recorrente.');
+      if (gradeAlterada) {
+        if (!detalhe || loadingVinculos) throw new Error('Aguarde o carregamento dos vínculos da turma.');
+        if (Object.values(remapeamentos).some((item) => !item.dias_semana.length || item.dias_semana.some((dia) => !form.dias_semana.includes(dia)))) {
+          throw new Error('Confirme os dias de cada aluno; eles precisam pertencer à nova grade.');
+        }
+        await acessoHibridoService.executarAcao('grade', [form.id], {
+          from: desde,
+          nome: form.nome.trim() || null,
+          professor_id: Number(form.professor_id),
+          dias_semana: form.dias_semana.map(Number),
+          horario_inicio: form.horario_inicio,
+          horario_fim: form.horario_fim,
+          capacidade: Number(form.capacidade),
+          checkin_livre: form.checkin_livre,
+          remapeamentos: (detalhe.alunos || []).map((aluno) => remapeamentos[String(aluno.matricula_id)]),
+          avisar: true,
+        });
+      } else if (form.id) {
+        await acessoHibridoService.atualizarTurma(form.id, {
+          nome: form.nome.trim(),
+          capacidade: Number(form.capacidade),
+          checkin_livre: form.checkin_livre,
+        });
+      } else {
+        await acessoHibridoService.criarTurma({
+          nome: form.nome.trim(),
+          professor_id: Number(form.professor_id),
+          modalidade_id: Number(form.modalidade_id),
+          horario_inicio: form.horario_inicio,
+          horario_fim: form.horario_fim,
+          capacidade: Number(form.capacidade),
+          dias_semana: form.dias_semana.map(Number),
+          checkin_livre: form.checkin_livre,
+        });
+      }
       showSuccess('Turma recorrente salva. Matrículas, valores e pagamentos existentes foram preservados.');
       setForm(vazio);
       setNomePersonalizado(false);
@@ -129,12 +209,12 @@ export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
       title={initialId ? 'Editar turma' : 'Nova turma'}
       size="lg"
       dialogClassName="ck-tu-dlg"
-      description={initialId ? 'Edite nome, capacidade e check-in livre sem alterar a grade e os contratos existentes.' : 'Horário fixo que se repete toda semana. As aulas entram na agenda sozinhas.'}
+      description={initialId ? 'Edite os dados e a grade semanal em uma única ação. Alterações na grade criam uma nova versão e preservam o histórico.' : 'Horário fixo que se repete toda semana. As aulas entram na agenda sozinhas.'}
       onClose={onClose}
       dismissable={!saving}
       footer={<>
         <Button disabled={saving} onClick={onClose}>Fechar</Button>
-        <Button variant="primary" loading={saving} disabled={loading || !ready} onClick={salvar}>{initialId ? 'Salvar turma' : 'Criar turma'}</Button>
+        <Button variant="primary" loading={saving} disabled={loading || !ready || (gradeAlterada && (loadingVinculos || !!erroVinculos))} onClick={salvar}>{initialId ? 'Salvar turma' : 'Criar turma'}</Button>
       </>}
     >
       {erro ? <Callout tone="danger" title="Não foi possível concluir">{erro}<Button onClick={() => setReload((value) => value + 1)}>Recarregar</Button></Callout> : null}
@@ -163,17 +243,28 @@ export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
           <div className="ck-field">
             <span className="ck-field__label">Dias recorrentes</span>
             <div className="ck-tu-dayset" role="group" aria-label="Dias recorrentes">
-            {dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day" disabled={!!form.id} aria-label={dia} aria-pressed={form.dias_semana.includes(index + 1)} onClick={() => toggleDia(index + 1)}>{dia.slice(0, 3)}</button>)}
+            {dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day" aria-label={dia} aria-pressed={form.dias_semana.includes(index + 1)} onClick={() => toggleDia(index + 1)}>{dia.slice(0, 3)}</button>)}
             </div>
           </div>
           <div className="ck-al-grid">
-            <TextField label="Início" type="time" disabled={!!form.id} value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
-            <TextField label="Fim" type="time" disabled={!!form.id} value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
+            <TextField label="Início" type="time" value={form.horario_inicio} onChange={(event) => set('horario_inicio', event.target.value)} />
+            <TextField label="Fim" type="time" value={form.horario_fim} onChange={(event) => set('horario_fim', event.target.value)} />
           </div>
-          {form.id ? <div className="ck-field__hint">
-            <p>Para preservar o histórico, a mudança de dias e horário cria uma nova versão da turma e permite remapear os alunos.</p>
-            {onChangeSchedule ? <Button size="sm" icon="calendar" onClick={() => onChangeSchedule(form.id)}>Alterar dias e horário</Button> : null}
-          </div> : null}
+          {gradeAlterada ? <>
+            <TextField label="Aplicar a partir de" type="date" min={amanha()} value={desde} onChange={(event) => setDesde(event.target.value)} />
+            <p className="ck-field__hint">Aulas anteriores e histórico ficam preservados. Os alunos afetados abaixo serão transferidos para a nova grade.</p>
+            {erroVinculos ? <Callout tone="danger" title="Não foi possível carregar os vínculos">{erroVinculos}<Button size="sm" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></Callout> : null}
+            {loadingVinculos ? <p role="status">Carregando alunos afetados…</p> : (detalhe?.alunos || []).map((aluno) => {
+              const item = remapeamentos[String(aluno.matricula_id)] || { dias_semana: [] };
+              return <div className="ck-card ck-tu-transfer" key={aluno.matricula_id}>
+                <strong>{aluno.nome} · Matrícula #{aluno.matricula_id}</strong>
+                <p>{aluno.plano_nome} · {aluno.checkins_semanais || 'Ilimitado'}x · Dias atuais: {aluno.dias_semana.map((value) => dias[Number(value) - 1]).join(', ')}</p>
+                <div className="ck-tu-dayset" role="group" aria-label={`Dias de ${aluno.nome} na nova grade`}>
+                  {dias.map((dia, index) => <button key={dia} type="button" className="ck-tu-day" disabled={!form.dias_semana.includes(index + 1)} aria-label={dia} aria-pressed={item.dias_semana.includes(index + 1)} onClick={() => alterarDiasAluno(aluno.matricula_id, index + 1)}>{dia.slice(0, 3)}</button>)}
+                </div>
+              </div>;
+            })}
+          </> : null}
           </section>
           <section className="ck-pc__sec">
           <header><span className="ck-pc__secn">3</span><h3>Professor e vagas</h3></header>
@@ -182,8 +273,7 @@ export function TurmasFixas({ onClose, onSaved, onChangeSchedule, initialId }) {
             label="Professor"
             placeholder="Selecione o professor"
             value={form.professor_id}
-            disabled={!!form.id}
-            options={professores.map((professor) => ({ value: String(professor.id), label: professor.nome }))}
+          options={professores.map((professor) => ({ value: String(professor.id), label: professor.nome }))}
             onChange={(event) => set('professor_id', event.target.value)}
           />
             <TextField label="Capacidade" type="number" min="1" max="500" hint="Vagas por aula" value={form.capacidade} onChange={(event) => set('capacidade', event.target.value)} />

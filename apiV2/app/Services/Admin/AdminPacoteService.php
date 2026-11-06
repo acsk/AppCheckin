@@ -832,7 +832,7 @@ class AdminPacoteService
         try {
             $pacoteId = (int) $data['pacote_id'];
             $dependentesIds = isset($data['dependentes']) ? array_map('intval', (array) $data['dependentes']) : [];
-            $diaVencimento = (int) ($data['dia_vencimento'] ?? 10);
+            $diaVencimento = ! empty($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : null;
             $observacoes = $data['observacoes'] ?? null;
             $dataInicio = ! empty($data['data_inicio']) ? (string) $data['data_inicio'] : date('Y-m-d');
 

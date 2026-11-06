@@ -631,7 +631,7 @@ class AdminMatriculaService
         }
 
         // Opcional (paridade com a Slim): quando ausente, a matrícula fica sem dia fixo.
-        if (! empty($data['dia_vencimento'])) {
+        if (isset($data['dia_vencimento']) && $data['dia_vencimento'] !== '') {
             $diaVencimento = (int) $data['dia_vencimento'];
             if ($diaVencimento < 1 || $diaVencimento > 31) {
                 $errors[] = 'Dia de vencimento deve estar entre 1 e 31';
@@ -642,7 +642,9 @@ class AdminMatriculaService
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
 
-        $diaVencimento = ! empty($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : null;
+        $diaVencimento = isset($data['dia_vencimento']) && $data['dia_vencimento'] !== ''
+            ? (int) $data['dia_vencimento']
+            : null;
 
         if ($alunoIdInput) {
             $usuarioId = $this->matriculas->findUsuarioIdPorAluno((int) $alunoIdInput);

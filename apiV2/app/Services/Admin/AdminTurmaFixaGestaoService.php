@@ -234,15 +234,23 @@ class AdminTurmaFixaGestaoService
             ? Validator::make($dados, ['professor_id' => 'required|integer|min:1'])->validate()
             : Validator::make($dados, ['dias_semana' => 'required|array|min:1|max:7', 'dias_semana.*' => 'integer|between:1,7|distinct',
                 'horario_inicio' => 'required|date_format:H:i', 'horario_fim' => 'required|date_format:H:i|after:horario_inicio',
-                'professor_id' => 'required|integer|min:1', 'nome' => 'sometimes|required|string|max:255'])->validate();
+                'professor_id' => 'required|integer|min:1', 'nome' => 'sometimes|nullable|string|max:255',
+                'capacidade' => 'sometimes|integer|between:1,500', 'checkin_livre' => 'sometimes|boolean'])->validate();
         $v['dias_semana'] ??= json_decode($grupo->dias_semana, true, 512, JSON_THROW_ON_ERROR);
         $v['horario_inicio'] ??= substr($grupo->horario_inicio, 0, 5);
         $v['horario_fim'] ??= substr($grupo->horario_fim, 0, 5);
+        $v['capacidade'] ??= (int) $grupo->capacidade;
+        $v['checkin_livre'] ??= (bool) $grupo->checkin_livre;
         DB::table('turmas_fixas')->where('id', $id)->update(['vigencia_fim' => (new \DateTimeImmutable($desde))->modify('-1 day')->format('Y-m-d')]);
         $this->prepararOcorrencias($tenantId, $id);
         $novo = $admin->criar($tenantId, array_replace((array) $grupo, $v), $desde);
         $novoId = (int) $novo['id'];
         $this->copiarConfiguracoesOcorrencias($tenantId, $id, $novoId);
+        DB::table('turmas')->where('tenant_id', $tenantId)->where('turma_fixa_id', $novoId)->update([
+            'limite_alunos' => $v['capacidade'],
+            'checkin_livre' => $v['checkin_livre'],
+            'updated_at' => now(),
+        ]);
         if ($acao === 'professor') {
             $dados['remapeamentos'] = array_map(fn ($aluno) => ['matricula_id' => $aluno['matricula_id'], 'dias_semana' => $aluno['dias_semana']], $alunos);
         }
