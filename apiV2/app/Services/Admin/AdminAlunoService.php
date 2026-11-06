@@ -4,6 +4,8 @@ namespace App\Services\Admin;
 
 use App\Repositories\AdminAlunoRepository;
 use App\Repositories\UsuarioRepository;
+use App\Support\Documento;
+use App\Support\ResponsavelLegal;
 use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
@@ -136,7 +138,7 @@ class AdminAlunoService
                 if ($alunoCriado) {
                     $extra = array_intersect_key($data, array_flip([
                         'data_nascimento', 'sexo', 'whatsapp', 'logradouro', 'numero',
-                        'complemento', 'bairro', 'cidade', 'estado',
+                        'complemento', 'bairro', 'cidade', 'estado', ...ResponsavelLegal::CAMPOS,
                     ]));
                     if ($extra !== []) {
                         $this->alunos->update((int) $alunoCriado['id'], $extra);
@@ -190,7 +192,7 @@ class AdminAlunoService
             return $this->error('Aluno não encontrado', 404);
         }
 
-        $errors = $this->validarDados($data, (int) $aluno['usuario_id'], $tenantId, true);
+        $errors = $this->validarDados($data, (int) $aluno['usuario_id'], $tenantId, true, $aluno);
         if ($errors !== []) {
             return [
                 'status' => 422,
@@ -552,7 +554,7 @@ class AdminAlunoService
      * @param  array<string, mixed>  $data
      * @return list<string>
      */
-    private function validarDados(array $data, ?int $usuarioIdExcluir, int $tenantId, bool $isUpdate): array
+    private function validarDados(array $data, ?int $usuarioIdExcluir, int $tenantId, bool $isUpdate, array $atual = []): array
     {
         $errors = [];
 
@@ -616,7 +618,39 @@ class AdminAlunoService
             }
         }
 
+        // Menor de idade precisa de responsável. Na edição vale o que fica gravado (o que veio por cima do atual),
+        // e só quando a requisição mexe no nascimento ou no responsável: desativar um menor antigo sem
+        // responsável não deve travar.
+        $efetivo = array_merge($atual, $data);
+        $tocaResponsavel = ! $isUpdate
+            || array_intersect_key($data, array_flip(['data_nascimento', ...ResponsavelLegal::CAMPOS])) !== [];
+        if ($tocaResponsavel && ResponsavelLegal::ehMenor(isset($efetivo['data_nascimento']) ? (string) $efetivo['data_nascimento'] : null)) {
+            $responsavel = array_intersect_key($efetivo, array_flip(ResponsavelLegal::CAMPOS));
+            array_push($errors, ...ResponsavelLegal::validar($responsavel, isset($efetivo['cpf']) ? (string) $efetivo['cpf'] : null));
+        }
+
         return $errors;
+    }
+
+    /**
+     * Responsável já conhecido pelo CPF, para preencher o cadastro de outro menor (ex.: irmão).
+     * Procura quem é responsável de algum aluno e, se não houver, a própria pessoa com conta no Check-in.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function buscarResponsavelPorCpf(string $cpf, int $tenantId): array
+    {
+        $cpf = Documento::digitos($cpf);
+        if (! Documento::cpfValido($cpf)) {
+            return $this->error('CPF inválido', 422);
+        }
+
+        $achado = $this->alunos->responsavelPorCpf($cpf, $tenantId);
+        if (! $achado) {
+            return ['status' => 200, 'body' => ['found' => false]];
+        }
+
+        return ['status' => 200, 'body' => ['found' => true, 'responsavel' => $achado]];
     }
 
     private function validarCpf(string $cpf): bool

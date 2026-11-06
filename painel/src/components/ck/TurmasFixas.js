@@ -172,6 +172,8 @@ export function TurmasFixas({ onClose, onSaved, initialId }) {
 const diaNome = (dia) => dias[Number(dia) - 1] || `Dia ${dia}`;
 
 export function TipoAcessoMatricula({ matricula, onSaved }) {
+  const agora = new Date();
+  const dataHoje = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
   const [open, setOpen] = useState(false);
   const [turmas, setTurmas] = useState([]);
   const [tipo, setTipo] = useState(matricula.tipo_acesso || 'horario_livre');
@@ -190,6 +192,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
         if (!active) return;
         setGradeAtual({
           grade: Array.isArray(response?.grade) ? response.grade : [],
+          grade_agendada: Array.isArray(response?.grade_agendada) ? response.grade_agendada.filter(item => item.vigencia_inicio > dataHoje || item.vigencia_fim) : [],
           grade_revisao: response?.grade_revisao === true || Number(response?.grade_revisao) === 1,
           frequencia_semanal: Number(response?.frequencia_semanal ?? matricula.checkins_semanais) || 0,
         });
@@ -216,6 +219,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
         })));
         setGradeAtual({
           grade: registros,
+          grade_agendada: Array.isArray(resposta?.grade_agendada) ? resposta.grade_agendada.filter(item => item.vigencia_inicio > dataHoje || item.vigencia_fim) : [],
           grade_revisao: resposta?.grade_revisao === true || Number(resposta?.grade_revisao) === 1,
           frequencia_semanal: Number(resposta?.frequencia_semanal ?? matricula.checkins_semanais) || 0,
         });
@@ -280,7 +284,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
     <section className="ck-card ck-mt-access">
       <header>
         <strong>Tipo de acesso: {matricula.tipo_acesso === 'turma_fixa' ? 'Turma fixa' : 'Horário livre'}</strong>
-        <Button size="sm" onClick={() => setOpen(true)}>Editar acesso e grade</Button>
+        <Button size="sm" disabled={loadingGrade || gradeAtual.grade_agendada?.length > 0} onClick={() => setOpen(true)}>Editar acesso e grade</Button>
       </header>
       {loadingGrade ? <p role="status">Carregando grade…</p> : (
         <>
@@ -297,6 +301,7 @@ export function TipoAcessoMatricula({ matricula, onSaved }) {
             </div>
           ) : matricula.tipo_acesso === 'turma_fixa' ? <p>Nenhuma grade recorrente vinculada.</p> : null}
           {gradeAtual.grade_revisao ? <Callout tone="warning" title="Grade precisa de revisão">Confira a frequência semanal contratada e ajuste os dias vinculados à matrícula.</Callout> : null}
+          {gradeAtual.grade_agendada?.length ? <Callout tone="info" title="Mudança de grade agendada">Confira a gestão de Turmas antes de editar.<ul>{gradeAtual.grade_agendada.map((item, index) => <li key={index}>{diaNome(item.dia_semana)} · {item.nome} · {hora(item.horario_inicio)}–{hora(item.horario_fim)} · {item.vigencia_fim ? `Até ${item.vigencia_fim}` : `A partir de ${item.vigencia_inicio}`}</li>)}</ul></Callout> : null}
         </>
       )}
       <Modal

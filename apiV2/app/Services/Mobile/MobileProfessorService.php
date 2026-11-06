@@ -167,7 +167,7 @@ class MobileProfessorService
                 return $this->fail('Somente o professor da aula ou administrador pode incluir reposição.', 403);
             }
             $fim = AcademyDateTime::fromDateAndTime($aula['dia_data'], $aula['horario_fim']);
-            if (! $aula['ativo'] || ! DB::table('dias')->where('id', $aula['dia_id'])->where('ativo', 1)->exists()
+            if (! $aula['ativo'] || $acesso->aulaSuspensa($aula, $tenantId) || ! DB::table('dias')->where('id', $aula['dia_id'])->where('ativo', 1)->exists()
                 || ! $fim || AcademyDateTime::now() > $fim) {
                 return $this->fail('Não é possível reservar reposição em aula inativa ou encerrada.', 422);
             }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\AcessoHibridoService;
+use App\Services\Admin\AdminTurmaFixaGestaoService;
 use App\Services\Admin\AdminTurmaFixaService;
 use App\Support\AcademyDateTime;
 use Illuminate\Contracts\Console\Kernel;
@@ -13,6 +14,17 @@ $app->make(Kernel::class)->bootstrap();
 HybridFixture::mysql();
 $service = HybridFixture::checkinService(($argv[2] ?? '') === 'diario');
 $modo = $argv[2] ?? '';
+if ($modo === 'pausar') {
+    try {
+        $app->make(AdminTurmaFixaGestaoService::class)->executar(3, 90, [
+            'acao' => 'pausar', 'ids' => [1], 'dados' => ['from' => AcademyDateTime::today(), 'to' => AcademyDateTime::today()],
+        ]);
+        echo json_encode(['status' => 200]);
+    } catch (ValidationException $e) {
+        echo json_encode(['status' => 422, 'errors' => $e->errors()]);
+    }
+    exit;
+}
 if ($modo === 'reposicao') {
     echo json_encode(HybridFixture::reposicaoService()->adicionarReposicao(90, 3, ['aluno_id' => (int) $argv[1], 'turma_id' => (int) ($argv[3] ?? 1)]));
     exit;

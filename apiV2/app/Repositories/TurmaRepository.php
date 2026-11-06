@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Support\Pessoa;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class TurmaRepository
 {
@@ -446,6 +447,9 @@ class TurmaRepository
         if ($updates === []) {
             return;
         }
+        if (array_key_exists('ativo', $updates) && Schema::hasColumn('turmas', 'suspensao_turma_id')) {
+            $updates['suspensao_turma_id'] = null;
+        }
 
         $updates['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
 
@@ -457,6 +461,7 @@ class TurmaRepository
         DB::table('turmas')->where('id', $id)->update([
             'ativo' => 0,
             'updated_at' => DB::raw('CURRENT_TIMESTAMP'),
+            ...(Schema::hasColumn('turmas', 'suspensao_turma_id') ? ['suspensao_turma_id' => null] : []),
         ]);
     }
 

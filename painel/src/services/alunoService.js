@@ -71,6 +71,16 @@ const alunoService = {
    * @param {string} cpf - CPF do aluno (apenas números)
    * @returns {Promise<Object>} { found, aluno, tenants, ja_associado, pode_associar }
    */
+  /** Responsável já conhecido pelo CPF (de outro aluno menor ou com conta própria). */
+  async buscarResponsavel(cpf) {
+    try {
+      const response = await api.get(`/admin/alunos/responsavel/${String(cpf).replace(/\D/g, '')}`);
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { error: 'Erro ao buscar responsável' };
+    }
+  },
+
   async buscarPorCpf(cpf) {
     try {
       const cpfLimpo = cpf.replace(/\D/g, '');

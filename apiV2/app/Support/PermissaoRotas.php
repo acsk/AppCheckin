@@ -75,7 +75,7 @@ final class PermissaoRotas
         [self::LEITURA, '#^admin/comunicacoes(/|$)#', Permissao::COMUNICACOES_VER],
 
         // Aulas
-        [null, '#^admin/(turmas|dias|wods|recordes|professores)(/|$)#', Permissao::AULAS_GERENCIAR],
+        [null, '#^admin/(turmas-fixas|turmas|dias|wods|recordes|professores)(/|$)#', Permissao::AULAS_GERENCIAR],
 
         // Configurações (inclui catálogos de planos/modalidades/pacotes)
         [null, '#^admin/(modalidades|planos|pacotes|parametros|configuracoes|formas-pagamento-config|payment-credentials|tenant|auditoria|logs)(/|$)#', Permissao::CONFIGURACOES_EDITAR],

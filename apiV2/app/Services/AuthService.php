@@ -633,11 +633,20 @@ class AuthService
             }
         }
 
+        // Menor de idade: o cadastro só segue com o responsável legal (nome, CPF e e-mail).
+        $menorDeIdade = \App\Support\ResponsavelLegal::ehMenor($dataNascimento);
+        $responsavel = [];
+        if ($menorDeIdade) {
+            $responsavel = array_intersect_key($data, array_flip(\App\Support\ResponsavelLegal::CAMPOS));
+            array_push($erros, ...\App\Support\ResponsavelLegal::validar($responsavel, $cpfLimpo));
+        }
+
         if ($erros !== []) {
             return response()->json([
                 'type' => 'error',
                 'code' => 'VALIDATION_ERROR',
                 'errors' => $erros,
+                'menor_de_idade' => $menorDeIdade,
             ], 422, [], JSON_UNESCAPED_UNICODE);
         }
 
@@ -671,7 +680,7 @@ class AuthService
             'bairro' => $data['bairro'] ?? null,
             'cidade' => $data['cidade'] ?? null,
             'estado' => $data['estado'] ?? null,
-        ]);
+        ], $responsavel);
 
         try {
             $usuarioId = $this->usuarios->createMobileAluno($payload, $tenantId);
@@ -729,6 +738,7 @@ class AuthService
                 'data_nascimento' => $dataNascimento,
                 'sexo' => $sexo,
                 'tenant_id' => $tenantId,
+                'menor_de_idade' => $menorDeIdade,
             ],
         ], 201, [], JSON_UNESCAPED_UNICODE);
     }

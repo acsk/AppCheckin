@@ -19,13 +19,15 @@ final class Pessoa
 {
     /** Campos pessoais que moram em usuarios (o nome é tratado à parte). */
     public const CAMPOS = ['cpf', 'telefone', 'whatsapp', 'data_nascimento', 'sexo',
-        'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'foto_caminho'];
+        'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'foto_caminho',
+        ...ResponsavelLegal::CAMPOS];
 
     public const ENDERECO = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado'];
 
     /** Cópias antigas que ainda podem ter o dado (tabela => campos). */
     private const COPIAS = [
-        'alunos' => self::CAMPOS,
+        'alunos' => ['cpf', 'telefone', 'whatsapp', 'data_nascimento', 'sexo',
+            'cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'estado', 'foto_caminho'],
         'professores' => ['cpf', 'telefone', 'whatsapp', 'data_nascimento'],
     ];
 
@@ -103,9 +105,12 @@ final class Pessoa
             $v = is_string($data[$campo]) ? trim($data[$campo]) : $data[$campo];
             $v = ($v === '' || $v === null) ? null : $v;
             $out[$campo] = $v === null ? null : match ($campo) {
-                'cpf', 'cep' => Documento::digitos((string) $v) ?: null,
+                'cpf', 'cep', 'responsavel_cpf' => Documento::digitos((string) $v) ?: null,
                 'telefone', 'whatsapp' => Telefone::normalizar($v, $campo),
-                'nome', 'logradouro', 'complemento', 'bairro', 'cidade' => mb_strtoupper((string) $v, 'UTF-8'),
+                'responsavel_telefone' => Telefone::normalizar($v),
+                'responsavel_email' => mb_strtolower((string) $v, 'UTF-8'),
+                'responsavel_parentesco' => ResponsavelLegal::normalizarParentesco($v),
+                'nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'responsavel_nome' => mb_strtoupper((string) $v, 'UTF-8'),
                 'estado' => mb_substr(mb_strtoupper((string) $v, 'UTF-8'), 0, 2, 'UTF-8'),
                 'sexo' => SexoAluno::normalizar($v),
                 'data_nascimento' => substr((string) $v, 0, 10),

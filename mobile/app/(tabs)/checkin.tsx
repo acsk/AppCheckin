@@ -1725,6 +1725,8 @@ function CheckinScreenContent() {
                 {gradeFixa.map((item, index) => (
                   <Text key={`${item.matricula_id || ""}-${item.turma_fixa_id}-${item.dia_semana}-${index}`} style={styles.gradeFixaItem}>
                     {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][Number(item.dia_semana) - 1] || "Dia"} · {item.nome} · {String(item.horario_inicio || "").slice(0, 5)}–{String(item.horario_fim || "").slice(0, 5)}
+                    {item.vigencia_inicio && item.vigencia_inicio > formatDateParam(new Date()) ? ` · A partir de ${item.vigencia_inicio.split("-").reverse().join("/")}` : ""}
+                    {item.vigencia_fim ? ` · Até ${item.vigencia_fim.split("-").reverse().join("/")}` : ""}
                   </Text>
                 ))}
               </View>

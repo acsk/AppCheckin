@@ -24,6 +24,7 @@ const toStudent = (a) => ({
   gender: a.sexo || '',
   status: bool(a.ativo) ? 'ativo' : 'inativo',
   address: { cep: a.cep, street: a.logradouro, number: a.numero, complement: a.complemento, district: a.bairro, city: a.cidade, uf: a.estado },
+  guardian: a.responsavel_nome ? { name: a.responsavel_nome, cpf: a.responsavel_cpf || '', email: a.responsavel_email || '', phone: a.responsavel_telefone || '', relation: a.responsavel_parentesco || '' } : null,
 });
 
 export default function FormAlunoScreen() {
@@ -85,6 +86,20 @@ export default function FormAlunoScreen() {
     };
   };
 
+  const lookupGuardian = async (cpf) => {
+    try {
+      const r = await alunoService.buscarResponsavel(cpf);
+      if (!r?.found || !r.responsavel) return null;
+      const g = r.responsavel;
+      return {
+        name: g.nome, email: g.email, phone: g.telefone, relation: g.parentesco,
+        dependents: (g.dependentes || []).filter((d) => d.id !== alunoId).map((d) => ({ id: d.id, name: d.nome })),
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const lookupCep = async (cep) => {
     try {
       const response = await api.get(`/cep/${cep}`);
@@ -123,6 +138,15 @@ export default function FormAlunoScreen() {
         ativo: data.status === 'ativo' ? 1 : 0,
       };
       if (data.gender) payload.sexo = data.gender;
+      // Menor de idade: responsável legal. Maior: o que estiver gravado continua lá.
+      if (data.minor && data.guardian) {
+        payload.responsavel_nome = data.guardian.name;
+        payload.responsavel_cpf = data.guardian.cpf;
+        payload.responsavel_email = data.guardian.email;
+        // undefined = telefone não mudou (phoneForApi): não manda, para não apagar o gravado
+        if (data.guardian.phone !== undefined) payload.responsavel_telefone = data.guardian.phone || '';
+        payload.responsavel_parentesco = data.guardian.relation || '';
+      }
       if (data.password) payload.senha = data.password;
 
       if (isEdit) {
@@ -158,6 +182,7 @@ export default function FormAlunoScreen() {
           saving={saving}
           requireCpf
           onLookupCpf={lookupCpf}
+          onLookupGuardian={lookupGuardian}
           onCepLookup={lookupCep}
           onOpenExisting={(s) => router.push(`/alunos/${s.id}`)}
           onSave={save}

@@ -31,7 +31,7 @@ O menu **Turmas** do painel aparece quando o tenant:
 
 O menu fica em **Academia → Turmas**, ao lado de **Aulas**, conforme o layout enviado em `Turmas.html`. Sua página é dedicada a listar, criar e editar turmas, com resumo, busca, filtros de modalidade/professor/dias/situação, tabela e grade semanal. **Nova turma** abre um formulário próprio com seções e prévia da semana; a edição preserva os vínculos e a grade existente. Agenda e presenças permanecem em **Aulas**.
 
-Os indicadores usam turmas ativas, aulas recorrentes por semana, capacidade semanal e turmas que permitem check-in livre. Capacidade não representa saldo disponível. Ações do protótipo sem suporte na API (pausar/arquivar, exclusão, operações em lote, troca de professor ou mudança de grade com data de vigência) não são exibidas como se funcionassem.
+Os indicadores usam turmas atualmente ativas, aulas recorrentes por semana, capacidade semanal e turmas que permitem check-in livre. Capacidade não representa saldo disponível. A página distingue turmas **ativas, agendadas, pausadas e arquivadas**, sem somar versões futuras aos indicadores atuais. O detalhe consulta alunos, aulas e ocupação real por ocorrência.
 
 As permissões da equipe continuam sendo exigidas. Um tenant de horário livre pode acessar a gestão dedicada pelo atalho **Gerenciar turmas** na área de **Aulas** para cadastrar a primeira turma. Não foi criada uma configuração extra só para exibir o menu.
 
@@ -55,7 +55,34 @@ As ocorrências são materializadas na agenda existente para um horizonte de 90 
 
 Conflitos de agenda e falhas de geração são explícitos. Dias inativos e ocorrências já existentes são respeitados.
 
-A edição da turma preserva a grade recorrente já vinculada e as configurações específicas das ocorrências. Para mudar dias/horários recorrentes, crie outra turma e transfira as grades explicitamente. A secretaria pode habilitar check-in livre em uma ocorrência específica.
+A edição comum preserva a grade recorrente já vinculada e as configurações específicas das ocorrências. A mudança de dias/horários e professor usa as ações com vigência descritas abaixo. A secretaria pode habilitar check-in livre em uma ocorrência específica.
+
+### Gestão completa e ciclo de vida
+
+As ações do layout agora usam a API real:
+
+- **Detalhes:** alunos com plano/dias, próximas ocorrências com vagas fixas, reposições e livres; pausas e auditoria de ações.
+- **Duplicar:** exige nome/dias/horário/professor; cria uma turma sem copiar alunos, presenças ou reposições.
+- **Trocar professor:** data futura, preservando os dias individuais de cada matrícula.
+- **Alterar dias e horário:** data futura e remapeamento explícito dos dias de **cada matrícula afetada**; a frequência é validada também nos períodos futuros de outras turmas.
+- **Ajustar vagas:** valida reservas fixas, reposições e check-ins; não reduz a capacidade abaixo da ocupação/reserva.
+- **Pausar/retomar:** suspende as ocorrências do período, mantendo grade reservada, cobrança e vigência da matrícula. Retomar cancela pausas vigentes/futuras e restaura apenas suspensões automáticas, nunca cancelamentos manuais.
+- **Arquivar:** data futura e transferência ou retirada explicitamente confirmada por matrícula. Outros horários da matrícula são preservados. Retirada que deixa a matrícula fixa sem grade sinaliza revisão, não a converte para livre nem encerra a cobrança.
+- **Reativar:** reabre geração de aulas, sem restaurar vínculos retirados. Uma turma substituída não pode ser reativada por cima da nova versão.
+- **Excluir:** exclusão lógica apenas se não houver qualquer vínculo de grade, presença ou reposição, inclusive históricos. Ocorrências e auditoria permanecem.
+- **Em lote:** professor, capacidade, pausa, retomada, arquivamento e reativação; máximo de 50 turmas e transação atômica. Duplicação, mudança de grade e exclusão são individuais.
+
+Professor, grade e arquivamento exigem vigência **a partir de amanhã**, nunca anterior ao início da turma. A troca de professor/grade cria um **novo ID de turma**, fecha a versão anterior na véspera e periodiza a grade dos alunos. Não reescreve aulas, presenças ou pagamentos anteriores. A coluna singular de turma na matrícula continua sendo referência legada, não autorização.
+
+Ocorrências correspondentes com a mesma data/horário preservam capacidade, check-in livre, janelas e cancelamentos manuais. A geração posterior copia essas regras somente para ocorrências novas da versão, sem sobrescrever edições feitas na nova agenda.
+
+Turmas vazias também podem ser alteradas/arquivadas, com conferência explícita de uma lista vazia de vínculos. Alterações de professor preservam grades legadas acima da frequência e sua sinalização; não oferecem um parâmetro público para ignorar limites.
+
+Pausas podem iniciar hoje, mas suspensão/mudança/arquivamento são recusados se o período já tiver check-in ou reposição. Essas reservas precisam ser resolvidas explicitamente; não são removidas automaticamente. Pausas sobrepostas são recusadas mesmo sob concorrência.
+
+O fim automático da pausa depende do cron `schedule:run` e do comando diário `turmas:gerar-aulas-fixas` (03h30). A geração respeita vigência, pausas, feriados e cancelamentos; turmas com início além do horizonte só recebem ocorrências quando se aproximam dos próximos 90 dias. Sobreposições recorrentes do professor são validadas inclusive além desse horizonte.
+
+O aviso opcional publica uma **notificação na Central de Comunicação do app**, não promete push do sistema operacional. Falha de publicação desfaz toda a operação. O histórico guarda ação, operador, solicitação e resultado; não inventa auditoria para ações anteriores à nova estrutura.
 
 ## 4. Matrícula e grade individual
 
@@ -177,6 +204,11 @@ Uma simulação de troca iniciada no app antes de a matrícula ser convertida pa
 | `matricula_grade` | Pares matrícula/turma/dia, com tenant |
 | `matriculas.grade_revisao` | Sinaliza vínculos legados para revisão |
 | `aula_reposicoes` | Reserva por ocorrência/aluno/matrícula |
+| `turmas_fixas.vigencia_inicio/vigencia_fim/substituida_por_id/deleted_at` | Versões, encerramento e exclusão lógica |
+| `matricula_grade.vigencia_inicio/vigencia_fim` | Grade individual por período |
+| `turma_fixa_pausas` | Suspensões por período, motivo e cancelamento |
+| `turmas.suspensao_turma_id` | Distingue suspensão automática de cancelamento manual |
+| `turma_fixa_eventos` | Auditoria das operações |
 
 ### Primeira migração
 
@@ -199,6 +231,19 @@ Uma simulação de troca iniciada no app antes de a matrícula ser convertida pa
 - não corta dias nem altera plano, valor, status ou check-ins.
 
 As grades legadas excedentes permanecem válidas até revisão explícita. Novas alterações de grade/plano devem respeitar a frequência.
+
+### Ciclo de vida e grade temporal
+
+[2026_11_06_160000_ciclo_vida_turmas_fixas.php](apiV2/database/migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php):
+
+- adiciona períodos, substituição e exclusão lógica às turmas;
+- mantém grades antigas com início em `1900-01-01` e fim aberto, sem retirar dias;
+- troca a unicidade da grade por matrícula/turma/dia/início do período;
+- cria pausas e auditoria, e identifica suspensões automáticas;
+- mantém turmas anteriormente inativas encerradas;
+- não altera tipo de acesso, plano, valor contratado, cobranças ou check-ins.
+
+O painel e o app mostram os períodos atuais/futuros. A edição comum de acesso fica bloqueada quando há transição agendada, para não sobrescrevê-la inadvertidamente.
 
 A coluna singular `matriculas.turma_fixa_id` e a antiga pivot `turma_fixa_planos` foram mantidas para compatibilidade/auditoria, mas não são a fonte da nova autorização por dia nem exigem planos associados à turma.
 
@@ -240,6 +285,8 @@ As migrações são conservadoras e irreversíveis por rollback destrutivo: rest
 |---|---|---|
 | GET/POST | `/v2/admin/turmas-fixas` | Listar/criar turmas |
 | PUT | `/v2/admin/turmas-fixas/{id}` | Editar turma |
+| GET | `/v2/admin/turmas-fixas/{id}?desde=AAAA-MM-DD` | Detalhe e vínculos afetados na data |
+| POST | `/v2/admin/turmas-fixas/acoes` | Gestão individual/em lote |
 | GET | `/v2/admin/matriculas/{id}/grade` | Consultar grade/revisão |
 | PUT | `/v2/admin/matriculas/{id}/tipo-acesso` | Alterar tipo e grade |
 | POST | `/v2/mobile/professor/reposicoes` | Reservar reposição |
@@ -275,6 +322,10 @@ Os IDs são ilustrativos. Dias usam ISO: segunda=1 até domingo=7. Para reposiç
 | Uma turma admite planos 1x/2x/3x | Teste sem dependência da pivot de planos |
 | Reposição de sábado não muda grade de terça/quinta | Teste de reserva pontual, presença e histórico |
 | Migração preserva dias, valores e check-ins; excesso recebe revisão | Testes de migração legada |
+| Mudança com vigência preserva aulas anteriores e dias individuais | Testes de grade/professor e remapeamentos |
+| Arquivamento exige conferência e transferência não ultrapassa vagas | Testes de retirada, transferência cheia e lote atômico |
+| Pausa não duplica sob concorrência e não convive com check-in confirmado | Teste MySQL com processos simultâneos |
+| Aviso chega apenas ao aluno afetado e falha desfaz operação | Publicação real na Central em SQLite e falha simulada |
 
 Execuções registradas nesta implementação:
 
@@ -287,13 +338,17 @@ Execuções registradas nesta implementação:
 - seed do tenant 5 em SQLite em memória: **quatro testes, 19 asserções**, código de saída 0; verificação de formatação dos dois arquivos PHP aprovada.
 - menu dedicado de Turmas: exportação web do painel aprovada e seis verificações de navegador com API simulada (menu de primeiro nível, listagem, criação, edição, formulário novo vazio e erro de carregamento impedindo gravação). Criação/edição verificaram os métodos POST/PUT e a releitura dos dados no servidor simulado; não acessaram produção.
 - atualização para o layout `Turmas.html`: menu reposicionado em **Academia → Turmas**, build web aprovado e nove verificações com API simulada (menu, lista, grade semanal, filtros/busca sem acentos, criação, edição, formulário vazio, bloqueio após falha de carregamento e responsividade a 390px). Capturas desktop/mobile inspecionadas. Nenhuma chamada de produção.
+- ciclo de vida: **40 testes focados, 253 asserções**, saída 0; inclui rotas autenticadas, confirmação/releitura, remapeamento, frequência futura, dias compartilhados entre alunos, regras/cancelamentos de ocorrências, preservação legada, transferência cheia, avisos reais e rollback.
+- concorrência após a migração temporal: **três testes MySQL, 44 asserções**, saída 0; inclui última vaga/reposições, pausas simultâneas, pausa disputando uma ocorrência com check-in e preservação de ocorrência em nova versão.
+- painel de gestão completa: **17 verificações Playwright**, saída 0, cobrindo todas as nove ações, remapeamento individual, capacidade e arquivamento em lote, persistência por releitura no contrato simulado, bloqueio após erro e largura de 390px (filtros/página e modal). Todas as APIs interceptadas antes da navegação; nenhuma requisição externa não simulada. Capturas de formulário/detalhe inspecionadas.
+- exportações web do painel e mobile após o ciclo de vida: saída 0; formatação PHP com Pint aprovada.
 
 Essas execuções têm escopos sobrepostos; suas contagens **não devem ser somadas**.
 
 Comando focado:
 
 ```bash
-php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual'
+php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual|TurmaFixaGestao'
 ```
 
 Os testes de concorrência são opt-in e exigem MySQL descartável/isolado. As instruções estão no [README da API](apiV2/README.md). Nunca execute essa suíte destrutiva no banco da aplicação.
@@ -345,7 +400,7 @@ Confirme o banco e o tenant antes de executar. Depois, pelo painel, contrate os 
 
 ## 12. Publicação e roteiro de homologação
 
-Até esta consolidação, o assistente **não executou migrações nem seed em produção** e não fez commit/push da correção da grade individual. A implementação inicial já estava no commit `3da5539d`; a correção subsequente ainda estava no worktree.
+Nesta implementação de ciclo de vida, o assistente **não executou migrações nem seed em produção e não fez commit/push**. A validação usa bancos e clientes isolados.
 
 Publicação:
 
@@ -356,6 +411,7 @@ Publicação:
 ```bash
 /opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_100000_acesso_hibrido_aulas.php --force
 /opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_140000_grade_individual_reposicoes.php --force
+/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php --force
 /opt/alt/php84/usr/bin/php artisan optimize:clear
 ```
 
@@ -372,6 +428,10 @@ Publicação:
    - pagamento/ativação quando a turma está cheia;
    - valores contratados e parcelas existentes;
    - experiência Android/iOS.
+   - mudanças com vigência e conferência de cada aluno;
+   - pausa/retomada automática e cancelamento manual preservado;
+   - arquivamento com transferências/retiradas e operações em lote;
+   - avisos publicados na Central de Comunicação.
 
 O PHP padrão do servidor relatado era 7.4; os comandos da API devem utilizar o executável PHP 8.4 indicado acima.
 
@@ -379,6 +439,9 @@ O PHP padrão do servidor relatado era 7.4; os comandos da API devem utilizar o 
 
 - [Regras de acesso, grade e vagas](apiV2/app/Services/AcessoHibridoService.php)
 - [Cadastro de turma e vínculo de grade](apiV2/app/Services/Admin/AdminTurmaFixaService.php)
+- [Gestão, períodos e auditoria de turmas](apiV2/app/Services/Admin/AdminTurmaFixaGestaoService.php)
+- [Ações de gestão no painel](painel/src/components/ck/TurmaGestaoModal.js)
+- [Testes de ciclo de vida](apiV2/tests/Feature/TurmaFixaGestaoTest.php)
 - [Criação e alteração de matrícula](apiV2/app/Services/Admin/AdminMatriculaService.php)
 - [Reposição pelo professor](apiV2/app/Services/Mobile/MobileProfessorService.php)
 - [Autorização do check-in](apiV2/app/Services/Mobile/MobileCheckinService.php)

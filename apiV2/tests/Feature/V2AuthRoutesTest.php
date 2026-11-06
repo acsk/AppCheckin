@@ -96,4 +96,25 @@ class V2AuthRoutesTest extends TestCase
             ->assertJsonPath('code', 'VALIDATION_ERROR')
             ->assertJsonStructure(['errors']);
     }
+
+    public function test_register_mobile_menor_de_idade_exige_responsavel(): void
+    {
+        DB::statement('CREATE TABLE IF NOT EXISTS rate_limits (id INTEGER PRIMARY KEY, ip TEXT, action TEXT, attempts INTEGER, expires_at TEXT, created_at TEXT, updated_at TEXT)');
+
+        $menor = [
+            'nome' => 'Joao Silva',
+            'email' => 'joao@exemplo.com',
+            'cpf' => '11144477735',
+            'data_nascimento' => now()->subYears(12)->format('Y-m-d'),
+            'sexo' => 'masculino',
+        ];
+
+        $response = $this->postJson('/v2/auth/register-mobile', $menor)
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonPath('menor_de_idade', true);
+
+        $this->assertCount(3, $response->json('errors'));
+        $this->assertStringContainsString('responsável', implode(' ', $response->json('errors')));
+    }
 }

@@ -69,17 +69,22 @@ O mesmo tenant pode combinar **horário livre** e **turma fixa**, sem configura�
 
 Rotas administrativas: `GET/POST /v2/admin/turmas-fixas`, `PUT /v2/admin/turmas-fixas/{id}`, `GET /v2/admin/matriculas/{id}/grade` e `PUT /v2/admin/matriculas/{id}/tipo-acesso`. A criação de matrícula e a alteração de acesso recebem `grade: [{turma_fixa_id, dia_semana}]`. Exigem JWT de administrador e tenant selecionado. `POST /v2/mobile/professor/reposicoes` recebe `turma_id` da ocorrência e `aluno_id`, validando tenant, professor responsável, modalidade, vigência e capacidade no backend.
 
+**Gestão de Turmas:** `GET /v2/admin/turmas-fixas/{id}?desde=AAAA-MM-DD` retorna detalhe, vínculos afetados na data, próximas aulas com ocupação, pausas e auditoria. `POST /v2/admin/turmas-fixas/acoes` recebe `{acao, ids, dados}` para duplicar, professor, grade, capacidade, pausar, retomar, arquivar, reativar e excluir. A permissão da equipe é `aulas.gerenciar`, com tenant obrigatório. Professor/grade/arquivamento exigem data futura; mudanças criam nova versão da turma e períodos da grade, sem reescrever histórico ou contrato. Grade exige remapeamento por matrícula; arquivamento exige transferência ou retirada explícita. Lotes de até 50 IDs são atômicos e podem receber `dados.por_turma: [{id, dados}]` para conferências específicas. Pausas mantêm cobrança/vigência; avisos opcionais usam a Central de Comunicação e sua falha desfaz a operação. Exclusão é lógica e bloqueada por qualquer vínculo/presença/reposição histórica. Consulte o [documento completo](../TURMAS_FIXAS_E_ACESSO_HIBRIDO.md).
+
 **Publicação:** faça backup e publique a API antes dos clientes. Não foi executada migração em produção nesta implementação.
 
 ```bash
 /opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_100000_acesso_hibrido_aulas.php --force
 /opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_140000_grade_individual_reposicoes.php --force
+/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_11_06_160000_ciclo_vida_turmas_fixas.php --force
 /opt/alt/php84/usr/bin/php artisan optimize:clear
 ```
 
 A migração mantém todos os registros, preços, cobranças e status anteriores; atribui `horario_livre` a matrículas existentes e `checkin_livre=true` às aulas anteriores. É irreversível para evitar apagar contratos/aulas: restauração exige backup validado. O cron Laravel existente deve executar `schedule:run` a cada minuto; `turmas:gerar-aulas-fixas` mantém a grade diariamente. Falhas/conflitos de agenda são explícitos e precisam ser corrigidos.
 
 A segunda migração preserva **todos os dias** da turma em cada vínculo fixo antigo e marca `grade_revisao=true` quando excedem a frequência do plano (ou quando ela não pode ser identificada). Não corta dias nem muda plano, valor, status ou histórico de check-ins. As referências singulares e a pivot antiga permanecem apenas para auditoria; a autorização/reserva nova utiliza a grade individual. Matrículas legadas acima da frequência continuam com sua grade até revisão explícita da secretaria; alterações devem respeitar o limite.
+
+A terceira migração adiciona vigência, pausas, auditoria e exclusão lógica, mantendo a grade legada desde `1900-01-01`, sem retirar dias nem mudar cobranças. Turmas inativas permanecem encerradas. O cron diário também restaura pausas encerradas; cancelamentos manuais não são reativados. Versões futuras aparecem como agendadas e não ficam disponíveis para matrícula comum antes da vigência.
 
 **Reajuste:** editar preço de tabela não reajusta contratos, parcelas ou recorrências. O agendamento automático `reajuste:aplicar-renovacoes` foi removido. Marcações antigas em `valor_renovacao` são preservadas, mas não são aplicadas sem `reajuste_autorizado_em`. Para contratos avulsos, o operador pode simular e confirmar explicitamente, por tenant/ciclo/preço anterior:
 
@@ -93,7 +98,7 @@ Valores negociados, pacotes e contratos com fidelização não são abrangidos p
 Testes da funcionalidade:
 
 ```bash
-php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual'
+php vendor/bin/phpunit --filter 'AcessoHibrido|GradeIndividual|TurmaFixaGestao'
 ```
 
 `AcessoHibridoConcurrencyTest` é opt-in e exige um MySQL **descartável e isolado**, sem portas expostas. Ele usa somente o banco `appcheckin_hybrid_test`, cria/remove suas tabelas e inicia processos PHP simultâneos. Nunca execute em um banco da aplicação.

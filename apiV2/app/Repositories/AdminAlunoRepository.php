@@ -349,6 +349,53 @@ class AdminAlunoRepository
         ]);
     }
 
+    /**
+     * Responsável com este CPF: primeiro o informado em outro aluno (o mais recente), depois a própria
+     * pessoa se tiver conta. Devolve também os dependentes que ele já tem nesta academia.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function responsavelPorCpf(string $cpf, int $tenantId): ?array
+    {
+        if (! Pessoa::existe('usuarios', 'responsavel_cpf')) {
+            return null;
+        }
+
+        $dados = null;
+        $de = DB::table('usuarios')->where('responsavel_cpf', $cpf)
+            ->orderByDesc('updated_at')->orderByDesc('id')
+            ->first(['responsavel_nome', 'responsavel_email', 'responsavel_telefone', 'responsavel_parentesco']);
+        if ($de) {
+            $dados = [
+                'nome' => $de->responsavel_nome,
+                'email' => $de->responsavel_email,
+                'telefone' => $de->responsavel_telefone,
+                'parentesco' => $de->responsavel_parentesco,
+            ];
+        } elseif ($conta = DB::table('usuarios')->where('cpf', $cpf)->first(['nome', 'email', 'telefone'])) {
+            $dados = ['nome' => $conta->nome, 'email' => $conta->email, 'telefone' => $conta->telefone, 'parentesco' => null];
+        }
+        if ($dados === null) {
+            return null;
+        }
+
+        $dependentes = DB::table('usuarios as u')
+            ->join('alunos as a', 'a.usuario_id', '=', 'u.id')
+            ->join('tenant_usuario_papel as tup', function ($join) use ($tenantId) {
+                $join->on('tup.usuario_id', '=', 'u.id')
+                    ->where('tup.tenant_id', $tenantId)
+                    ->where('tup.papel_id', 1);
+            })
+            ->where('u.responsavel_cpf', $cpf)
+            ->orderBy('u.nome')
+            ->distinct()
+            ->get(['a.id', 'u.nome'])
+            ->map(fn ($r) => ['id' => (int) $r->id, 'nome' => $r->nome])
+            ->all();
+
+        return $dados + ['cpf' => $cpf, 'dependentes' => $dependentes];
+    }
+
     public function jaAssociadoAoTenant(int $usuarioId, int $tenantId): bool
     {
         return DB::table('tenant_usuario_papel')

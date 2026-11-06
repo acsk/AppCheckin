@@ -134,6 +134,18 @@ class AlunoController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function buscarResponsavel(Request $request, string $cpf): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->buscarResponsavelPorCpf($cpf, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function associar(Request $request): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

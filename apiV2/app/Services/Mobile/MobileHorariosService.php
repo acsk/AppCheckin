@@ -20,7 +20,7 @@ class MobileHorariosService
         $agora = AcademyDateTime::now();
         $acesso = app(AcessoHibridoService::class);
         if ($acesso->gradeAtualizada()) {
-            $grade = $this->gradeAluno($tenantId, $userId);
+            $grade = $this->gradeAluno($tenantId, $userId, true);
             $aulas = DB::table('turmas as t')->join('dias as d', 'd.id', '=', 't.dia_id')
                 ->where('t.tenant_id', $tenantId)->whereIn('t.turma_fixa_id', array_column($grade, 'turma_fixa_id'))->where('t.ativo', 1)->where('d.ativo', 1)
                 ->where(fn ($q) => $q->where('d.data', '>', $agora->format('Y-m-d'))->orWhere(fn ($q) => $q
@@ -29,7 +29,8 @@ class MobileHorariosService
             $aluno = (int) DB::table('alunos')->where('usuario_id', $userId)->value('id');
             foreach ($aulas as $t) {
                 $dia = (int) (new \DateTimeImmutable($t->dia_data))->format('N');
-                if (! array_filter($grade, fn ($g) => (int) $g['turma_fixa_id'] === (int) $t->turma_fixa_id && (int) $g['dia_semana'] === $dia)) {
+                if (! array_filter($grade, fn ($g) => (int) $g['turma_fixa_id'] === (int) $t->turma_fixa_id && (int) $g['dia_semana'] === $dia
+                    && ($g['vigencia_inicio'] ?? $t->dia_data) <= $t->dia_data && ($g['vigencia_fim'] ?? $t->dia_data) >= $t->dia_data)) {
                     continue;
                 }
                 $m = $acesso->matriculaParaAula($aluno, $tenantId, (array) $t);
@@ -54,7 +55,7 @@ class MobileHorariosService
         return $aula ? (array) $aula : null;
     }
 
-    public function gradeAluno(int $tenantId, int $userId): array
+    public function gradeAluno(int $tenantId, int $userId, bool $incluirFuturas = true): array
     {
         $acesso = app(AcessoHibridoService::class);
         if (! $acesso->atualizado()) {
@@ -66,7 +67,7 @@ class MobileHorariosService
             ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [AcademyDateTime::today()])->pluck('m.id');
         $grade = [];
         foreach ($ids as $id) {
-            foreach ($acesso->grade($tenantId, (int) $id) as $slot) {
+            foreach ($acesso->grade($tenantId, (int) $id, null, $incluirFuturas) as $slot) {
                 $grade[] = $slot + ['matricula_id' => (int) $id];
             }
         }

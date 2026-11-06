@@ -33,6 +33,7 @@ const toStudent = (a) => ({
   status: bool(a.ativo) ? 'ativo' : 'inativo',
   avatar: fotoUrl(a.foto_caminho, API_V2_BASE_URL),
   address: { cep: a.cep, street: a.logradouro, number: a.numero, complement: a.complemento, district: a.bairro, city: a.cidade, uf: a.estado },
+  guardian: a.responsavel_nome ? { name: a.responsavel_nome, cpf: a.responsavel_cpf || '', email: a.responsavel_email || '', phone: a.responsavel_telefone || '', relation: a.responsavel_parentesco || '' } : null,
   createdAt: isoDateTime(a.created_at),
   updatedAt: isoDateTime(a.updated_at),
 });

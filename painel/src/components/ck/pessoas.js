@@ -88,6 +88,7 @@ import { Sparkline } from './graficos';
   function firstName(n) { return titleCase(String(n || '').trim().split(/\s+/)[0] || ''); }
   function ago(days) { return days <= 0 ? 'hoje' : days === 1 ? 'ontem' : 'há ' + days + ' dias'; }
   var STU_PAY = { em_dia: ['success', 'Em dia', 'Em dia'], pendente: ['warning', 'Pagamento pendente', 'Pendente'], atrasado: ['danger', 'Pagamento em atraso', 'Em atraso'] };
+  var RELATIONS = [{ value: 'mae', label: 'Mãe' }, { value: 'pai', label: 'Pai' }, { value: 'avo', label: 'Avó ou avô' }, { value: 'tio', label: 'Tia ou tio' }, { value: 'irmao', label: 'Irmã ou irmão' }, { value: 'tutor', label: 'Tutor legal' }, { value: 'outro', label: 'Outro' }];
   var GENDERS = [{ value: 'feminino', label: 'Feminino' }, { value: 'masculino', label: 'Masculino' }, { value: 'outro', label: 'Outro' }, { value: 'prefiro_nao_informar', label: 'Prefere não informar' }];
   var UFS = [['AC', 'Acre'], ['AL', 'Alagoas'], ['AP', 'Amapá'], ['AM', 'Amazonas'], ['BA', 'Bahia'], ['CE', 'Ceará'], ['DF', 'Distrito Federal'], ['ES', 'Espírito Santo'], ['GO', 'Goiás'], ['MA', 'Maranhão'], ['MT', 'Mato Grosso'], ['MS', 'Mato Grosso do Sul'], ['MG', 'Minas Gerais'], ['PA', 'Pará'], ['PB', 'Paraíba'], ['PR', 'Paraná'], ['PE', 'Pernambuco'], ['PI', 'Piauí'], ['RJ', 'Rio de Janeiro'], ['RN', 'Rio Grande do Norte'], ['RS', 'Rio Grande do Sul'], ['RO', 'Rondônia'], ['RR', 'Roraima'], ['SC', 'Santa Catarina'], ['SP', 'São Paulo'], ['SE', 'Sergipe'], ['TO', 'Tocantins']];
   function Missing(p) { return h('span', { className: 'ck-al__missing' }, (p && p.children) || 'Não informado'); }
@@ -238,6 +239,7 @@ import { Sparkline } from './graficos';
     var tab = useControlled(p.tab, p.defaultTab || 'geral', p.onTabChange);
     var pay = e ? STU_PAY[e.payment] : null;
     var age = ageOn(s.birthDate, p.today);
+    var guardian = s.guardian;
     var missingAddr = ['cep', 'street', 'number', 'district', 'city'].filter(function (k) { return !a[k]; });
     var addrLine = [a.street ? a.street + (a.number ? ', ' + a.number : '') : null, a.complement, a.district].filter(Boolean).join(', ');
     function count(n) { return n ? h('span', { className: 'ck-tabcount' }, n) : null; }
@@ -294,6 +296,14 @@ import { Sparkline } from './graficos';
               ['CPF', s.cpf, 'clipboard'], ['Nascimento', s.birthDate ? fdate(s.birthDate) + (age != null ? ', ' + age + ' anos' : '') : null, 'calendar'],
               ['Telefone', s.phone, 'phone'], ['E-mail', s.email, 'mail'],
               ['Sexo', (GENDERS.filter(function (g) { return g.value === s.gender; })[0] || {}).label, 'user'], ['ID do usuário', s.userId != null ? '#' + s.userId : null, 'key']] })),
+          guardian && guardian.name ? h(Panel, { title: 'Responsável', description: age != null && age < 18 ? 'Aluno menor de idade.' : null },
+            h(AlDl, { items: [
+              ['Nome', titleCase(guardian.name), 'users'], ['Parentesco', (RELATIONS.filter(function (r) { return r.value === guardian.relation; })[0] || {}).label, 'user'],
+              ['CPF', guardian.cpf ? maskCpf(guardian.cpf) : null, 'clipboard'], ['E-mail', guardian.email, 'mail'],
+              ['Telefone', guardian.phone ? maskPhone(guardian.phone) : null, 'phone']] }))
+            : age != null && age < 18 ? h(Callout, { tone: 'warning', title: 'Menor de idade sem responsável',
+              action: p.onEdit ? h(Button, { size: 'sm', onClick: p.onEdit }, 'Informar responsável') : null },
+              'Cadastre nome, CPF e e-mail do responsável legal para contratos e cobranças.') : null,
           h(Panel, { title: 'Endereço', actions: p.onEdit && missingAddr.length ? h(Button, { size: 'sm', variant: 'ghost', icon: 'pencil', onClick: p.onEdit }, 'Completar') : null },
             missingAddr.length >= 4 && (a.city || a.uf) ? h('div', { className: 'ck-al-addr' },
               h('span', { className: 'ck-al-addr__icon', 'aria-hidden': true }, h(Icon, { name: 'map-pin', size: 18 })),
@@ -340,10 +350,11 @@ import { Sparkline } from './graficos';
       h('div', { className: 'ck-al-sec__body' }, p.children));
   }
   function fromStudent(s) {
-    s = s || {}; var a = s.address || {};
+    s = s || {}; var a = s.address || {}, g = s.guardian || {};
     return { name: s.name ? titleCase(s.name) : '', cpf: maskCpf(s.cpf), birth: s.birthDate ? fdate(s.birthDate) : '', gender: s.gender || '', email: s.email || '', phone: maskPhone(s.phone),
       cep: maskCep(a.cep), street: a.street || '', number: a.number || '', complement: a.complement || '', district: a.district || '', city: a.city ? titleCase(a.city) : '', uf: a.uf || '',
-      password: '', active: s.status !== 'inativo' };
+      password: '', active: s.status !== 'inativo',
+      gName: g.name ? titleCase(g.name) : '', gCpf: maskCpf(g.cpf), gEmail: g.email || '', gPhone: maskPhone(g.phone), gRelation: g.relation || '' };
   }
   function AlunoForm(p) {
     var edit = p.mode === 'editar';
@@ -365,14 +376,28 @@ import { Sparkline } from './graficos';
     if (f.birth && !birthIso) err.birth = 'Use o formato DD/MM/AAAA.';
     if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
     if (!linked[0] && pwOpen[0] && (!edit || f.password) && f.password.length < 6) err.password = edit ? 'A nova senha precisa de pelo menos 6 caracteres.' : 'Crie uma senha com pelo menos 6 caracteres.';
+    var age = ageOn(birthIso, p.today);
+    // Menor de 18: o responsável legal (nome, CPF e e-mail) passa a ser obrigatório
+    var minor = age != null && age < 18;
+    if (minor) {
+      if (!f.gName.trim() || f.gName.trim().split(/\s+/).length < 2) err.gName = f.gName.trim() ? 'Escreva nome e sobrenome.' : 'Informe o nome do responsável.';
+      if (digits(f.gCpf).length !== 11) err.gCpf = f.gCpf ? 'O CPF tem 11 números.' : 'Informe o CPF do responsável.';
+      else if (digits(f.gCpf) === digits(f.cpf)) err.gCpf = 'Use o CPF do responsável, não o do aluno.';
+      if (!f.gEmail.trim()) err.gEmail = 'Informe o e-mail do responsável.';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.gEmail.trim())) err.gEmail = 'Confira o e-mail. Falta algo como @ ou .com.';
+      if (!editablePhoneValid(f.gPhone, init.gPhone)) err.gPhone = PHONE_ERROR;
+    }
     var show = tried[0] ? err : {};
     var dirty = JSON.stringify(f) !== JSON.stringify(init) || !!linked[0];
-    var age = ageOn(birthIso, p.today);
+    // [rótulo, ok, nota opcional, chave]
     var steps = [
-      ['Identificação', !err.name && !err.cpf && !err.birth && lk[0].state !== 'here'],
-      ['Contato', !err.email && !err.phone],
-      ['Endereço', !!(f.cep && f.street && f.number), 'Opcional'],
-      ['Acesso ao app', linked[0] ? true : edit ? !err.password : !err.password]];
+      ['Identificação', !err.name && !err.cpf && !err.birth && lk[0].state !== 'here', null, 'id'],
+      minor ? ['Responsável', !err.gName && !err.gCpf && !err.gEmail && !err.gPhone, null, 'resp'] : null,
+      ['Contato', !err.email && !err.phone, null, 'contato'],
+      ['Endereço', !!(f.cep && f.street && f.number), 'Opcional', 'end'],
+      ['Acesso ao app', linked[0] ? true : edit ? !err.password : !err.password, null, 'acesso']].filter(Boolean);
+    var stepOk = {};
+    steps.forEach(function (s2) { stepOk[s2[3]] = s2[1]; });
 
     function lookup() {
       if (digits(f.cpf).length !== 11 || !p.onLookupCpf) return;
@@ -383,6 +408,20 @@ import { Sparkline } from './graficos';
       var s = lk[0].student, n = fromStudent(s);
       linked[1](s);
       setMany({ name: n.name, email: n.email, phone: n.phone || f.phone, birth: n.birth || f.birth, gender: n.gender || f.gender, cpf: n.cpf || f.cpf });
+    }
+    var gl = useState({ state: 'idle' });
+    function onGuardianCpf(v) {
+      var m = maskCpf(v); set('gCpf', m);
+      if (digits(m).length !== 11 || !p.onLookupGuardian) { if (gl[0].state !== 'idle') gl[1]({ state: 'idle' }); return; }
+      gl[1]({ state: 'loading' });
+      Promise.resolve(p.onLookupGuardian(digits(m))).then(function (r) {
+        if (!r) { gl[1]({ state: 'none' }); return; }
+        gl[1]({ state: 'found', guardian: r });
+        // Só completa o que está vazio: não apaga o que a recepção já digitou
+        fm[1](function (cur) { return Object.assign({}, cur, { gCpf: m,
+          gName: cur.gName || (r.name ? titleCase(r.name) : ''), gEmail: cur.gEmail || r.email || '',
+          gPhone: cur.gPhone || maskPhone(r.phone), gRelation: cur.gRelation || r.relation || '' }); });
+      }, function () { gl[1]({ state: 'idle' }); });
     }
     function onCep(v) {
       var m = maskCep(v); set('cep', m);
@@ -404,7 +443,8 @@ import { Sparkline } from './graficos';
       }
       p.onSave && p.onSave({ name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, gender: f.gender || null, email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, init.phone),
         address: { cep: digits(f.cep) || null, street: f.street || null, number: f.number || null, complement: f.complement || null, district: f.district || null, city: f.city || null, uf: f.uf || null },
-        password: !linked[0] && f.password ? f.password : null, status: f.active ? 'ativo' : 'inativo', linkedUserId: linked[0] ? linked[0].userId : null });
+        password: !linked[0] && f.password ? f.password : null, status: f.active ? 'ativo' : 'inativo', linkedUserId: linked[0] ? linked[0].userId : null,
+        minor: minor, guardian: minor ? { name: f.gName.trim(), cpf: digits(f.gCpf), email: f.gEmail.trim().toLowerCase(), phone: phoneForApi(f.gPhone, init.gPhone), relation: f.gRelation || null } : null });
     }
 
     var lkState = lk[0].state;
@@ -436,21 +476,36 @@ import { Sparkline } from './graficos';
       h('div', { className: 'ck-al-form__grid' },
         h('div', { className: 'ck-card ck-al-form__main' },
           cpfBlock,
-          h(AlSection, { id: 'al-s1', icon: 'user', title: 'Identificação', done: steps[0][1] && !!f.name },
+          h(AlSection, { id: 'al-s1', icon: 'user', title: 'Identificação', done: stepOk.id && !!f.name },
             h('div', { className: 'ck-al-grid' },
               h(TextField, { className: 'is-wide', label: 'Nome completo', value: f.name, placeholder: 'Como está no documento', autoComplete: 'off', error: show.name, readOnly: !!linked[0],
                 onChange: function (e) { set('name', e.target.value); }, onBlur: function () { if (f.name && f.name === f.name.toUpperCase()) set('name', titleCase(f.name)); } }),
               edit ? h(TextField, { label: 'CPF', value: f.cpf, inputMode: 'numeric', placeholder: '000.000.000-00', error: show.cpf, onChange: function (e) { set('cpf', maskCpf(e.target.value)); } }) : null,
               h(TextField, { label: 'Data de nascimento', value: f.birth, inputMode: 'numeric', placeholder: 'DD/MM/AAAA', icon: 'calendar', error: show.birth,
-                hint: age != null ? age + ' anos' + (age < 18 ? '. Menor de idade: confira o responsável.' : '') : null, onChange: function (e) { set('birth', maskDate(e.target.value)); } }),
+                hint: age != null ? age + ' anos' + (age < 18 ? '. Menor de idade: preencha o responsável abaixo.' : '') : null, onChange: function (e) { set('birth', maskDate(e.target.value)); } }),
               h(SelectField, { label: 'Sexo', value: f.gender, placeholder: 'Escolha', options: GENDERS, className: edit ? 'is-wide' : undefined, onChange: function (e) { set('gender', e.target.value); } }))),
-          h(AlSection, { id: 'al-s2', icon: 'mail', title: 'Contato', done: steps[1][1] && !!f.email },
+          minor ? h(AlSection, { id: 'al-s1b', icon: 'users', title: 'Responsável', description: 'Obrigatório para menores de 18 anos. Fica guardado para contratos, cobranças e cadastros de irmãos.', done: stepOk.resp },
+            h('div', { className: 'ck-al-grid' },
+              h(TextField, { label: 'CPF do responsável', value: f.gCpf, inputMode: 'numeric', placeholder: '000.000.000-00', icon: 'clipboard', error: show.gCpf,
+                hint: !show.gCpf ? (gl[0].state === 'loading' ? 'Buscando responsável…' : gl[0].state === 'found' ? 'Responsável já cadastrado. Dados preenchidos.' : 'Se ele já for responsável de outro aluno, preenchemos o resto.') : null,
+                suffix: gl[0].state === 'loading' ? h(Icon, { name: 'loader', size: 16, className: 'ck-spin ck-al-cepspin' }) : gl[0].state === 'found' ? h(Icon, { name: 'check-circle', size: 16, className: 'ck-al-cepok' }) : null,
+                onChange: function (e) { onGuardianCpf(e.target.value); } }),
+              h(SelectField, { label: 'Parentesco', value: f.gRelation, placeholder: 'Escolha', options: RELATIONS, onChange: function (e) { set('gRelation', e.target.value); } }),
+              h(TextField, { className: 'is-wide', label: 'Nome do responsável', value: f.gName, placeholder: 'Como está no documento', autoComplete: 'off', error: show.gName,
+                onChange: function (e) { set('gName', e.target.value); }, onBlur: function () { if (f.gName && f.gName === f.gName.toUpperCase()) set('gName', titleCase(f.gName)); } }),
+              h(TextField, { label: 'E-mail do responsável', type: 'email', value: f.gEmail, placeholder: 'nome@exemplo.com', icon: 'mail', autoComplete: 'off', error: show.gEmail,
+                onChange: function (e) { set('gEmail', e.target.value); } }),
+              h(TextField, { label: 'Telefone do responsável', type: 'tel', value: f.gPhone, inputMode: 'numeric', placeholder: '(00) 00000-0000', icon: 'phone', error: show.gPhone,
+                onChange: function (e) { set('gPhone', maskPhone(e.target.value)); } })),
+            gl[0].state === 'found' && gl[0].guardian.dependents && gl[0].guardian.dependents.length ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }),
+              'Já é responsável por ' + gl[0].guardian.dependents.map(function (d) { return titleCase(d.name); }).join(', ') + ' nesta academia.') : null) : null,
+          h(AlSection, { id: 'al-s2', icon: 'mail', title: 'Contato', done: stepOk.contato && !!f.email },
             h('div', { className: 'ck-al-grid' },
               h(TextField, { label: 'E-mail', type: 'email', value: f.email, placeholder: 'nome@exemplo.com', icon: 'mail', autoComplete: 'off', error: show.email, readOnly: !!linked[0],
                 hint: !show.email ? 'É o login do aluno no app.' : null, onChange: function (e) { set('email', e.target.value); } }),
               h(TextField, { label: 'Telefone', type: 'tel', value: f.phone, inputMode: 'numeric', placeholder: '(00) 00000-0000', icon: 'phone', error: show.phone,
                 hint: !show.phone ? 'Usado para avisos de cobrança no WhatsApp.' : null, onChange: function (e) { set('phone', maskPhone(e.target.value)); } }))),
-          h(AlSection, { id: 'al-s3', icon: 'map-pin', title: 'Endereço', description: 'Opcional. Necessário para emitir boleto.', done: steps[2][1] },
+          h(AlSection, { id: 'al-s3', icon: 'map-pin', title: 'Endereço', description: 'Opcional. Necessário para emitir boleto.', done: stepOk.end },
             h('div', { className: 'ck-al-grid ck-al-grid--addr' },
               h(TextField, { label: 'CEP', value: f.cep, inputMode: 'numeric', placeholder: '00000-000', error: cp[0].state === 'none' ? 'CEP não encontrado. Preencha o endereço à mão.' : null,
                 hint: cp[0].state === 'ok' ? 'Endereço preenchido pelo CEP.' : 'Preenche rua, bairro e cidade.',
@@ -462,7 +517,7 @@ import { Sparkline } from './graficos';
               h(TextField, { label: 'Bairro', value: f.district, onChange: function (e) { set('district', e.target.value); } }),
               h(TextField, { label: 'Cidade', value: f.city, onChange: function (e) { set('city', e.target.value); } }),
               h(SelectField, { label: 'Estado', value: f.uf, placeholder: 'Escolha', options: UFS.map(function (u) { return { value: u[0], label: u[0] + ', ' + u[1] }; }), onChange: function (e) { set('uf', e.target.value); } }))),
-          h(AlSection, { id: 'al-s4', icon: 'key', title: 'Acesso ao app', done: steps[3][1] && (edit || linked[0] || f.password.length >= 6) },
+          h(AlSection, { id: 'al-s4', icon: 'key', title: 'Acesso ao app', done: stepOk.acesso && (edit || linked[0] || f.password.length >= 6) },
             linked[0] ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'A senha continua a mesma que o aluno já usa.')
               : edit && !pwOpen[0] ? h('div', { className: 'ck-al-pwrow' },
                 h('div', null, h('strong', null, 'Senha'), h('span', null, 'O aluno troca a senha pelo app. Defina uma nova só se ele pedir.')),
@@ -482,7 +537,8 @@ import { Sparkline } from './graficos';
               h('strong', null, f.name.trim() || 'Nome do aluno'),
               h('span', null, f.email.trim() || 'E-mail ainda não informado'))),
           h('ol', { className: 'ck-al-sum__steps' }, steps.map(function (s2, i) {
-            var ok = s2[1] && (i !== 0 || f.name) && (i !== 1 || f.email) && (i !== 3 || edit || linked[0] || f.password.length >= 6);
+            var k = s2[3];
+            var ok = s2[1] && (k !== 'id' || f.name) && (k !== 'contato' || f.email) && (k !== 'acesso' || edit || linked[0] || f.password.length >= 6);
             var bad = !ok && tried[0] && !s2[2];
             return h('li', { key: i, className: ok ? 'is-done' : (bad ? 'is-error' : undefined) },
               h('span', { className: 'ck-al-sum__mark', 'aria-hidden': true }, ok ? h(Icon, { name: 'check', size: 13, strokeWidth: 3 }) : (bad ? h(Icon, { name: 'alert-triangle', size: 12, strokeWidth: 2.25 }) : i + 1)),

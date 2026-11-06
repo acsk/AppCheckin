@@ -175,6 +175,7 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/alunos', [AdminAlunoController::class, 'index']);
             Route::get('/alunos/basico', [AdminAlunoController::class, 'listarBasico']);
             Route::get('/alunos/buscar-cpf/{cpf}', [AdminAlunoController::class, 'buscarPorCpf']);
+            Route::get('/alunos/responsavel/{cpf}', [AdminAlunoController::class, 'buscarResponsavel']);
             Route::post('/alunos/associar', [AdminAlunoController::class, 'associar']);
             Route::get('/alunos/{id}', [AdminAlunoController::class, 'show']);
             Route::get('/alunos/{id}/historico-planos', [AdminAlunoController::class, 'historicoPlanos']);
@@ -204,6 +205,8 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::post('/matriculas/contas/{id}/baixa', [AdminMatriculaController::class, 'darBaixaConta']);
             Route::get('/turmas-fixas', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'index']);
             Route::post('/turmas-fixas', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'store']);
+            Route::post('/turmas-fixas/acoes', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'actions']);
+            Route::get('/turmas-fixas/{id}', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'show'])->whereNumber('id');
             Route::put('/turmas-fixas/{id}', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'update'])->whereNumber('id');
             Route::put('/matriculas/{id}/tipo-acesso', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'acesso']);
             Route::get('/matriculas/{id}/grade', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'grade'])->whereNumber('id');

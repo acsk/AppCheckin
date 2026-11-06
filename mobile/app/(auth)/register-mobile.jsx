@@ -47,7 +47,24 @@ const INITIAL_FORM = {
   bairro: "",
   cidade: "",
   estado: "",
+  // Responsável legal: obrigatório para menores de 18 anos
+  responsavel_nome: "",
+  responsavel_cpf: "",
+  responsavel_email: "",
+  responsavel_telefone: "",
+  responsavel_parentesco: "",
 };
+
+/** Valores aceitos pela apiV2 (App\Support\ResponsavelLegal::PARENTESCOS). */
+const PARENTESCO_OPCOES = [
+  { value: "mae", label: "Mãe" },
+  { value: "pai", label: "Pai" },
+  { value: "avo", label: "Avó ou avô" },
+  { value: "tio", label: "Tia ou tio" },
+  { value: "irmao", label: "Irmã ou irmão" },
+  { value: "tutor", label: "Tutor legal" },
+  { value: "outro", label: "Outro" },
+];
 
 /** Valores aceitos pela apiV2 em alunos.sexo (App\Support\SexoAluno). */
 const SEXO_OPCOES = [
@@ -60,7 +77,8 @@ const SEXO_OPCOES = [
 const ETAPAS = ["Academia", "Seus dados", "Endereço"];
 const CAMPOS_DA_ETAPA = [
   ["tenant_id"],
-  ["nome", "cpf", "data_nascimento", "sexo", "email", "telefone", "whatsapp"],
+  ["nome", "cpf", "data_nascimento", "sexo", "email", "telefone", "whatsapp",
+    "responsavel_nome", "responsavel_cpf", "responsavel_email", "responsavel_telefone"],
   ["cep", "logradouro", "numero", "cidade", "estado"],
 ];
 const CAMPOS_ENDERECO = ["cep", "logradouro", "numero", "complemento", "bairro", "cidade", "estado"];
@@ -154,6 +172,8 @@ export default function RegisterMobileScreen() {
   const cpfDigits = digitos(form.cpf);
   const cepDigits = digitos(form.cep);
   const idade = idadeDe(form.data_nascimento);
+  const menorDeIdade = idade != null && idade < 18;
+  const respCpfDigits = digitos(form.responsavel_cpf);
   const temEndereco = CAMPOS_ENDERECO.some((k) => String(form[k] || "").trim());
 
   const set = (field, value) => {
@@ -175,6 +195,18 @@ export default function RegisterMobileScreen() {
     if (!form.sexo) e.sexo = "Escolha uma opção.";
     if (!validPhone(form.telefone)) e.telefone = PHONE_ERROR;
     if (!form.mesmoWhatsapp && !validPhone(form.whatsapp)) e.whatsapp = PHONE_ERROR;
+    if (menorDeIdade) {
+      if (form.responsavel_nome.trim().split(/\s+/).filter(Boolean).length < 2) {
+        e.responsavel_nome = form.responsavel_nome.trim() ? "Escreva nome e sobrenome." : "Informe o nome do responsável.";
+      }
+      if (!isValidCpf(respCpfDigits)) {
+        e.responsavel_cpf = respCpfDigits.length < 11 ? "O CPF tem 11 números." : "Esse CPF não é válido. Confira os números.";
+      } else if (respCpfDigits === cpfDigits) {
+        e.responsavel_cpf = "Use o CPF do responsável, não o seu.";
+      }
+      if (!isValidEmail(form.responsavel_email.trim())) e.responsavel_email = "Confira o e-mail. Exemplo: nome@email.com";
+      if (form.responsavel_telefone && !validPhone(form.responsavel_telefone)) e.responsavel_telefone = PHONE_ERROR;
+    }
     if (temEndereco) {
       if (cepDigits.length !== 8) e.cep = "O CEP tem 8 números.";
       if (!form.logradouro.trim()) e.logradouro = "Informe a rua.";
@@ -183,7 +215,7 @@ export default function RegisterMobileScreen() {
       if (!/^[A-Za-z]{2}$/.test(form.estado.trim())) e.estado = "Sigla com 2 letras.";
     }
     return e;
-  }, [form, tenantId, cpfDigits, cepDigits, idade, temEndereco]);
+  }, [form, tenantId, cpfDigits, cepDigits, idade, temEndereco, menorDeIdade, respCpfDigits]);
 
   // Erros de formato aparecem depois da primeira tentativa de avançar; os do servidor, sempre.
   const erro = (k) => errosServidor[k] || (tentou[etapa] ? erros[k] : undefined);
@@ -362,6 +394,14 @@ export default function RegisterMobileScreen() {
       telefone: normalizePhone(form.telefone),
       whatsapp: normalizePhone(form.mesmoWhatsapp ? form.telefone : form.whatsapp),
     };
+
+    if (menorDeIdade) {
+      payload.responsavel_nome = form.responsavel_nome.trim().replace(/\s+/g, " ");
+      payload.responsavel_cpf = respCpfDigits;
+      payload.responsavel_email = form.responsavel_email.trim().toLowerCase();
+      if (form.responsavel_telefone) payload.responsavel_telefone = normalizePhone(form.responsavel_telefone);
+      if (form.responsavel_parentesco) payload.responsavel_parentesco = form.responsavel_parentesco;
+    }
 
     if (temEndereco) {
       payload.cep = cepDigits;
@@ -563,7 +603,7 @@ export default function RegisterMobileScreen() {
               error={erro("data_nascimento")}
               hint={
                 idade != null
-                  ? `${idade} ${idade === 1 ? "ano" : "anos"}${idade < 18 ? ". Menores de idade precisam de um responsável na recepção." : ""}`
+                  ? `${idade} ${idade === 1 ? "ano" : "anos"}${idade < 18 ? ". Como você é menor de idade, informe um responsável abaixo." : ""}`
                   : null
               }
               onChangeText={(v) => set("data_nascimento", formatDate(v))}
@@ -597,6 +637,79 @@ export default function RegisterMobileScreen() {
             </View>
           </View>
         </Section>
+
+        {menorDeIdade ? (
+          <Section title="Responsável" bare>
+            <View style={[cardStyle, styles.fields]}>
+              <Text style={styles.introText}>
+                Menores de 18 anos precisam de um responsável. A academia usa esses dados em contratos e avisos.
+              </Text>
+              <TextField
+                label="Nome do responsável"
+                icon="users"
+                placeholder="Como está no documento"
+                autoCapitalize="words"
+                value={form.responsavel_nome}
+                error={erro("responsavel_nome")}
+                onChangeText={(v) => set("responsavel_nome", v)}
+                editable={!loading}
+              />
+              <TextField
+                label="CPF do responsável"
+                icon="credit-card"
+                placeholder="000.000.000-00"
+                keyboardType="numeric"
+                value={form.responsavel_cpf}
+                error={erro("responsavel_cpf")}
+                onChangeText={(v) => set("responsavel_cpf", formatCpf(v))}
+                editable={!loading}
+              />
+              <TextField
+                label="E-mail do responsável"
+                icon="mail"
+                placeholder="nome@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={form.responsavel_email}
+                error={erro("responsavel_email")}
+                onChangeText={(v) => set("responsavel_email", v)}
+                editable={!loading}
+              />
+              <PhoneField
+                label="Telefone do responsável (opcional)"
+                icon="phone"
+                placeholder="(82) 99999-9999"
+                keyboardType="phone-pad"
+                value={form.responsavel_telefone}
+                error={erro("responsavel_telefone")}
+                onChangeText={(v) => set("responsavel_telefone", v)}
+                editable={!loading}
+              />
+              <View>
+                <Text style={styles.fieldLabel}>Parentesco (opcional)</Text>
+                <View style={styles.sexo} accessibilityRole="radiogroup" accessibilityLabel="Parentesco">
+                  {PARENTESCO_OPCOES.map((o) => {
+                    const on = form.responsavel_parentesco === o.value;
+                    return (
+                      <Pressable
+                        key={o.value}
+                        onPress={() => set("responsavel_parentesco", on ? "" : o.value)}
+                        disabled={loading}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: on }}
+                        style={[styles.sexoOpt, on && styles.sexoOptOn]}
+                      >
+                        {on ? <Feather name="check" size={16} color={ds.onInverse} /> : null}
+                        <Text style={[styles.sexoText, on && { color: ds.onInverse }]}>{o.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          </Section>
+        ) : null}
 
         <Section title="Contato" bare>
           <View style={[cardStyle, styles.fields]}>

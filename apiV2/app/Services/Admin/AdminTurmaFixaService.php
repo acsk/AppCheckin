@@ -18,15 +18,22 @@ class AdminTurmaFixaService
 {
     public function listar(int $tenantId): array
     {
-        $turmas = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->orderBy('nome')->get();
+        $gestao = app(AdminTurmaFixaGestaoService::class);
+        $turmas = DB::table('turmas_fixas')->where('tenant_id', $tenantId)
+            ->when($gestao->atualizado(), fn ($q) => $q->whereNull('deleted_at'))->orderBy('nome')->get();
         foreach ($turmas as $turma) {
             $turma->dias_semana = json_decode($turma->dias_semana, true);
+            if ($gestao->atualizado()) {
+                $turma->situacao = $gestao->situacao($turma);
+                $turma->alunos_vinculados = count($gestao->vinculados($tenantId, (int) $turma->id));
+                $turma->disponivel_matricula = $turma->ativo && ! $turma->vigencia_fim && $turma->vigencia_inicio <= AcademyDateTime::today();
+            }
         }
 
         return ['turmas' => $turmas];
     }
 
-    public function criar(int $tenantId, array $dados): array
+    public function criar(int $tenantId, array $dados, ?string $vigenciaInicio = null): array
     {
         $v = Validator::make($dados, [
             'nome' => 'required|string|max:255', 'professor_id' => 'required|integer|min:1',
@@ -42,14 +49,32 @@ class AdminTurmaFixaService
             throw ValidationException::withMessages(['modalidade_id' => 'Modalidade inválida.']);
         }
 
-        return DB::transaction(function () use ($tenantId, $v) {
+        return DB::transaction(function () use ($tenantId, $v, $vigenciaInicio) {
             app(AcessoHibridoService::class)->bloquearGrupos($tenantId);
+            if (app(AdminTurmaFixaGestaoService::class)->atualizado()) {
+                $inicio = $vigenciaInicio ?? AcademyDateTime::today();
+                $grupos = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('professor_id', $v['professor_id'])
+                    ->where('ativo', 1)->whereNull('deleted_at')->where('horario_inicio', '<', $v['horario_fim'])
+                    ->where('horario_fim', '>', $v['horario_inicio'])->lockForUpdate()->get();
+                foreach ($grupos as $grupo) {
+                    $comuns = array_intersect($v['dias_semana'], json_decode($grupo->dias_semana, true, 512, JSON_THROW_ON_ERROR));
+                    $desde = max($inicio, $grupo->vigencia_inicio);
+                    foreach ($comuns as $diaSemana) {
+                        $dia = new \DateTimeImmutable($desde);
+                        $data = $dia->modify('+'.(((int) $diaSemana - (int) $dia->format('N') + 7) % 7).' days')->format('Y-m-d');
+                        if ($grupo->vigencia_fim === null || $data <= $grupo->vigencia_fim) {
+                            throw ValidationException::withMessages(['professor_id' => 'Professor já tem uma turma recorrente nesse dia e horário, inclusive na grade futura.']);
+                        }
+                    }
+                }
+            }
             $id = DB::table('turmas_fixas')->insertGetId([
                 'tenant_id' => $tenantId, 'nome' => trim($v['nome']), 'professor_id' => $v['professor_id'],
                 'modalidade_id' => $v['modalidade_id'], 'dias_semana' => json_encode($v['dias_semana']),
                 'horario_inicio' => $v['horario_inicio'], 'horario_fim' => $v['horario_fim'],
                 'capacidade' => $v['capacidade'], 'checkin_livre' => $v['checkin_livre'] ?? false,
                 'ativo' => 1, 'created_at' => now(), 'updated_at' => now(),
+                ...(app(AdminTurmaFixaGestaoService::class)->atualizado() ? ['vigencia_inicio' => $vigenciaInicio ?? AcademyDateTime::today()] : []),
             ]);
             $this->gerarAulas($tenantId, (int) $id);
 
@@ -65,12 +90,20 @@ class AdminTurmaFixaService
             if (! $grupo) {
                 return 0;
             }
+            $gestao = app(AdminTurmaFixaGestaoService::class);
+            if ($gestao->atualizado()) {
+                $gestao->prepararOcorrencias($tenantId, $id);
+                if ($grupo->deleted_at || ($grupo->vigencia_fim && $grupo->vigencia_fim < AcademyDateTime::today())) {
+                    return 0;
+                }
+            }
             DB::table('professores')->where('id', $grupo->professor_id)->lockForUpdate()->first();
 
             $diasSemana = json_decode($grupo->dias_semana, true);
             $dias = app(DiaRepository::class);
             $turmas = app(TurmaRepository::class);
             $total = 0;
+            $novas = [];
             $dia = AcademyDateTime::now();
             for ($i = 0; $i < 90; $i++, $dia->modify('+1 day')) {
                 // ISO: segunda=1 ... domingo=7 (distinto do DAYOFWEEK legado).
@@ -78,6 +111,12 @@ class AdminTurmaFixaService
                     continue;
                 }
                 $data = $dia->format('Y-m-d');
+                if ($gestao->atualizado() && ($data < $grupo->vigencia_inicio
+                    || ($grupo->vigencia_fim && $data > $grupo->vigencia_fim)
+                    || DB::table('turma_fixa_pausas')->where('tenant_id', $tenantId)->where('turma_fixa_id', $id)
+                        ->whereNull('cancelada_em')->where('inicio', '<=', $data)->where('fim', '>=', $data)->exists())) {
+                    continue;
+                }
                 $d = $dias->findByData($data, $tenantId);
                 if (! $d) {
                     $campos = ['data' => $data, 'ativo' => 1];
@@ -115,13 +154,19 @@ class AdminTurmaFixaService
                 if ($turmas->verificarHorarioOcupado($tenantId, (int) $diaId, $grupo->horario_inicio, $grupo->horario_fim, null, $grupo->professor_id)) {
                     throw ValidationException::withMessages(['horario_inicio' => "Professor já possui aula em {$data} neste horário."]);
                 }
-                $turmas->criar([
+                $novas[] = $turmas->criar([
                     'tenant_id' => $tenantId, 'turma_fixa_id' => $id, 'professor_id' => $grupo->professor_id,
                     'modalidade_id' => $grupo->modalidade_id, 'dia_id' => $diaId, 'nome' => $grupo->nome,
                     'horario_inicio' => $grupo->horario_inicio, 'horario_fim' => $grupo->horario_fim,
                     'limite_alunos' => $grupo->capacidade, 'checkin_livre' => (bool) $grupo->checkin_livre,
                 ]);
                 $total++;
+            }
+            if ($gestao->atualizado() && $novas) {
+                $origem = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('substituida_por_id', $id)->lockForUpdate()->value('id');
+                if ($origem) {
+                    $gestao->copiarConfiguracoesOcorrencias($tenantId, (int) $origem, $id, $novas);
+                }
             }
 
             return $total;
@@ -139,9 +184,18 @@ class AdminTurmaFixaService
             app(AcessoHibridoService::class)->bloquearGrupos($tenantId);
             $grupo = DB::table('turmas_fixas')->where('tenant_id', $tenantId)->where('id', $id)->lockForUpdate()->first();
             abort_unless($grupo, 404, 'Turma fixa não encontrada.');
+            if (app(AdminTurmaFixaGestaoService::class)->atualizado()) {
+                abort_if($grupo->deleted_at || $grupo->substituida_por_id, 422, 'A turma foi excluída/substituída. Edite a turma de destino.');
+            }
             $acesso = app(AcessoHibridoService::class);
             $matriculas = DB::table('matriculas as m')->join('status_matricula as s', 's.id', '=', 'm.status_id')
                 ->where('m.tenant_id', $tenantId)->where('m.tipo_acesso', 'turma_fixa')->where('s.permite_checkin', 1)
+                ->when($acesso->gradeAtualizada(), fn ($q) => $q->whereExists(function ($g) use ($id, $tenantId, $acesso) {
+                    $g->selectRaw('1')->from('matricula_grade as g')->whereColumn('g.matricula_id', 'm.id')->where('g.tenant_id', $tenantId)->where('g.turma_fixa_id', $id);
+                    if ($acesso->gradeTemporal()) {
+                        $g->where(fn ($p) => $p->whereNull('g.vigencia_fim')->orWhere('g.vigencia_fim', '>=', AcademyDateTime::today()));
+                    }
+                }), fn ($q) => $q->where('m.turma_fixa_id', $id))
                 ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [AcademyDateTime::today()])
                 ->lockForUpdate()->get(['m.*']);
             DB::table('turmas_fixas')->where('id', $id)->update([
@@ -206,6 +260,7 @@ class AdminTurmaFixaService
         abort_unless($m, 404, 'Matrícula não encontrada.');
 
         return ['grade' => app(AcessoHibridoService::class)->grade($tenantId, $id),
+            'grade_agendada' => app(AcessoHibridoService::class)->grade($tenantId, $id, null, true),
             'grade_revisao' => (bool) ($m->grade_revisao ?? false), 'frequencia_semanal' => (int) $m->checkins_semanais];
     }
 }

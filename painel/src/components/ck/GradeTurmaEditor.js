@@ -24,6 +24,7 @@ export default function GradeTurmaEditor({
   frequenciaSemanal,
   disabled = false,
   onGroupChange,
+  dataVigencia,
 }) {
   const frequencia = Number(frequenciaSemanal);
   const maximo = Number.isFinite(frequencia) && frequencia > 0 ? frequencia : null;
@@ -34,6 +35,9 @@ export default function GradeTurmaEditor({
   };
   const gruposDisponiveis = (item) => turmas.filter((turma) => (
     (!modalidadeId || Number(turma.modalidade_id) === Number(modalidadeId))
+    && ((dataVigencia ? (!turma.vigencia_inicio || turma.vigencia_inicio <= dataVigencia)
+      && (!turma.vigencia_fim || turma.vigencia_fim >= dataVigencia) : turma.disponivel_matricula !== false)
+      || String(turma.id) === String(item.turma_fixa_id))
     && (turma.ativo == null || Number(turma.ativo) === 1 || String(turma.id) === String(item.turma_fixa_id))
   ));
 

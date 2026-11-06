@@ -1003,7 +1003,7 @@ class UsuarioRepository
                 ]);
 
                 // Dados pessoais ficam em usuarios (Pessoa); alunos guarda só o vínculo
-                $this->gravarDadosPessoais($usuarioId, array_intersect_key($data, array_flip(['whatsapp', 'data_nascimento', 'sexo'])));
+                $this->gravarDadosPessoais($usuarioId, array_intersect_key($data, array_flip(['whatsapp', 'data_nascimento', 'sexo', ...\App\Support\ResponsavelLegal::CAMPOS])));
                 DB::table('alunos')->insert([
                     'usuario_id' => $usuarioId,
                     'nome' => $nome,
