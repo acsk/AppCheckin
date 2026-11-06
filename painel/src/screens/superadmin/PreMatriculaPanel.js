@@ -106,7 +106,7 @@ export default function PreMatriculaPanel() {
           {tenantId ? <>
             <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão preencher a solicitação no app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
             <Switch label="Envio obrigatório" description="Quando ativo, o app exige que o aluno envie a pré-matrícula para continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
-            <SelectField label="Público" value={config.publico} options={[
+            <SelectField label="Público" hint="A opção com matrícula ativa só inclui alunos com uma matrícula de status ativa nesta academia. Para alunos sem matrícula, selecione “Sem matrícula ativa” ou “Com ou sem matrícula ativa”." value={config.publico} options={[
               { value: 'sem_matricula', label: publicoLabel.sem_matricula },
               { value: 'com_matricula', label: publicoLabel.com_matricula },
               { value: 'ambos', label: publicoLabel.ambos },

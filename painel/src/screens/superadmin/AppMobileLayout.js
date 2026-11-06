@@ -5,7 +5,7 @@ import { PageHeader } from '../../components/ck';
 import { authService } from '../../services/authService';
 import { showError } from '../../utils/toast';
 
-// As três páginas do App Mobile compartilham a mesma restrição de acesso.
+// As páginas do App Mobile compartilham a mesma restrição de acesso.
 export default function AppMobileLayout({ title, description, children, pageHeader = true }) {
   const router = useRouter();
   const [autorizado, setAutorizado] = useState(false);

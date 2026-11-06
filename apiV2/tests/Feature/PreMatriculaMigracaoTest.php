@@ -120,6 +120,17 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertCount(1, $this->service->paraAluno(1, 1)['planos']);
     }
 
+    public function test_publico_com_matricula_exige_matricula_ativa_na_academia(): void
+    {
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => true, 'publico' => 'com_matricula',
+        ], 99);
+        $this->assertNull($this->service->paraAluno(1, 1));
+
+        DB::table('matriculas')->insert(['tenant_id' => 1, 'aluno_id' => 1, 'status_id' => 1]);
+        $this->assertNotNull($this->service->paraAluno(1, 1));
+    }
+
     public function test_envio_exige_dias_distintos_e_aprovacao_nao_cria_matricula(): void
     {
         try {

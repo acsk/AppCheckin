@@ -41,6 +41,7 @@ const SECTIONS = [
         children: [
           { id: 'app-mobile-configuracoes', label: 'Configurações', path: '/app-mobile/configuracoes', roles: [4] },
           { id: 'app-mobile-cadastral', label: 'Atualização Cadastral', path: '/app-mobile/atualizacao-cadastral', roles: [4] },
+          { id: 'app-mobile-pre-matricula', label: 'Pré-matrícula de migração', path: '/app-mobile/pre-matricula', roles: [4] },
           { id: 'app-mobile-versoes', label: 'Versões', path: '/app-mobile/versoes', roles: [4] },
         ],
       },
