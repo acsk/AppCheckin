@@ -29,6 +29,8 @@ import AtualizacaoCadastralGate from "@/src/components/AtualizacaoCadastralGate"
 import ComunicacaoGate from "@/src/components/ComunicacaoGate";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import AcessoAlunoBanner from "@/src/components/AcessoAlunoBanner";
+import PerfilDependenteBanner from "@/src/components/PerfilDependenteBanner";
+import { onTrocaDePerfil } from "@/src/services/dependenteService";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
@@ -111,6 +113,12 @@ function RootContent() {
   const hideSplash = useCallback(() => setSplashVisible(false), []);
   const [hasToken, setHasToken] = useState(false);
   const [sessionExpiredVisible, setSessionExpiredVisible] = useState(false);
+  // Troca de perfil (responsável ↔ dependente): remonta a navegação para não sobrar dado do outro perfil
+  const [perfilKey, setPerfilKey] = useState(0);
+  useEffect(() => onTrocaDePerfil(() => {
+    setPerfilKey((k) => k + 1);
+    setTimeout(() => router.replace("/(tabs)"), 0);
+  }), [router]);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(
     "Sua sessão expirou. Por favor, faça login novamente.",
   );
@@ -241,11 +249,13 @@ function RootContent() {
           <GatewayPickerProvider>
           <ForceUpdateGate>
           {!isTokenChecked ? bootScreen : (
-          <View style={styles.root}>
+          <View style={styles.root} key={`perfil-${perfilKey}`}>
             <StatusBarBackground />
             {hasToken && Platform.OS === "web" ? <AcessoAlunoBanner /> : null}
+            {hasToken ? <PerfilDependenteBanner /> : null}
             <Stack screenOptions={{ contentStyle: { backgroundColor: ds.ground } }}>
               <Stack.Screen name="acesso-aluno" options={{ headerShown: false }} />
+              <Stack.Screen name="dependentes" options={{ headerShown: false }} />
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

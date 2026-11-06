@@ -639,6 +639,9 @@ class AuthService
         if ($menorDeIdade) {
             $responsavel = array_intersect_key($data, array_flip(\App\Support\ResponsavelLegal::CAMPOS));
             array_push($erros, ...\App\Support\ResponsavelLegal::validar($responsavel, $cpfLimpo));
+            if ($emailNorm !== '' && $emailNorm === mb_strtolower(trim((string) ($responsavel['responsavel_email'] ?? '')), 'UTF-8')) {
+                $erros[] = 'O e-mail do aluno não pode ser o do responsável. Se a criança não tem e-mail, entre na conta do responsável e adicione como dependente.';
+            }
         }
 
         if ($erros !== []) {
@@ -652,7 +655,9 @@ class AuthService
 
         // Quem já tem conta (ex.: aluno de outra academia) entra com a senha e o login o vincula
         // a esta academia (vincular_tenant_id): sem a senha, ninguém matricula a conta de outra pessoa.
-        $contaExistente = ['conta_existente' => true, 'tenant_id' => $tenantId];
+        // Menor com e-mail/CPF já cadastrado: quase sempre é o do pai/mãe. O app sugere entrar na conta
+        // do responsável e cadastrar a criança como dependente.
+        $contaExistente = ['conta_existente' => true, 'tenant_id' => $tenantId, 'sugerir_dependente' => $menorDeIdade];
         if ($this->usuarios->emailExists($emailNorm)) {
             return ApiError::json('Email já cadastrado', 'EMAIL_ALREADY_EXISTS', 409, extra: $contaExistente);
         }
@@ -700,6 +705,11 @@ class AuthService
             }
 
             return response()->json($body, 500, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        if ($menorDeIdade) {
+            // Responsável com conta passa a ver o menor como dependente no app
+            $this->usuarios->ligarAoResponsavel($usuarioId);
         }
 
         $alunoId = $this->usuarios->findAlunoId($usuarioId);

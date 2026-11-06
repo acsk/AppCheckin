@@ -95,7 +95,22 @@ class JwtAuthenticate
             $usuario['papel_id'] = Papel::ALUNO;
         }
 
+        // Perfil de dependente (token emitido para o responsável): o vínculo é conferido a cada requisição
+        $responsavelId = (int) ($payload['responsavel_id'] ?? 0);
+        if ($responsavelId > 0) {
+            $vinculado = \Illuminate\Support\Facades\DB::table('usuarios')->where('id', $userId)
+                ->where('responsavel_usuario_id', $responsavelId)->exists();
+            if (! $vinculado) {
+                return ApiError::json('Este perfil não está mais ligado à sua conta. Entre de novo.', 'DEPENDENTE_DESVINCULADO', 401);
+            }
+            // Trocar de academia emitiria um token comum do dependente, sem o vínculo com o responsável
+            if ($request->path() === 'v2/auth/select-tenant') {
+                return ApiError::json('Volte para o seu perfil para trocar de academia.', 'DEPENDENTE_TROCA_TENANT_BLOQUEADA', 403);
+            }
+        }
+
         $request->attributes->set('userId', $userId);
+        $request->attributes->set('responsavel_id', $responsavelId > 0 ? $responsavelId : null);
         $request->attributes->set('userEmail', $payload['email'] ?? $usuario['email']);
         $request->attributes->set('tenantId', $resolvedTenantId ?: null);
         $request->attributes->set('tenant_id', $resolvedTenantId ?: null);

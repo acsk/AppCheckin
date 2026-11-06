@@ -1538,7 +1538,7 @@ class MatriculaMigracaoService
             $mp = $gatewayInstance instanceof MercadoPagoService ? $gatewayInstance : null;
 
             if ($metodoPagamento === 'pix') {
-                $cpfPix = preg_replace('/[^0-9]/', '', $usuario['cpf'] ?? '');
+                $cpfPix = preg_replace('/[^0-9]/', '', (string) (\App\Support\Pagador::aplicar($dadosPagamento)['aluno_cpf'] ?? '')); // menor: CPF do responsável
                 if (strlen($cpfPix) !== 11) {
                     return ['erro' => $this->erro(400, 'CPF_OBRIGATORIO_PIX', 'CPF válido é obrigatório para pagamento PIX')];
                 }

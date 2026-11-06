@@ -132,6 +132,10 @@ class MobilePacoteVendaService
             return $this->erro(404, 'USUARIO_NAO_ENCONTRADO', 'Usuário não encontrado');
         }
         $cpf = preg_replace('/\D/', '', (string) ($usuario['cpf'] ?? ''));
+        // Menor/dependente sem CPF: paga o responsável (Pagador::aplicar no gateway troca os dados)
+        if (strlen($cpf) !== 11 && ($pagador = \App\Support\Pagador::responsavelDoUsuario($userId))) {
+            $cpf = $pagador['cpf'];
+        }
         if (strlen($cpf) !== 11) {
             return $this->erro(400, 'CPF_OBRIGATORIO', 'Cadastre um CPF válido para pagar pelo app.');
         }

@@ -55,6 +55,7 @@ class AsaasService
 
     public function criarPagamentoPix(array $data): array
     {
+        $data = \App\Support\Pagador::aplicar($data); // menor: cobra do responsável
         $this->validarCredenciais();
         if (! $this->enablePix) {
             throw new \RuntimeException('PIX não está habilitado nas credenciais Asaas desta academia.');
@@ -222,6 +223,7 @@ class AsaasService
      */
     public function criarCobrancaCheckout(array $data): array
     {
+        $data = \App\Support\Pagador::aplicar($data); // menor: cobra do responsável
         $this->validarCredenciais();
 
         $tipos = $this->billingTypesHabilitados();

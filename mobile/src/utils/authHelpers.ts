@@ -9,6 +9,7 @@ const AUTH_STORAGE_KEYS = [
   '@appcheckin:current_tenant',
   '@appcheckin:tenant_id',
   '@appcheckin:tenant_slug',
+  '@appcheckin:perfil_dependente',
 ];
 
 /**

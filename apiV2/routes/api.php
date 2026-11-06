@@ -86,6 +86,11 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
 
         Route::prefix('mobile')->group(function () {
             Route::get('/app-config', [AppConfigController::class, 'mobile']);
+            // Dependentes (perfis de menores na conta do responsável)
+            Route::get('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'index']);
+            Route::post('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'store']);
+            Route::post('/dependentes/voltar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'voltar']);
+            Route::post('/dependentes/{usuarioId}/entrar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'entrar'])->whereNumber('usuarioId');
             Route::get('/perfil', [MobileController::class, 'perfil']);
             Route::post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
             Route::get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);

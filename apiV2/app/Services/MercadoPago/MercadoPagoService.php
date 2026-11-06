@@ -335,6 +335,7 @@ class MercadoPagoService
      */
     public function criarPreferenciaPagamento(array $data): array
     {
+        $data = \App\Support\Pagador::aplicar($data); // menor: cobra do responsável
         $this->validarCredenciais();
         
         // Montar itens do pagamento
@@ -444,6 +445,7 @@ class MercadoPagoService
      */
     public function criarPagamentoPix(array $data): array
     {
+        $data = \App\Support\Pagador::aplicar($data); // menor: cobra do responsável
         $this->validarCredenciais();
 
         // Verificar se PIX está habilitado nos parâmetros
@@ -885,6 +887,7 @@ class MercadoPagoService
      */
     public function criarPreferenciaAssinatura(array $data, int $duracaoMeses = 1): array
     {
+        $data = \App\Support\Pagador::aplicar($data); // menor: cobra do responsável
         $this->validarCredenciais();
         
         // Assinaturas recorrentes exigem cartão de crédito

@@ -8,6 +8,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import AppHeader from "@/src/components/ds/AppHeader";
+import { dependenteService } from "@/src/services/dependenteService";
 import { useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -125,6 +126,28 @@ export default function ContaScreen() {
   const [loading, setLoading] = useState(true);
   const [photoError, setPhotoError] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  // Perfil de dependente: sem login próprio (senha) e sem gerenciar outros dependentes
+  const [perfilDependente, setPerfilDependente] = useState<{ nome: string } | null>(null);
+  const [qtdDependentes, setQtdDependentes] = useState<number | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let vivo = true;
+      void dependenteService.perfilAtual().then(async (p: { nome: string } | null) => {
+        if (!vivo) return;
+        setPerfilDependente(p);
+        if (p) return;
+        try {
+          const lista = await dependenteService.listar();
+          if (vivo) setQtdDependentes(lista.length);
+        } catch {
+          if (vivo) setQtdDependentes(null);
+        }
+      });
+      return () => {
+        vivo = false;
+      };
+    }, []),
+  );
 
   const load = useCallback(async () => {
     try {
@@ -243,13 +266,31 @@ export default function ContaScreen() {
             subtitle="Contratar ou renovar"
             onPress={() => router.push("/planos")}
           />
-          <Row
-            icon="key"
-            tone="info"
-            title="Alterar senha"
-            onPress={() => setShowRecoveryModal(true)}
-          />
+          {perfilDependente ? null : (
+            <Row
+              icon="key"
+              tone="info"
+              title="Alterar senha"
+              onPress={() => setShowRecoveryModal(true)}
+            />
+          )}
         </Section>
+
+        {perfilDependente ? null : (
+          <Section title="FAMÍLIA">
+            <Row
+              icon="users"
+              tone="success"
+              title="Dependentes"
+              subtitle={
+                qtdDependentes
+                  ? `${qtdDependentes} ${qtdDependentes === 1 ? "dependente" : "dependentes"} · trocar de perfil`
+                  : "Cadastre filhos menores, sem e-mail nem CPF"
+              }
+              onPress={() => router.push("/dependentes" as any)}
+            />
+          </Section>
+        )}
 
         {whatsappLinks.length > 0 ? (
           <Section title="GRUPOS DO WHATSAPP">

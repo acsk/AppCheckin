@@ -49,6 +49,12 @@ export default function LoginScreen() {
   const vincularTenantId = Number(params?.vincular) > 0 ? Number(params.vincular) : null;
   const vincularAcademia = typeof params?.academia === "string" ? params.academia : "";
   const emailParam = typeof params?.email === "string" ? params.email : "";
+  // Veio do cadastro de um menor com o e-mail/CPF do responsável: depois do login, abre Dependentes
+  const destinoDependentes = params?.destino === "dependentes";
+  const irAposLogin = () => {
+    router.replace("/(tabs)");
+    if (destinoDependentes) setTimeout(() => router.push("/dependentes"), 50);
+  };
   // Login é claro: a barra do navegador acompanha o fundo.
   useBrowserThemeColor(DS.surfaceSunken);
   const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
@@ -381,7 +387,7 @@ export default function LoginScreen() {
 
         await ativarBiometriaSeMarcada();
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
-        router.replace("/(tabs)");
+        irAposLogin();
       } else if (
         response?.requires_tenant_selection &&
         Array.isArray(response?.tenants) &&
@@ -507,7 +513,7 @@ export default function LoginScreen() {
           return;
         }
         await ativarBiometriaSeMarcada();
-        router.replace("/(tabs)");
+        irAposLogin();
       } else {
         console.warn("Seleção de academia retornou sem token");
         setTenantSelectionError("Não foi possível selecionar a academia");
@@ -554,7 +560,9 @@ export default function LoginScreen() {
               <View style={styles.vincular}>
                 <Feather name="user-check" size={16} color={DS.info} />
                 <Text style={styles.vincularText}>
-                  Você já possui cadastro no AppCheckin. Faça o login e selecione a {vincularAcademia || "academia"} para entrar.
+                  {destinoDependentes
+                    ? `Entre com a sua conta. Em seguida você cadastra a criança como dependente na ${vincularAcademia || "academia"}, sem e-mail nem CPF.`
+                    : `Você já possui cadastro no AppCheckin. Faça o login e selecione a ${vincularAcademia || "academia"} para entrar.`}
                 </Text>
               </View>
             ) : null}

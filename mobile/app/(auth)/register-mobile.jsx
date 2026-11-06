@@ -166,6 +166,8 @@ export default function RegisterMobileScreen() {
   const [errosServidor, setErrosServidor] = useState({});
   const [formError, setFormError] = useState("");
   const [contaExistente, setContaExistente] = useState(false);
+  // Menor com e-mail/CPF já cadastrado: quase sempre é o do responsável → cadastrar como dependente
+  const [sugerirDependente, setSugerirDependente] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cepStatus, setCepStatus] = useState("idle");
 
@@ -435,6 +437,7 @@ export default function RegisterMobileScreen() {
 
       // Já tem conta (ex.: em outra academia): entra com a senha e o login vincula esta academia.
       if (error?.conta_existente) {
+        setSugerirDependente(!!error?.sugerir_dependente);
         setContaExistente(true);
         return;
       }
@@ -644,6 +647,21 @@ export default function RegisterMobileScreen() {
               <Text style={styles.introText}>
                 Menores de 18 anos precisam de um responsável. A academia usa esses dados em contratos e avisos.
               </Text>
+              <Pressable
+                style={styles.dependenteDica}
+                onPress={() =>
+                  router.replace({
+                    pathname: "/(auth)/login",
+                    params: { vincular: String(tenantId || ""), academia: tenantEscolhido?.nome || "", destino: "dependentes" },
+                  })
+                }
+                accessibilityRole="link"
+              >
+                <Feather name="users" size={16} color={ds.ink} />
+                <Text style={styles.dependenteDicaText}>
+                  A criança não tem e-mail ou CPF? O responsável que já tem conta <Text style={styles.link}>entra e cadastra como dependente</Text>.
+                </Text>
+              </Pressable>
               <TextField
                 label="Nome do responsável"
                 icon="users"
@@ -929,16 +947,25 @@ export default function RegisterMobileScreen() {
         visible={contaExistente}
         variant="dialog"
         icon="user-check"
-        title="Você já tem cadastro"
-        description={`Você já possui cadastro no AppCheckin. Faça o login e selecione a ${tenantEscolhido?.nome || "academia"} para entrar.`}
+        title={sugerirDependente ? "Esse e-mail ou CPF já tem conta" : "Você já tem cadastro"}
+        description={
+          sugerirDependente
+            ? "Se é o seu e-mail ou CPF, entre na sua conta e cadastre a criança como dependente, sem e-mail nem CPF. Você troca para o perfil dela no app."
+            : `Você já possui cadastro no AppCheckin. Faça o login e selecione a ${tenantEscolhido?.nome || "academia"} para entrar.`
+        }
         primary={{
-          label: "Fazer login",
+          label: sugerirDependente ? "Entrar e cadastrar dependente" : "Fazer login",
           icon: "log-in",
           onPress: () => {
             setContaExistente(false);
             router.replace({
               pathname: "/(auth)/login",
-              params: { vincular: String(tenantId), academia: tenantEscolhido?.nome || "", email: form.email.trim().toLowerCase() },
+              params: {
+                vincular: String(tenantId),
+                academia: tenantEscolhido?.nome || "",
+                email: sugerirDependente ? "" : form.email.trim().toLowerCase(),
+                ...(sugerirDependente ? { destino: "dependentes" } : {}),
+              },
             });
           },
         }}
@@ -1010,6 +1037,8 @@ const styles = StyleSheet.create({
   sexoOptOn: { backgroundColor: ds.inverse, borderColor: ds.inverse },
   sexoText: { fontSize: 15, lineHeight: 18, fontWeight: "700", color: ds.ink, textAlign: "center" },
   wa: { gap: space[1] },
+  dependenteDica: { flexDirection: "row", gap: space[2], alignItems: "flex-start", padding: space[3], borderRadius: radius.md, backgroundColor: ds.surfaceSunken },
+  dependenteDicaText: { ...type.caption, color: ds.ink, flex: 1 },
   check: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
   checkBox: {
     width: 22,

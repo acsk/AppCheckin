@@ -367,18 +367,21 @@ import { Sparkline } from './graficos';
     function set(k, v) { var n = Object.assign({}, f); n[k] = v; fm[1](n); }
     function setMany(o) { fm[1](Object.assign({}, f, o)); }
     var birthIso = brToIso(f.birth);
-    var err = {};
-    if (!f.name.trim() || f.name.trim().split(/\s+/).length < 2) err.name = f.name.trim() ? 'Escreva nome e sobrenome.' : 'Informe o nome completo.';
-    if (!f.email.trim()) err.email = 'Informe o e-mail. O aluno usa ele para entrar no app.';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) err.email = 'Confira o e-mail. Falta algo como @ ou .com.';
-    if (f.cpf && digits(f.cpf).length !== 11) err.cpf = 'O CPF tem 11 números.';
-    else if (!f.cpf && !edit && p.requireCpf) err.cpf = 'Informe o CPF. Ele identifica o aluno em qualquer academia.';
-    if (f.birth && !birthIso) err.birth = 'Use o formato DD/MM/AAAA.';
-    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
-    if (!linked[0] && pwOpen[0] && (!edit || f.password) && f.password.length < 6) err.password = edit ? 'A nova senha precisa de pelo menos 6 caracteres.' : 'Crie uma senha com pelo menos 6 caracteres.';
     var age = ageOn(birthIso, p.today);
     // Menor de 18: o responsável legal (nome, CPF e e-mail) passa a ser obrigatório
     var minor = age != null && age < 18;
+    // Menor sem e-mail: dependente. Não tem login próprio; o responsável entra no perfil dele pelo app.
+    var noLogin = minor && !f.email.trim() && !linked[0];
+    var err = {};
+    if (!f.name.trim() || f.name.trim().split(/\s+/).length < 2) err.name = f.name.trim() ? 'Escreva nome e sobrenome.' : 'Informe o nome completo.';
+    if (!f.email.trim()) { if (!minor) err.email = 'Informe o e-mail. O aluno usa ele para entrar no app.'; }
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) err.email = 'Confira o e-mail. Falta algo como @ ou .com.';
+    else if (minor && f.gEmail && f.email.trim().toLowerCase() === f.gEmail.trim().toLowerCase()) err.email = 'Esse é o e-mail do responsável. Deixe em branco se a criança não tiver.';
+    if (f.cpf && digits(f.cpf).length !== 11) err.cpf = 'O CPF tem 11 números.';
+    else if (!f.cpf && !edit && p.requireCpf && !minor) err.cpf = 'Informe o CPF. Ele identifica o aluno em qualquer academia.';
+    if (f.birth && !birthIso) err.birth = 'Use o formato DD/MM/AAAA.';
+    if (!editablePhoneValid(f.phone, init.phone)) err.phone = PHONE_ERROR;
+    if (!linked[0] && !noLogin && pwOpen[0] && (!edit || f.password) && f.password.length < 6) err.password = edit ? 'A nova senha precisa de pelo menos 6 caracteres.' : 'Crie uma senha com pelo menos 6 caracteres.';
     if (minor) {
       if (!f.gName.trim() || f.gName.trim().split(/\s+/).length < 2) err.gName = f.gName.trim() ? 'Escreva nome e sobrenome.' : 'Informe o nome do responsável.';
       if (digits(f.gCpf).length !== 11) err.gCpf = f.gCpf ? 'O CPF tem 11 números.' : 'Informe o CPF do responsável.';
@@ -443,7 +446,7 @@ import { Sparkline } from './graficos';
       }
       p.onSave && p.onSave({ name: f.name.trim(), cpf: digits(f.cpf) || null, birthDate: birthIso, gender: f.gender || null, email: f.email.trim().toLowerCase(), phone: phoneForApi(f.phone, init.phone),
         address: { cep: digits(f.cep) || null, street: f.street || null, number: f.number || null, complement: f.complement || null, district: f.district || null, city: f.city || null, uf: f.uf || null },
-        password: !linked[0] && f.password ? f.password : null, status: f.active ? 'ativo' : 'inativo', linkedUserId: linked[0] ? linked[0].userId : null,
+        password: !linked[0] && !noLogin && f.password ? f.password : null, status: f.active ? 'ativo' : 'inativo', linkedUserId: linked[0] ? linked[0].userId : null,
         minor: minor, guardian: minor ? { name: f.gName.trim(), cpf: digits(f.gCpf), email: f.gEmail.trim().toLowerCase(), phone: phoneForApi(f.gPhone, init.gPhone), relation: f.gRelation || null } : null });
     }
 
@@ -499,10 +502,10 @@ import { Sparkline } from './graficos';
                 onChange: function (e) { set('gPhone', maskPhone(e.target.value)); } })),
             gl[0].state === 'found' && gl[0].guardian.dependents && gl[0].guardian.dependents.length ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }),
               'Já é responsável por ' + gl[0].guardian.dependents.map(function (d) { return titleCase(d.name); }).join(', ') + ' nesta academia.') : null) : null,
-          h(AlSection, { id: 'al-s2', icon: 'mail', title: 'Contato', done: stepOk.contato && !!f.email },
+          h(AlSection, { id: 'al-s2', icon: 'mail', title: 'Contato', done: stepOk.contato && (!!f.email || noLogin) },
             h('div', { className: 'ck-al-grid' },
               h(TextField, { label: 'E-mail', type: 'email', value: f.email, placeholder: 'nome@exemplo.com', icon: 'mail', autoComplete: 'off', error: show.email, readOnly: !!linked[0],
-                hint: !show.email ? 'É o login do aluno no app.' : null, onChange: function (e) { set('email', e.target.value); } }),
+                hint: !show.email ? (minor ? 'Opcional para menores. Sem e-mail, o responsável usa o app no perfil da criança.' : 'É o login do aluno no app.') : null, onChange: function (e) { set('email', e.target.value); } }),
               h(TextField, { label: 'Telefone', type: 'tel', value: f.phone, inputMode: 'numeric', placeholder: '(00) 00000-0000', icon: 'phone', error: show.phone,
                 hint: !show.phone ? 'Usado para avisos de cobrança no WhatsApp.' : null, onChange: function (e) { set('phone', maskPhone(e.target.value)); } }))),
           h(AlSection, { id: 'al-s3', icon: 'map-pin', title: 'Endereço', description: 'Opcional. Necessário para emitir boleto.', done: stepOk.end },
@@ -517,8 +520,9 @@ import { Sparkline } from './graficos';
               h(TextField, { label: 'Bairro', value: f.district, onChange: function (e) { set('district', e.target.value); } }),
               h(TextField, { label: 'Cidade', value: f.city, onChange: function (e) { set('city', e.target.value); } }),
               h(SelectField, { label: 'Estado', value: f.uf, placeholder: 'Escolha', options: UFS.map(function (u) { return { value: u[0], label: u[0] + ', ' + u[1] }; }), onChange: function (e) { set('uf', e.target.value); } }))),
-          h(AlSection, { id: 'al-s4', icon: 'key', title: 'Acesso ao app', done: stepOk.acesso && (edit || linked[0] || f.password.length >= 6) },
+          h(AlSection, { id: 'al-s4', icon: 'key', title: 'Acesso ao app', done: stepOk.acesso && (edit || linked[0] || noLogin || f.password.length >= 6) },
             linked[0] ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'info', size: 15 }), 'A senha continua a mesma que o aluno já usa.')
+              : noLogin ? h('p', { className: 'ck-al-hint' }, h(Icon, { name: 'users', size: 15 }), 'Sem e-mail, sem login próprio. Se o responsável tiver conta no app (mesmo CPF), ele entra no perfil da criança em Conta › Dependentes.')
               : edit && !pwOpen[0] ? h('div', { className: 'ck-al-pwrow' },
                 h('div', null, h('strong', null, 'Senha'), h('span', null, 'O aluno troca a senha pelo app. Defina uma nova só se ele pedir.')),
                 h(Button, { icon: 'key', onClick: function () { pwOpen[1](true); } }, 'Definir nova senha'))
@@ -538,7 +542,7 @@ import { Sparkline } from './graficos';
               h('span', null, f.email.trim() || 'E-mail ainda não informado'))),
           h('ol', { className: 'ck-al-sum__steps' }, steps.map(function (s2, i) {
             var k = s2[3];
-            var ok = s2[1] && (k !== 'id' || f.name) && (k !== 'contato' || f.email) && (k !== 'acesso' || edit || linked[0] || f.password.length >= 6);
+            var ok = s2[1] && (k !== 'id' || f.name) && (k !== 'contato' || f.email || noLogin) && (k !== 'acesso' || edit || linked[0] || noLogin || f.password.length >= 6);
             var bad = !ok && tried[0] && !s2[2];
             return h('li', { key: i, className: ok ? 'is-done' : (bad ? 'is-error' : undefined) },
               h('span', { className: 'ck-al-sum__mark', 'aria-hidden': true }, ok ? h(Icon, { name: 'check', size: 13, strokeWidth: 3 }) : (bad ? h(Icon, { name: 'alert-triangle', size: 12, strokeWidth: 2.25 }) : i + 1)),

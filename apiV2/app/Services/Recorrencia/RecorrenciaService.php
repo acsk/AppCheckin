@@ -270,6 +270,13 @@ class RecorrenciaService
         if (! $aluno) {
             return $this->erro('Aluno não encontrado nesta academia.', 404);
         }
+        // Menor de idade: a assinatura sai no nome e CPF do responsável
+        if ($pagador = \App\Support\Pagador::responsavelDoUsuario($usuarioId)) {
+            $aluno->nome = $pagador['nome'];
+            $aluno->cpf = $pagador['cpf'];
+            $aluno->email = $pagador['email'] ?: $aluno->email;
+            $aluno->telefone = $pagador['telefone'] ?: $aluno->telefone;
+        }
         $ciclo = DB::table('plano_ciclos')->where('id', $cicloId)->where('tenant_id', $tenantId)->where('ativo', 1)->where('cobranca_mensal', 1)->first();
         $plano = $ciclo ? DB::table('planos as p')->leftJoin('modalidades as m', 'm.id', '=', 'p.modalidade_id')
             ->where('p.id', $ciclo->plano_id)->where('p.tenant_id', $tenantId)->where('p.ativo', 1)

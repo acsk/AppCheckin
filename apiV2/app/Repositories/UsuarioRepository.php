@@ -261,6 +261,22 @@ class UsuarioRepository
         });
     }
 
+    /**
+     * Liga o menor à conta do responsável (usuarios.responsavel_usuario_id) quando o CPF do responsável
+     * é de alguém com conta: ele passa a ver a criança como dependente no app.
+     */
+    public function ligarAoResponsavel(int $usuarioId): void
+    {
+        if (! $this->hasColumn('usuarios', 'responsavel_usuario_id')) {
+            return;
+        }
+        $cpf = DB::table('usuarios')->where('id', $usuarioId)->value('responsavel_cpf');
+        $responsavelId = $cpf ? DB::table('usuarios')->where('cpf', $cpf)->where('id', '<>', $usuarioId)->value('id') : null;
+        if ($responsavelId) {
+            DB::table('usuarios')->where('id', $usuarioId)->update(['responsavel_usuario_id' => (int) $responsavelId]);
+        }
+    }
+
     public function isTenantActive(int $tenantId): bool
     {
         return DB::table('tenants')
@@ -279,11 +295,13 @@ class UsuarioRepository
                 $cep = isset($data['cep']) ? preg_replace('/[^0-9]/', '', (string) $data['cep']) : null;
                 $telefone = \App\Support\Telefone::normalizar($data['telefone'] ?? null);
 
+                // Menor sem e-mail próprio (dependente): sem login, senha aleatória
+                $senha = (string) ($data['senha'] ?? '');
                 $usuarioId = DB::table('usuarios')->insertGetId([
                     'nome' => $nome,
-                    'email' => $email,
-                    'email_global' => $email,
-                    'senha_hash' => password_hash((string) $data['senha'], PASSWORD_BCRYPT),
+                    'email' => $email !== '' ? $email : null,
+                    'email_global' => $email !== '' ? $email : null,
+                    'senha_hash' => password_hash($senha !== '' ? $senha : bin2hex(random_bytes(16)), PASSWORD_BCRYPT),
                     'cpf' => $cpf ?: null,
                     'cep' => $cep ?: null,
                     'logradouro' => isset($data['logradouro']) ? mb_strtoupper(trim((string) $data['logradouro']), 'UTF-8') : null,
@@ -435,7 +453,8 @@ class UsuarioRepository
     {
         $update = [];
         if (isset($data['email'])) {
-            $email = mb_strtolower(trim((string) $data['email']), 'UTF-8');
+            // Vazio = sem e-mail (dependente): NULL, para não colidir no índice único
+            $email = mb_strtolower(trim((string) $data['email']), 'UTF-8') ?: null;
             $update['email'] = $email;
             if ($this->hasColumn('usuarios', 'email_global')) {
                 $update['email_global'] = $email;

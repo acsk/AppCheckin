@@ -372,6 +372,8 @@ export const authService = {
     await AsyncStorage.removeItem("@appcheckin:current_tenant");
     // "Ver app como aluno" (AcessoAlunoBanner)
     await AsyncStorage.removeItem("@appcheckin:acesso_aluno");
+    // Perfil de dependente (PerfilDependenteBanner)
+    await AsyncStorage.removeItem("@appcheckin:perfil_dependente");
   },
 
   /**

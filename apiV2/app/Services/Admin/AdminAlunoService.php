@@ -145,6 +145,8 @@ class AdminAlunoService
                     }
                 }
 
+                $this->usuarios->ligarAoResponsavel($usuarioId);
+
                 return $this->alunos->findByUsuarioId($usuarioId);
             });
 
@@ -223,6 +225,9 @@ class AdminAlunoService
                         $usuarioData['cpf'] = $data['cpf'];
                     }
                     $this->usuarios->updateAuthFields((int) $aluno['usuario_id'], $usuarioData);
+                }
+                if (array_key_exists('responsavel_cpf', $data)) {
+                    $this->usuarios->ligarAoResponsavel((int) $aluno['usuario_id']);
                 }
             });
 
@@ -557,12 +562,15 @@ class AdminAlunoService
     private function validarDados(array $data, ?int $usuarioIdExcluir, int $tenantId, bool $isUpdate, array $atual = []): array
     {
         $errors = [];
+        // Menor de idade com responsável pode ficar sem e-mail, CPF e senha: entra pelo perfil do responsável
+        $dependente = ! $isUpdate && ResponsavelLegal::ehMenor(isset($data['data_nascimento']) ? (string) $data['data_nascimento'] : null)
+            && ! empty($data['responsavel_cpf']);
 
         if (! $isUpdate && empty($data['nome'])) {
             $errors[] = 'Nome é obrigatório';
         }
 
-        if (! $isUpdate) {
+        if (! $isUpdate && ! ($dependente && empty($data['email']))) {
             if (empty($data['email'])) {
                 $errors[] = 'Email é obrigatório';
             } elseif (! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
@@ -570,6 +578,8 @@ class AdminAlunoService
             } elseif ($this->usuarios->emailExists((string) $data['email'], $usuarioIdExcluir)) {
                 $errors[] = 'Email já cadastrado';
             }
+        } elseif (isset($data['email']) && $data['email'] === '' && $this->semEmailPermitido(array_merge($atual, $data))) {
+            // Menor com responsável pode ficar sem e-mail (perfil de dependente)
         } elseif (isset($data['email'])) {
             if (! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
@@ -578,7 +588,7 @@ class AdminAlunoService
             }
         }
 
-        if (! $isUpdate) {
+        if (! $isUpdate && ! ($dependente && empty($data['email']))) {
             if (empty($data['senha'])) {
                 $errors[] = 'Senha é obrigatória';
             } elseif (strlen((string) $data['senha']) < 6) {
@@ -588,7 +598,7 @@ class AdminAlunoService
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
 
-        if (! $isUpdate) {
+        if (! $isUpdate && ! ($dependente && empty($data['cpf']))) {
             if (empty($data['cpf'])) {
                 $errors[] = 'CPF é obrigatório';
             } else {
@@ -630,6 +640,13 @@ class AdminAlunoService
         }
 
         return $errors;
+    }
+
+    /** @param  array<string, mixed>  $efetivo */
+    private function semEmailPermitido(array $efetivo): bool
+    {
+        return ResponsavelLegal::ehMenor(isset($efetivo['data_nascimento']) ? (string) $efetivo['data_nascimento'] : null)
+            && ! empty($efetivo['responsavel_cpf']);
     }
 
     /**
