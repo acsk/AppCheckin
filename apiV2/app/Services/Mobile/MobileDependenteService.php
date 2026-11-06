@@ -33,7 +33,7 @@ class MobileDependenteService
             ->where('u.responsavel_usuario_id', $responsavelId)
             ->orderBy('u.data_nascimento', 'desc')
             ->orderBy('u.nome')
-            ->get(['u.id', 'u.nome', 'u.data_nascimento', 'u.sexo', 'u.responsavel_parentesco', 'a.id as aluno_id', 'tup.ativo as ativo_na_academia', Pessoa::select('foto_caminho', 'u', 'a'),
+            ->get(['u.id', 'u.nome', 'u.email', 'u.cpf', 'u.data_nascimento', 'u.sexo', 'u.responsavel_parentesco', 'a.id as aluno_id', 'tup.ativo as ativo_na_academia', Pessoa::select('foto_caminho', 'u', 'a'),
                 Pessoa::existe('usuarios', 'dependente_pin_hash') ? DB::raw('CASE WHEN u.dependente_pin_hash IS NULL THEN 0 ELSE 1 END as tem_pin') : DB::raw('0 as tem_pin')]);
 
         $dependentes = $linhas->map(fn ($d) => [
@@ -43,6 +43,8 @@ class MobileDependenteService
             'data_nascimento' => $d->data_nascimento ? substr((string) $d->data_nascimento, 0, 10) : null,
             'idade' => ResponsavelLegal::idade($d->data_nascimento ? (string) $d->data_nascimento : null),
             'sexo' => $d->sexo,
+            'cpf' => $d->cpf,
+            'email' => $d->email,
             'parentesco' => $d->responsavel_parentesco,
             'foto_caminho' => $d->foto_caminho,
             'na_academia' => (int) ($d->ativo_na_academia ?? 0) === 1,
@@ -68,42 +70,11 @@ class MobileDependenteService
             return $this->erro('Complete o seu CPF em Conta antes de adicionar dependentes. Ele vai nas cobranças da criança.', 'RESPONSAVEL_SEM_CPF', 422);
         }
 
-        $nome = trim(preg_replace('/\s+/', ' ', (string) ($data['nome'] ?? '')) ?? '');
-        $nascimento = trim((string) ($data['data_nascimento'] ?? ''));
-        $sexo = SexoAluno::normalizar($data['sexo'] ?? null);
-        $parentesco = ResponsavelLegal::normalizarParentesco($data['parentesco'] ?? null);
-        $cpf = Documento::digitos((string) ($data['cpf'] ?? ''));
-        $email = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
-
-        $erros = [];
-        if (count(array_filter(explode(' ', $nome))) < 2) {
-            $erros[] = 'Informe nome e sobrenome do dependente';
-        }
-        $idade = ResponsavelLegal::idade($nascimento);
-        if ($idade === null) {
-            $erros[] = 'Data de nascimento inválida';
-        } elseif ($idade >= ResponsavelLegal::MAIORIDADE) {
-            $erros[] = 'Dependente precisa ter menos de 18 anos. Quem é maior de idade faz o próprio cadastro.';
-        }
-        if ($sexo === null) {
-            $erros[] = SexoAluno::mensagemInvalido();
-        }
-        if (($data['parentesco'] ?? '') !== '' && $parentesco === null) {
-            $erros[] = 'Parentesco inválido';
-        }
-        if ($cpf !== '' && ! Documento::cpfValido($cpf)) {
-            $erros[] = 'CPF do dependente inválido';
-        } elseif ($cpf !== '' && $cpf === $cpfResp) {
-            $erros[] = 'Esse é o seu CPF. Deixe em branco se a criança não tiver CPF.';
-        }
-        if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $erros[] = 'E-mail do dependente inválido';
-        } elseif ($email !== '' && $email === mb_strtolower((string) $resp->email, 'UTF-8')) {
-            $erros[] = 'Esse é o seu e-mail. Deixe em branco se a criança não tiver e-mail.';
-        }
+        [$campos, $erros] = $this->validarDependente($data, $cpfResp, (string) $resp->email);
         if ($erros !== []) {
             return ['status' => 422, 'body' => ['success' => false, 'code' => 'VALIDATION_ERROR', 'error' => $erros[0], 'errors' => $erros]];
         }
+        ['nome' => $nome, 'nascimento' => $nascimento, 'sexo' => $sexo, 'parentesco' => $parentesco, 'cpf' => $cpf, 'email' => $email] = $campos;
 
         $guardiao = [
             'responsavel_nome' => $resp->nome,
@@ -150,6 +121,85 @@ class MobileDependenteService
         });
 
         return $this->criado($usuarioId, $tenantId, false);
+    }
+
+    /**
+     * Edita o dependente (nome, nascimento, sexo, parentesco, CPF e e-mail opcionais).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function atualizar(int $responsavelId, int $dependenteId, array $data): array
+    {
+        $dep = DB::table('usuarios')->where('id', $dependenteId)->where('responsavel_usuario_id', $responsavelId)->first(['id']);
+        $resp = DB::table('usuarios')->where('id', $responsavelId)->first(['email', 'cpf']);
+        if (! $dep || ! $resp) {
+            return $this->erro('Dependente não encontrado', 'DEPENDENTE_NAO_ENCONTRADO', 404);
+        }
+        [$c, $erros] = $this->validarDependente($data, Documento::digitos((string) $resp->cpf), (string) $resp->email);
+        if ($erros !== []) {
+            return ['status' => 422, 'body' => ['success' => false, 'code' => 'VALIDATION_ERROR', 'error' => $erros[0], 'errors' => $erros]];
+        }
+        if ($c['cpf'] !== '' && $this->usuarios->cpfExists($c['cpf'], $dependenteId)) {
+            return $this->erro('Esse CPF já tem cadastro no Check-in. Fale com a recepção.', 'CPF_ALREADY_EXISTS', 409);
+        }
+        if ($c['email'] !== '' && $this->usuarios->emailExists($c['email'], $dependenteId)) {
+            return $this->erro('Esse e-mail já tem cadastro. Deixe em branco ou use outro.', 'EMAIL_ALREADY_EXISTS', 409);
+        }
+
+        DB::transaction(function () use ($dependenteId, $c) {
+            $this->usuarios->updateAuthFields($dependenteId, ['email' => $c['email'], 'cpf' => $c['cpf']]);
+            $this->usuarios->gravarDadosPessoais($dependenteId, [
+                'nome' => $c['nome'], 'data_nascimento' => $c['nascimento'], 'sexo' => $c['sexo'], 'responsavel_parentesco' => $c['parentesco'],
+            ]);
+        });
+
+        return ['status' => 200, 'body' => ['success' => true, 'message' => 'Dados atualizados']];
+    }
+
+    /**
+     * Campos normalizados e erros do formulário do dependente.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{0: array{nome: string, nascimento: string, sexo: ?string, parentesco: ?string, cpf: string, email: string}, 1: list<string>}
+     */
+    private function validarDependente(array $data, string $cpfResp, string $emailResp): array
+    {
+        $nome = trim(preg_replace('/\s+/', ' ', (string) ($data['nome'] ?? '')) ?? '');
+        $nascimento = trim((string) ($data['data_nascimento'] ?? ''));
+        $sexo = SexoAluno::normalizar($data['sexo'] ?? null);
+        $parentesco = ResponsavelLegal::normalizarParentesco($data['parentesco'] ?? null);
+        $cpf = Documento::digitos((string) ($data['cpf'] ?? ''));
+        $email = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
+
+        $erros = [];
+        if (count(array_filter(explode(' ', $nome))) < 2) {
+            $erros[] = 'Informe nome e sobrenome do dependente';
+        }
+        $idade = ResponsavelLegal::idade($nascimento);
+        if ($idade === null) {
+            $erros[] = 'Data de nascimento inválida';
+        } elseif ($idade >= ResponsavelLegal::MAIORIDADE) {
+            $erros[] = 'Dependente precisa ter menos de 18 anos. Quem é maior de idade faz o próprio cadastro.';
+        }
+        if ($sexo === null) {
+            $erros[] = SexoAluno::mensagemInvalido();
+        }
+        if (($data['parentesco'] ?? '') !== '' && $parentesco === null) {
+            $erros[] = 'Parentesco inválido';
+        }
+        if ($cpf !== '' && ! Documento::cpfValido($cpf)) {
+            $erros[] = 'CPF do dependente inválido';
+        } elseif ($cpf !== '' && $cpf === $cpfResp) {
+            $erros[] = 'Esse é o seu CPF. Deixe em branco se a criança não tiver CPF.';
+        }
+        if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $erros[] = 'E-mail do dependente inválido';
+        } elseif ($email !== '' && $email === mb_strtolower($emailResp, 'UTF-8')) {
+            $erros[] = 'Esse é o seu e-mail. Deixe em branco se a criança não tiver e-mail.';
+        }
+
+        return [['nome' => $nome, 'nascimento' => $nascimento, 'sexo' => $sexo, 'parentesco' => $parentesco, 'cpf' => $cpf, 'email' => $email], $erros];
     }
 
     /**

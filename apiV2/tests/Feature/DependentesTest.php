@@ -268,4 +268,23 @@ class DependentesTest extends TestCase
             $this->assertFalse(JwtAuthenticate::ehCompraOuPagamento($p), $p);
         }
     }
+
+    public function test_responsavel_edita_o_dependente(): void
+    {
+        $id = $this->service()->criar(self::PAI, self::TENANT, $this->filho())['body']['data']['dependente']['usuario_id'];
+
+        $r = $this->service()->atualizar(self::PAI, $id, $this->filho(['nome' => 'Joao Pedro Cabral', 'parentesco' => 'tutor', 'email' => 'joao@exemplo.com']));
+        $this->assertSame(200, $r['status'], json_encode($r['body']));
+        $u = DB::table('usuarios')->find($id);
+        $this->assertSame('JOAO PEDRO CABRAL', $u->nome);
+        $this->assertSame('tutor', $u->responsavel_parentesco);
+        $this->assertSame('joao@exemplo.com', $u->email);
+        $this->assertSame('JOAO PEDRO CABRAL', DB::table('alunos')->where('usuario_id', $id)->value('nome'));
+
+        // Apagar o e-mail volta a NULL; outra pessoa não edita; o e-mail do pai é recusado
+        $this->assertSame(200, $this->service()->atualizar(self::PAI, $id, $this->filho(['email' => '']))['status']);
+        $this->assertNull(DB::table('usuarios')->where('id', $id)->value('email'));
+        $this->assertSame(404, $this->service()->atualizar(99, $id, $this->filho())['status']);
+        $this->assertSame(422, $this->service()->atualizar(self::PAI, $id, $this->filho(['email' => 'andre@exemplo.com']))['status']);
+    }
 }

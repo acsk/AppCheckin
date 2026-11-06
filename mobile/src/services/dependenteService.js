@@ -122,6 +122,15 @@ export const dependenteService = {
     }
   },
 
+  async atualizar(usuarioId, payload) {
+    try {
+      const r = await api.put(`/mobile/dependentes/${usuarioId}`, payload);
+      return r.data;
+    } catch (error) {
+      throw erroDaApi(error);
+    }
+  },
+
   async definirPin(usuarioId, pin) {
     try {
       const r = await api.put(`/mobile/dependentes/${usuarioId}/pin`, { pin });

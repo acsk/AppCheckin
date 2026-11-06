@@ -35,6 +35,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
+import { dependenteService } from "@/src/services/dependenteService";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -111,6 +112,11 @@ export default function AccountScreen() {
   const [apiUrl, setApiUrl] = useState<string>("");
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  // No perfil de um dependente o menu esconde Dependentes e Alterar senha (não há login com senha)
+  const [perfilDependente, setPerfilDependente] = useState<{ nome: string } | null>(null);
+  useEffect(() => {
+    void dependenteService.perfilAtual().then(setPerfilDependente);
+  }, []);
   const showSidebar = homeOverlay === "sidebar";
   const sidebarClosingRef = useRef(false);
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
@@ -814,15 +820,25 @@ export default function AccountScreen() {
                 onPress: goTo("/(tabs)/recordes"),
               }]
             : []),
-          {
-            icon: "key",
+          ...(perfilDependente ? [] : [{
+            icon: "key" as const,
             label: "Alterar senha",
             onPress: () => {
               closeSidebar();
               setShowRecoveryModal(true);
             },
-          },
+          }]),
         ],
+      },
+      {
+        title: "Família",
+        items: perfilDependente ? [] : [{
+          icon: "users" as const,
+          tone: "success" as const,
+          label: "Dependentes",
+          hint: "Filhos, PIN de acesso e troca de perfil",
+          onPress: goTo("/dependentes"),
+        }],
       },
       {
         title: "Grupos do WhatsApp",

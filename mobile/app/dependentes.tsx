@@ -7,11 +7,14 @@ import { ds, radius, space, type } from "@/src/components/ds/tokens";
 import { dependenteService } from "@/src/services/dependenteService";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-type Dependente = { usuario_id: number; nome: string; idade: number | null; parentesco: string | null; na_academia: boolean; tem_pin: boolean };
+type Dependente = {
+  usuario_id: number; nome: string; idade: number | null; parentesco: string | null; na_academia: boolean; tem_pin: boolean;
+  data_nascimento: string | null; sexo: string | null; cpf: string | null; email: string | null;
+};
 
 const SEXO = [
   { value: "feminino", label: "Feminino" },
@@ -90,6 +93,9 @@ export default function DependentesScreen() {
   const [carregando, setCarregando] = useState(true);
   const [erroLista, setErroLista] = useState("");
   const [formAberto, setFormAberto] = useState(false);
+  // Dependente em edição (null = cadastro novo)
+  const [editando, setEditando] = useState<Dependente | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const [form, setForm] = useState(VAZIO);
   const [tentou, setTentou] = useState(false);
   const [salvando, setSalvando] = useState(false);
@@ -171,25 +177,54 @@ export default function DependentesScreen() {
   if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) erros.email = "Confira o e-mail ou deixe em branco.";
   const e = (k: string) => (tentou ? erros[k] : undefined);
 
+  const fecharForm = () => {
+    setForm(VAZIO);
+    setTentou(false);
+    setErroForm("");
+    setEditando(null);
+    setFormAberto(false);
+  };
+
+  const editar = (d: Dependente) => {
+    setPinPara(null);
+    setEditando(d);
+    setForm({
+      nome: titulo(d.nome),
+      nascimento: d.data_nascimento ? d.data_nascimento.split("-").reverse().join("/") : "",
+      sexo: d.sexo || "",
+      parentesco: d.parentesco || "",
+      cpf: d.cpf ? formatCpf(d.cpf) : "",
+      email: d.email || "",
+    });
+    setTentou(false);
+    setErroForm("");
+    setFormAberto(true);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  };
+
   const salvar = async () => {
     setTentou(true);
     if (Object.keys(erros).length) return;
     setSalvando(true);
+    const dados = {
+      nome: form.nome.trim().replace(/\s+/g, " "),
+      data_nascimento: form.nascimento.split("/").reverse().join("-"),
+      sexo: form.sexo,
+      parentesco: form.parentesco || "",
+      cpf: digitos(form.cpf),
+      email: form.email.trim().toLowerCase(),
+    };
     try {
-      await dependenteService.criar({
-        nome: form.nome.trim().replace(/\s+/g, " "),
-        data_nascimento: form.nascimento.split("/").reverse().join("-"),
-        sexo: form.sexo,
-        parentesco: form.parentesco || undefined,
-        cpf: digitos(form.cpf) || undefined,
-        email: form.email.trim().toLowerCase() || undefined,
-      });
-      setForm(VAZIO);
-      setTentou(false);
-      setFormAberto(false);
+      if (editando) {
+        await dependenteService.atualizar(editando.usuario_id, dados);
+        setPinOk(`Dados de ${titulo(dados.nome).split(" ")[0]} atualizados.`);
+      } else {
+        await dependenteService.criar(dados);
+      }
+      fecharForm();
       await carregar();
     } catch (err: any) {
-      setErroForm(err?.message || "Não foi possível cadastrar.");
+      setErroForm(err?.message || (editando ? "Não foi possível salvar." : "Não foi possível cadastrar."));
     } finally {
       setSalvando(false);
     }
@@ -210,7 +245,7 @@ export default function DependentesScreen() {
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <AppHeader title="Dependentes" subtitle="Filhos e menores na sua conta" onBack={() => router.back()} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.info}>
             <Feather name="info" size={16} color={ds.inkMuted} />
             <Text style={styles.infoText}>
@@ -245,6 +280,12 @@ export default function DependentesScreen() {
                     <Text style={styles.acessoLink}>{d.tem_pin ? "Trocar PIN" : "Criar PIN"}</Text>
                   </Text>
                 </Pressable>
+                <Pressable style={styles.acesso} onPress={() => editar(d)} accessibilityRole="button">
+                  <Feather name="edit-2" size={15} color={ds.inkMuted} />
+                  <Text style={styles.acessoText}>
+                    <Text style={styles.acessoLink}>Editar dados</Text>
+                  </Text>
+                </Pressable>
                 {pinPara === d.usuario_id ? (
                   <View style={styles.pinBox}>
                     <Text style={styles.pinInfo}>
@@ -267,7 +308,7 @@ export default function DependentesScreen() {
           {pinOk ? <Text style={styles.ok}>{pinOk}</Text> : null}
 
           {formAberto ? (
-            <Section title="NOVO DEPENDENTE" bare>
+            <Section title={editando ? `EDITAR ${titulo(editando.nome).split(" ")[0].toUpperCase()}` : "NOVO DEPENDENTE"} bare>
               <View style={[cardStyle, styles.fields]}>
                 <TextField label="Nome completo" icon="user" placeholder="Como está no documento" autoCapitalize="words" value={form.nome} error={e("nome")} onChangeText={(v) => set("nome", v)} editable={!salvando} />
                 <TextField label="Data de nascimento" icon="calendar" placeholder="DD/MM/AAAA" keyboardType="numeric" value={form.nascimento} error={e("nascimento")}
@@ -279,12 +320,14 @@ export default function DependentesScreen() {
                 <TextField label="E-mail da criança (opcional)" icon="mail" placeholder="Deixe em branco se não tiver" keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
                   value={form.email} error={e("email")} hint="Não use o seu: a criança entra pelo seu perfil." onChangeText={(v) => set("email", v)} editable={!salvando} />
                 {erroForm ? <Text style={styles.erro}>{erroForm}</Text> : null}
-                <Button block size="lg" icon="user-plus" loading={salvando} onPress={() => void salvar()}>Cadastrar dependente</Button>
-                {lista.length ? <Button block variant="ghost" onPress={() => { setFormAberto(false); setTentou(false); }}>Cancelar</Button> : null}
+                <Button block size="lg" icon={editando ? "save" : "user-plus"} loading={salvando} onPress={() => void salvar()}>
+                  {editando ? "Salvar alterações" : "Cadastrar dependente"}
+                </Button>
+                {lista.length ? <Button block variant="ghost" onPress={fecharForm}>Cancelar</Button> : null}
               </View>
             </Section>
           ) : (
-            <Button block variant="secondary" icon="user-plus" onPress={() => setFormAberto(true)}>Adicionar dependente</Button>
+            <Button block variant="secondary" icon="user-plus" onPress={() => { setEditando(null); setForm(VAZIO); setFormAberto(true); }}>Adicionar dependente</Button>
           )}
         </ScrollView>
       </KeyboardAvoidingView>

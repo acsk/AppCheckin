@@ -93,6 +93,7 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'index']);
             Route::post('/dependentes', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'store']);
             Route::post('/dependentes/voltar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'voltar']);
+            Route::put('/dependentes/{usuarioId}', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'update'])->whereNumber('usuarioId');
             Route::put('/dependentes/{usuarioId}/pin', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'definirPin'])->whereNumber('usuarioId');
             Route::delete('/dependentes/{usuarioId}/pin', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'removerPin'])->whereNumber('usuarioId');
             Route::post('/dependentes/{usuarioId}/entrar', [\App\Http\Controllers\Api\V2\MobileDependenteController::class, 'entrar'])->whereNumber('usuarioId');

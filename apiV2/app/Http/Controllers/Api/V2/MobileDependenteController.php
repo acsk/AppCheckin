@@ -30,6 +30,11 @@ class MobileDependenteController extends Controller
         return $this->comoResponsavel($request, fn (int $u, int $t) => $this->dependentes->entrar($u, $usuarioId, $t));
     }
 
+    public function update(Request $request, int $usuarioId): JsonResponse
+    {
+        return $this->comoResponsavel($request, fn (int $u) => $this->dependentes->atualizar($u, $usuarioId, $request->all()));
+    }
+
     public function definirPin(Request $request, int $usuarioId): JsonResponse
     {
         return $this->comoResponsavel($request, fn (int $u) => $this->dependentes->definirPin($u, $usuarioId, (string) $request->input('pin', '')));
