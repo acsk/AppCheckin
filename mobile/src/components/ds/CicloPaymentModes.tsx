@@ -11,21 +11,24 @@ type Props = {
   meses: number;
   fidelidadeMeses?: number;
   bloqueio?: string | null;
+  /** Bloqueia o à vista também (ex.: troca de plano só pela academia). */
+  bloqueioAvista?: string | null;
 };
 
-export default function CicloPaymentModes({ value, onChange, total, mensal, meses, fidelidadeMeses = meses, bloqueio }: Props) {
+export default function CicloPaymentModes({ value, onChange, total, mensal, meses, fidelidadeMeses = meses, bloqueio, bloqueioAvista }: Props) {
   return (
     <View style={styles.group} accessibilityRole="radiogroup" accessibilityLabel="Como pagar este ciclo">
       {([
         { id: "avista", title: "À vista", price: total, description: `${meses === 1 ? "1 mês" : `${meses} meses`} de acesso, uma cobrança` },
         { id: "assinatura", title: "Mensal", price: mensal, description: fidelidadeMeses ? `${fidelidadeMeses} cobranças, com fidelidade` : "Todo mês, sem fidelidade" },
       ] as const).map(option => {
-        const disabled = option.id === "assinatura" && !!bloqueio;
+        const motivo = option.id === "assinatura" ? bloqueio : bloqueioAvista;
+        const disabled = !!motivo;
         const selected = value === option.id;
         return (
           <Pressable key={option.id} disabled={disabled} onPress={() => onChange(option.id)}
             accessibilityRole="radio" accessibilityState={{ checked: selected, disabled }}
-            accessibilityLabel={`${option.title}, ${option.price}${option.id === "assinatura" ? "/mês" : ""}. ${option.description}${disabled ? `. ${bloqueio}` : ""}`}
+            accessibilityLabel={`${option.title}, ${option.price}${option.id === "assinatura" ? "/mês" : ""}. ${option.description}${disabled ? `. ${motivo}` : ""}`}
             style={[styles.option, selected && styles.selected, disabled && styles.disabled]}>
             <View style={styles.top}>
               <Text style={[styles.title, disabled && styles.muted]}>{option.title}</Text>
@@ -38,7 +41,7 @@ export default function CicloPaymentModes({ value, onChange, total, mensal, mese
             {disabled ? (
               <View style={styles.note}>
                 <Feather name="lock" size={12} color={ds.ink} style={{ marginTop: 2 }} />
-                <Text style={styles.noteText}>{bloqueio}</Text>
+                <Text style={styles.noteText}>{motivo}</Text>
               </View>
             ) : null}
           </Pressable>

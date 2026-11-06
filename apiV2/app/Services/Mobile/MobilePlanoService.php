@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Repositories\PlanoRepository;
 use App\Services\Payment\PaymentGatewayFactory;
+use App\Support\AcademyDateTime;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\PlanoCicloFormatter;
 use App\Support\TrocaPlanoApp;
@@ -257,6 +258,18 @@ class MobilePlanoService
         }
 
         $podeMigrar = $this->resolverPodeMigrar($userId, $tenantId, $planoId, (int) ($plano['modalidade_id'] ?? 0));
+
+        // Bloqueio por ciclo vindo da API (o app só exibe): trocar plano/ciclo com plano ativo na modalidade
+        $ativaNaModalidade = $this->matriculaAtivaNaModalidade($userId, $tenantId, (int) ($plano['modalidade_id'] ?? 0));
+        $ciclos = array_map(
+            fn (array $c) => $c + ['bloqueio' => TrocaPlanoApp::bloqueioDoCiclo($tenantId, $ativaNaModalidade, $planoId, isset($c['id']) ? (int) $c['id'] : null)],
+            PlanoCicloFormatter::formatarLista(
+                $this->planos->listarCiclosDoPlano($planoId),
+                $habilitarCartao,
+                $habilitarPix,
+                $habilitarBoleto,
+            )
+        );
         $podeRenovar = false;
         $motivoRenovacao = null;
         if ($matriculaAtiva) {
@@ -310,12 +323,7 @@ class MobilePlanoService
                         'nome' => $plano['modalidade_nome'],
                         'cor' => $plano['modalidade_cor'],
                     ],
-                    'ciclos' => PlanoCicloFormatter::formatarLista(
-                        $this->planos->listarCiclosDoPlano($planoId),
-                        $habilitarCartao,
-                        $habilitarPix,
-                        $habilitarBoleto,
-                    ),
+                    'ciclos' => $ciclos,
                     'matricula_ativa' => $matriculaAtiva,
                     'is_plano_atual' => $matriculaAtiva !== null,
                     'pode_migrar' => $podeMigrar,
@@ -445,6 +453,34 @@ class MobilePlanoService
         }
 
         return ['liberar' => false, 'motivo' => 'ciclo_em_andamento'];
+    }
+
+    /**
+     * Matrícula ativa e vigente do aluno na modalidade (de qualquer plano), como a compra a enxerga.
+     *
+     * @return array{plano_id: int, plano_ciclo_id: ?int}|null
+     */
+    private function matriculaAtivaNaModalidade(int $userId, int $tenantId, int $modalidadeId): ?array
+    {
+        if ($modalidadeId <= 0) {
+            return null;
+        }
+        $alunoId = DB::table('alunos')->where('usuario_id', $userId)->value('id');
+        if (! $alunoId) {
+            return null;
+        }
+        $m = DB::table('matriculas as m')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.aluno_id', (int) $alunoId)
+            ->where('m.tenant_id', $tenantId)
+            ->where('p.modalidade_id', $modalidadeId)
+            ->where('sm.codigo', 'ativa')
+            ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= ?', [AcademyDateTime::today()])
+            ->orderByDesc('m.created_at')
+            ->first(['m.plano_id', 'm.plano_ciclo_id']);
+
+        return $m ? ['plano_id' => (int) $m->plano_id, 'plano_ciclo_id' => $m->plano_ciclo_id !== null ? (int) $m->plano_ciclo_id : null] : null;
     }
 
     private function resolverPodeMigrar(int $userId, int $tenantId, int $planoId, int $modalidadeId): bool

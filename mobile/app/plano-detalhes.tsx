@@ -64,6 +64,15 @@ interface Ciclo {
   /** Fidelização: assinatura mensal com o preço do ciclo dividido por mês */
   cobranca_mensal?: boolean;
   fidelizacao_meses?: number | null;
+  /** Bloqueio decidido pela API (ex.: troca de plano só pela academia). O app só exibe. */
+  bloqueio?: {
+    codigo: string;
+    titulo: string;
+    rotulo: string;
+    mensagem: string;
+    acao: string;
+    modos: ("avista" | "assinatura")[];
+  } | null;
 }
 
 interface PlanoDetalhes {
@@ -163,6 +172,8 @@ export default function PlanoDetalhesScreen() {
     setCreditoPrevia(null);
     setBloqueioMigracao(null);
     if (!plano || !selectedCicloId || !precisaRevisaoMigracao(plano, selectedCicloId)) return;
+    // A API já disse que este ciclo está bloqueado: não há o que simular
+    if (plano.ciclos?.find((c) => c.id === selectedCicloId)?.bloqueio) return;
     let ativo = true;
     const timer = setTimeout(async () => {
       try {
@@ -172,7 +183,8 @@ export default function PlanoDetalhesScreen() {
         const json = await response.json();
         if (ativo && response.ok && json.success) setCreditoPrevia(json.data);
         // Bloqueio de negócio (ex.: assinatura ativa na modalidade): avisa já na tela, não só ao confirmar
-        else if (ativo && response.status === 409 && json.message) setBloqueioMigracao(json.message);
+        // Recusa de negócio da API (409/403 com mensagem): avisa já na tela, não só ao confirmar
+        else if (ativo && (response.status === 409 || response.status === 403) && json.message) setBloqueioMigracao(json.message);
       } catch { /* A revisão busca novamente os valores oficiais antes de confirmar. */ }
     }, 300);
     return () => { ativo = false; clearTimeout(timer); };
@@ -1252,6 +1264,9 @@ export default function PlanoDetalhesScreen() {
   const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
   const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
   const ofertaSelecionada = ofertas.find(o => Number(o.plano_ciclo_id) === Number(selectedCicloId)) || null;
+  // Bloqueio do ciclo escolhido, como a API mandou (título, mensagem, rótulo e ação vêm prontos)
+  const bloqueioCiclo = (plano.ciclos || []).find((c) => c.id === selectedCicloId)?.bloqueio ?? null;
+  const bloqueioNoModo = !!bloqueioCiclo && bloqueioCiclo.modos.includes(modoCobranca);
   const opcoesMetodo = modoCobranca === 'assinatura'
     ? metodosAssinaturaDisponiveis(ofertaSelecionada?.metodos)
     : opcoesPagamentoVisiveis(selectedCiclo?.metodos_pagamento, selectedCiclo?.pix_disponivel === true);
@@ -1388,12 +1403,12 @@ export default function PlanoDetalhesScreen() {
           </View>
         ) : null}
 
-        {bloqueioMigracao ? (
+        {bloqueioCiclo || bloqueioMigracao ? (
           <View style={styles.pendingBanner}>
             <Feather name="alert-circle" size={18} color={ds.warning} />
             <View style={styles.pendingBannerContent}>
-              <Text style={styles.pendingBannerTitle}>Troca de plano indisponível</Text>
-              <Text style={styles.pendingBannerText}>{bloqueioMigracao}</Text>
+              <Text style={styles.pendingBannerTitle}>{bloqueioCiclo?.titulo || "Troca de plano indisponível"}</Text>
+              <Text style={styles.pendingBannerText}>{bloqueioCiclo?.mensagem || bloqueioMigracao}</Text>
               <Button size="sm" variant="secondary" icon="file-text" onPress={() => router.push("/minhas-assinaturas")}>
                 Minhas assinaturas
               </Button>
@@ -1431,7 +1446,9 @@ export default function PlanoDetalhesScreen() {
                   {selectedCicloId === ciclo.id && ciclo.cobranca_mensal ? <>
                     <CicloPaymentModes value={modoCobranca} onChange={setModoCobranca} total={ciclo.valor_formatado} mensal={ciclo.valor_mensal_formatado} meses={ciclo.meses}
                       fidelidadeMeses={ciclo.meses <= 1 ? 0 : ofertaSelecionada?.fidelizacao_meses ?? ciclo.fidelizacao_meses ?? ciclo.meses}
-                      bloqueio={bloqueioAssinatura ? bloqueioAssinatura.message : assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
+                      // Bloqueio da API por modo: o rótulo curto vai na opção, a mensagem completa no aviso do topo
+                      bloqueioAvista={bloqueioCiclo?.modos.includes('avista') ? bloqueioCiclo.rotulo : null}
+                      bloqueio={bloqueioCiclo?.modos.includes('assinatura') ? bloqueioCiclo.rotulo : bloqueioAssinatura ? bloqueioAssinatura.message : assinaturaDisponivelEm ? `Libera em ${assinaturaDisponivelEm}, quando seu plano atual vencer` : carregandoOfertas ? 'Consultando disponibilidade…' : !ofertaSelecionada ? 'Assinatura indisponível no momento.' : null} />
                     {!carregandoOfertas && !ofertaSelecionada ? <Button size="sm" variant="ghost" onPress={() => setTentativaOfertas(v => v + 1)}>Consultar assinatura novamente</Button> : null}
                   </> : null}
                   </PlanOption>
@@ -1520,16 +1537,20 @@ export default function PlanoDetalhesScreen() {
                       : "credit-card"
             }
             loading={comprando || pixLoading}
-            disabled={!canBuy || (modoCobranca === "assinatura" && (!ofertaSelecionada || !!assinaturaDisponivelEm || !!bloqueioAssinatura))}
+            disabled={!canBuy || bloqueioNoModo || !!bloqueioMigracao || (modoCobranca === "assinatura" && (!ofertaSelecionada || !!assinaturaDisponivelEm || !!bloqueioAssinatura))}
             onPress={() => void revisarPagamento()}
           >
             {comprando || pixLoading
               ? "Processando…"
               : !selectedCiclo
                 ? "Escolha"
-                : !metodoSelecionado
+                : bloqueioNoModo
+                  ? bloqueioCiclo!.acao
+                  : bloqueioMigracao
                   ? "Indisponível"
-                  : modoCobranca === 'assinatura' ? 'Revisar e assinar' : 'Revisar e pagar'}
+                  : !metodoSelecionado
+                    ? "Indisponível"
+                    : modoCobranca === 'assinatura' ? 'Revisar e assinar' : 'Revisar e pagar'}
           </Button>
           </View>
         </View>
