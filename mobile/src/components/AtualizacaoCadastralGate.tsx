@@ -102,6 +102,10 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [diaVencimento, setDiaVencimento] = useState("");
   const [erroPreMatricula, setErroPreMatricula] = useState("");
   const [erroCarregamentoFechado, setErroCarregamentoFechado] = useState(false);
+  // Responsável enviando pelo dependente: null = o próprio perfil
+  const [beneficiarioId, setBeneficiarioId] = useState<number | null>(null);
+  const [pmDependente, setPmDependente] = useState<PreMatricula | null>(null);
+  const beneficiarioAtual = useRef<number | null>(null);
   const router = useRouter();
   const [salvandoPreMatricula, setSalvandoPreMatricula] = useState(false);
   const [carregandoPreMatricula, setCarregandoPreMatricula] = useState(false);
@@ -164,6 +168,9 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         if (versao !== versaoBusca.current) return;
         const atual: PreMatricula | null = resposta?.data?.pre_matricula ?? null;
         setPreMatricula(atual);
+        beneficiarioAtual.current = null;
+        setBeneficiarioId(null);
+        setPmDependente(null);
         if (atual?.status !== "reprovada") {
           setPlanoPreMatricula(null);
           setGradePreMatricula([]);
@@ -316,8 +323,32 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
     }
   };
 
+  const escolherBeneficiario = async (id: number | null) => {
+    if (salvandoPreMatricula || id === beneficiarioId) return;
+    beneficiarioAtual.current = id;
+    setBeneficiarioId(id);
+    setPmDependente(null);
+    setPlanoPreMatricula(null);
+    setGradePreMatricula([]);
+    setDiaVencimento("");
+    setErroPreMatricula("");
+    if (id === null) return;
+    try {
+      const resposta: any = await api.get("/mobile/pre-matricula", { params: { usuario_id: id } });
+      if (beneficiarioAtual.current !== id) return;
+      const dados: PreMatricula | null = resposta?.data?.pre_matricula ?? null;
+      if (!dados) throw new Error("indisponivel");
+      setPmDependente(dados);
+    } catch (error: any) {
+      if (beneficiarioAtual.current !== id) return;
+      beneficiarioAtual.current = null;
+      setBeneficiarioId(null);
+      setErroPreMatricula(error?.response?.data?.message || "Não foi possível carregar a pré-matrícula deste dependente.");
+    }
+  };
+
   const salvarPreMatricula = async () => {
-    if (!preMatricula || !planoSelecionado || salvandoPreMatricula) return;
+    if (!pm || !planoSelecionado || salvandoPreMatricula) return;
     const versao = versaoBusca.current;
     const frequencia = Number(planoSelecionado.checkins_semanais);
     if (gradePreMatricula.length !== frequencia) {
@@ -335,9 +366,18 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         plano_id: planoSelecionado.id,
         grade: gradePreMatricula,
         dia_vencimento: diaVencimento ? Number(diaVencimento) : null,
+        ...(beneficiarioId ? { usuario_id: beneficiarioId } : {}),
       });
       if (versao !== versaoBusca.current) return;
-      setPreMatricula({ ...preMatricula, status: "pendente" });
+      if (beneficiarioId) {
+        setPmDependente({ ...pm, status: "pendente" });
+        setPreMatricula((atual) => atual && {
+          ...atual,
+          dependentes: atual.dependentes?.map((d) => d.usuario_id === beneficiarioId ? { ...d, status: "pendente" as const } : d),
+        });
+      } else {
+        setPreMatricula({ ...pm, status: "pendente" });
+      }
       setPlanoPreMatricula(null);
       setGradePreMatricula([]);
       setDiaVencimento("");
@@ -351,25 +391,40 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
     }
   };
 
-  const planoSelecionado = preMatricula?.planos.find((plano) => plano.id === planoPreMatricula) || null;
+  // pm: dados exibidos no formulário (próprio perfil ou o dependente escolhido)
+  const pm = beneficiarioId ? pmDependente : preMatricula;
+  const carregandoDependente = !!beneficiarioId && !pmDependente;
+  const dependentes = preMatricula?.dependentes ?? [];
+  const nomeBeneficiario = dependentes.find((d) => d.usuario_id === beneficiarioId)?.nome ?? null;
+  const planoSelecionado = pm?.planos.find((plano) => plano.id === planoPreMatricula) || null;
   const vencimentoPreMatriculaValido = !diaVencimento || (/^\d{1,2}$/.test(diaVencimento) && Number(diaVencimento) >= 1 && Number(diaVencimento) <= 31);
   const visivelCadastro = enabled && !!pendente && adiada !== pendente.id;
-  const statusResolvido = !!preMatricula && ["pendente", "aprovada"].includes(preMatricula.status || "");
+  const statusResolvido = !!pm && ["pendente", "aprovada"].includes(pm.status || "");
+  const proprioResolvido = !!preMatricula && ["pendente", "aprovada"].includes(preMatricula.status || "");
   const podeAdiarPreMatricula = !!preMatricula
-    && (!preMatricula.obrigatoria || !preMatricula.disponivel || statusResolvido || !preMatricula.planos.length);
-  const exigeEnvioAgora = !!preMatricula?.obrigatoria && preMatricula.disponivel && !statusResolvido && !!preMatricula.planos.length;
-  const periodoGratuito = preMatricula?.status === "aprovada" ? preMatricula.periodo_gratuito ?? null : null;
+    && (!preMatricula.obrigatoria || !preMatricula.disponivel || proprioResolvido || !preMatricula.planos.length);
+  const exigeEnvioAgora = !!preMatricula?.obrigatoria && preMatricula.disponivel && !proprioResolvido && !!preMatricula.planos.length;
+  const periodoGratuito = pm?.status === "aprovada" ? pm.periodo_gratuito ?? null : null;
   const gratuitoEncerrado = !!periodoGratuito?.encerrado;
   // Pedido aprovado e matrícula em dia não precisa de aviso a cada abertura do app
-  const aprovadaSemAviso = preMatricula?.status === "aprovada" && !gratuitoEncerrado;
-  const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula && !aprovadaSemAviso
+  const proprioGratuitoEncerrado = preMatricula?.status === "aprovada" && !!preMatricula.periodo_gratuito?.encerrado;
+  const aprovadaSemAviso = preMatricula?.status === "aprovada" && !proprioGratuitoEncerrado;
+  // Dependente com algo a fazer: enviar o pedido ou contratar ao fim do período gratuito
+  const dependenteComAcao = dependentes.some((d) => (d.disponivel && d.tem_planos && (d.status === null || d.status === "reprovada"))
+    || (d.status === "aprovada" && !!d.periodo_gratuito?.encerrado));
+  const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula && !(aprovadaSemAviso && !dependenteComAcao)
     && (exigeEnvioAgora || preMatriculaAdiada !== preMatricula.tenant_id);
   const contratarPlano = () => {
     const destino = periodoGratuito?.plano_destino;
     if (!destino || !preMatricula) return;
     setPreMatriculaAdiada(preMatricula.tenant_id);
+    if (pm?.contratar === "perfil_dependente") {
+      router.push("/dependentes" as any);
+      return;
+    }
     router.push({ pathname: "/plano-detalhes", params: { id: String(destino.id) } });
   };
+  const podeContratar = gratuitoEncerrado && !!periodoGratuito?.plano_destino && pm?.contratar !== "responsavel";
   const visivelErroPreMatricula = enabled && !visivelCadastro && !preMatricula && !!erroPreMatricula && !erroCarregamentoFechado;
   if (!visivelCadastro && !visivelPreMatricula && !visivelErroPreMatricula) return null;
 
@@ -513,38 +568,56 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
           <AppHeader title="Pré-matrícula" eyebrow="SEU CADASTRO NA ACADEMIA" actions={podeAdiarPreMatricula ? [{ icon: "x", label: "Fechar pré-matrícula", disabled: salvandoPreMatricula, onPress: () => setPreMatriculaAdiada(preMatricula.tenant_id) }] : undefined} />
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <ScrollView style={styles.flex} contentContainerStyle={[styles.body, styles.preBody]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {dependentes.length ? (
+                <View style={styles.quem} accessibilityRole="radiogroup" accessibilityLabel="Para quem é a pré-matrícula">
+                  <Text style={styles.quemLabel}>PARA QUEM?</Text>
+                  <View style={styles.quemLista}>
+                    {[{ usuario_id: null as number | null, nome: "Eu" }, ...dependentes].map((opcao) => {
+                      const ativo = beneficiarioId === opcao.usuario_id;
+                      return <Pressable key={String(opcao.usuario_id)} disabled={salvandoPreMatricula} onPress={() => void escolherBeneficiario(opcao.usuario_id)} accessibilityRole="radio" accessibilityState={{ checked: ativo, disabled: salvandoPreMatricula }} style={[styles.quemChip, ativo && styles.quemChipAtivo]}>
+                        <Text style={[styles.quemTexto, ativo && styles.quemTextoAtivo]} numberOfLines={1}>{opcao.nome}</Text>
+                      </Pressable>;
+                    })}
+                  </View>
+                </View>
+              ) : null}
+              {carregandoDependente || !pm ? <Text style={styles.text} accessibilityLiveRegion="polite">Carregando…</Text> : <>
               <View style={styles.preIntro}>
-                <Text style={styles.title} accessibilityRole="header">{!preMatricula.disponivel ? "Pré-matrícula indisponível" : preMatricula.status === "pendente" ? "Pedido em análise" : gratuitoEncerrado ? "Período gratuito encerrado" : preMatricula.status === "aprovada" ? "Pedido aprovado" : "Escolha seus horários"}</Text>
+                <Text style={styles.title} accessibilityRole="header">{!pm.disponivel ? "Pré-matrícula indisponível" : pm.status === "pendente" ? "Pedido em análise" : gratuitoEncerrado ? "Período gratuito encerrado" : pm.status === "aprovada" ? "Pedido aprovado" : "Escolha seus horários"}</Text>
                 <Text style={styles.text}>
-                  {!preMatricula.disponivel
-                    ? preMatricula.motivo || "Esta pré-matrícula não está disponível para sua conta."
-                    : preMatricula.status === "pendente"
+                  {!pm.disponivel
+                    ? pm.motivo || "Esta pré-matrícula não está disponível para sua conta."
+                    : pm.status === "pendente"
                       ? "Seu pedido foi recebido e está aguardando análise da academia."
                       : gratuitoEncerrado
-                        ? periodoGratuito?.plano_destino
-                          ? `Seu acesso gratuito terminou. Para continuar, contrate o plano ${periodoGratuito.plano_destino.descricao}. Você verá o valor e as condições antes de confirmar.`
-                          : "Seu acesso gratuito terminou. O plano para continuar não está disponível no momento; fale com a academia."
-                      : preMatricula.status === "aprovada"
-                        ? preMatricula.matricula_id
-                          ? `Seu pedido foi aprovado e sua matrícula #${preMatricula.matricula_id} foi criada.`
+                        ? !periodoGratuito?.plano_destino
+                          ? "O acesso gratuito terminou. O plano para continuar não está disponível no momento; fale com a academia."
+                          : pm.contratar === "responsavel"
+                            ? `O acesso gratuito terminou. Peça ao responsável para contratar o plano ${periodoGratuito.plano_destino.descricao}.`
+                            : pm.contratar === "perfil_dependente"
+                              ? `O acesso gratuito de ${nomeBeneficiario ?? "seu dependente"} terminou. Entre no perfil dele, em Dependentes, para contratar o plano ${periodoGratuito.plano_destino.descricao}.`
+                              : `Seu acesso gratuito terminou. Para continuar, contrate o plano ${periodoGratuito.plano_destino.descricao}. Você verá o valor e as condições antes de confirmar.`
+                      : pm.status === "aprovada"
+                        ? pm.matricula_id
+                          ? `Seu pedido foi aprovado e sua matrícula #${pm.matricula_id} foi criada.`
                           : "Seu pedido foi aprovado."
                         : "Escolha o plano e os horários de sua preferência."}
                 </Text>
               </View>
-              {preMatricula.disponivel && preMatricula.status === "reprovada" ? (
+              {pm.disponivel && pm.status === "reprovada" ? (
                 <View style={styles.alert} accessibilityRole="alert">
                   <Feather name="alert-circle" size={18} color={ds.danger} />
-                  <Text style={styles.alertText}>{preMatricula.observacao || "Sua solicitação anterior não foi aprovada. Confira seus dados e envie novamente."}</Text>
+                  <Text style={styles.alertText}>{pm.observacao || "Sua solicitação anterior não foi aprovada. Confira seus dados e envie novamente."}</Text>
                 </View>
               ) : null}
-              {preMatricula.disponivel && erroPreMatricula ? (
+              {pm.disponivel && erroPreMatricula ? (
                 <View style={styles.alert} accessibilityRole="alert">
                   <Feather name="alert-circle" size={18} color={ds.danger} />
                   <Text style={styles.alertText}>{erroPreMatricula}</Text>
                 </View>
               ) : null}
-              {preMatricula.disponivel && !statusResolvido ? <PreMatriculaForm
-                dados={preMatricula}
+              {pm.disponivel && !statusResolvido ? <PreMatriculaForm
+                dados={pm}
                 planoId={planoPreMatricula}
                 grade={gradePreMatricula}
                 vencimento={diaVencimento}
@@ -553,17 +626,18 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                 onGradeChange={(grade) => { setGradePreMatricula(grade); setErroPreMatricula(""); }}
                 onVencimentoChange={setDiaVencimento}
               /> : null}
+              </>}
             </ScrollView>
             <View style={[styles.foot, { paddingBottom: space[3] + insets.bottom }]}>
               <View style={styles.preActions}>
-                {preMatricula.disponivel && !statusResolvido ? <Button variant="glow" size="lg" block icon="send" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais) || !vencimentoPreMatriculaValido} onPress={() => void salvarPreMatricula()}>
+                {pm?.disponivel && !statusResolvido ? <Button variant="glow" size="lg" block icon="send" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais) || !vencimentoPreMatriculaValido} onPress={() => void salvarPreMatricula()}>
                   Enviar para análise
                 </Button> : null}
-                {gratuitoEncerrado && periodoGratuito?.plano_destino ? <Button variant="glow" size="lg" block icon="shopping-bag" onPress={contratarPlano}>
-                  Contratar plano
+                {podeContratar ? <Button variant="glow" size="lg" block icon={pm?.contratar === "perfil_dependente" ? "users" : "shopping-bag"} onPress={contratarPlano}>
+                  {pm?.contratar === "perfil_dependente" ? "Abrir dependentes" : "Contratar plano"}
                 </Button> : null}
-                {podeAdiarPreMatricula ? <Button variant={statusResolvido && !(gratuitoEncerrado && periodoGratuito?.plano_destino) ? "primary" : "ghost"} size="lg" block disabled={salvandoPreMatricula} onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
-                  {gratuitoEncerrado && periodoGratuito?.plano_destino ? "Agora não" : statusResolvido ? "Entendi" : "Fechar"}
+                {podeAdiarPreMatricula ? <Button variant={statusResolvido && !podeContratar ? "primary" : "ghost"} size="lg" block disabled={salvandoPreMatricula} onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
+                  {podeContratar ? "Agora não" : statusResolvido ? "Entendi" : "Fechar"}
                 </Button> : null}
               </View>
             </View>
@@ -598,6 +672,13 @@ const styles = StyleSheet.create({
   body: { padding: space[4], gap: space[5], width: "100%", maxWidth: 560, alignSelf: "center" },
   preBody: { flexGrow: 1, paddingTop: space[5], paddingBottom: space[6] },
   preIntro: { gap: space[1] },
+  quem: { gap: space[2] },
+  quemLabel: { ...type.caption, fontWeight: "800", letterSpacing: 1, color: ds.inkMuted },
+  quemLista: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
+  quemChip: { maxWidth: "100%", paddingHorizontal: space[3], paddingVertical: space[2], borderRadius: radius.md, borderWidth: 1.5, borderColor: ds.lineStrong, backgroundColor: ds.surface },
+  quemChipAtivo: { backgroundColor: ds.inverse, borderColor: ds.inverse },
+  quemTexto: { ...type.body, fontWeight: "700", color: ds.ink },
+  quemTextoAtivo: { color: ds.onInverse },
   preActions: { width: "100%", maxWidth: 528, alignSelf: "center", gap: space[2] },
   head: { gap: space[2], paddingTop: space[2] },
   icon: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: ds.brandSoft },

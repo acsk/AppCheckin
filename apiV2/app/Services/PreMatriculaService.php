@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Repositories\UsuarioRepository;
 use App\Services\Admin\AdminMatriculaService;
 use App\Support\AcademyDateTime;
 use App\Support\Papel;
@@ -128,7 +129,7 @@ class PreMatriculaService
     }
 
     /** @return array<string, mixed>|null */
-    public function paraAluno(int $tenantId, int $userId): ?array
+    public function paraAluno(int $tenantId, int $userId, ?int $responsavelId = null): ?array
     {
         // Sem as tabelas (migration pendente) o recurso simplesmente não é oferecido ao aluno.
         if (! $this->tabelasExistem()) {
@@ -140,7 +141,9 @@ class PreMatriculaService
             return null;
         }
 
-        if (! $this->alunoDaAcademia($tenantId, $userId)) {
+        // Dependente enviado pelo responsável: o vínculo com a academia é criado no envio
+        $dependenteDoResponsavel = $responsavelId !== null && $this->dependenteDe($userId, $responsavelId);
+        if (! $dependenteDoResponsavel && ! $this->alunoDaAcademia($tenantId, $userId)) {
             return $this->indisponivel(
                 $tenantId,
                 (bool) $config->obrigatoria,
@@ -268,9 +271,10 @@ class PreMatriculaService
     /** @param array<string, mixed> $dados
      *  @return array<string, mixed>
      */
-    public function enviar(int $tenantId, int $userId, array $dados): array
+    public function enviar(int $tenantId, int $userId, array $dados, ?int $enviadaPor = null): array
     {
         $this->exigirTabelas();
+        $enviadaPor ??= $userId;
         $validados = Validator::make($dados, [
             'plano_id' => 'required|integer|min:1',
             'grade' => 'required|array|min:1|max:7',
@@ -287,9 +291,21 @@ class PreMatriculaService
             'dia_vencimento.between' => 'Informe um dia de pagamento entre 1 e 31.',
         ])->validate();
 
-        return DB::transaction(function () use ($tenantId, $userId, $validados) {
+        return DB::transaction(function () use ($tenantId, $userId, $validados, $enviadaPor) {
             $config = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->where('ativa', 1)->lockForUpdate()->first();
-            if (! $config || ! $this->alunoDaAcademia($tenantId, $userId)) {
+            if (! $config) {
+                throw ValidationException::withMessages(['pre_matricula' => 'A pré-matrícula não está disponível para esta conta.']);
+            }
+            if ($enviadaPor !== $userId) {
+                // Só o responsável cadastrado envia pelo dependente, e o vínculo com a academia é criado agora
+                if (! $this->dependenteDe($userId, $enviadaPor)) {
+                    throw ValidationException::withMessages(['usuario_id' => 'Você só pode enviar a pré-matrícula para você ou para seus dependentes.']);
+                }
+                if (! $this->alunoDaAcademia($tenantId, $userId)) {
+                    app(UsuarioRepository::class)->vincularComoAluno($userId, $tenantId);
+                }
+            }
+            if (! $this->alunoDaAcademia($tenantId, $userId)) {
                 throw ValidationException::withMessages(['pre_matricula' => 'A pré-matrícula não está disponível para esta conta.']);
             }
             $anterior = $this->ultimaSolicitacao($tenantId, $userId, true);
@@ -307,6 +323,7 @@ class PreMatriculaService
                 'plano_id' => (int) $plano->id,
                 'plano_descricao' => $this->descricaoPlano($plano->descricao),
                 'plano_destino_id' => $par['plano_pago_id'],
+                'enviada_por_id' => $enviadaPor,
                 'checkins_semanais' => $frequencia,
                 'grade' => json_encode($diasTurma, JSON_THROW_ON_ERROR),
                 'dia_vencimento' => $validados['dia_vencimento'] ?? null,
@@ -634,12 +651,16 @@ class PreMatriculaService
     private function solicitacoes(int $tenantId): array
     {
         $telefone = Schema::hasColumn('usuarios', 'telefone') ? ['u.telefone'] : [];
+        $telefoneResponsavel = Schema::hasColumn('usuarios', 'telefone') ? [DB::raw('resp.telefone as responsavel_telefone')] : [];
         $rows = DB::table('pre_matriculas as pm')
             ->join('usuarios as u', 'u.id', '=', 'pm.usuario_id')
+            ->leftJoin('usuarios as resp', 'resp.id', '=', 'u.responsavel_usuario_id')
+            ->leftJoin('usuarios as env', 'env.id', '=', 'pm.enviada_por_id')
             ->leftJoin('matriculas as m', 'm.id', '=', 'pm.matricula_id')
             ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('pm.tenant_id', $tenantId)->whereNull('pm.excluida_em')->orderByDesc('pm.id')
-            ->get(['pm.*', 'u.nome as usuario_nome', 'u.email', 'u.cpf', 'sm.codigo as matricula_status', ...$telefone]);
+            ->get(['pm.*', 'u.nome as usuario_nome', 'u.email', 'u.cpf', 'u.responsavel_usuario_id', 'resp.nome as responsavel_nome',
+                'resp.email as responsavel_email', 'env.nome as enviada_por_nome', 'sm.codigo as matricula_status', ...$telefone, ...$telefoneResponsavel]);
         $nomesDestino = DB::table('planos')->where('tenant_id', $tenantId)
             ->whereIn('id', $rows->pluck('plano_destino_id')->filter()->unique()->all())->pluck('nome', 'id');
         $turmaIds = [];
@@ -672,6 +693,12 @@ class PreMatriculaService
                 'email' => (string) $row->email,
                 'cpf' => $row->cpf,
                 'telefone' => $row->telefone ?? null,
+                'dependente' => $row->responsavel_usuario_id !== null,
+                'responsavel_nome' => $row->responsavel_nome,
+                'responsavel_email' => $row->responsavel_email,
+                'responsavel_telefone' => $row->responsavel_telefone ?? null,
+                'enviada_por_nome' => $row->enviada_por_id !== null && (int) $row->enviada_por_id !== (int) $row->usuario_id
+                    ? $row->enviada_por_nome : null,
                 'plano_id' => (int) $row->plano_id,
                 'plano_destino_id' => $row->plano_destino_id === null ? null : (int) $row->plano_destino_id,
                 'plano_destino_nome' => $row->plano_destino_id === null ? null : ($nomesDestino[$row->plano_destino_id] ?? null),
@@ -770,12 +797,73 @@ class PreMatriculaService
         return $diasTurma;
     }
 
+    private function dependenteDe(int $usuarioId, int $responsavelId): bool
+    {
+        return DB::table('usuarios')->where('id', $usuarioId)->where('responsavel_usuario_id', $responsavelId)
+            ->where('ativo', 1)->exists();
+    }
+
+    /**
+     * Quem será o aluno do pedido: o próprio perfil ativo ou um dependente do usuário do token.
+     * Perfis de dependente só enviam o próprio pedido. O ID vindo do app nunca é aceito sem o vínculo.
+     *
+     * @return array{0: int, 1: ?int} id do aluno e, quando for dependente, o id do responsável
+     */
+    public function resolverBeneficiario(int $atorId, ?int $usuarioId, bool $perfilDependente): array
+    {
+        if (! $usuarioId || $usuarioId === $atorId) {
+            return [$atorId, null];
+        }
+        if ($perfilDependente) {
+            abort(403, 'Este perfil só pode enviar a própria pré-matrícula. Peça ao responsável para enviar pelos outros dependentes.');
+        }
+        if (! $this->dependenteDe($usuarioId, $atorId)) {
+            abort(403, 'Você só pode enviar a pré-matrícula para você ou para seus dependentes.');
+        }
+
+        return [$usuarioId, $atorId];
+    }
+
+    /**
+     * Situação da pré-matrícula de cada dependente do responsável.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function dependentes(int $tenantId, int $responsavelId): array
+    {
+        if (! $this->tabelasExistem()) {
+            return [];
+        }
+        $lista = [];
+        $dependentes = DB::table('usuarios')->where('responsavel_usuario_id', $responsavelId)->where('ativo', 1)
+            ->orderBy('nome')->get(['id', 'nome']);
+        foreach ($dependentes as $dependente) {
+            $estado = $this->paraAluno($tenantId, (int) $dependente->id, $responsavelId);
+            if ($estado === null) {
+                return [];
+            }
+            $lista[] = [
+                'usuario_id' => (int) $dependente->id,
+                'nome' => (string) $dependente->nome,
+                'disponivel' => (bool) $estado['disponivel'],
+                'status' => $estado['status'],
+                'matricula_id' => $estado['matricula_id'] ?? null,
+                'periodo_gratuito' => $estado['periodo_gratuito'] ?? null,
+                'motivo' => $estado['motivo'] ?? null,
+                'tem_planos' => ($estado['planos'] ?? []) !== [],
+            ];
+        }
+
+        return $lista;
+    }
+
     private function tabelasExistem(): bool
     {
         return Schema::hasTable('pre_matricula_configuracoes') && Schema::hasTable('pre_matriculas')
             && Schema::hasTable('pre_matricula_planos')
             && Schema::hasColumn('pre_matriculas', 'excluida_em')
             && Schema::hasColumn('pre_matriculas', 'matricula_id')
+            && Schema::hasColumn('pre_matriculas', 'enviada_por_id')
             && Schema::hasColumn('matriculas', 'plano_destino_id');
     }
 

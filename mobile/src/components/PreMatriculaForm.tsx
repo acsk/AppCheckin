@@ -6,13 +6,29 @@ import Section from "./ds/Section";
 import TextField from "./ds/TextField";
 import { ds, radius, space, type } from "./ds/tokens";
 
+export type PeriodoGratuito = { encerrado: boolean; fim: string | null; plano_destino: { id: number; descricao: string } | null };
+export type DependentePreMatricula = {
+  usuario_id: number;
+  nome: string;
+  disponivel: boolean;
+  status: "pendente" | "aprovada" | "reprovada" | null;
+  matricula_id?: number | null;
+  periodo_gratuito?: PeriodoGratuito | null;
+  motivo?: string | null;
+  tem_planos: boolean;
+};
+
 export type PreMatricula = {
   tenant_id: number;
   disponivel: boolean;
   obrigatoria: boolean;
   status: "pendente" | "aprovada" | "reprovada" | null;
   matricula_id?: number | null;
-  periodo_gratuito?: { encerrado: boolean; fim: string | null; plano_destino: { id: number; descricao: string } | null } | null;
+  periodo_gratuito?: PeriodoGratuito | null;
+  /** Onde contratar: neste perfil, no perfil do dependente ou só o responsável (login por PIN) */
+  contratar?: "aqui" | "perfil_dependente" | "responsavel";
+  /** Só no perfil do responsável: situação de cada dependente */
+  dependentes?: DependentePreMatricula[];
   observacao: string | null;
   motivo?: string | null;
   planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];

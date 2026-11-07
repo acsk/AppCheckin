@@ -44,6 +44,29 @@ aluno tem no máximo uma solicitação em andamento por academia: pendente, ou
 aprovada cuja matrícula não foi cancelada. Reprovadas, excluídas e aprovadas
 com matrícula cancelada permitem novo envio.
 
+### Dependentes
+
+O pedido pertence a quem fará as aulas; o responsável apenas envia.
+
+- **Perfil do dependente ativo:** o pedido sai em nome do dependente.
+- **Perfil do responsável:** a tela mostra **Para quem?** com o próprio
+  responsável e cada dependente. Cada pessoa tem o próprio pedido e status. O
+  envio por um dependente cria o vínculo dele com a academia (como ao entrar no
+  perfil) e grava `enviada_por_id`.
+- **Login do dependente por PIN:** pode preencher e enviar o próprio pedido, mas
+  não contrata plano (`COMPRA_SO_RESPONSAVEL`); o app orienta pedir ao
+  responsável.
+- **Fim do período gratuito do dependente:** quem contrata é o responsável, no
+  perfil do dependente (Dependentes → entrar no perfil). Do perfil do
+  responsável, o app leva à tela de Dependentes.
+- **Segurança:** o `usuario_id` enviado pelo app só é aceito se for o próprio
+  perfil ou um dependente do usuário do token; perfil de dependente não envia
+  por outros. Caso contrário, 403.
+- **Painel:** a linha mostra "Dependente", o responsável (nome, telefone,
+  e-mail) e quem enviou. A aprovação cria a matrícula do dependente.
+- **Pedido no aluno errado:** reprove com observação, exclua o pedido e reenvie
+  para a pessoa certa.
+
 ## 3. Revisão e aprovação (Admin da academia)
 
 No painel, **Gestão → Manutenção → Pré-matrículas** abre em **Aguardando
@@ -107,11 +130,13 @@ pelo app.
 
 App (JWT do aluno; tenant do token):
 
-- `GET /v2/mobile/pre-matricula`: configuração aplicável, planos e turmas
-  elegíveis, ou o estado do pedido (`status`, `matricula_id`, `periodo_gratuito`).
+- `GET /v2/mobile/pre-matricula[?usuario_id={dependente}]`: configuração
+  aplicável, planos e turmas elegíveis, ou o estado do pedido (`status`,
+  `matricula_id`, `periodo_gratuito`, `contratar`). No perfil do responsável
+  traz também `dependentes` com a situação de cada um.
 - `POST /v2/mobile/pre-matricula`: `plano_id`, `grade` (`turma_fixa_id`,
-  `dia_semana`) e `dia_vencimento` opcional (`null` ou 1–31). O servidor
-  resolve o plano pago pelo vínculo.
+  `dia_semana`), `dia_vencimento` opcional (`null` ou 1–31) e `usuario_id`
+  opcional (dependente). O servidor resolve o plano pago pelo vínculo.
 
 Super Admin:
 
@@ -144,6 +169,7 @@ Migrations (execute `php artisan migrate --force` **antes** de publicar):
 
 - `2026_11_06_190000_pre_matriculas_migracao.php`: configuração e pedidos;
 - `2026_11_06_213500_add_matricula_id_to_pre_matriculas.php`: `matricula_id`;
+- `2026_11_07_000000_pre_matriculas_enviada_por.php`: `enviada_por_id`;
 - `2026_11_06_230000_pre_matricula_planos_e_exclusao.php`: tabela
   `pre_matricula_planos`, `plano_destino_id`/`excluida_em`/`excluida_por` nos
   pedidos e `plano_destino_id` em `matriculas`. Matrículas aprovadas antes

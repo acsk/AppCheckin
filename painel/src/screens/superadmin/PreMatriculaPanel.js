@@ -320,7 +320,12 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
               <thead><tr><th>Aluno</th><th>Enviado em</th><th>Plano solicitado</th><th>Grade semanal</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody>{filtradas.map((item) => (
                 <tr key={item.id}>
-                  <td><strong>{item.nome}</strong><span className="ck-cad-table__summary">{item.email}{item.telefone ? ` · ${item.telefone}` : ''}{item.cpf ? ` · CPF ${item.cpf}` : ''}</span></td>
+                  <td>
+                    <strong>{item.nome}</strong>{item.dependente ? <> <Badge tone="info">Dependente</Badge></> : null}
+                    <span className="ck-cad-table__summary">{item.email}{item.telefone ? ` · ${item.telefone}` : ''}{item.cpf ? ` · CPF ${item.cpf}` : ''}</span>
+                    {item.dependente && item.responsavel_nome ? <span className="ck-cad-table__summary">Responsável: {item.responsavel_nome}{item.responsavel_telefone ? ` · ${item.responsavel_telefone}` : ''}{item.responsavel_email ? ` · ${item.responsavel_email}` : ''}</span> : null}
+                    {item.enviada_por_nome ? <span className="ck-cad-table__summary">Enviado por {item.enviada_por_nome}</span> : null}
+                  </td>
                   <td>{formatarData(item.created_at)}</td>
                   <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span>{item.plano_destino_nome ? <span className="ck-cad-table__summary">Plano pago: {item.plano_destino_nome}</span> : null}</td>
                   <td>{item.grade.map((slot) => `${dias[slot.dia_semana - 1]} · ${slot.turma_nome} · ${String(slot.horario_inicio || '').slice(0, 5)}`).join('; ')}</td>
@@ -404,7 +409,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
       </Modal>
 
       <Modal open={!!revisao} size="lg" title={pendenteNaModal ? 'Revisar pré-matrícula' : 'Editar solicitação'} dismissable={!salvando} onClose={() => setRevisao(null)}
-        description={revisao ? `${revisao.nome} · ${revisao.email}${revisao.telefone ? ` · ${revisao.telefone}` : ''} · enviado em ${formatarData(revisao.created_at)}` : ''}
+        description={revisao ? `${revisao.nome}${revisao.dependente && revisao.responsavel_nome ? ` (dependente de ${revisao.responsavel_nome})` : ''} · ${revisao.email}${revisao.telefone ? ` · ${revisao.telefone}` : ''} · enviado em ${formatarData(revisao.created_at)}` : ''}
         footer={<>
           <Button variant="ghost" disabled={salvando} onClick={() => setRevisao(null)}>Cancelar</Button>
           <Button variant="secondary" icon="save" disabled={salvando || !formularioValido} onClick={salvarAjuste}>{pendenteNaModal ? 'Salvar ajuste' : 'Salvar alterações'}</Button>

@@ -36,6 +36,7 @@ class PreMatriculaMigracaoTest extends TestCase
             $table->string('email');
             $table->string('cpf')->nullable();
             $table->boolean('ativo')->default(true);
+            $table->unsignedInteger('responsavel_usuario_id')->nullable();
         });
         Schema::create('tenant_usuario_papel', function (Blueprint $table) {
             $table->increments('id');
@@ -43,10 +44,13 @@ class PreMatriculaMigracaoTest extends TestCase
             $table->unsignedInteger('usuario_id');
             $table->unsignedInteger('papel_id');
             $table->boolean('ativo')->default(true);
+            $table->timestamps();
         });
         Schema::create('alunos', function (Blueprint $table) {
             $table->increments('id');
             $table->unsignedInteger('usuario_id');
+            $table->string('nome')->nullable();
+            $table->boolean('ativo')->default(true);
         });
         Schema::create('status_matricula', function (Blueprint $table) {
             $table->increments('id');
@@ -91,6 +95,7 @@ class PreMatriculaMigracaoTest extends TestCase
         (require database_path('migrations/2026_11_06_190000_pre_matriculas_migracao.php'))->up();
         (require database_path('migrations/2026_11_06_213500_add_matricula_id_to_pre_matriculas.php'))->up();
         (require database_path('migrations/2026_11_06_230000_pre_matricula_planos_e_exclusao.php'))->up();
+        (require database_path('migrations/2026_11_07_000000_pre_matriculas_enviada_por.php'))->up();
 
         DB::table('tenants')->insert(['id' => 1, 'nome' => 'Academia']);
         DB::table('usuarios')->insert(['id' => 1, 'nome' => 'Maria Silva', 'email' => 'maria@example.com', 'cpf' => '123']);
@@ -643,6 +648,118 @@ class PreMatriculaMigracaoTest extends TestCase
         }
         $this->assertSame([], $this->service->painelAcademia(2)['solicitacoes']);
         $this->assertCount(1, $this->service->painelAcademia(1)['solicitacoes']);
+    }
+
+    private function criarDependente(bool $vinculado = false): int
+    {
+        DB::table('usuarios')->insert(['id' => 2, 'nome' => 'Pedro Silva', 'email' => 'pedro@example.com', 'responsavel_usuario_id' => 1]);
+        DB::table('usuarios')->insert(['id' => 3, 'nome' => 'Estranho', 'email' => 'x@example.com']);
+        if ($vinculado) {
+            DB::table('tenant_usuario_papel')->insert(['tenant_id' => 1, 'usuario_id' => 2, 'papel_id' => Papel::ALUNO, 'ativo' => true]);
+            DB::table('alunos')->insert(['id' => 2, 'usuario_id' => 2]);
+        }
+
+        return 2;
+    }
+
+    public function test_beneficiario_so_e_o_proprio_perfil_ou_dependente_do_responsavel(): void
+    {
+        $this->criarDependente();
+
+        $this->assertSame([1, null], $this->service->resolverBeneficiario(1, null, false));
+        $this->assertSame([1, null], $this->service->resolverBeneficiario(1, 1, false));
+        $this->assertSame([2, 1], $this->service->resolverBeneficiario(1, 2, false));
+        foreach ([[1, 3, false], [2, 1, false], [2, 3, true], [1, 2, true]] as [$ator, $alvo, $perfilDependente]) {
+            try {
+                $this->service->resolverBeneficiario($ator, $alvo, $perfilDependente);
+                $this->fail("Ator {$ator} não pode enviar para {$alvo}.");
+            } catch (HttpException $exception) {
+                $this->assertSame(403, $exception->getStatusCode());
+            }
+        }
+        // Perfil de dependente enviando o próprio pedido é permitido
+        $this->assertSame([2, null], $this->service->resolverBeneficiario(2, 2, true));
+    }
+
+    public function test_responsavel_envia_pelo_dependente_e_o_pedido_fica_no_nome_dele(): void
+    {
+        $this->criarDependente();
+        $this->assertNull(DB::table('tenant_usuario_papel')->where('usuario_id', 2)->first());
+
+        $envio = $this->service->enviar(1, 2, [
+            'plano_id' => 1,
+            'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
+        ], 1);
+
+        $linha = DB::table('pre_matriculas')->where('id', $envio['id'])->first();
+        $this->assertSame(2, (int) $linha->usuario_id);
+        $this->assertSame(1, (int) $linha->enviada_por_id);
+        $this->assertNotNull(DB::table('tenant_usuario_papel')->where('usuario_id', 2)->where('tenant_id', 1)->first());
+        $solicitacao = $this->service->painelAcademia(1)['solicitacoes'][0];
+        $this->assertTrue($solicitacao['dependente']);
+        $this->assertSame('Pedro Silva', $solicitacao['nome']);
+        $this->assertSame('Maria Silva', $solicitacao['responsavel_nome']);
+        $this->assertSame('Maria Silva', $solicitacao['enviada_por_nome']);
+        // Cada pessoa tem o próprio pedido: o do responsável continua livre
+        $this->assertNull($this->service->paraAluno(1, 1)['status']);
+        $this->assertSame('pendente', $this->service->paraAluno(1, 2, 1)['status']);
+    }
+
+    public function test_nao_envia_por_quem_nao_e_dependente(): void
+    {
+        $this->criarDependente();
+
+        try {
+            $this->service->enviar(1, 3, [
+                'plano_id' => 1,
+                'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
+            ], 1);
+            $this->fail('Usuário sem vínculo de dependência não pode receber pedido.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('usuario_id', $exception->errors());
+        }
+        $this->assertSame(0, DB::table('pre_matriculas')->count());
+    }
+
+    public function test_lista_a_situacao_de_cada_dependente_para_o_responsavel(): void
+    {
+        $this->criarDependente(true);
+
+        $dependentes = $this->service->dependentes(1, 1);
+
+        $this->assertCount(1, $dependentes);
+        $this->assertSame(2, $dependentes[0]['usuario_id']);
+        $this->assertTrue($dependentes[0]['disponivel']);
+        $this->assertNull($dependentes[0]['status']);
+        $this->assertTrue($dependentes[0]['tem_planos']);
+
+        $this->service->enviar(1, 2, [
+            'plano_id' => 1,
+            'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
+        ], 1);
+        $this->assertSame('pendente', $this->service->dependentes(1, 1)[0]['status']);
+        $this->assertSame([], $this->service->dependentes(1, 3));
+    }
+
+    public function test_aprovacao_cria_a_matricula_do_dependente(): void
+    {
+        $this->criarDependente(true);
+        $envio = $this->service->enviar(1, 2, [
+            'plano_id' => 1,
+            'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
+        ], 1);
+        $mock = \Mockery::mock(AdminMatriculaService::class);
+        $mock->shouldReceive('criar')->once()->with(1, 99, \Mockery::on(fn (array $dados) => $dados['usuario_id'] === 2))
+            ->andReturnUsing(function (): array {
+                $id = (int) DB::table('matriculas')->insertGetId(['tenant_id' => 1, 'aluno_id' => 2, 'status_id' => 1]);
+
+                return ['status' => 201, 'body' => ['matricula' => ['id' => $id]]];
+            });
+        $this->app->instance(AdminMatriculaService::class, $mock);
+
+        $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+
+        $this->assertSame('aprovada', $this->service->paraAluno(1, 2, 1)['status']);
     }
 
     public function test_configuracao_preserva_data_de_criacao(): void
