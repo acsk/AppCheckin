@@ -1,7 +1,6 @@
 import { ds } from "@/src/components/ds/tokens";
 import { dependenteService, onTrocaDePerfil } from "@/src/services/dependenteService";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -16,30 +15,13 @@ const primeiroNome = (n?: string) => {
 export default function PerfilDependenteBanner() {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [voltando, setVoltando] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     void dependenteService.perfilAtual().then(setPerfil);
     return onTrocaDePerfil((p: Perfil | null) => setPerfil(p));
   }, []);
 
-  if (!perfil) return null;
-
-  // Login próprio da criança (PIN): não há perfil do responsável para voltar, só sair
-  if (perfil.login_proprio) {
-    return (
-      <View style={styles.faixa} accessibilityRole="alert">
-        <Feather name="user" size={16} color={ds.onInverse} />
-        <Text style={styles.texto} numberOfLines={2}>
-          Olá, <Text style={styles.forte}>{primeiroNome(perfil.nome)}</Text>
-          {perfil.responsavel_nome ? ` · responsável: ${primeiroNome(perfil.responsavel_nome)}` : ""}
-        </Text>
-        <Pressable style={styles.voltar} onPress={() => router.push("/logout")} accessibilityRole="button">
-          <Text style={styles.voltarTexto}>Sair</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (!perfil || perfil.login_proprio) return null;
 
   const voltar = async () => {
     setVoltando(true);
