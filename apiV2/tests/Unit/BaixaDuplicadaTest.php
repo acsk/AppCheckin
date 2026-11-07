@@ -63,7 +63,7 @@ class BaixaDuplicadaTest extends TestCase
             ->andReturn(['pagas' => [$paga], 'em_aberto' => [$aberta]]);
         $repo->shouldNotReceive('atualizarPagamentoBaixa');
 
-        $r = $this->service($repo)->darBaixaConta(1551, 3, 68, ['data_vencimento' => '2026-11-03', 'data_pagamento' => '2026-11-03']);
+        $r = $this->service($repo)->darBaixaConta(1551, 3, 68, ['data_vencimento' => '2026-11-03', 'proxima_data_vencimento' => '2026-12-03', 'data_pagamento' => '2026-11-03']);
 
         $this->assertSame(409, $r['status']);
         $this->assertSame(AdminMatriculaService::CODIGO_BAIXA_DUPLICADA, $r['body']['code']);
@@ -74,6 +74,7 @@ class BaixaDuplicadaTest extends TestCase
 
     public function test_confirmada_pelo_admin_a_baixa_segue(): void
     {
+        config(['appcheckin.baixa_manual_data_retroativa' => true]);
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findPagamentoParaBaixa')->with(1551, 3)->andReturn($this->parcela1551());
         $repo->shouldNotReceive('parcelasParaConferirBaixa');
@@ -84,7 +85,7 @@ class BaixaDuplicadaTest extends TestCase
         $pagamentos->shouldReceive('atualizarStatusMatricula')->once();
 
         $r = $this->service($repo, $pagamentos)->darBaixaConta(1551, 3, 68,
-            ['data_vencimento' => '2026-11-03', 'data_pagamento' => '2026-11-03', 'confirmar_duplicidade' => true]);
+            ['data_vencimento' => '2026-11-03', 'proxima_data_vencimento' => '2026-12-03', 'data_pagamento' => '2026-11-03', 'confirmar_duplicidade' => true]);
 
         $this->assertSame(200, $r['status']);
     }
@@ -123,63 +124,70 @@ class BaixaDuplicadaTest extends TestCase
         $this->assertSame([], $repo->parcelasParaConferirBaixa(3, 164, 1552, '2026-11-18', '2026-12-18')['pagas']);
     }
 
-    /** @return array{0: string|null, 1: string|null} próxima parcela gerada e próximo vencimento da matrícula */
-    private function baixarComTipoDeAcesso(?string $tipoAcesso, string $vencimento, string $pagamento): array
+    /** @param array{gerada?: string|null, proximo?: string|null} $saida */
+    private function baixar(string $dataPagamento, ?bool $retroativa = null, ?string $proximoVenc = '2026-12-10', array &$saida = []): array
     {
-        $this->requireSqlite();
-        Schema::create('matriculas', function (Blueprint $t) {
-            $t->increments('id');
-            $t->string('tipo_acesso')->nullable();
-            $t->integer('dia_vencimento')->nullable();
-        });
-        DB::table('matriculas')->insert(['id' => 164, 'tipo_acesso' => $tipoAcesso, 'dia_vencimento' => 10]);
+        if ($retroativa !== null) {
+            config(['appcheckin.baixa_manual_data_retroativa' => $retroativa]);
+        }
         $parcela = ['id' => 1551, 'status_pagamento_id' => 1, 'matricula_id' => 164, 'tenant_id' => 3, 'aluno_id' => 112,
-            'plano_id' => 7, 'valor' => '80.00', 'matricula_valor' => '80.00', 'data_vencimento' => $vencimento,
+            'plano_id' => 7, 'valor' => '80.00', 'matricula_valor' => '80.00', 'data_vencimento' => '2026-11-10',
             'duracao_dias' => 30, 'ciclo_meses' => 1, 'pacote_contrato_id' => null];
-        $gerada = null;
-        $proximo = null;
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findPagamentoParaBaixa')->andReturn($parcela);
         $repo->shouldReceive('atualizarPagamentoBaixa', 'ativarMatriculaSePendente');
-        $repo->shouldReceive('inserirPagamentoPlano')->andReturnUsing(function (array $dados) use (&$gerada) {
-            $gerada = $dados['data_vencimento'];
+        $repo->shouldReceive('inserirPagamentoPlano')->andReturnUsing(function (array $d) use (&$saida) {
+            $saida['gerada'] = $d['data_vencimento'];
 
             return 1553;
         });
-        $repo->shouldReceive('atualizarProximaDataVencimentoSimples')->andReturnUsing(function ($id, $data) use (&$proximo) {
-            $proximo = $data;
+        $repo->shouldReceive('atualizarProximaDataVencimentoSimples')->andReturnUsing(function ($id, $d) use (&$saida) {
+            $saida['proximo'] = $d;
         });
         $pagamentos = Mockery::mock(PagamentoPlanoService::class);
         $pagamentos->shouldReceive('atualizarStatusMatricula');
 
-        $r = $this->service($repo, $pagamentos)->darBaixaConta(1551, 3, 68, [
-            'data_vencimento' => $vencimento, 'data_pagamento' => $pagamento, 'confirmar_duplicidade' => true,
-        ]);
+        return $this->service($repo, $pagamentos)->darBaixaConta(1551, 3, 68, array_filter([
+            'data_vencimento' => '2026-11-10', 'proxima_data_vencimento' => $proximoVenc,
+            'data_pagamento' => $dataPagamento, 'confirmar_duplicidade' => true,
+        ]));
+    }
+
+    public function test_baixa_usa_o_proximo_vencimento_informado(): void
+    {
+        $saida = [];
+        $r = $this->baixar(date('Y-m-d'), null, '2026-12-17', $saida);
+
         $this->assertSame(200, $r['status']);
-
-        return [$gerada, $proximo];
+        $this->assertSame('2026-12-17', $saida['gerada']);
+        $this->assertSame('2026-12-17', $saida['proximo']);
     }
 
-    public function test_turma_fixa_paga_atrasada_mantem_o_dia_de_vencimento(): void
+    public function test_proximo_vencimento_e_obrigatorio(): void
     {
-        [$gerada, $proximo] = $this->baixarComTipoDeAcesso('turma_fixa', '2026-11-10', '2026-11-25');
+        $r = $this->baixar(date('Y-m-d'), null, null);
 
-        $this->assertSame('2026-12-10', $gerada);
-        $this->assertSame('2026-12-10', $proximo);
+        $this->assertSame(400, $r['status']);
     }
 
-    public function test_turma_fixa_paga_adiantada_mantem_o_dia_de_vencimento(): void
+    public function test_proximo_vencimento_deve_ser_posterior_ao_da_parcela(): void
     {
-        [$gerada] = $this->baixarComTipoDeAcesso('turma_fixa', '2026-11-10', '2026-11-02');
+        $r = $this->baixar(date('Y-m-d'), null, '2026-11-10');
 
-        $this->assertSame('2026-12-10', $gerada);
+        $this->assertSame(422, $r['status']);
     }
 
-    public function test_horario_livre_continua_contando_a_partir_do_pagamento_atrasado(): void
+    public function test_data_retroativa_e_bloqueada_por_padrao(): void
     {
-        // Comportamento anterior, inalterado: a regra de vencimento fixo vale só para turma fixa
-        [$gerada] = $this->baixarComTipoDeAcesso('horario_livre', '2026-11-10', '2026-11-25');
+        $r = $this->baixar('2000-01-01', false);
 
-        $this->assertSame('2026-12-25', $gerada);
+        $this->assertSame(422, $r['status']);
+    }
+
+    public function test_data_retroativa_liberada_por_configuracao(): void
+    {
+        $r = $this->baixar('2000-01-01', true);
+
+        $this->assertSame(200, $r['status']);
     }
 }

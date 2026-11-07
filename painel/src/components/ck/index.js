@@ -904,17 +904,22 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
     var inv = p.invoice || {};
     var method = useState(p.defaultMethod || ''), paid = useState(p.today || ''), due = useState(inv.dueDate || '');
     var editDue = useState(false), more = useState(false), receipt = useState(''), notes = useState(p.defaultNotes || ''), tried = useState(false);
+    var nextDue = useState(p.defaultNextDue || '');
     var methods = p.methods || PAY_METHODS;
     var errs = {};
     if (!methods.some(function (m) { return m.value === method[0]; })) errs.method = 'Escolha a forma de pagamento.';
     if (!paid[0]) errs.paid = 'Informe a data do pagamento.';
     if (p.canEditDue !== false && !due[0]) errs.due = 'Informe a data de vencimento.';
     else if (p.minDueDate && due[0] < p.minDueDate) errs.due = 'O vencimento não pode ser anterior ao mês atual.';
+    if (p.askNextDue) {
+      if (!nextDue[0]) errs.next = 'Informe o próximo vencimento.';
+      else if (due[0] && nextDue[0] <= due[0]) errs.next = 'O próximo vencimento deve ser posterior ao vencimento desta parcela.';
+    }
     var late = paid[0] && due[0] ? dayDiff(due[0], paid[0]) : 0;
     function confirm() {
       tried[1](true);
       if (Object.keys(errs).length || p.confirming || p.disabled) return;
-      p.onConfirm && p.onConfirm({ invoiceId: inv.id, method: method[0], paidDate: paid[0], dueDate: due[0], receipt: receipt[0] || null, notes: notes[0] || null });
+      p.onConfirm && p.onConfirm({ invoiceId: inv.id, method: method[0], paidDate: paid[0], dueDate: due[0], nextDueDate: nextDue[0] || null, receipt: receipt[0] || null, notes: notes[0] || null });
     }
     return h(Modal, { open: p.open, onClose: p.onCancel, dismissable: !p.confirming, inline: p.inline, sheet: true, size: 'md', autoFocus: false,
       leading: h('span', { className: 'ck-bx__icon', 'aria-hidden': true }, h(Icon, { name: 'check-circle', size: 20, strokeWidth: 2 })),
@@ -946,6 +951,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
           tried[0] && errs.method ? h('span', { className: 'ck-field__error' }, h(Icon, { name: 'alert-triangle', size: 13 }), errs.method) : null),
         h(TextField, { label: 'Data do pagamento', type: 'date', value: paid[0], onChange: function (e) { paid[1](e.target.value); }, error: tried[0] ? errs.paid : null,
           hint: late > 0 ? 'Pago ' + late + (late === 1 ? ' dia' : ' dias') + ' depois do vencimento.' : late < 0 ? 'Pago ' + (-late) + (late === -1 ? ' dia' : ' dias') + ' antes do vencimento.' : 'Pago no dia do vencimento.' }),
+        p.askNextDue ? h(TextField, { label: 'Próximo vencimento', type: 'date', value: nextDue[0], min: due[0] || undefined, onChange: function (e) { nextDue[1](e.target.value); }, error: tried[0] ? errs.next : null,
+          hint: 'A próxima parcela será criada com este vencimento.' }) : null,
         more[0] ? h(React.Fragment, null,
           p.allowReceipt !== false ? h(TextField, { label: 'Comprovante', icon: 'paperclip', value: receipt[0], onChange: function (e) { receipt[1](e.target.value); }, placeholder: 'Link ou código do comprovante', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }) : null,
           h(TextAreaField, { label: 'Observação', value: notes[0], onChange: function (e) { notes[1](e.target.value); }, placeholder: 'Aparece no histórico da fatura', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }))

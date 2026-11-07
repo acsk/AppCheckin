@@ -86,6 +86,9 @@ return [
     // Tenant do próprio AppCheckin: a conta Asaas dele cobra os contratos das academias.
     'sistema_tenant_id' => (int) env('APPCHECKIN_SISTEMA_TENANT_ID', 1),
 
+    // Baixa manual do painel: false bloqueia data de pagamento anterior a hoje
+    'baixa_manual_data_retroativa' => filter_var(env('BAIXA_MANUAL_DATA_RETROATIVA', false), FILTER_VALIDATE_BOOLEAN),
+
     'asaas' => [
         'sandbox_url' => env('ASAAS_SANDBOX_URL', 'https://api-sandbox.asaas.com/v3'),
         'production_url' => env('ASAAS_PRODUCTION_URL', 'https://api.asaas.com/v3'),

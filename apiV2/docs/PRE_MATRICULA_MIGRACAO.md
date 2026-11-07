@@ -77,6 +77,17 @@ linha mostra aluno (e-mail, telefone, CPF), data de envio, plano solicitado e
 plano pago vinculado, turmas, vencimento, status e, quando houver, a matrícula
 criada e seu status.
 
+**Filtros e relatório.** Acima da tabela há busca por aluno (nome, e-mail,
+telefone, CPF, nome do responsável; sem diferenciar acentos), plano, dia da
+semana e turma. Eles se somam ao filtro de status, e "Mostrando X de Y" indica o
+resultado. Dia e turma valem para o mesmo horário da grade do aluno. Os botões
+**Exportar CSV por turma** e **Exportar PDF por turma** geram o relatório do que
+está na tela (filtros incluídos), separado por turma: cada turma lista dia,
+aluno, contato, plano, vencimento e status. Um aluno com mais de um dia aparece
+em cada turma dele; com filtro de dia ou turma, só entram os horários que
+combinam. O CSV usa `;` e BOM (abre no Excel) e o PDF é A4 paisagem. A geração é
+no painel, com os pedidos já carregados; não há rota nova na API.
+
 **Revisar** abre uma modal em que o Admin ajusta plano gratuito, turmas e
 vencimento e decide: **Salvar ajuste** (mantém pendente), **Reprovar** ou
 **Aprovar e criar matrícula** (grava antes os ajustes feitos na modal).

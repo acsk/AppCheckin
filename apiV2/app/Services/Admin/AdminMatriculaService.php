@@ -1040,11 +1040,35 @@ class AdminMatriculaService
             return $this->error('data_vencimento inválida', 400);
         }
 
+        $proximoVencimento = $data['proxima_data_vencimento'] ?? null;
+        if (empty($proximoVencimento)) {
+            return $this->error('proxima_data_vencimento é obrigatória para baixa manual', 400);
+        }
+        try {
+            $proximoVencimento = AcademyDateTime::parse((string) $proximoVencimento)->format('Y-m-d');
+            $vencimentoAtual = AcademyDateTime::parse((string) $dataVencimento)->format('Y-m-d');
+        } catch (\Throwable) {
+            return $this->error('proxima_data_vencimento inválida', 400);
+        }
+        if ($proximoVencimento <= $vencimentoAtual) {
+            return $this->error('O próximo vencimento deve ser posterior ao vencimento desta parcela.', 422);
+        }
+
         if (empty($data['confirmar_duplicidade']) && ($duplicidade = $this->baixaEmDuplicidade($pagamento, (string) $dataVencimento, $tenantId))) {
             return $duplicidade;
         }
 
         $dataPagamento = ! empty($data['data_pagamento']) ? $data['data_pagamento'] : null;
+        if ($dataPagamento !== null) {
+            try {
+                $pagoEm = AcademyDateTime::parse((string) $dataPagamento)->format('Y-m-d');
+            } catch (\Throwable) {
+                return $this->error('data_pagamento inválida', 400);
+            }
+            if (! config('appcheckin.baixa_manual_data_retroativa', false) && $pagoEm < AcademyDateTime::today()) {
+                return $this->error('A data do pagamento não pode ser anterior a hoje.', 422);
+            }
+        }
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
         $tipoBaixaId = 1;
@@ -1066,108 +1090,43 @@ class AdminMatriculaService
 
         $proximaParcela = null;
         $periodoJaCobrado = false;
-
         try {
-            $vencimentoBase = $dataVencimento ?? $pagamento['data_vencimento'];
-            $pagamentoVencimento = null;
-            if (! empty($vencimentoBase)) {
-                try {
-                    $pagamentoVencimento = AcademyDateTime::parse((string) $vencimentoBase);
-                } catch (\Throwable) {
-                    $pagamentoVencimento = null;
-                }
-            }
-
-            $pagoDate = null;
-            if ($dataPagamento) {
-                try {
-                    $pagoDate = AcademyDateTime::parse((string) $dataPagamento);
-                } catch (\Throwable) {
-                    $pagoDate = null;
-                }
-            }
-
-            // Turma fixa: o ciclo segue o dia de vencimento; pagar antes ou depois não o desloca
-            $turmaFixa = VencimentoTurmaFixa::daMatricula((int) $pagamento['matricula_id']);
-
-            if ($turmaFixa && $pagamentoVencimento) {
-                $baseDate = $pagamentoVencimento;
-            } elseif ($pagoDate && $pagamentoVencimento) {
-                $baseDate = ($pagoDate > $pagamentoVencimento) ? $pagoDate : $pagamentoVencimento;
-            } elseif ($pagamentoVencimento) {
-                $baseDate = $pagamentoVencimento;
-            } elseif ($pagoDate) {
-                $baseDate = $pagoDate;
-            } else {
-                $baseDate = AcademyDateTime::now();
-            }
-
-            $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
-            if ($turmaFixa) {
-                $proximoVencimento = VencimentoTurmaFixa::proximo(
-                    $baseDate,
-                    $mesesCiclo ? (int) $mesesCiclo : null,
-                    (int) ($pagamento['duracao_dias'] ?? 30),
-                    $turmaFixa['dia_vencimento'],
-                );
-            } elseif ($mesesCiclo) {
-                $proximoVencimento = clone $baseDate;
-                $proximoVencimento->modify("+{$mesesCiclo} months");
-            } else {
-                $duracaoDias = (int) $pagamento['duracao_dias'];
-                $proximoVencimento = clone $baseDate;
-                $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
-            }
-
-            $valorProximaParcela = $pagamento['matricula_valor'] ?? $pagamento['valor'];
-
-            // Outra parcela já cobre o próximo período (ex.: "Primeiro pagamento" de matrícula refeita):
-            // não gera mais uma; o painel avisa para conferir a duplicidade
-            try {
-                $periodoJaCobrado = ParcelasPeriodo::periodoSeguinteJaCobrado(
-                    (int) $pagamento['tenant_id'],
-                    (int) $pagamento['matricula_id'],
-                    $pagamentoId,
-                    $pagamentoVencimento ? $pagamentoVencimento->format('Y-m-d') : $baseDate->format('Y-m-d'),
-                    $proximoVencimento->format('Y-m-d')
-                );
-            } catch (\Throwable $e) {
-                Log::warning('AdminMatriculaService::darBaixaConta checagem de período: '.$e->getMessage());
-            }
-
-            if ((float) $valorProximaParcela > 0.001 && ! $periodoJaCobrado) {
-                $proximaParcelaId = $this->matriculas->inserirPagamentoPlano([
-                    'tenant_id' => $pagamento['tenant_id'],
-                    'aluno_id' => $pagamento['aluno_id'],
-                    'matricula_id' => $pagamento['matricula_id'],
-                    'plano_id' => $pagamento['plano_id'],
-                    'valor' => (float) $valorProximaParcela,
-                    'valor_original' => (float) $valorProximaParcela,
-                    'desconto' => 0,
-                    'motivo_desconto' => null,
-                    'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                    'status_pagamento_id' => 1,
-                    'observacoes' => 'Pagamento gerado automaticamente após confirmação',
-                    'criado_por' => $adminId,
-                ]);
-
-                $proximaParcela = [
-                    'id' => $proximaParcelaId,
-                    'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                    'valor' => (float) $valorProximaParcela,
-                    'valor_original' => (float) $valorProximaParcela,
-                    'desconto' => 0,
-                    'status' => 'Aguardando',
-                ];
-            }
-
-            $this->matriculas->atualizarProximaDataVencimentoSimples(
+            $periodoJaCobrado = ParcelasPeriodo::periodoSeguinteJaCobrado(
+                (int) $pagamento['tenant_id'],
                 (int) $pagamento['matricula_id'],
-                $proximoVencimento->format('Y-m-d')
+                $pagamentoId,
+                $vencimentoAtual,
+                $proximoVencimento
             );
         } catch (\Throwable $e) {
-            Log::error('AdminMatriculaService::darBaixaConta proxima parcela: '.$e->getMessage());
+            Log::warning('AdminMatriculaService::darBaixaConta checagem de período: '.$e->getMessage());
         }
+
+        $valorProximaParcela = (float) ($pagamento['matricula_valor'] ?? $pagamento['valor']);
+        if ($valorProximaParcela > 0.001 && ! $periodoJaCobrado) {
+            $proximaParcelaId = $this->matriculas->inserirPagamentoPlano([
+                'tenant_id' => $pagamento['tenant_id'],
+                'aluno_id' => $pagamento['aluno_id'],
+                'matricula_id' => $pagamento['matricula_id'],
+                'plano_id' => $pagamento['plano_id'],
+                'valor' => $valorProximaParcela,
+                'valor_original' => $valorProximaParcela,
+                'desconto' => 0,
+                'motivo_desconto' => null,
+                'data_vencimento' => $proximoVencimento,
+                'status_pagamento_id' => 1,
+                'observacoes' => 'Pagamento gerado após confirmação (vencimento informado na baixa)',
+                'criado_por' => $adminId,
+            ]);
+            $proximaParcela = [
+                'id' => $proximaParcelaId,
+                'data_vencimento' => $proximoVencimento,
+                'valor' => $valorProximaParcela,
+                'status' => 'Aguardando',
+            ];
+        }
+
+        $this->matriculas->atualizarProximaDataVencimentoSimples((int) $pagamento['matricula_id'], $proximoVencimento);
 
         $pagamentoAtualizado = $this->matriculas->findPagamentoParaBaixa($pagamentoId, $tenantId);
         $this->pagamentosPlano->atualizarStatusMatricula($tenantId, (int) $pagamento['matricula_id']);
@@ -1188,8 +1147,8 @@ class AdminMatriculaService
         }
         $aviso = $mesmoPeriodo !== []
             ? 'Atenção: este período também tem a parcela '.ParcelasPeriodo::descrever($mesmoPeriodo)
-                .'. Se for duplicada, cancele-a. A próxima parcela não foi gerada para não cobrar em dobro.'
-            : ($periodoJaCobrado ? 'A próxima parcela não foi gerada: já existe cobrança para o período seguinte.' : null);
+                .'. Se for duplicada, cancele-a.'
+            : ($periodoJaCobrado ? 'A próxima parcela não foi criada: já existe cobrança para o período seguinte.' : null);
 
         return [
             'status' => 200,

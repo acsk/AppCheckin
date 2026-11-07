@@ -5,6 +5,16 @@ import pagamentoContratoService from '../services/pagamentoContratoService';
 import { obterMensagemErro, extrairMensagemErro } from '../utils/errorHandler';
 import { showError, showSuccess, showWarning } from '../utils/toast';
 
+function sugerirProximoVencimento(value) {
+  const base = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(base)) return '';
+  const [y, m, d] = base.split('-').map(Number);
+  const alvo = new Date(Date.UTC(y, m, 1));
+  const ultimoDia = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  alvo.setUTCDate(Math.min(d, ultimoDia));
+  return alvo.toISOString().slice(0, 10);
+}
+
 export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plano = false, student, plan }) {
   const [methods, setMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
@@ -76,6 +86,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         resposta = await api.post(`/admin/matriculas/contas/${id}/baixa`, {
           ...payload,
           data_vencimento: values.dueDate,
+          proxima_data_vencimento: values.nextDueDate,
           ...(confirmarDuplicidade ? { confirmar_duplicidade: true } : {}),
         });
       } else {
@@ -105,7 +116,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
       showWarning(`Pagamento confirmado. ${corpo.aviso_cobranca}`);
     } else {
       showSuccess(plano
-        ? (corpo.proxima_parcela ? 'Pagamento confirmado! Próximo pagamento gerado automaticamente.' : 'Pagamento confirmado!')
+        ? (corpo.proxima_parcela ? 'Pagamento confirmado! Próxima parcela criada.' : 'Pagamento confirmado!')
         : 'Pagamento confirmado com sucesso!');
     }
     onClose();
@@ -126,7 +137,9 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         canEditDue={plano}
         minDueDate={plano ? `${today.slice(0, 7)}-01` : undefined}
         allowReceipt={false}
-        nextNote={plano ? undefined : false}
+        askNextDue={plano}
+        defaultNextDue={plano ? sugerirProximoVencimento(pagamento.data_vencimento) : ''}
+        nextNote={false}
         error={loadingMethods ? 'Carregando formas de pagamento…' : error}
         errorAction={!loadingMethods && !methods.length ? <Button size="sm" onClick={() => setAttempt((value) => value + 1)}>Tentar novamente</Button> : null}
         disabled={loadingMethods || !methods.length}
@@ -151,7 +164,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
           <Button variant="primary" loading={saving} onClick={() => submit(confirmation)}>Confirmar pagamento</Button>
         </>}
       >
-        <p>A próxima parcela será gerada automaticamente. Confirme somente se o pagamento já foi recebido.</p>
+        <p>Confirme somente se o pagamento já foi recebido. A próxima parcela será criada no vencimento informado.</p>
       </Modal>
       <Modal
         open={!!duplicidade}

@@ -4,6 +4,7 @@ import { Panel } from '../../components/ck/pessoas';
 import { superAdminService } from '../../services/superAdminService';
 import preMatriculaService from '../../services/preMatriculaService';
 import { showError, showSuccess } from '../../utils/toast';
+import { DIAS_SEMANA, agruparPorTurma, exportarCsvPorTurma, exportarPdfPorTurma, rotuloPlano, rotuloTurma } from '../../utils/relatorioPreMatriculaTurmas';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const statusLabel = { pendente: 'Aguardando aprovação', aprovada: 'Aprovada', reprovada: 'Reprovada' };
@@ -21,6 +22,7 @@ const contagemHint = {
   dia_vencimento: 'Ex.: aprovado dia 06 com vencimento dia 10, o ciclo vai de 10/11 a 10/12 (plano de 30 dias): o acesso é gratuito até 10/12 e a cobrança começa pela compra do plano pago no app.',
   aprovacao: 'Ex.: aprovado dia 06, o acesso gratuito dura a duração do plano (30 dias), até 06/12.',
 };
+const semAcento = (texto) => String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const novoPar = () => ({ plano_free_id: '', plano_pago_id: '' });
 // A API envia o instante em UTC (ISO com "Z"); exibe no fuso da academia
 const formatarData = (valor) => {
@@ -44,6 +46,10 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
   const [configAberta, setConfigAberta] = useState(false);
   const [excluirConfig, setExcluirConfig] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState('pendente');
+  const [busca, setBusca] = useState('');
+  const [filtroPlano, setFiltroPlano] = useState('');
+  const [filtroDia, setFiltroDia] = useState('');
+  const [filtroTurma, setFiltroTurma] = useState('');
   const [revisao, setRevisao] = useState(null);
   const [excluir, setExcluir] = useState(null);
   const [edicaoPlanoId, setEdicaoPlanoId] = useState('');
@@ -273,9 +279,32 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
     aprovada: solicitacoes.filter((item) => item.status === 'aprovada').length,
     reprovada: solicitacoes.filter((item) => item.status === 'reprovada').length,
   };
-  const filtradas = filtroStatus === 'todas' ? solicitacoes : solicitacoes.filter((item) => item.status === filtroStatus);
+  // Filtros de busca: status + nome/contato + plano + dia + turma (dia e turma valem para o mesmo horário da grade)
+  const termo = semAcento(busca).trim();
+  const filtrosDeGrade = Boolean(filtroDia || filtroTurma);
+  const combinaGrade = (slot) => (!filtroDia || Number(slot.dia_semana) === Number(filtroDia))
+    && (!filtroTurma || Number(slot.turma_fixa_id) === Number(filtroTurma));
+  const filtradas = solicitacoes.filter((item) => (filtroStatus === 'todas' || item.status === filtroStatus)
+    && (!termo || semAcento([item.nome, item.email, item.cpf, item.telefone, item.responsavel_nome].join(' ')).includes(termo))
+    && (!filtroPlano || String(item.plano_id) === filtroPlano)
+    && (!filtrosDeGrade || item.grade.some(combinaGrade)));
+  const opcoesPlano = [...new Map(solicitacoes.map((item) => [String(item.plano_id), rotuloPlano(item)])).entries()]
+    .map(([value, label]) => ({ value, label }));
+  const opcoesTurma = [...new Map(solicitacoes.flatMap((item) => item.grade).map((slot) => [String(slot.turma_fixa_id), rotuloTurma(slot)])).entries()]
+    .map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  const filtrosAtivos = Boolean(busca || filtroPlano || filtroDia || filtroTurma);
+  const limparFiltros = () => { setBusca(''); setFiltroPlano(''); setFiltroDia(''); setFiltroTurma(''); };
+  const descricaoFiltros = [
+    `status: ${filtroStatus === 'todas' ? 'todos' : (statusLabel[filtroStatus] || filtroStatus).toLowerCase()}`,
+    busca && `busca "${busca}"`,
+    filtroPlano && `plano ${opcoesPlano.find((o) => o.value === filtroPlano)?.label || ''}`,
+    filtroDia && DIAS_SEMANA[Number(filtroDia) - 1],
+    filtroTurma && opcoesTurma.find((o) => o.value === filtroTurma)?.label,
+  ].filter(Boolean).join(' · ');
+  const gruposTurma = () => agruparPorTurma(filtradas, { dia: filtroDia, turma: filtroTurma });
+  const nomeAcademia = academias.find((academia) => String(academia.id) === tenantId)?.nome || 'Academia';
   const pendenteNaModal = revisao?.status === 'pendente';
-  const opcoesPlano = (dados?.planos || []).map((plano) => ({
+  const opcoesPlanoModal = (dados?.planos || []).map((plano) => ({
     value: String(plano.id),
     label: `${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}${plano.descricao ? ` · ${plano.descricao}` : ''}`,
   }));
@@ -332,7 +361,23 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
             ]}
           />
         </div>
-        {!filtradas.length ? <p className="ck-mc-hint">{filtroStatus === 'pendente' ? 'Não há pedidos aguardando aprovação para esta academia.' : 'Nenhum pedido neste filtro.'}</p> : (
+        <div className="ck-mc-form" role="search" aria-label="Filtrar pedidos">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 16 }}>
+            <TextField label="Buscar aluno" icon="search" value={busca} placeholder="Nome, e-mail, telefone ou CPF" onChange={(event) => setBusca(event.target.value)} />
+            <SelectField label="Plano" value={filtroPlano} options={[{ value: '', label: 'Todos os planos' }, ...opcoesPlano]} onChange={(event) => setFiltroPlano(event.target.value)} />
+            <SelectField label="Dia da semana" value={filtroDia} options={[{ value: '', label: 'Todos os dias' }, ...DIAS_SEMANA.map((nome, i) => ({ value: String(i + 1), label: nome }))]} onChange={(event) => setFiltroDia(event.target.value)} />
+            <SelectField label="Turma" value={filtroTurma} options={[{ value: '', label: 'Todas as turmas' }, ...opcoesTurma]} onChange={(event) => setFiltroTurma(event.target.value)} />
+          </div>
+          <div className="ck-cad-table__actions" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <p className="ck-mc-hint" role="status" style={{ margin: 0, flex: 1 }}>
+              Mostrando {filtradas.length} de {solicitacoes.length} pedido(s){filtrosAtivos ? ' com os filtros aplicados' : ''}.
+            </p>
+            {filtrosAtivos ? <Button size="sm" variant="ghost" icon="x" onClick={limparFiltros}>Limpar filtros</Button> : null}
+            <Button size="sm" variant="secondary" icon="download" disabled={!filtradas.length} onClick={() => exportarCsvPorTurma(gruposTurma())}>Exportar CSV por turma</Button>
+            <Button size="sm" variant="secondary" icon="download" disabled={!filtradas.length} onClick={() => exportarPdfPorTurma(gruposTurma(), { academia: nomeAcademia, filtros: descricaoFiltros })}>Exportar PDF por turma</Button>
+          </div>
+        </div>
+        {!filtradas.length ? <p className="ck-mc-hint">{filtrosAtivos ? 'Nenhum pedido combina com os filtros.' : filtroStatus === 'pendente' ? 'Não há pedidos aguardando aprovação para esta academia.' : 'Nenhum pedido neste filtro.'}</p> : (
           <div className="ck-pc__wrap">
             <table className="ck-pc__table">
               <thead><tr><th>Aluno</th><th>Enviado em</th><th>Plano solicitado</th><th>Grade semanal</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead>
@@ -448,7 +493,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
           {revisao?.status === 'aprovada' ? <Callout tone="info">Estes são os dados da solicitação. A matrícula já criada não é alterada; mudanças no plano efetivo, na grade em uso ou na cobrança são feitas na gestão de matrículas.</Callout> : null}
           {pendenteNaModal ? <Callout tone="info">Ao aprovar, a matrícula gratuita é criada com os dados abaixo. Se não houver vaga ou houver conflito com outra matrícula, o pedido continua aguardando.</Callout> : null}
           {revisao && !planoEdicao ? <Callout tone="warning">O plano solicitado não está mais disponível para pré-matrícula. Selecione outro plano.</Callout> : null}
-          <SelectField label="Plano gratuito" value={planoEdicao ? edicaoPlanoId : ''} options={planoEdicao ? opcoesPlano : [{ value: '', label: 'Selecione o plano' }, ...opcoesPlano]} onChange={(event) => {
+          <SelectField label="Plano gratuito" value={planoEdicao ? edicaoPlanoId : ''} options={planoEdicao ? opcoesPlanoModal : [{ value: '', label: 'Selecione o plano' }, ...opcoesPlanoModal]} onChange={(event) => {
             const id = event.target.value;
             const plano = (dados?.planos || []).find((item) => item.id === Number(id));
             setEdicaoPlanoId(id);
