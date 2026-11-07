@@ -505,7 +505,9 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                     : preMatricula.status === "pendente"
                       ? "Seu pedido foi recebido e está aguardando análise da academia."
                       : preMatricula.status === "aprovada"
-                        ? "Seu pedido foi aprovado. A academia ainda precisa criar sua matrícula; a aprovação não gera cobrança."
+                        ? preMatricula.matricula_id
+                          ? `Seu pedido foi aprovado e sua matrícula #${preMatricula.matricula_id} foi criada.`
+                          : "Seu pedido foi aprovado."
                         : "Escolha o plano e os horários de sua preferência."}
                 </Text>
               </View>

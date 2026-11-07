@@ -41,6 +41,30 @@ const preMatriculaService = {
       throw new Error(mensagem(error, 'Não foi possível registrar a decisão.'));
     }
   },
+
+  async listarAcademia() {
+    try {
+      return (await api.get('/admin/pre-matriculas')).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível carregar as pré-matrículas.'));
+    }
+  },
+
+  async atualizarAcademia(id, dados) {
+    try {
+      return (await api.put(`/admin/pre-matriculas/${id}`, dados)).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível ajustar a pré-matrícula.'));
+    }
+  },
+
+  async avaliarAcademia(id, decisao, observacao) {
+    try {
+      return (await api.post(`/admin/pre-matriculas/${id}/${decisao}`, { observacao })).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível registrar a decisão.'));
+    }
+  },
 };
 
 export default preMatriculaService;

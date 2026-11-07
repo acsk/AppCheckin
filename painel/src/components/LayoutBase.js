@@ -86,6 +86,7 @@ const SECTIONS = [
           { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas-fixas', label: 'Turmas', path: '/turmas-fixas', roles: [3], perm: 'aulas.gerenciar' },
+          { id: 'pre-matriculas', label: 'Pré-matrículas', path: '/pre-matriculas', roles: [3], perm: 'matriculas.gerenciar' },
         ],
       },
       {

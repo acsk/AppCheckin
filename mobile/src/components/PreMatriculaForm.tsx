@@ -11,6 +11,7 @@ export type PreMatricula = {
   disponivel: boolean;
   obrigatoria: boolean;
   status: "pendente" | "aprovada" | "reprovada" | null;
+  matricula_id?: number | null;
   observacao: string | null;
   motivo?: string | null;
   planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];

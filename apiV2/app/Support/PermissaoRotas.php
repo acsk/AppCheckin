@@ -42,6 +42,8 @@ final class PermissaoRotas
         // Matrículas
         [self::LEITURA, '#^admin/(matriculas|matricula-descontos)(/|$)#', Permissao::MATRICULAS_VER],
         [null, '#^admin/(matriculas|matricula-descontos)(/|$)#', Permissao::MATRICULAS_GERENCIAR],
+        [self::LEITURA, '#^admin/pre-matriculas$#', Permissao::MATRICULAS_GERENCIAR],
+        [null, '#^admin/pre-matriculas(/\d+)?(/|$)#', Permissao::MATRICULAS_GERENCIAR],
         [['POST'], '#^admin/pacote-contratos(/|$)#', Permissao::MATRICULAS_GERENCIAR],
         // Catálogos que a matrícula consulta
         [self::LEITURA, '#^admin/(modalidades|planos|assinatura-frequencias|pacotes|pacote-contratos|admins)(/|$)#', Permissao::MATRICULAS_VER],

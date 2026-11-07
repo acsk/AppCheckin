@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Badge, Button, Callout, Modal, SegmentedControl, SelectField, Switch, TextAreaField } from '../../components/ck';
+import { Badge, Button, Callout, Modal, SegmentedControl, SelectField, Switch, TextAreaField, TextField } from '../../components/ck';
 import { Panel } from '../../components/ck/pessoas';
 import { superAdminService } from '../../services/superAdminService';
 import preMatriculaService from '../../services/preMatriculaService';
@@ -7,40 +7,55 @@ import { showError, showSuccess } from '../../utils/toast';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const statusLabel = { pendente: 'Pendente', aprovada: 'Aprovada', reprovada: 'Reprovada' };
+const publicoLabel = {
+  sem_matricula: 'Sem matrícula ativa',
+  com_matricula: 'Com matrícula ativa',
+  ambos: 'Com ou sem matrícula ativa',
+};
 
-export default function PreMatriculaPanel() {
+export default function PreMatriculaPanel({ modoAcademia = false }) {
   const [academias, setAcademias] = useState([]);
   const [tenantId, setTenantId] = useState('');
   const [dados, setDados] = useState(null);
-  const [config, setConfig] = useState({ ativa: false, obrigatoria: false });
+  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula' });
   const [configAberta, setConfigAberta] = useState(false);
   const [excluirConfig, setExcluirConfig] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState('pendente');
   const [decisao, setDecisao] = useState(null);
+  const [edicao, setEdicao] = useState(null);
+  const [edicaoPlanoId, setEdicaoPlanoId] = useState('');
+  const [edicaoGrade, setEdicaoGrade] = useState([]);
+  const [edicaoVencimento, setEdicaoVencimento] = useState('');
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async (id = tenantId) => {
-    if (!id) return;
+    if (!modoAcademia && !id) return;
     setCarregando(true);
     setErro('');
     try {
-      const resultado = await preMatriculaService.listar(id);
+      const resultado = modoAcademia
+        ? await preMatriculaService.listarAcademia()
+        : await preMatriculaService.listar(id);
       setDados(resultado);
-      setConfig({
-        ativa: !!resultado.configuracao.ativa,
-        obrigatoria: !!resultado.configuracao.obrigatoria,
-      });
+      if (resultado.configuracao) {
+        setConfig({
+          ativa: !!resultado.configuracao.ativa,
+          obrigatoria: !!resultado.configuracao.obrigatoria,
+          publico: resultado.configuracao.publico || 'sem_matricula',
+        });
+      }
     } catch (error) {
       setErro(error.message);
     } finally {
       setCarregando(false);
     }
-  }, [tenantId]);
+  }, [tenantId, modoAcademia]);
 
   useEffect(() => {
+    if (modoAcademia) return undefined;
     let active = true;
     superAdminService.listarAcademias()
       .then((resultado) => {
@@ -56,9 +71,12 @@ export default function PreMatriculaPanel() {
         setCarregando(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [modoAcademia]);
 
-  useEffect(() => { if (tenantId) carregar(tenantId); }, [tenantId, carregar]);
+  useEffect(() => {
+    if (modoAcademia) void carregar('');
+    else if (tenantId) void carregar(tenantId);
+  }, [modoAcademia, tenantId, carregar]);
 
   const salvar = async () => {
     if (!tenantId || salvando) return;
@@ -102,11 +120,50 @@ export default function PreMatriculaPanel() {
     setSalvando(true);
     setErro('');
     try {
-      await preMatriculaService.avaliar(decisao.id, Number(tenantId), decisao.acao, observacao);
-      showSuccess(decisao.acao === 'aprovar' ? 'Pré-matrícula aprovada.' : 'Pré-matrícula reprovada.');
+      const resultado = modoAcademia
+        ? await preMatriculaService.avaliarAcademia(decisao.id, decisao.acao, observacao)
+        : await preMatriculaService.avaliar(decisao.id, Number(tenantId), decisao.acao, observacao);
+      showSuccess(decisao.acao === 'aprovar'
+        ? `Pré-matrícula aprovada. Matrícula #${resultado.matricula_id} criada.`
+        : 'Pré-matrícula reprovada.');
       setDecisao(null);
       setObservacao('');
       await carregar(tenantId);
+    } catch (error) {
+      setErro(error.message);
+      showError(error.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const abrirEdicao = (item) => {
+    setEdicao(item);
+    setEdicaoPlanoId(String(item.plano_id));
+    setEdicaoGrade(item.grade.map((slot) => ({
+      turma_fixa_id: String(slot.turma_fixa_id),
+      dia_semana: Number(slot.dia_semana),
+    })));
+    setEdicaoVencimento(item.dia_vencimento ? String(item.dia_vencimento) : '');
+  };
+
+  const planoEdicao = (dados?.planos || []).find((plano) => plano.id === Number(edicaoPlanoId));
+  const salvarEdicao = async () => {
+    if (!edicao || !planoEdicao || salvando) return;
+    setSalvando(true);
+    setErro('');
+    try {
+      await preMatriculaService.atualizarAcademia(edicao.id, {
+        plano_id: Number(edicaoPlanoId),
+        grade: edicaoGrade.map((slot) => ({
+          turma_fixa_id: Number(slot.turma_fixa_id),
+          dia_semana: Number(slot.dia_semana),
+        })),
+        dia_vencimento: edicaoVencimento ? Number(edicaoVencimento) : null,
+      });
+      setEdicao(null);
+      showSuccess('Pré-matrícula ajustada e mantida aguardando aprovação.');
+      await carregar('');
     } catch (error) {
       setErro(error.message);
       showError(error.message);
@@ -125,23 +182,23 @@ export default function PreMatriculaPanel() {
 
   return (
     <>
-      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. A aprovação apenas valida os dados: não cria matrícula nem cobrança; faça a matrícula manualmente após revisar.">
+      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. Ao aprovar, a matrícula é criada com os dados revisados; as regras de cobrança seguem o plano.">
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={() => carregar()}>Tentar novamente</Button>}>{erro}</Callout> : null}
         <div className="ck-mc-form">
-          <SelectField label="Academia" value={tenantId} options={academias.map((academia) => ({ value: String(academia.id), label: academia.nome }))} onChange={(event) => setTenantId(event.target.value)} />
+          {!modoAcademia ? <SelectField label="Academia" value={tenantId} options={academias.map((academia) => ({ value: String(academia.id), label: academia.nome }))} onChange={(event) => setTenantId(event.target.value)} /> : null}
           {carregando && !dados ? <p className="ck-mc-hint" role="status">Carregando…</p> : null}
-          {tenantId ? <section className="ck-card ck-mc-form">
+          {!modoAcademia && tenantId ? <section className="ck-card ck-mc-form">
             <div>
               <strong>Configuração da pré-matrícula</strong>
               <p className="ck-mc-hint">
                 {dados?.configuracao?.configurada
-                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · disponível para alunos vinculados à academia`
+                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula}`
                   : 'Ainda não configurada para esta academia.'}
               </p>
             </div>
             <div className="ck-cad-table__actions">
               <Button variant="primary" icon={dados?.configuracao?.configurada ? 'pencil' : 'plus'} disabled={carregando} onClick={() => {
-                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false });
+                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false, publico: 'sem_matricula' });
                 setConfigAberta(true);
               }}>{dados?.configuracao?.configurada ? 'Editar configuração' : 'Montar pré-matrícula'}</Button>
               {dados?.configuracao?.configurada ? <Button variant="danger" disabled={salvando || carregando} onClick={() => setExcluirConfig(true)}>Excluir</Button> : null}
@@ -175,8 +232,9 @@ export default function PreMatriculaPanel() {
                   <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span></td>
                   <td>{item.grade.map((slot) => `${dias[slot.dia_semana - 1]} · ${slot.turma_nome} · ${String(slot.horario_inicio || '').slice(0, 5)}`).join('; ')}</td>
                   <td>{item.dia_vencimento ? `Dia ${item.dia_vencimento}` : 'Não informado'}</td>
-                  <td><Badge tone={item.status === 'aprovada' ? 'success' : item.status === 'reprovada' ? 'danger' : 'warning'}>{statusLabel[item.status] || item.status}</Badge>{item.observacao ? <span className="ck-cad-table__summary">{item.observacao}</span> : null}</td>
+                  <td><Badge tone={item.status === 'aprovada' ? 'success' : item.status === 'reprovada' ? 'danger' : 'warning'}>{statusLabel[item.status] || item.status}</Badge>{item.matricula_id ? <span className="ck-cad-table__summary">Matrícula #{item.matricula_id}</span> : null}{item.observacao ? <span className="ck-cad-table__summary">{item.observacao}</span> : null}</td>
                   <td>{item.status === 'pendente' ? <div className="ck-cad-table__actions">
+                    {modoAcademia ? <Button size="sm" variant="secondary" disabled={salvando} onClick={() => abrirEdicao(item)}>Ajustar</Button> : null}
                     <Button size="sm" variant="primary" disabled={salvando} onClick={() => { setObservacao(''); setDecisao({ id: item.id, acao: 'aprovar', nome: item.nome }); }}>Aprovar</Button>
                     <Button size="sm" variant="danger" disabled={salvando} onClick={() => { setObservacao(''); setDecisao({ id: item.id, acao: 'reprovar', nome: item.nome }); }}>Reprovar</Button>
                   </div> : null}</td>
@@ -193,7 +251,14 @@ export default function PreMatriculaPanel() {
         <div className="ck-mc-form">
           <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão enviar o pedido pelo app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
           <Switch label="Envio obrigatório" description="Quando ativo, o app exige o envio antes de continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
-          <p className="ck-mc-hint">O pedido aparecerá para os alunos vinculados a esta academia, tenham ou não matrícula ativa.</p>
+          <SelectField label="Público" hint="A configuração controla quem pode iniciar um novo pedido. Solicitações já enviadas continuam disponíveis para acompanhamento."
+            value={config.publico}
+            options={[
+              { value: 'sem_matricula', label: publicoLabel.sem_matricula },
+              { value: 'com_matricula', label: publicoLabel.com_matricula },
+              { value: 'ambos', label: publicoLabel.ambos },
+            ]}
+            onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
         </div>
       </Modal>
 
@@ -204,9 +269,56 @@ export default function PreMatriculaPanel() {
       </Modal>
 
       <Modal open={!!decisao} size="sm" title={decisao?.acao === 'aprovar' ? 'Aprovar pré-matrícula?' : 'Reprovar pré-matrícula?'} dismissable={!salvando} onClose={() => setDecisao(null)}
-        description={`${decisao?.nome || ''}. Esta decisão não cria uma matrícula nem gera cobrança.`}
+        description={decisao?.acao === 'aprovar'
+          ? `A aprovação criará uma matrícula para ${decisao?.nome || 'este aluno'} com o plano, a grade e o vencimento revisados.`
+          : `Confirma a reprovação do pedido de ${decisao?.nome || 'este aluno'}?`}
         footer={<><Button variant="ghost" disabled={salvando} onClick={() => setDecisao(null)}>Cancelar</Button><Button variant={decisao?.acao === 'aprovar' ? 'primary' : 'danger'} loading={salvando} onClick={confirmarDecisao}>{decisao?.acao === 'aprovar' ? 'Aprovar' : 'Reprovar'}</Button></>}>
         <TextAreaField label="Observação para o histórico" value={observacao} onChange={(event) => setObservacao(event.target.value)} />
+      </Modal>
+
+      <Modal open={!!edicao} size="lg" title="Ajustar pré-matrícula" dismissable={!salvando} onClose={() => setEdicao(null)}
+        description={`${edicao?.nome || ''}. Ajuste o plano e a grade antes de aprovar; o pedido continuará pendente até uma decisão.`}
+        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setEdicao(null)}>Cancelar</Button><Button variant="primary" icon="save" loading={salvando} disabled={!planoEdicao || edicaoGrade.length !== Number(planoEdicao?.checkins_semanais) || edicaoGrade.some((slot) => !slot.turma_fixa_id || !slot.dia_semana)} onClick={salvarEdicao}>Salvar ajuste</Button></>}>
+        <div className="ck-mc-form">
+          <SelectField label="Plano" value={edicaoPlanoId} options={(dados?.planos || []).map((plano) => ({
+            value: String(plano.id),
+            label: `${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}${plano.descricao ? ` · ${plano.descricao}` : ''}`,
+          }))} onChange={(event) => {
+            const id = event.target.value;
+            const plano = (dados?.planos || []).find((item) => item.id === Number(id));
+            setEdicaoPlanoId(id);
+            setEdicaoGrade(plano ? Array.from({ length: plano.checkins_semanais }, () => ({ turma_fixa_id: '', dia_semana: 0 })) : []);
+          }} />
+          {planoEdicao && planoEdicao.dias_disponiveis < planoEdicao.checkins_semanais
+            ? <Callout tone="warning">Há turmas em {planoEdicao.dias_disponiveis} dia(s) diferente(s), mas este plano precisa de {planoEdicao.checkins_semanais}. Não é possível completar a grade com os horários ativos.</Callout>
+            : null}
+          {planoEdicao ? Array.from({ length: planoEdicao.checkins_semanais }, (_, index) => {
+            const selecionadosEmOutrosCampos = edicaoGrade
+              .filter((_, outroIndex) => outroIndex !== index)
+              .map((slot) => Number(slot.dia_semana))
+              .filter(Boolean);
+            const opcoes = (dados?.turmas || []).flatMap((turma) => turma.modalidade_id === planoEdicao.modalidade_id
+              ? turma.dias_semana.filter((dia) => !selecionadosEmOutrosCampos.includes(dia)
+                || (Number(edicaoGrade[index]?.dia_semana) === dia && Number(edicaoGrade[index]?.turma_fixa_id) === turma.id))
+                .map((dia) => ({
+                  value: `${turma.id}:${dia}`,
+                  label: `${dias[dia - 1]} · ${String(turma.horario_inicio || '').slice(0, 5)} · ${turma.nome}`,
+                }))
+              : []);
+            const atual = edicaoGrade[index] || { turma_fixa_id: '', dia_semana: 0 };
+            const value = atual.turma_fixa_id && atual.dia_semana ? `${atual.turma_fixa_id}:${atual.dia_semana}` : '';
+            return <SelectField key={`grade-${index}`} label={`Dia e turma ${index + 1}`} value={value}
+              options={[{ value: '', label: 'Selecione um horário' }, ...opcoes]}
+              onChange={(event) => {
+                const [turmaId, dia] = event.target.value.split(':');
+                setEdicaoGrade((gradeAtual) => gradeAtual.map((slot, slotIndex) => slotIndex === index
+                  ? { turma_fixa_id: turmaId || '', dia_semana: Number(dia) || 0 }
+                  : slot));
+              }} />;
+          }) : null}
+          <TextField label="Dia de vencimento (opcional)" type="number" min="1" max="31" value={edicaoVencimento}
+            onChange={(event) => setEdicaoVencimento(event.target.value)} placeholder="De 1 a 31" />
+        </div>
       </Modal>
     </>
   );
