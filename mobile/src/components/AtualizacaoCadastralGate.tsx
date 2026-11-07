@@ -1,7 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import AppHeader from "@/src/components/ds/AppHeader";
+import PreMatriculaForm, { type PreMatricula } from "@/src/components/PreMatriculaForm";
 import Button from "@/src/components/ds/Button";
 import CodigoInput from "@/src/components/ds/CodigoInput";
 import Section from "@/src/components/ds/Section";
@@ -30,16 +32,7 @@ type Pendente = {
   trocar_senha: boolean;
   senha: { min_caracteres: number; nivel: string; regras: string[] } | null;
 };
-type PreMatricula = {
-  tenant_id: number;
-  disponivel: boolean;
-  obrigatoria: boolean;
-  status: "pendente" | "aprovada" | "reprovada" | null;
-  observacao: string | null;
-  motivo?: string | null;
-  planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];
-  turmas: { id: number; nome: string; modalidade_id: number; dias_semana: number[]; horario_inicio: string; horario_fim: string }[];
-};
+
 
 const SEXOS = [
   { value: "feminino", label: "Feminino" },
@@ -98,6 +91,7 @@ const faltasSenha = (senha: string, nivel: string, min: number) => {
 };
 
 export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean }) {
+  const insets = useSafeAreaInsets();
   const [pendente, setPendente] = useState<Pendente | null>(null);
   const [adiada, setAdiada] = useState<number | null>(null);
   const [preMatricula, setPreMatricula] = useState<PreMatricula | null>(null);
@@ -352,7 +346,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   };
 
   const planoSelecionado = preMatricula?.planos.find((plano) => plano.id === planoPreMatricula) || null;
-  const modalidadesPermitidas = planoSelecionado ? preMatricula?.turmas.filter((turma) => turma.modalidade_id === planoSelecionado.modalidade_id) || [] : [];
+  const vencimentoPreMatriculaValido = !diaVencimento || (/^\d{1,2}$/.test(diaVencimento) && Number(diaVencimento) >= 1 && Number(diaVencimento) <= 31);
   const visivelCadastro = enabled && !!pendente && adiada !== pendente.id;
   const statusResolvido = !!preMatricula && ["pendente", "aprovada"].includes(preMatricula.status || "");
   const podeAdiarPreMatricula = !!preMatricula
@@ -499,12 +493,12 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
     ) : null}
     {visivelPreMatricula && preMatricula ? (
       <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => { if (podeAdiarPreMatricula) setPreMatriculaAdiada(preMatricula.tenant_id); }}>
-        <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
+        <SafeAreaView style={styles.root} edges={["left", "right"]}>
+          <AppHeader title="Pré-matrícula" eyebrow="SEU CADASTRO NA ACADEMIA" actions={podeAdiarPreMatricula ? [{ icon: "x", label: "Fechar pré-matrícula", disabled: salvandoPreMatricula, onPress: () => setPreMatriculaAdiada(preMatricula.tenant_id) }] : undefined} />
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-            <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-              <View style={styles.head}>
-                <View style={styles.icon}><Feather name="clipboard" size={24} color={ds.brandInk} /></View>
-                <Text style={styles.title} accessibilityRole="header">Pré-matrícula</Text>
+            <ScrollView style={styles.flex} contentContainerStyle={[styles.body, styles.preBody]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <View style={styles.preIntro}>
+                <Text style={styles.title} accessibilityRole="header">{!preMatricula.disponivel ? "Pré-matrícula indisponível" : preMatricula.status === "pendente" ? "Pedido em análise" : preMatricula.status === "aprovada" ? "Pedido aprovado" : "Escolha seus horários"}</Text>
                 <Text style={styles.text}>
                   {!preMatricula.disponivel
                     ? preMatricula.motivo || "Esta pré-matrícula não está disponível para sua conta."
@@ -512,7 +506,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                       ? "Seu pedido foi recebido e está aguardando análise da academia."
                       : preMatricula.status === "aprovada"
                         ? "Seu pedido foi aprovado. A academia ainda precisa criar sua matrícula; a aprovação não gera cobrança."
-                        : "Informe o plano e os dias/horários desejados. A solicitação será analisada pela academia; não cria matrícula, não gera cobrança e não reserva vaga."}
+                        : "Escolha o plano e os horários de sua preferência."}
                 </Text>
               </View>
               {preMatricula.disponivel && preMatricula.status === "reprovada" ? (
@@ -527,84 +521,35 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                   <Text style={styles.alertText}>{erroPreMatricula}</Text>
                 </View>
               ) : null}
-              {preMatricula.disponivel && !statusResolvido ? <Section title="ESCOLHA O PLANO" padded>
-                <View style={styles.fields}>
-                  {preMatricula.planos.map((plano) => {
-                    const selecionado = planoPreMatricula === plano.id;
-                    const descricao = String(plano.descricao || "").replace(/\bfree\b/gi, "").trim();
-                    return (
-                      <View key={plano.id}>
-                        <Pressable onPress={() => {
-                          setPlanoPreMatricula(plano.id);
-                          setGradePreMatricula([]);
-                          setErroPreMatricula("");
-                        }} accessibilityRole="radio" accessibilityState={{ checked: selecionado }} style={[styles.opt, selecionado && styles.optOn]}>
-                          <Text style={[styles.optText, selecionado && { color: ds.onInverse }]}>
-                            {plano.checkins_semanais}x por semana · {plano.modalidade_nome}{descricao ? `\n${descricao}` : ""}
-                          </Text>
-                        </Pressable>
-                        {selecionado && plano.dias_disponiveis !== undefined && plano.dias_disponiveis < plano.checkins_semanais ? (
-                          <Text style={styles.hint}>
-                            Há turmas em {plano.dias_disponiveis} dia(s) diferente(s), mas este plano precisa de {plano.checkins_semanais}. Peça à academia para disponibilizar horários em mais dias.
-                          </Text>
-                        ) : null}
-                      </View>
-                    );
-                  })}
-                  {!preMatricula.planos.length ? <Text style={styles.text}>Não há planos disponíveis para esta pré-matrícula. Fale com a academia.</Text> : null}
-                </View>
-              </Section> : null}
-              {preMatricula.disponivel && !statusResolvido && planoSelecionado ? (
-                <Section title="ESCOLHA OS DIAS E HORÁRIOS" padded>
-                  <View style={styles.fields}>
-                    <Text style={styles.text}>Escolha {planoSelecionado.checkins_semanais} horário(s) em dias diferentes.</Text>
-                    {Array.from({ length: 7 }, (_, index) => index + 1).map((dia) => {
-                      const opcoes = modalidadesPermitidas.filter((turma) => turma.dias_semana.includes(dia));
-                      if (!opcoes.length) return null;
-                      const escolhida = gradePreMatricula.find((slot) => slot.dia_semana === dia);
-                      return (
-                        <View key={dia}>
-                          <Text style={styles.label}>{["", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"][dia]}</Text>
-                          {opcoes.map((turma) => {
-                            const marcada = escolhida?.turma_fixa_id === turma.id;
-                            const jaCheia = gradePreMatricula.length >= planoSelecionado.checkins_semanais && !escolhida;
-                            return (
-                              <Pressable key={turma.id} disabled={jaCheia} onPress={() => {
-                                setGradePreMatricula((atual) => {
-                                  const semEsteDia = atual.filter((slot) => slot.dia_semana !== dia);
-                                  return marcada ? semEsteDia : [...semEsteDia, { turma_fixa_id: turma.id, dia_semana: dia }];
-                                });
-                                setErroPreMatricula("");
-                              }} accessibilityRole="radio" accessibilityState={{ checked: marcada, disabled: jaCheia }} style={[styles.opt, marcada && styles.optOn, jaCheia && { opacity: 0.45 }]}>
-                                <Text style={[styles.optText, marcada && { color: ds.onInverse }]}>
-                                  {String(turma.horario_inicio).slice(0, 5)} · {turma.nome}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      );
-                    })}
-                    <TextField label="Dia de vencimento (opcional)" value={diaVencimento} onChangeText={setDiaVencimento} keyboardType="number-pad" placeholder="De 1 a 31" />
-                  </View>
-                </Section>
-              ) : null}
-              <View style={styles.fields}>
-                {preMatricula.disponivel && !statusResolvido ? <Button variant="primary" icon="check" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais)} onPress={() => void salvarPreMatricula()}>
-                  Enviar pedido para análise
+              {preMatricula.disponivel && !statusResolvido ? <PreMatriculaForm
+                dados={preMatricula}
+                planoId={planoPreMatricula}
+                grade={gradePreMatricula}
+                vencimento={diaVencimento}
+                disabled={salvandoPreMatricula}
+                onPlanoChange={(id) => { setPlanoPreMatricula(id); setGradePreMatricula([]); setErroPreMatricula(""); }}
+                onGradeChange={(grade) => { setGradePreMatricula(grade); setErroPreMatricula(""); }}
+                onVencimentoChange={setDiaVencimento}
+              /> : null}
+            </ScrollView>
+            <View style={[styles.foot, { paddingBottom: space[3] + insets.bottom }]}>
+              <View style={styles.preActions}>
+                {preMatricula.disponivel && !statusResolvido ? <Button variant="glow" size="lg" block icon="send" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais) || !vencimentoPreMatriculaValido} onPress={() => void salvarPreMatricula()}>
+                  Enviar para análise
                 </Button> : null}
-                {podeAdiarPreMatricula ? <Button variant="secondary" onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
+                {podeAdiarPreMatricula ? <Button variant={statusResolvido ? "primary" : "ghost"} size="lg" block disabled={salvandoPreMatricula} onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
                   {statusResolvido ? "Entendi" : "Fechar"}
                 </Button> : null}
               </View>
-            </ScrollView>
+            </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
     ) : null}
     {visivelErroPreMatricula ? (
       <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => {}}>
-        <SafeAreaView style={styles.root} edges={["top", "bottom", "left", "right"]}>
+        <SafeAreaView style={styles.root} edges={["bottom", "left", "right"]}>
+          <AppHeader title="Pré-matrícula" />
           <View style={[styles.body, styles.flex]}>
             <View style={styles.head}>
               <View style={styles.icon}><Feather name="alert-circle" size={24} color={ds.danger} /></View>
@@ -625,6 +570,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: ds.ground },
   flex: { flex: 1 },
   body: { padding: space[4], gap: space[5], width: "100%", maxWidth: 560, alignSelf: "center" },
+  preBody: { flexGrow: 1, paddingTop: space[5], paddingBottom: space[6] },
+  preIntro: { gap: space[1] },
+  preActions: { width: "100%", maxWidth: 528, alignSelf: "center", gap: space[2] },
   head: { gap: space[2], paddingTop: space[2] },
   icon: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: ds.brandSoft },
   title: { ...type.title, color: ds.ink },
