@@ -8,6 +8,8 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
+use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -50,17 +52,26 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($e instanceof AuthenticationException) {
                 return response()->json(['message' => 'Sessão inválida ou expirada. Entre novamente.'], 401, [], JSON_UNESCAPED_UNICODE);
             }
-            if ($e instanceof ModelNotFoundException) {
-                return response()->json(['message' => 'Registro não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE);
-            }
             if ($e instanceof HttpExceptionInterface) {
                 $status = $e->getStatusCode();
-                $mensagem = $e->getMessage() !== '' ? $e->getMessage() : match (true) {
-                    $status === 403 => 'Você não tem permissão para esta ação.',
-                    $status === 404 => 'Recurso não encontrado.',
-                    $status === 405 => 'Método não permitido.',
-                    default => 'Não foi possível concluir a solicitação.',
-                };
+                $mensagem = $e->getMessage();
+                // Mensagens do próprio framework (inglês/técnicas) viram texto legível; as do serviço seguem como estão
+                $doFramework = $mensagem === ''
+                    || str_starts_with($mensagem, 'The route ')
+                    || $mensagem === 'This action is unauthorized.'
+                    || $e->getPrevious() instanceof ModelNotFoundException
+                    || $e instanceof MethodNotAllowedHttpException
+                    || $e instanceof TooManyRequestsHttpException;
+                if ($doFramework) {
+                    $mensagem = match ($status) {
+                        403 => 'Você não tem permissão para esta ação.',
+                        404 => 'Recurso não encontrado.',
+                        405 => 'Método não permitido.',
+                        419 => 'Sessão expirada. Atualize a página e tente novamente.',
+                        429 => 'Muitas tentativas. Aguarde um instante e tente novamente.',
+                        default => 'Não foi possível concluir a solicitação.',
+                    };
+                }
 
                 return response()->json(['message' => $mensagem], $status, $e->getHeaders(), JSON_UNESCAPED_UNICODE);
             }

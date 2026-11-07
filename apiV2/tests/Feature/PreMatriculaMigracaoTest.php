@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Services\Admin\AdminMatriculaService;
 use App\Services\PreMatriculaService;
+use App\Support\AcademyDateTime;
 use App\Support\Papel;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,9 @@ class PreMatriculaMigracaoTest extends TestCase
             $table->unsignedInteger('tenant_id');
             $table->unsignedInteger('aluno_id');
             $table->unsignedInteger('status_id');
+            $table->unsignedInteger('plano_id')->nullable();
+            $table->date('data_vencimento')->nullable();
+            $table->date('proxima_data_vencimento')->nullable();
         });
         Schema::create('modalidades', function (Blueprint $table) {
             $table->increments('id');
@@ -65,6 +69,7 @@ class PreMatriculaMigracaoTest extends TestCase
             $table->increments('id');
             $table->unsignedInteger('tenant_id');
             $table->unsignedInteger('modalidade_id');
+            $table->string('nome')->nullable();
             $table->string('descricao')->nullable();
             $table->decimal('valor', 10, 2);
             $table->unsignedTinyInteger('checkins_semanais');
@@ -85,6 +90,7 @@ class PreMatriculaMigracaoTest extends TestCase
         });
         (require database_path('migrations/2026_11_06_190000_pre_matriculas_migracao.php'))->up();
         (require database_path('migrations/2026_11_06_213500_add_matricula_id_to_pre_matriculas.php'))->up();
+        (require database_path('migrations/2026_11_06_230000_pre_matricula_planos_e_exclusao.php'))->up();
 
         DB::table('tenants')->insert(['id' => 1, 'nome' => 'Academia']);
         DB::table('usuarios')->insert(['id' => 1, 'nome' => 'Maria Silva', 'email' => 'maria@example.com', 'cpf' => '123']);
@@ -92,19 +98,51 @@ class PreMatriculaMigracaoTest extends TestCase
             'tenant_id' => 1, 'usuario_id' => 1, 'papel_id' => Papel::ALUNO, 'ativo' => true,
         ]);
         DB::table('alunos')->insert(['id' => 1, 'usuario_id' => 1]);
-        DB::table('status_matricula')->insert(['id' => 1, 'codigo' => 'ativa']);
+        DB::table('status_matricula')->insert([['id' => 1, 'codigo' => 'ativa'], ['id' => 2, 'codigo' => 'cancelada']]);
         DB::table('modalidades')->insert(['id' => 1, 'nome' => 'Yoga']);
         DB::table('planos')->insert([
-            'id' => 1, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => 'FREE - Yoga',
+            'id' => 1, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 2x FREE', 'descricao' => 'FREE - Yoga',
             'valor' => 0, 'checkins_semanais' => 2, 'ativo' => true,
         ]);
+        DB::table('planos')->insert([
+            'id' => 10, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 2x semana',
+            'valor' => 150, 'checkins_semanais' => 2, 'ativo' => true,
+        ]);
         DB::table('turmas_fixas')->insert([
-            ['id' => 1, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga manhã', 'dias_semana' => '[1,3]', 'horario_inicio' => '08:00', 'horario_fim' => '09:00', 'ativo' => true, 'vigencia_inicio' => now()->toDateString()],
-            ['id' => 2, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga noite', 'dias_semana' => '[3,5]', 'horario_inicio' => '18:00', 'horario_fim' => '19:00', 'ativo' => true, 'vigencia_inicio' => now()->toDateString()],
+            ['id' => 1, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga manhã', 'dias_semana' => '[1,3]', 'horario_inicio' => '08:00', 'horario_fim' => '09:00', 'ativo' => true, 'vigencia_inicio' => AcademyDateTime::today()],
+            ['id' => 2, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga noite', 'dias_semana' => '[3,5]', 'horario_inicio' => '18:00', 'horario_fim' => '19:00', 'ativo' => true, 'vigencia_inicio' => AcademyDateTime::today()],
         ]);
         $this->service->salvarConfiguracao([
             'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'pares' => [['plano_free_id' => 1, 'plano_pago_id' => 10]],
         ], 99);
+    }
+
+    /** @return array{id: int} */
+    private function enviarPadrao(int $usuarioId = 1): array
+    {
+        return $this->service->enviar(1, $usuarioId, [
+            'plano_id' => 1,
+            'grade' => [
+                ['turma_fixa_id' => 1, 'dia_semana' => 1],
+                ['turma_fixa_id' => 2, 'dia_semana' => 5],
+            ],
+        ]);
+    }
+
+    /** Simula a criação da matrícula pelo serviço administrativo, devolvendo a data de vencimento informada. */
+    private function simularMatricula(string $vencimento, ?int &$matriculaId = null): void
+    {
+        $mock = \Mockery::mock(AdminMatriculaService::class);
+        $mock->shouldReceive('criar')->andReturnUsing(function () use ($vencimento, &$matriculaId): array {
+            $matriculaId = (int) DB::table('matriculas')->insertGetId([
+                'tenant_id' => 1, 'aluno_id' => 1, 'status_id' => 1, 'plano_id' => 1,
+                'data_vencimento' => $vencimento, 'proxima_data_vencimento' => $vencimento,
+            ]);
+
+            return ['status' => 201, 'body' => ['matricula' => ['id' => $matriculaId]]];
+        });
+        $this->app->instance(AdminMatriculaService::class, $mock);
     }
 
     public function test_aluno_ve_apenas_planos_gratuitos_sem_preco_ou_token_free(): void
@@ -114,6 +152,7 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertCount(1, $resultado['planos']);
         $this->assertSame('Yoga', $resultado['planos'][0]['descricao']);
         $this->assertArrayNotHasKey('valor', $resultado['planos'][0]);
+        $this->assertArrayNotHasKey('plano_pago_id', $resultado['planos'][0]);
         $this->assertCount(2, $resultado['turmas']);
 
         DB::table('planos')->insert([
@@ -123,22 +162,93 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertCount(1, $this->service->paraAluno(1, 1)['planos']);
     }
 
-    public function test_exibe_todos_os_planos_gratuitos_mesmo_quando_nao_ha_dias_para_a_frequencia(): void
+    public function test_exibe_todos_os_planos_vinculados_mesmo_quando_nao_ha_dias_para_a_frequencia(): void
     {
         DB::table('turmas_fixas')->where('id', 2)->update(['dias_semana' => '[1]']);
         DB::table('planos')->insert([
-            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => '1x por Semana FREE',
+            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => null, 'descricao' => '1x por Semana FREE',
                 'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true],
-            ['id' => 4, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => '3x por Semana FREE',
-            'valor' => 0, 'checkins_semanais' => 3, 'ativo' => true,
-            ],
+            ['id' => 4, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => null, 'descricao' => '3x por Semana FREE',
+                'valor' => 0, 'checkins_semanais' => 3, 'ativo' => true],
+            ['id' => 11, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 1x', 'descricao' => null, 'valor' => 90, 'checkins_semanais' => 1, 'ativo' => true],
+            ['id' => 12, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 3x', 'descricao' => null, 'valor' => 200, 'checkins_semanais' => 3, 'ativo' => true],
         ]);
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'pares' => [
+                ['plano_free_id' => 1, 'plano_pago_id' => 10],
+                ['plano_free_id' => 3, 'plano_pago_id' => 11],
+                ['plano_free_id' => 4, 'plano_pago_id' => 12],
+            ],
+        ], 99);
 
         $planos = $this->service->paraAluno(1, 1)['planos'];
 
         $this->assertCount(3, $planos);
         $this->assertSame([1, 2, 3], array_column($planos, 'checkins_semanais'));
         $this->assertSame(2, $planos[2]['dias_disponiveis']);
+    }
+
+    public function test_plano_gratuito_sem_vinculo_nao_e_oferecido(): void
+    {
+        DB::table('planos')->insert([
+            'id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => 'Sem par FREE',
+            'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true,
+        ]);
+
+        $this->assertSame([1], array_column($this->service->paraAluno(1, 1)['planos'], 'id'));
+        try {
+            $this->service->enviar(1, 1, ['plano_id' => 3, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]);
+            $this->fail('Plano sem vínculo não pode receber pedidos.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('plano_id', $exception->errors());
+        }
+    }
+
+    public function test_pares_exigem_mesma_academia_modalidade_frequencia_e_planos_validos(): void
+    {
+        DB::table('modalidades')->insert(['id' => 2, 'nome' => 'Pilates']);
+        DB::table('tenants')->insert(['id' => 2, 'nome' => 'Outra']);
+        DB::table('planos')->insert([
+            ['id' => 20, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 1x', 'valor' => 90, 'checkins_semanais' => 1, 'ativo' => true],
+            ['id' => 21, 'tenant_id' => 1, 'modalidade_id' => 2, 'nome' => 'Pilates 2x', 'valor' => 90, 'checkins_semanais' => 2, 'ativo' => true],
+            ['id' => 22, 'tenant_id' => 2, 'modalidade_id' => 1, 'nome' => 'Outra academia', 'valor' => 90, 'checkins_semanais' => 2, 'ativo' => true],
+            ['id' => 23, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Pago inativo', 'valor' => 90, 'checkins_semanais' => 2, 'ativo' => false],
+        ]);
+        $base = ['tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula'];
+
+        foreach ([[20], [21], [22], [23], [1]] as [$pagoId]) {
+            try {
+                $this->service->salvarConfiguracao($base + ['pares' => [['plano_free_id' => 1, 'plano_pago_id' => $pagoId]]], 99);
+                $this->fail("O plano pago {$pagoId} não deveria ser aceito.");
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('pares', $exception->errors());
+            }
+        }
+        $this->assertSame(10, $this->service->painel(1)['configuracao']['pares'][0]['plano_pago_id']);
+    }
+
+    public function test_ativacao_exige_vinculo_valido_e_grade_suficiente(): void
+    {
+        $base = ['tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula'];
+        try {
+            $this->service->salvarConfiguracao($base + ['pares' => []], 99);
+            $this->fail('Sem vínculo a pré-matrícula não pode ser ativada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('ativa', $exception->errors());
+        }
+
+        DB::table('planos')->insert([
+            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 4x FREE', 'valor' => 0, 'checkins_semanais' => 4, 'ativo' => true],
+            ['id' => 13, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 4x', 'valor' => 250, 'checkins_semanais' => 4, 'ativo' => true],
+        ]);
+        try {
+            $this->service->salvarConfiguracao($base + ['pares' => [['plano_free_id' => 3, 'plano_pago_id' => 13]]], 99);
+            $this->fail('Grade insuficiente (3 dias para 4x) não pode ativar.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('ativa', $exception->errors());
+        }
+        $this->assertCount(1, $this->service->painel(1)['configuracao']['pares']);
     }
 
     public function test_publico_da_configuracao_e_persistido_e_aplicado_ao_aluno(): void
@@ -171,9 +281,14 @@ class PreMatriculaMigracaoTest extends TestCase
     public function test_admin_pode_ajustar_plano_grade_e_vencimento_antes_de_aprovar(): void
     {
         DB::table('planos')->insert([
-            'id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'descricao' => 'Plano revisado FREE',
-            'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true,
+            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => null, 'descricao' => 'Plano revisado FREE',
+                'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true],
+            ['id' => 11, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 1x', 'descricao' => null, 'valor' => 90, 'checkins_semanais' => 1, 'ativo' => true],
         ]);
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'pares' => [['plano_free_id' => 1, 'plano_pago_id' => 10], ['plano_free_id' => 3, 'plano_pago_id' => 11]],
+        ], 99);
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
             'grade' => [
@@ -195,6 +310,7 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertSame(1, $solicitacao['checkins_semanais']);
         $this->assertSame(3, $solicitacao['grade'][0]['dia_semana']);
         $this->assertSame(15, $solicitacao['dia_vencimento']);
+        $this->assertSame(11, $solicitacao['plano_destino_id']);
         $this->assertSame('pendente', $solicitacao['status']);
         $this->assertSame(0, DB::table('matriculas')->count());
     }
@@ -263,6 +379,8 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertSame(1, $resultado['matricula_id']);
         $this->assertSame(1, DB::table('matriculas')->count());
         $this->assertSame(1, DB::table('pre_matriculas')->where('id', $envio['id'])->value('matricula_id'));
+        $this->assertSame(10, DB::table('matriculas')->where('id', 1)->value('plano_destino_id'));
+        $this->assertSame(10, DB::table('pre_matriculas')->where('id', $envio['id'])->value('plano_destino_id'));
         $this->assertSame('aprovada', $this->service->paraAluno(1, 1)['status']);
         $this->assertSame(1, $this->service->paraAluno(1, 1)['matricula_id']);
     }
@@ -318,21 +436,21 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertSame(0, DB::table('matriculas')->count());
     }
 
-    public function test_ambiente_sem_a_coluna_matricula_id_continua_funcionando(): void
+    public function test_esquema_incompleto_deixa_o_recurso_indisponivel_sem_erro_interno(): void
     {
-        $envio = $this->service->enviar(1, 1, [
-            'plano_id' => 1,
-            'grade' => [
-                ['turma_fixa_id' => 1, 'dia_semana' => 1],
-                ['turma_fixa_id' => 2, 'dia_semana' => 5],
-            ],
-        ]);
-        Schema::table('pre_matriculas', fn (Blueprint $table) => $table->dropColumn('matricula_id'));
+        $this->enviarPadrao();
+        Schema::table('pre_matriculas', function (Blueprint $table) {
+            $table->dropIndex('pre_matriculas_matricula_id_index');
+            $table->dropColumn('matricula_id');
+        });
 
-        $this->assertSame('pendente', $this->service->paraAluno(1, 1)['status']);
-        $this->assertNull($this->service->painelAcademia(1)['solicitacoes'][0]['matricula_id']);
-        $this->service->avaliar(1, $envio['id'], 99, 'reprovada');
-        $this->assertSame('reprovada', DB::table('pre_matriculas')->where('id', $envio['id'])->value('status'));
+        $this->assertNull($this->service->paraAluno(1, 1));
+        try {
+            $this->service->painelAcademia(1);
+            $this->fail('Com o esquema incompleto o painel deve responder 503.');
+        } catch (HttpException $exception) {
+            $this->assertSame(503, $exception->getStatusCode());
+        }
     }
 
     public function test_sem_tabelas_o_app_nao_recebe_erro_e_o_painel_recebe_503_legivel(): void
@@ -348,6 +466,183 @@ class PreMatriculaMigracaoTest extends TestCase
             $this->assertSame(503, $exception->getStatusCode());
             $this->assertStringContainsString('atualização do banco de dados está pendente', $exception->getMessage());
         }
+    }
+
+    public function test_aprovar_duas_vezes_nao_cria_matricula_duplicada(): void
+    {
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2099-01-01');
+        $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+
+        try {
+            $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+            $this->fail('A segunda aprovação deve ser recusada.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+        $this->assertSame(1, DB::table('matriculas')->count());
+    }
+
+    public function test_aprovacao_exige_vinculo_ainda_valido(): void
+    {
+        $envio = $this->enviarPadrao();
+        DB::table('planos')->where('id', 10)->update(['ativo' => false]);
+        $matriculaService = \Mockery::mock(AdminMatriculaService::class);
+        $matriculaService->shouldNotReceive('criar');
+        $this->app->instance(AdminMatriculaService::class, $matriculaService);
+
+        try {
+            $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+            $this->fail('Sem plano pago válido a aprovação deve falhar.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('plano_id', $exception->errors());
+        }
+        $this->assertSame('pendente', DB::table('pre_matriculas')->where('id', $envio['id'])->value('status'));
+    }
+
+    public function test_fim_do_periodo_gratuito_oferece_o_plano_pago_vinculado(): void
+    {
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2020-01-01');
+        $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+
+        $periodo = $this->service->paraAluno(1, 1)['periodo_gratuito'];
+        $this->assertTrue($periodo['encerrado']);
+        $this->assertSame(['id' => 10, 'descricao' => 'Yoga 2x semana'], $periodo['plano_destino']);
+
+        DB::table('matriculas')->update(['proxima_data_vencimento' => '2099-01-01', 'data_vencimento' => '2099-01-01']);
+        $this->assertFalse($this->service->paraAluno(1, 1)['periodo_gratuito']['encerrado']);
+
+        // Já contratou o plano pago: o aviso de fim do período gratuito deixa de aparecer
+        DB::table('matriculas')->update(['plano_id' => 10, 'proxima_data_vencimento' => '2020-01-01']);
+        $this->assertFalse($this->service->paraAluno(1, 1)['periodo_gratuito']['encerrado']);
+    }
+
+    public function test_destino_da_matricula_nao_muda_quando_a_configuracao_muda(): void
+    {
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2020-01-01');
+        $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+        DB::table('planos')->insert(['id' => 14, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Novo', 'valor' => 99, 'checkins_semanais' => 2, 'ativo' => true]);
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'pares' => [['plano_free_id' => 1, 'plano_pago_id' => 14]],
+        ], 99);
+
+        $this->assertSame(10, DB::table('matriculas')->value('plano_destino_id'));
+        $this->assertSame(10, $this->service->paraAluno(1, 1)['periodo_gratuito']['plano_destino']['id']);
+    }
+
+    public function test_matricula_cancelada_libera_novo_envio(): void
+    {
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2099-01-01');
+        $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+        try {
+            $this->enviarPadrao();
+            $this->fail('Com matrícula vigente não pode haver novo envio.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('pre_matricula', $exception->errors());
+        }
+
+        DB::table('matriculas')->update(['status_id' => 2]);
+
+        $this->assertNull($this->service->paraAluno(1, 1)['status']);
+        $this->assertGreaterThan($envio['id'], $this->enviarPadrao()['id']);
+    }
+
+    public function test_edita_pedidos_aprovados_e_reprovados_sem_alterar_a_matricula(): void
+    {
+        DB::table('planos')->insert([
+            ['id' => 3, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 1x FREE', 'valor' => 0, 'checkins_semanais' => 1, 'ativo' => true],
+            ['id' => 11, 'tenant_id' => 1, 'modalidade_id' => 1, 'nome' => 'Yoga 1x', 'valor' => 90, 'checkins_semanais' => 1, 'ativo' => true],
+        ]);
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'pares' => [['plano_free_id' => 1, 'plano_pago_id' => 10], ['plano_free_id' => 3, 'plano_pago_id' => 11]],
+        ], 99);
+        $dados = ['plano_id' => 3, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 3]], 'dia_vencimento' => 20];
+
+        $reprovada = $this->enviarPadrao();
+        $this->service->avaliar(1, $reprovada['id'], 99, 'reprovada', 'Dados incompletos');
+        $this->service->atualizarSolicitacao(1, $reprovada['id'], $dados);
+        $linha = DB::table('pre_matriculas')->where('id', $reprovada['id'])->first();
+        $this->assertSame('reprovada', $linha->status);
+        $this->assertSame(3, (int) $linha->plano_id);
+        $this->assertSame(11, (int) $linha->plano_destino_id);
+
+        $aprovada = $this->enviarPadrao();
+        $this->simularMatricula('2099-01-01');
+        $this->service->avaliar(1, $aprovada['id'], 99, 'aprovada');
+        $resultado = $this->service->atualizarSolicitacao(1, $aprovada['id'], $dados);
+        $this->assertStringContainsString('A matrícula já criada não foi alterada', $resultado['message']);
+        $linha = DB::table('pre_matriculas')->where('id', $aprovada['id'])->first();
+        $this->assertSame('aprovada', $linha->status);
+        $this->assertSame(3, (int) $linha->plano_id);
+        $this->assertSame(10, (int) $linha->plano_destino_id);
+        $matricula = DB::table('matriculas')->first();
+        $this->assertSame(1, (int) $matricula->plano_id);
+        $this->assertSame(10, (int) $matricula->plano_destino_id);
+    }
+
+    public function test_exclusao_logica_preserva_matricula_e_registra_autor(): void
+    {
+        $pendente = $this->enviarPadrao();
+        try {
+            $this->service->excluirSolicitacao(1, $pendente['id'], 99);
+            $this->fail('Pedido pendente não pode ser excluído.');
+        } catch (HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        $this->simularMatricula('2099-01-01');
+        $this->service->avaliar(1, $pendente['id'], 99, 'aprovada');
+        $this->service->excluirSolicitacao(1, $pendente['id'], 77);
+
+        $linha = DB::table('pre_matriculas')->where('id', $pendente['id'])->first();
+        $this->assertNotNull($linha->excluida_em);
+        $this->assertSame(77, (int) $linha->excluida_por);
+        $this->assertSame([], $this->service->painelAcademia(1)['solicitacoes']);
+        $this->assertNull($this->service->paraAluno(1, 1)['status'] ?? null);
+        $this->assertSame(1, DB::table('matriculas')->count());
+        $this->assertSame(10, (int) DB::table('matriculas')->value('plano_destino_id'));
+        try {
+            $this->service->atualizarSolicitacao(1, $pendente['id'], ['plano_id' => 1, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]]]);
+            $this->fail('Pedido excluído não pode ser editado.');
+        } catch (HttpException $exception) {
+            $this->assertSame(404, $exception->getStatusCode());
+        }
+    }
+
+    public function test_pedido_excluido_nao_conta_na_duplicidade_e_reprovado_pode_ser_reenviado(): void
+    {
+        $primeiro = $this->enviarPadrao();
+        $this->service->avaliar(1, $primeiro['id'], 99, 'reprovada');
+        $this->service->excluirSolicitacao(1, $primeiro['id'], 99);
+
+        $this->assertGreaterThan($primeiro['id'], $this->enviarPadrao()['id']);
+    }
+
+    public function test_operacoes_de_uma_academia_nao_alcancam_pedidos_de_outra(): void
+    {
+        DB::table('tenants')->insert(['id' => 2, 'nome' => 'Outra']);
+        $envio = $this->enviarPadrao();
+        $this->service->avaliar(1, $envio['id'], 99, 'reprovada');
+
+        foreach ([
+            fn () => $this->service->avaliar(2, $envio['id'], 99, 'aprovada'),
+            fn () => $this->service->atualizarSolicitacao(2, $envio['id'], ['plano_id' => 1, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]),
+            fn () => $this->service->excluirSolicitacao(2, $envio['id'], 99),
+        ] as $operacao) {
+            try {
+                $operacao();
+                $this->fail('Pedido de outra academia não pode ser alcançado.');
+            } catch (HttpException $exception) {
+                $this->assertSame(404, $exception->getStatusCode());
+            }
+        }
+        $this->assertSame([], $this->service->painelAcademia(2)['solicitacoes']);
+        $this->assertCount(1, $this->service->painelAcademia(1)['solicitacoes']);
     }
 
     public function test_configuracao_preserva_data_de_criacao(): void

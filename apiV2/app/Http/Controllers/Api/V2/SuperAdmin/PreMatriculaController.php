@@ -43,6 +43,41 @@ class PreMatriculaController extends Controller
         ], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function atualizarSolicitacao(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->tenantDaRequisicao($request);
+
+        return response()->json(
+            $this->service->atualizarSolicitacao($tenantId, $id, $request->except('tenant_id')),
+            200,
+            [],
+            JSON_UNESCAPED_UNICODE,
+        );
+    }
+
+    public function excluirSolicitacao(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->tenantDaRequisicao($request);
+
+        return response()->json(
+            $this->service->excluirSolicitacao($tenantId, $id, (int) $request->attributes->get('userId')),
+            200,
+            [],
+            JSON_UNESCAPED_UNICODE,
+        );
+    }
+
+    private function tenantDaRequisicao(Request $request): int
+    {
+        $dados = validator(
+            ['tenant_id' => $request->input('tenant_id', $request->query('tenant_id'))],
+            ['tenant_id' => 'required|integer|min:1|exists:tenants,id'],
+            ['tenant_id.required' => 'Selecione uma academia.', 'tenant_id.exists' => 'A academia selecionada não foi encontrada.'],
+        )->validate();
+
+        return (int) $dados['tenant_id'];
+    }
+
     public function aprovar(Request $request, int $id): JsonResponse
     {
         return $this->avaliar($request, $id, 'aprovada');

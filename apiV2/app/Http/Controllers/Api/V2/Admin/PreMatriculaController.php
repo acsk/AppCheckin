@@ -37,6 +37,20 @@ class PreMatriculaController extends Controller
         );
     }
 
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        return response()->json(
+            $this->service->excluirSolicitacao(
+                (int) $request->attributes->get('tenantId'),
+                $id,
+                (int) $request->attributes->get('userId'),
+            ),
+            200,
+            [],
+            JSON_UNESCAPED_UNICODE,
+        );
+    }
+
     public function aprovar(Request $request, int $id): JsonResponse
     {
         return $this->avaliar($request, $id, 'aprovada');

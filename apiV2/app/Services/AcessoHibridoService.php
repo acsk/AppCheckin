@@ -436,7 +436,11 @@ class AcessoHibridoService
         $fixa = DB::table('matriculas as m')->join('alunos as a', 'a.id', '=', 'm.aluno_id')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')->join('status_matricula as s', 's.id', '=', 'm.status_id')
             ->where('a.usuario_id', $userId)->where('m.tenant_id', $tenantId)->where('p.modalidade_id', $modalidadeId)
-            ->where('m.tipo_acesso', self::FIXA)->exists();
+            ->where('m.tipo_acesso', self::FIXA)
+            // Matrícula de migração (pré-matrícula): o aluno pode contratar o plano pago vinculado
+            ->when(Schema::hasColumn('matriculas', 'plano_destino_id'), fn ($q) => $q->where(
+                fn ($w) => $w->whereNull('m.plano_destino_id')->orWhere('m.plano_destino_id', '<>', $planoId),
+            ))->exists();
         if ($fixa) {
             throw ValidationException::withMessages(['plano_id' => 'Para contratar ou trocar o plano de turma fixa, procure a secretaria. O pagamento da mensalidade permanece disponível.']);
         }

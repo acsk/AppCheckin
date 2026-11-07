@@ -6,6 +6,7 @@ use App\Services\Admin\AdminMatriculaService;
 use App\Support\AcademyDateTime;
 use App\Support\Papel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -23,6 +24,9 @@ class PreMatriculaService
         return [
             'configuracao' => $this->configuracao($tenantId),
             'solicitacoes' => $this->solicitacoes($tenantId),
+            'planos' => $this->planosDisponiveis($tenantId, true),
+            'turmas' => $this->turmasDisponiveis($tenantId),
+            'catalogo' => $this->catalogoPlanos($tenantId),
         ];
     }
 
@@ -34,7 +38,7 @@ class PreMatriculaService
 
         return [
             'solicitacoes' => $this->solicitacoes($tenantId),
-            'planos' => $this->planosDisponiveis($tenantId),
+            'planos' => $this->planosDisponiveis($tenantId, true),
             'turmas' => $this->turmasDisponiveis($tenantId),
         ];
     }
@@ -60,12 +64,20 @@ class PreMatriculaService
         ])->validate();
 
         $tenantId = (int) $validados['tenant_id'];
+        $paresInformados = array_key_exists('pares', $dados) ? $this->normalizarPares($tenantId, $dados['pares']) : null;
         if ($validados['ativa']) {
-            $ofertas = $this->planosDisponiveis($tenantId);
-            if (! collect($ofertas)->contains(
-                fn (array $plano) => $plano['dias_disponiveis'] >= $plano['checkins_semanais'],
+            $dias = $this->diasPorModalidade($tenantId);
+            $pares = $paresInformados ?? array_map(
+                static fn (array $par) => ['modalidade_id' => $par['modalidade_id'], 'checkins_semanais' => $par['checkins_semanais']],
+                array_filter($this->pares($tenantId), static fn (array $par) => $par['valido']),
+            );
+            if ($pares === []) {
+                throw ValidationException::withMessages(['ativa' => 'Vincule ao menos um plano gratuito de migração a um plano pago correspondente antes de ativar a pré-matrícula.']);
+            }
+            if (! collect($pares)->contains(
+                fn (array $par) => count(array_unique($dias[$par['modalidade_id']] ?? [])) >= $par['checkins_semanais'],
             )) {
-                throw ValidationException::withMessages(['ativa' => 'Cadastre planos de valor zero com aulas semanais e turmas fixas disponíveis antes de ativar a pré-matrícula.']);
+                throw ValidationException::withMessages(['ativa' => 'Nenhum plano vinculado tem turmas fixas disponíveis em dias distintos suficientes para a frequência semanal.']);
             }
         }
 
@@ -76,7 +88,19 @@ class PreMatriculaService
             'atualizada_por' => $userId,
             'updated_at' => now(),
         ];
-        DB::transaction(function () use ($tenantId, $linha) {
+        DB::transaction(function () use ($tenantId, $linha, $paresInformados) {
+            if ($paresInformados !== null) {
+                DB::table('pre_matricula_planos')->where('tenant_id', $tenantId)->delete();
+                foreach ($paresInformados as $par) {
+                    DB::table('pre_matricula_planos')->insert([
+                        'tenant_id' => $tenantId,
+                        'plano_free_id' => $par['plano_free_id'],
+                        'plano_pago_id' => $par['plano_pago_id'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+            }
             $existente = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->lockForUpdate()->first();
             if ($existente) {
                 DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->update($linha);
@@ -124,9 +148,8 @@ class PreMatriculaService
             );
         }
 
-        $ultima = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('usuario_id', $userId)
-            ->orderByDesc('id')->first();
-        if ($ultima && in_array($ultima->status, ['pendente', 'aprovada'], true)) {
+        $ultima = $this->ultimaSolicitacao($tenantId, $userId);
+        if ($ultima && $this->emAndamento($ultima)) {
             return [
                 'tenant_id' => $tenantId,
                 'disponivel' => true,
@@ -135,6 +158,7 @@ class PreMatriculaService
                 'solicitacao_id' => (int) $ultima->id,
                 'observacao' => $ultima->observacao,
                 'matricula_id' => $this->matriculaIdDe($ultima),
+                'periodo_gratuito' => $ultima->status === 'aprovada' ? $this->periodoGratuito($tenantId, $ultima) : null,
                 'planos' => [],
                 'turmas' => [],
             ];
@@ -158,6 +182,70 @@ class PreMatriculaService
             'observacao' => $ultima?->observacao,
             'planos' => $this->planosDisponiveis($tenantId),
             'turmas' => $this->turmasDisponiveis($tenantId),
+        ];
+    }
+
+    private function ultimaSolicitacao(int $tenantId, int $userId, bool $bloquear = false): ?object
+    {
+        $consulta = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('usuario_id', $userId)
+            ->whereNull('excluida_em')->orderByDesc('id');
+        if ($bloquear) {
+            $consulta->lockForUpdate();
+        }
+
+        return $consulta->first();
+    }
+
+    /** Pendente, ou aprovada cuja matrícula não foi cancelada (cancelada libera um novo envio). */
+    private function emAndamento(object $solicitacao): bool
+    {
+        if ($solicitacao->status === 'pendente') {
+            return true;
+        }
+        if ($solicitacao->status !== 'aprovada') {
+            return false;
+        }
+        if (! isset($solicitacao->matricula_id)) {
+            return true;
+        }
+        $status = DB::table('matriculas as m')->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $solicitacao->matricula_id)->value('sm.codigo');
+
+        return $status !== null && $status !== 'cancelada';
+    }
+
+    /**
+     * Estado do período gratuito da matrícula criada pela aprovação. Fica encerrado quando a matrícula
+     * ainda está no plano de valor zero e já venceu; a compra reaproveita a matrícula e a grade.
+     *
+     * @return array{encerrado: bool, fim: ?string, plano_destino: ?array{id: int, descricao: string}}|null
+     */
+    private function periodoGratuito(int $tenantId, object $solicitacao): ?array
+    {
+        if (! isset($solicitacao->matricula_id)) {
+            return null;
+        }
+        $matricula = DB::table('matriculas as m')->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $solicitacao->matricula_id)->where('m.tenant_id', $tenantId)
+            ->first(['m.plano_destino_id', 'm.data_vencimento', 'm.proxima_data_vencimento', 'p.valor', 'sm.codigo as status']);
+        if (! $matricula) {
+            return null;
+        }
+        $fim = $matricula->proxima_data_vencimento ?: $matricula->data_vencimento;
+        $fim = $fim ? substr((string) $fim, 0, 10) : null;
+        $encerrado = (float) $matricula->valor == 0.0 && $matricula->status !== 'cancelada'
+            && ($matricula->status === 'vencida' || ($fim !== null && $fim < AcademyDateTime::today()));
+        $destino = $matricula->plano_destino_id ? DB::table('planos')->where('tenant_id', $tenantId)
+            ->where('id', $matricula->plano_destino_id)->where('ativo', 1)->where('valor', '>', 0)->first() : null;
+
+        return [
+            'encerrado' => $encerrado,
+            'fim' => $fim,
+            'plano_destino' => $destino ? [
+                'id' => (int) $destino->id,
+                'descricao' => (string) ($destino->nome ?: $this->descricaoPlano($destino->descricao) ?: 'Plano'),
+            ] : null,
         ];
     }
 
@@ -204,17 +292,12 @@ class PreMatriculaService
             if (! $config || ! $this->alunoDaAcademia($tenantId, $userId)) {
                 throw ValidationException::withMessages(['pre_matricula' => 'A pré-matrícula não está disponível para esta conta.']);
             }
-            $anterior = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('usuario_id', $userId)
-                ->orderByDesc('id')->lockForUpdate()->first();
-            if ($anterior && in_array($anterior->status, ['pendente', 'aprovada'], true)) {
+            $anterior = $this->ultimaSolicitacao($tenantId, $userId, true);
+            if ($anterior && $this->emAndamento($anterior)) {
                 throw ValidationException::withMessages(['pre_matricula' => 'Você já enviou uma pré-matrícula para análise.']);
             }
 
-            $plano = DB::table('planos')->where('tenant_id', $tenantId)->where('id', $validados['plano_id'])
-                ->where('ativo', 1)->where('valor', 0)->where('checkins_semanais', '>', 0)->first();
-            if (! $plano) {
-                throw ValidationException::withMessages(['plano_id' => 'O plano selecionado não está disponível para pré-matrícula.']);
-            }
+            [$plano, $par] = $this->planoVinculado($tenantId, (int) $validados['plano_id'], 'O plano selecionado não está disponível para pré-matrícula.');
             $frequencia = (int) $plano->checkins_semanais;
             $diasTurma = $this->normalizarGrade($tenantId, $plano, $validados['grade']);
 
@@ -223,6 +306,7 @@ class PreMatriculaService
                 'usuario_id' => $userId,
                 'plano_id' => (int) $plano->id,
                 'plano_descricao' => $this->descricaoPlano($plano->descricao),
+                'plano_destino_id' => $par['plano_pago_id'],
                 'checkins_semanais' => $frequencia,
                 'grade' => json_encode($diasTurma, JSON_THROW_ON_ERROR),
                 'dia_vencimento' => $validados['dia_vencimento'] ?? null,
@@ -258,29 +342,62 @@ class PreMatriculaService
         ])->validate();
 
         return DB::transaction(function () use ($tenantId, $id, $validados) {
-            $solicitacao = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('id', $id)
-                ->lockForUpdate()->first();
-            abort_unless($solicitacao, 404, 'Pré-matrícula não encontrada.');
-            abort_unless($solicitacao->status === 'pendente', 409, 'Só é possível ajustar pedidos aguardando aprovação.');
-
-            $plano = DB::table('planos')->where('tenant_id', $tenantId)->where('id', $validados['plano_id'])
-                ->where('ativo', 1)->where('valor', 0)->where('checkins_semanais', '>', 0)->first();
-            if (! $plano) {
-                throw ValidationException::withMessages(['plano_id' => 'O plano selecionado não está disponível para pré-matrícula.']);
-            }
+            $solicitacao = $this->solicitacaoDaAcademia($tenantId, $id);
+            [$plano, $par] = $this->planoVinculado($tenantId, (int) $validados['plano_id'], 'O plano selecionado não está disponível para pré-matrícula.');
 
             $grade = $this->normalizarGrade($tenantId, $plano, $validados['grade']);
+            $aprovada = $solicitacao->status === 'aprovada';
             DB::table('pre_matriculas')->where('id', $id)->where('tenant_id', $tenantId)->update([
                 'plano_id' => (int) $plano->id,
                 'plano_descricao' => $this->descricaoPlano($plano->descricao),
+                // O destino da matrícula já criada não muda: o pedido guarda só o que foi aprovado
+                ...($aprovada ? [] : ['plano_destino_id' => $par['plano_pago_id']]),
                 'checkins_semanais' => (int) $plano->checkins_semanais,
                 'grade' => json_encode($grade, JSON_THROW_ON_ERROR),
                 'dia_vencimento' => $validados['dia_vencimento'] ?? null,
                 'updated_at' => now(),
             ]);
 
-            return ['message' => 'Pré-matrícula ajustada. O pedido continua aguardando aprovação.'];
+            return ['message' => match ($solicitacao->status) {
+                'aprovada' => 'Dados da solicitação atualizados. A matrícula já criada não foi alterada; use a gestão de matrículas para mudar plano, grade ou cobrança.',
+                'reprovada' => 'Pré-matrícula ajustada. O pedido continua reprovado.',
+                default => 'Pré-matrícula ajustada. O pedido continua aguardando aprovação.',
+            }];
         }, 3);
+    }
+
+    /** @return array{message: string} */
+    public function excluirSolicitacao(int $tenantId, int $id, int $userId): array
+    {
+        $this->exigirTabelas();
+
+        return DB::transaction(function () use ($tenantId, $id, $userId) {
+            $solicitacao = $this->solicitacaoDaAcademia($tenantId, $id);
+            if ($solicitacao->status === 'pendente') {
+                abort(409, 'Pedidos aguardando aprovação não podem ser excluídos. Aprove ou reprove antes.');
+            }
+            DB::table('pre_matriculas')->where('id', $id)->where('tenant_id', $tenantId)->update([
+                'excluida_em' => now(),
+                'excluida_por' => $userId,
+                'updated_at' => now(),
+            ]);
+            Log::info('Pré-matrícula excluída', [
+                'pre_matricula_id' => $id, 'tenant_id' => $tenantId, 'usuario_id' => $userId,
+                'status' => $solicitacao->status, 'matricula_id' => $this->matriculaIdDe($solicitacao),
+            ]);
+
+            return ['message' => 'Pré-matrícula excluída. A matrícula vinculada, quando houver, foi preservada.'];
+        }, 3);
+    }
+
+    /** Pedido da academia, ainda não excluído, com bloqueio de linha para a operação. */
+    private function solicitacaoDaAcademia(int $tenantId, int $id): object
+    {
+        $solicitacao = DB::table('pre_matriculas')->where('tenant_id', $tenantId)->where('id', $id)
+            ->whereNull('excluida_em')->lockForUpdate()->first();
+        abort_unless($solicitacao, 404, 'Pré-matrícula não encontrada.');
+
+        return $solicitacao;
     }
 
     public function avaliar(int $tenantId, int $id, int $userId, string $decisao, ?string $observacao = null): array
@@ -293,9 +410,7 @@ class PreMatriculaService
         }
 
         return DB::transaction(function () use ($tenantId, $id, $userId, $decisao, $observacao) {
-            $solicitacao = DB::table('pre_matriculas')->where('id', $id)->where('tenant_id', $tenantId)
-                ->lockForUpdate()->first();
-            abort_unless($solicitacao, 404, 'Pré-matrícula não encontrada.');
+            $solicitacao = $this->solicitacaoDaAcademia($tenantId, $id);
             abort_unless($solicitacao->status === 'pendente', 409, 'Esta pré-matrícula já foi analisada.');
 
             $matriculaId = null;
@@ -329,13 +444,11 @@ class PreMatriculaService
             ]);
         }
 
-        $plano = DB::table('planos')->where('tenant_id', $tenantId)->where('id', $solicitacao->plano_id)
-            ->where('ativo', 1)->where('valor', 0)->where('checkins_semanais', '>', 0)->first();
-        if (! $plano) {
-            throw ValidationException::withMessages([
-                'plano_id' => 'O plano gratuito solicitado não está mais ativo. Ajuste o plano antes de aprovar.',
-            ]);
-        }
+        [$plano, $par] = $this->planoVinculado(
+            $tenantId,
+            (int) $solicitacao->plano_id,
+            'O plano gratuito solicitado não está mais ativo ou não tem plano pago vinculado. Ajuste o plano antes de aprovar.',
+        );
 
         $gradeSolicitada = json_decode((string) $solicitacao->grade, true, 512, JSON_THROW_ON_ERROR);
         $grade = $this->normalizarGrade($tenantId, $plano, $gradeSolicitada);
@@ -368,7 +481,13 @@ class PreMatriculaService
             abort($status >= 400 && $status <= 599 ? $status : 500, $mensagem);
         }
 
-        return (int) $resultado['body']['matricula']['id'];
+        $matriculaId = (int) $resultado['body']['matricula']['id'];
+        // O destino fica na matrícula: mudar a configuração depois não troca o plano pago de quem já foi aprovado
+        DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)
+            ->update(['plano_destino_id' => $par['plano_pago_id']]);
+        DB::table('pre_matriculas')->where('id', $solicitacao->id)->update(['plano_destino_id' => $par['plano_pago_id']]);
+
+        return $matriculaId;
     }
 
     /** @return array<string, mixed> */
@@ -382,16 +501,147 @@ class PreMatriculaService
             'ativa' => (bool) ($row->ativa ?? false),
             'obrigatoria' => (bool) ($row->obrigatoria ?? false),
             'publico' => (string) ($row->publico ?? 'sem_matricula'),
+            'pares' => $this->pares($tenantId),
         ];
+    }
+
+    /**
+     * @param  mixed  $pares
+     * @return list<array{plano_free_id: int, plano_pago_id: int, modalidade_id: int, checkins_semanais: int}>
+     */
+    private function normalizarPares(int $tenantId, mixed $pares): array
+    {
+        if (! is_array($pares) || ! array_is_list($pares)) {
+            throw ValidationException::withMessages(['pares' => 'Informe a lista de planos vinculados.']);
+        }
+        $saida = [];
+        $vistos = [];
+        foreach ($pares as $indice => $par) {
+            $n = $indice + 1;
+            $freeId = is_array($par) ? filter_var($par['plano_free_id'] ?? null, FILTER_VALIDATE_INT) : false;
+            $pagoId = is_array($par) ? filter_var($par['plano_pago_id'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (! $freeId || ! $pagoId) {
+                throw ValidationException::withMessages(['pares' => "Vínculo {$n}: selecione o plano gratuito e o plano pago."]);
+            }
+            if (isset($vistos[$freeId])) {
+                throw ValidationException::withMessages(['pares' => "Vínculo {$n}: o mesmo plano gratuito não pode ter dois planos pagos."]);
+            }
+            $free = DB::table('planos')->where('tenant_id', $tenantId)->where('id', $freeId)
+                ->where('ativo', 1)->where('valor', 0)->where('checkins_semanais', '>', 0)->first();
+            if (! $free) {
+                throw ValidationException::withMessages(['pares' => "Vínculo {$n}: o plano gratuito deve ser da academia, estar ativo, ter valor zero e aulas semanais."]);
+            }
+            $pago = DB::table('planos')->where('tenant_id', $tenantId)->where('id', $pagoId)
+                ->where('ativo', 1)->where('valor', '>', 0)->first();
+            if (! $pago) {
+                throw ValidationException::withMessages(['pares' => "Vínculo {$n}: o plano pago deve ser da academia, estar ativo e ter valor maior que zero."]);
+            }
+            if ((int) $pago->modalidade_id !== (int) $free->modalidade_id
+                || (int) $pago->checkins_semanais !== (int) $free->checkins_semanais) {
+                throw ValidationException::withMessages(['pares' => "Vínculo {$n}: o plano pago precisa ter a mesma modalidade e a mesma frequência semanal do plano gratuito."]);
+            }
+            $vistos[$freeId] = true;
+            $saida[] = [
+                'plano_free_id' => (int) $freeId,
+                'plano_pago_id' => (int) $pagoId,
+                'modalidade_id' => (int) $free->modalidade_id,
+                'checkins_semanais' => (int) $free->checkins_semanais,
+            ];
+        }
+
+        return $saida;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function pares(int $tenantId): array
+    {
+        return DB::table('pre_matricula_planos as pp')
+            ->join('planos as pf', 'pf.id', '=', 'pp.plano_free_id')
+            ->join('planos as pg', 'pg.id', '=', 'pp.plano_pago_id')
+            ->leftJoin('modalidades as m', 'm.id', '=', 'pf.modalidade_id')
+            ->where('pp.tenant_id', $tenantId)
+            ->orderBy('pf.checkins_semanais')->orderBy('pp.id')
+            ->get([
+                'pp.plano_free_id', 'pp.plano_pago_id', 'pf.nome as free_nome', 'pf.descricao as free_descricao',
+                'pg.nome as pago_nome', 'pg.descricao as pago_descricao', 'pf.checkins_semanais', 'pf.modalidade_id',
+                'm.nome as modalidade_nome', 'pf.tenant_id as free_tenant', 'pf.ativo as free_ativo', 'pf.valor as free_valor',
+                'pg.tenant_id as pago_tenant', 'pg.ativo as pago_ativo', 'pg.valor as pago_valor',
+                'pg.modalidade_id as pago_modalidade', 'pg.checkins_semanais as pago_checkins',
+            ])->map(fn ($par) => [
+                'plano_free_id' => (int) $par->plano_free_id,
+                'plano_pago_id' => (int) $par->plano_pago_id,
+                'plano_free_nome' => (string) ($par->free_nome ?: $this->descricaoPlano($par->free_descricao) ?: 'Plano gratuito'),
+                'plano_pago_nome' => (string) ($par->pago_nome ?: $par->pago_descricao ?: 'Plano pago'),
+                'descricao' => $this->descricaoPlano($par->free_descricao),
+                'checkins_semanais' => (int) $par->checkins_semanais,
+                'modalidade_id' => (int) $par->modalidade_id,
+                'modalidade_nome' => (string) $par->modalidade_nome,
+                // Plano alterado depois do vínculo (inativo, preço, frequência): o par deixa de ser oferecido
+                'valido' => (int) $par->free_tenant === $tenantId && (int) $par->pago_tenant === $tenantId
+                    && (bool) $par->free_ativo && (bool) $par->pago_ativo
+                    && (float) $par->free_valor == 0.0 && (float) $par->pago_valor > 0
+                    && (int) $par->pago_modalidade === (int) $par->modalidade_id
+                    && (int) $par->pago_checkins === (int) $par->checkins_semanais,
+            ])->all();
+    }
+
+    /** @return array<string, mixed>|null */
+    private function parValido(int $tenantId, int $planoFreeId): ?array
+    {
+        foreach ($this->pares($tenantId) as $par) {
+            if ($par['valido'] && $par['plano_free_id'] === $planoFreeId) {
+                return $par;
+            }
+        }
+
+        return null;
+    }
+
+    /** @return array{gratuitos: list<array<string, mixed>>, pagos: list<array<string, mixed>>} */
+    private function catalogoPlanos(int $tenantId): array
+    {
+        $planos = DB::table('planos as p')->leftJoin('modalidades as m', 'm.id', '=', 'p.modalidade_id')
+            ->where('p.tenant_id', $tenantId)->where('p.ativo', 1)->where('p.checkins_semanais', '>', 0)
+            ->orderBy('p.modalidade_id')->orderBy('p.checkins_semanais')->orderBy('p.id')
+            ->get(['p.id', 'p.nome', 'p.descricao', 'p.valor', 'p.checkins_semanais', 'p.modalidade_id', 'm.nome as modalidade_nome'])
+            ->map(fn ($p) => [
+                'id' => (int) $p->id,
+                'nome' => (string) ($p->nome ?: $p->descricao ?: 'Plano #'.$p->id),
+                'checkins_semanais' => (int) $p->checkins_semanais,
+                'modalidade_id' => (int) $p->modalidade_id,
+                'modalidade_nome' => (string) $p->modalidade_nome,
+                'gratuito' => (float) $p->valor == 0.0,
+            ]);
+
+        return [
+            'gratuitos' => $planos->where('gratuito', true)->values()->all(),
+            'pagos' => $planos->where('gratuito', false)->values()->all(),
+        ];
+    }
+
+    /** @return array<int, list<int>> */
+    private function diasPorModalidade(int $tenantId): array
+    {
+        $dias = [];
+        foreach ($this->turmasDisponiveis($tenantId) as $turma) {
+            $dias[$turma['modalidade_id']] = [...($dias[$turma['modalidade_id']] ?? []), ...$turma['dias_semana']];
+        }
+
+        return $dias;
     }
 
     /** @return list<array<string, mixed>> */
     private function solicitacoes(int $tenantId): array
     {
+        $telefone = Schema::hasColumn('usuarios', 'telefone') ? ['u.telefone'] : [];
         $rows = DB::table('pre_matriculas as pm')
             ->join('usuarios as u', 'u.id', '=', 'pm.usuario_id')
-            ->where('pm.tenant_id', $tenantId)->orderByDesc('pm.id')
-            ->get(['pm.*', 'u.nome as usuario_nome', 'u.email', 'u.cpf']);
+            ->leftJoin('matriculas as m', 'm.id', '=', 'pm.matricula_id')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('pm.tenant_id', $tenantId)->whereNull('pm.excluida_em')->orderByDesc('pm.id')
+            ->get(['pm.*', 'u.nome as usuario_nome', 'u.email', 'u.cpf', 'sm.codigo as matricula_status', ...$telefone]);
+        $nomesDestino = DB::table('planos')->where('tenant_id', $tenantId)
+            ->whereIn('id', $rows->pluck('plano_destino_id')->filter()->unique()->all())->pluck('nome', 'id');
         $turmaIds = [];
         foreach ($rows as $row) {
             foreach (json_decode((string) $row->grade, true) ?: [] as $slot) {
@@ -401,7 +651,7 @@ class PreMatriculaService
         $turmas = $turmaIds === [] ? collect() : DB::table('turmas_fixas')->where('tenant_id', $tenantId)
             ->whereIn('id', array_unique($turmaIds))->get(['id', 'nome', 'horario_inicio', 'horario_fim'])->keyBy('id');
 
-        return $rows->map(function ($row) use ($turmas) {
+        return $rows->map(function ($row) use ($turmas, $nomesDestino) {
             $grade = json_decode((string) $row->grade, true) ?: [];
             $slots = array_map(function ($slot) use ($turmas) {
                 $turma = $turmas->get((int) $slot['turma_fixa_id']);
@@ -421,7 +671,11 @@ class PreMatriculaService
                 'nome' => (string) $row->usuario_nome,
                 'email' => (string) $row->email,
                 'cpf' => $row->cpf,
+                'telefone' => $row->telefone ?? null,
                 'plano_id' => (int) $row->plano_id,
+                'plano_destino_id' => $row->plano_destino_id === null ? null : (int) $row->plano_destino_id,
+                'plano_destino_nome' => $row->plano_destino_id === null ? null : ($nomesDestino[$row->plano_destino_id] ?? null),
+                'matricula_status' => $row->matricula_status,
                 'matricula_id' => $this->matriculaIdDe($row),
                 'plano_descricao' => $this->descricaoPlano($row->plano_descricao),
                 'checkins_semanais' => (int) $row->checkins_semanais,
@@ -435,29 +689,29 @@ class PreMatriculaService
         })->all();
     }
 
-    /** @return list<array<string, mixed>> */
-    private function planosDisponiveis(int $tenantId): array
+    /**
+     * Só planos gratuitos com vínculo válido a um plano pago. Para o aluno, sem identificar o plano pago.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function planosDisponiveis(int $tenantId, bool $comPlanoPago = false): array
     {
-        $diasPorModalidade = [];
-        foreach ($this->turmasDisponiveis($tenantId) as $turma) {
-            $diasPorModalidade[$turma['modalidade_id']] = [
-                ...($diasPorModalidade[$turma['modalidade_id']] ?? []),
-                ...$turma['dias_semana'],
-            ];
-        }
+        $dias = $this->diasPorModalidade($tenantId);
 
-        return DB::table('planos as p')->join('modalidades as m', 'm.id', '=', 'p.modalidade_id')
-            ->where('p.tenant_id', $tenantId)->where('p.ativo', 1)->where('p.valor', 0)->where('p.checkins_semanais', '>', 0)
-            ->orderBy('p.checkins_semanais')->orderBy('p.id')
-            ->get(['p.id', 'p.descricao', 'p.checkins_semanais', 'p.modalidade_id', 'm.nome as modalidade_nome'])
-            ->map(fn ($plano) => [
-                'id' => (int) $plano->id,
-                'descricao' => $this->descricaoPlano($plano->descricao),
-                'checkins_semanais' => (int) $plano->checkins_semanais,
-                'modalidade_id' => (int) $plano->modalidade_id,
-                'modalidade_nome' => (string) $plano->modalidade_nome,
-                'dias_disponiveis' => count(array_unique($diasPorModalidade[(int) $plano->modalidade_id] ?? [])),
-            ])->all();
+        return array_values(array_map(function (array $par) use ($dias, $comPlanoPago) {
+            $plano = [
+                'id' => $par['plano_free_id'],
+                'descricao' => $par['descricao'],
+                'checkins_semanais' => $par['checkins_semanais'],
+                'modalidade_id' => $par['modalidade_id'],
+                'modalidade_nome' => $par['modalidade_nome'],
+                'dias_disponiveis' => count(array_unique($dias[$par['modalidade_id']] ?? [])),
+            ];
+
+            return $comPlanoPago
+                ? $plano + ['plano_pago_id' => $par['plano_pago_id'], 'plano_pago_nome' => $par['plano_pago_nome']]
+                : $plano;
+        }, array_filter($this->pares($tenantId), static fn (array $par) => $par['valido'])));
     }
 
     /** @return list<array<string, mixed>> */
@@ -518,7 +772,24 @@ class PreMatriculaService
 
     private function tabelasExistem(): bool
     {
-        return Schema::hasTable('pre_matricula_configuracoes') && Schema::hasTable('pre_matriculas');
+        return Schema::hasTable('pre_matricula_configuracoes') && Schema::hasTable('pre_matriculas')
+            && Schema::hasTable('pre_matricula_planos')
+            && Schema::hasColumn('pre_matriculas', 'excluida_em')
+            && Schema::hasColumn('pre_matriculas', 'matricula_id')
+            && Schema::hasColumn('matriculas', 'plano_destino_id');
+    }
+
+    /** @return array{0: object, 1: array<string, mixed>} plano gratuito e vínculo com o plano pago */
+    private function planoVinculado(int $tenantId, int $planoId, string $mensagem): array
+    {
+        $par = $this->parValido($tenantId, $planoId);
+        $plano = $par ? DB::table('planos')->where('tenant_id', $tenantId)->where('id', $planoId)
+            ->where('ativo', 1)->where('valor', 0)->where('checkins_semanais', '>', 0)->first() : null;
+        if (! $par || ! $plano) {
+            throw ValidationException::withMessages(['plano_id' => $mensagem]);
+        }
+
+        return [$plano, $par];
     }
 
     private function exigirTabelas(): void

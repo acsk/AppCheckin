@@ -431,6 +431,8 @@ class MobileCompraPlanoService
                     'data_vencimento' => $dataVencimento->format('Y-m-d'),
                     'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                     'dia_vencimento' => $diaVencimento,
+                    // Compra paga encerra o período de teste (ex.: matrícula de migração FREE)
+                    'periodo_teste' => 0,
                     'criado_por' => $userId,
                     'updated_at' => now(),
                 ]);

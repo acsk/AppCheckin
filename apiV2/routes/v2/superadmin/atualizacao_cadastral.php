@@ -16,5 +16,7 @@ Route::get('/atualizacoes-cadastrais/{id}/pendentes', [AtualizacaoCadastralContr
 Route::get('/pre-matriculas', [PreMatriculaController::class, 'index']);
 Route::put('/pre-matriculas/configuracao', [PreMatriculaController::class, 'update']);
 Route::delete('/pre-matriculas/configuracao', [PreMatriculaController::class, 'destroyConfiguracao']);
+Route::put('/pre-matriculas/{id}', [PreMatriculaController::class, 'atualizarSolicitacao'])->whereNumber('id');
+Route::delete('/pre-matriculas/{id}', [PreMatriculaController::class, 'excluirSolicitacao'])->whereNumber('id');
 Route::post('/pre-matriculas/{id}/aprovar', [PreMatriculaController::class, 'aprovar'])->whereNumber('id');
 Route::post('/pre-matriculas/{id}/reprovar', [PreMatriculaController::class, 'reprovar'])->whereNumber('id');

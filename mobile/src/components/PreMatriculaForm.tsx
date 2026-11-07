@@ -12,6 +12,7 @@ export type PreMatricula = {
   obrigatoria: boolean;
   status: "pendente" | "aprovada" | "reprovada" | null;
   matricula_id?: number | null;
+  periodo_gratuito?: { encerrado: boolean; fim: string | null; plano_destino: { id: number; descricao: string } | null } | null;
   observacao: string | null;
   motivo?: string | null;
   planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];
@@ -125,7 +126,11 @@ export default function PreMatriculaForm({ dados, planoId, grade, vencimento, di
     </Section>
     <View style={styles.note}>
       <Feather name="info" size={18} color={ds.inkMuted} />
-      <Text style={styles.noteText}>A academia analisa o pedido antes de confirmar a matrícula, a vaga e a cobrança.</Text>
+      <Text style={styles.noteText}>A academia analisa o pedido antes de confirmar a matrícula e a vaga.</Text>
+    </View>
+    <View style={styles.note}>
+      <Feather name="clock" size={18} color={ds.inkMuted} />
+      <Text style={styles.noteText}>O acesso inicial é gratuito por tempo limitado. Para continuar depois, será preciso contratar um plano.</Text>
     </View>
   </>;
 }

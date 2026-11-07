@@ -57,6 +57,7 @@ const SECTIONS = [
         children: [
           { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3], perm: 'alunos.ver' },
           { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3], perm: 'matriculas.ver' },
+          { id: 'pre-matriculas', label: 'Pré-matrículas', path: '/pre-matriculas', roles: [3], perm: 'matriculas.gerenciar' },
           { id: 'professores', label: 'Professores', path: '/professores', roles: [3], perm: 'aulas.gerenciar' },
           // Só o suporte Check-in (super admin, inclusive no "acessar como academia"); a academia usa Equipe/Alunos/Professores
           { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [4], soSuporte: true },
@@ -86,7 +87,6 @@ const SECTIONS = [
           { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3], perm: 'aulas.gerenciar' },
           { id: 'turmas-fixas', label: 'Turmas', path: '/turmas-fixas', roles: [3], perm: 'aulas.gerenciar' },
-          { id: 'pre-matriculas', label: 'Pré-matrículas', path: '/pre-matriculas', roles: [3], perm: 'matriculas.gerenciar' },
         ],
       },
       {

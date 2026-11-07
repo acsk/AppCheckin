@@ -6,28 +6,36 @@ import preMatriculaService from '../../services/preMatriculaService';
 import { showError, showSuccess } from '../../utils/toast';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
-const statusLabel = { pendente: 'Pendente', aprovada: 'Aprovada', reprovada: 'Reprovada' };
+const statusLabel = { pendente: 'Aguardando aprovação', aprovada: 'Aprovada', reprovada: 'Reprovada' };
+const matriculaStatusLabel = { ativa: 'ativa', pendente: 'pendente', vencida: 'vencida', cancelada: 'cancelada', aguardando_vaga: 'aguardando vaga' };
 const publicoLabel = {
   sem_matricula: 'Sem matrícula ativa',
   com_matricula: 'Com matrícula ativa',
   ambos: 'Com ou sem matrícula ativa',
+};
+const novoPar = () => ({ plano_free_id: '', plano_pago_id: '' });
+const formatarData = (valor) => {
+  if (!valor) return '—';
+  const data = new Date(String(valor).replace(' ', 'T'));
+  return Number.isNaN(data.getTime()) ? String(valor) : data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 };
 
 export default function PreMatriculaPanel({ modoAcademia = false }) {
   const [academias, setAcademias] = useState([]);
   const [tenantId, setTenantId] = useState('');
   const [dados, setDados] = useState(null);
-  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula' });
+  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula', pares: [] });
   const [configAberta, setConfigAberta] = useState(false);
   const [excluirConfig, setExcluirConfig] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState('pendente');
-  const [decisao, setDecisao] = useState(null);
-  const [edicao, setEdicao] = useState(null);
+  const [revisao, setRevisao] = useState(null);
+  const [excluir, setExcluir] = useState(null);
   const [edicaoPlanoId, setEdicaoPlanoId] = useState('');
   const [edicaoGrade, setEdicaoGrade] = useState([]);
   const [edicaoVencimento, setEdicaoVencimento] = useState('');
   const [observacao, setObservacao] = useState('');
   const [erro, setErro] = useState('');
+  const [erroModal, setErroModal] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
@@ -45,6 +53,10 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
           ativa: !!resultado.configuracao.ativa,
           obrigatoria: !!resultado.configuracao.obrigatoria,
           publico: resultado.configuracao.publico || 'sem_matricula',
+          pares: (resultado.configuracao.pares || []).map((par) => ({
+            plano_free_id: String(par.plano_free_id),
+            plano_pago_id: String(par.plano_pago_id),
+          })),
         });
       }
     } catch (error) {
@@ -78,20 +90,38 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
     else if (tenantId) void carregar(tenantId);
   }, [modoAcademia, tenantId, carregar]);
 
+  const catalogo = dados?.catalogo || { gratuitos: [], pagos: [] };
+  const paresInvalidos = (dados?.configuracao?.pares || []).filter((par) => !par.valido);
+
+  const atualizarPar = (indice, campos) => setConfig((atual) => ({
+    ...atual,
+    pares: atual.pares.map((par, i) => (i === indice ? { ...par, ...campos } : par)),
+  }));
+
   const salvar = async () => {
     if (!tenantId || salvando) return;
+    if (config.pares.some((par) => !par.plano_free_id || !par.plano_pago_id)) {
+      setErroModal('Complete ou remova os vínculos sem plano gratuito ou plano pago.');
+      return;
+    }
     setSalvando(true);
-    setErro('');
+    setErroModal('');
     try {
       await preMatriculaService.salvarConfiguracao({
         tenant_id: Number(tenantId),
-        ...config,
+        ativa: config.ativa,
+        obrigatoria: config.obrigatoria,
+        publico: config.publico,
+        pares: config.pares.map((par) => ({
+          plano_free_id: Number(par.plano_free_id),
+          plano_pago_id: Number(par.plano_pago_id),
+        })),
       });
       setConfigAberta(false);
       showSuccess('Configuração da pré-matrícula salva.');
       await carregar(tenantId);
     } catch (error) {
-      setErro(error.message);
+      setErroModal(error.message);
       showError(error.message);
     } finally {
       setSalvando(false);
@@ -115,30 +145,10 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
     }
   };
 
-  const confirmarDecisao = async () => {
-    if (!decisao || salvando) return;
-    setSalvando(true);
-    setErro('');
-    try {
-      const resultado = modoAcademia
-        ? await preMatriculaService.avaliarAcademia(decisao.id, decisao.acao, observacao)
-        : await preMatriculaService.avaliar(decisao.id, Number(tenantId), decisao.acao, observacao);
-      showSuccess(decisao.acao === 'aprovar'
-        ? `Pré-matrícula aprovada. Matrícula #${resultado.matricula_id} criada.`
-        : 'Pré-matrícula reprovada.');
-      setDecisao(null);
-      setObservacao('');
-      await carregar(tenantId);
-    } catch (error) {
-      setErro(error.message);
-      showError(error.message);
-    } finally {
-      setSalvando(false);
-    }
-  };
-
-  const abrirEdicao = (item) => {
-    setEdicao(item);
+  const abrirRevisao = (item) => {
+    setRevisao(item);
+    setErroModal('');
+    setObservacao('');
     setEdicaoPlanoId(String(item.plano_id));
     setEdicaoGrade(item.grade.map((slot) => ({
       turma_fixa_id: String(slot.turma_fixa_id),
@@ -148,25 +158,92 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
   };
 
   const planoEdicao = (dados?.planos || []).find((plano) => plano.id === Number(edicaoPlanoId));
-  const salvarEdicao = async () => {
-    if (!edicao || !planoEdicao || salvando) return;
+  const gradeCompleta = !!planoEdicao
+    && edicaoGrade.length === Number(planoEdicao.checkins_semanais)
+    && edicaoGrade.every((slot) => slot.turma_fixa_id && slot.dia_semana);
+  const vencimentoValido = edicaoVencimento === '' || (Number.isInteger(Number(edicaoVencimento)) && Number(edicaoVencimento) >= 1 && Number(edicaoVencimento) <= 31);
+  const formularioValido = gradeCompleta && vencimentoValido;
+  const dadosEdicao = () => ({
+    plano_id: Number(edicaoPlanoId),
+    grade: edicaoGrade.map((slot) => ({
+      turma_fixa_id: Number(slot.turma_fixa_id),
+      dia_semana: Number(slot.dia_semana),
+    })),
+    dia_vencimento: edicaoVencimento ? Number(edicaoVencimento) : null,
+  });
+  const houveAjuste = () => {
+    if (!revisao) return false;
+    const atual = dadosEdicao();
+    const original = revisao.grade.map((slot) => `${slot.turma_fixa_id}:${slot.dia_semana}`).sort().join('|');
+    const novo = atual.grade.map((slot) => `${slot.turma_fixa_id}:${slot.dia_semana}`).sort().join('|');
+    return atual.plano_id !== revisao.plano_id || novo !== original || (atual.dia_vencimento ?? null) !== (revisao.dia_vencimento ?? null);
+  };
+
+  const persistirAjuste = () => (modoAcademia
+    ? preMatriculaService.atualizarAcademia(revisao.id, dadosEdicao())
+    : preMatriculaService.atualizar(revisao.id, Number(tenantId), dadosEdicao()));
+
+  const salvarAjuste = async () => {
+    if (!revisao || !formularioValido || salvando) return;
+    setSalvando(true);
+    setErroModal('');
+    try {
+      const resultado = await persistirAjuste();
+      setRevisao(null);
+      showSuccess(resultado?.message || 'Pré-matrícula atualizada.');
+      await carregar(tenantId);
+    } catch (error) {
+      setErroModal(error.message);
+      showError(error.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const decidir = async (acao) => {
+    if (!revisao || salvando) return;
+    if (acao === 'aprovar' && !formularioValido) {
+      setErroModal('Complete o plano, os dias e horários antes de aprovar.');
+      return;
+    }
+    setSalvando(true);
+    setErroModal('');
+    try {
+      // Aprovar usa os dados da modal: o ajuste é gravado antes de criar a matrícula
+      if (acao === 'aprovar' && houveAjuste()) await persistirAjuste();
+      const resultado = modoAcademia
+        ? await preMatriculaService.avaliarAcademia(revisao.id, acao, observacao)
+        : await preMatriculaService.avaliar(revisao.id, Number(tenantId), acao, observacao);
+      showSuccess(acao === 'aprovar'
+        ? `Pré-matrícula aprovada. Matrícula #${resultado.matricula_id} criada.`
+        : 'Pré-matrícula reprovada.');
+      setRevisao(null);
+      await carregar(tenantId);
+    } catch (error) {
+      setErroModal(error.message);
+      showError(error.message);
+      // O ajuste pode ter sido gravado mesmo com a aprovação recusada: recarrega a fila
+      await carregar(tenantId);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const confirmarExclusao = async () => {
+    if (!excluir || salvando) return;
     setSalvando(true);
     setErro('');
     try {
-      await preMatriculaService.atualizarAcademia(edicao.id, {
-        plano_id: Number(edicaoPlanoId),
-        grade: edicaoGrade.map((slot) => ({
-          turma_fixa_id: Number(slot.turma_fixa_id),
-          dia_semana: Number(slot.dia_semana),
-        })),
-        dia_vencimento: edicaoVencimento ? Number(edicaoVencimento) : null,
-      });
-      setEdicao(null);
-      showSuccess('Pré-matrícula ajustada e mantida aguardando aprovação.');
-      await carregar('');
+      const resultado = modoAcademia
+        ? await preMatriculaService.excluirAcademia(excluir.id)
+        : await preMatriculaService.excluir(excluir.id, Number(tenantId));
+      setExcluir(null);
+      showSuccess(resultado?.message || 'Pré-matrícula excluída.');
+      await carregar(tenantId);
     } catch (error) {
       setErro(error.message);
       showError(error.message);
+      setExcluir(null);
     } finally {
       setSalvando(false);
     }
@@ -179,10 +256,15 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
     reprovada: solicitacoes.filter((item) => item.status === 'reprovada').length,
   };
   const filtradas = filtroStatus === 'todas' ? solicitacoes : solicitacoes.filter((item) => item.status === filtroStatus);
+  const pendenteNaModal = revisao?.status === 'pendente';
+  const opcoesPlano = (dados?.planos || []).map((plano) => ({
+    value: String(plano.id),
+    label: `${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}${plano.descricao ? ` · ${plano.descricao}` : ''}`,
+  }));
 
   return (
     <>
-      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. Ao aprovar, a matrícula é criada com os dados revisados; as regras de cobrança seguem o plano.">
+      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. Ao aprovar, a matrícula gratuita é criada com os dados revisados; ao fim do período gratuito, o aluno pode contratar o plano pago vinculado.">
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={() => carregar()}>Tentar novamente</Button>}>{erro}</Callout> : null}
         <div className="ck-mc-form">
           {!modoAcademia ? <SelectField label="Academia" value={tenantId} options={academias.map((academia) => ({ value: String(academia.id), label: academia.nome }))} onChange={(event) => setTenantId(event.target.value)} /> : null}
@@ -195,10 +277,17 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
                   ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula}`
                   : 'Ainda não configurada para esta academia.'}
               </p>
+              {(dados?.configuracao?.pares || []).length ? <ul className="ck-mc-hint">
+                {dados.configuracao.pares.map((par) => <li key={par.plano_free_id}>
+                  {par.plano_free_nome} → {par.plano_pago_nome} ({par.checkins_semanais}x por semana · {par.modalidade_nome}){par.valido ? '' : ' — vínculo inválido: revise os planos'}
+                </li>)}
+              </ul> : <p className="ck-mc-hint">Nenhum plano gratuito vinculado a um plano pago.</p>}
+              {paresInvalidos.length ? <Callout tone="warning">Há vínculos com plano inativo ou alterado. Eles não são oferecidos aos alunos até serem corrigidos.</Callout> : null}
             </div>
             <div className="ck-cad-table__actions">
               <Button variant="primary" icon={dados?.configuracao?.configurada ? 'pencil' : 'plus'} disabled={carregando} onClick={() => {
-                setConfig(dados?.configuracao?.configurada ? dados.configuracao : { ativa: true, obrigatoria: false, publico: 'sem_matricula' });
+                if (!dados?.configuracao?.configurada) setConfig({ ativa: true, obrigatoria: false, publico: 'sem_matricula', pares: [novoPar()] });
+                setErroModal('');
                 setConfigAberta(true);
               }}>{dados?.configuracao?.configurada ? 'Editar configuração' : 'Montar pré-matrícula'}</Button>
               {dados?.configuracao?.configurada ? <Button variant="danger" disabled={salvando || carregando} onClick={() => setExcluirConfig(true)}>Excluir</Button> : null}
@@ -216,28 +305,36 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
             onChange={setFiltroStatus}
             options={[
               { value: 'pendente', label: `Aguardando aprovação (${contagens.pendente})` },
-              { value: 'aprovada', label: `Aprovadas (${contagens.aprovada})` },
-              { value: 'reprovada', label: `Reprovadas (${contagens.reprovada})` },
-              { value: 'todas', label: `Todas (${solicitacoes.length})` },
+              { value: 'aprovada', label: `Aprovados (${contagens.aprovada})` },
+              { value: 'reprovada', label: `Reprovados (${contagens.reprovada})` },
+              { value: 'todas', label: `Todos (${solicitacoes.length})` },
             ]}
           />
         </div>
         {!filtradas.length ? <p className="ck-mc-hint">{filtroStatus === 'pendente' ? 'Não há pedidos aguardando aprovação para esta academia.' : 'Nenhum pedido neste filtro.'}</p> : (
           <div className="ck-pc__wrap">
             <table className="ck-pc__table">
-              <thead><tr><th>Aluno</th><th>Plano solicitado</th><th>Grade semanal</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead>
+              <thead><tr><th>Aluno</th><th>Enviado em</th><th>Plano solicitado</th><th>Grade semanal</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead>
               <tbody>{filtradas.map((item) => (
                 <tr key={item.id}>
-                  <td><strong>{item.nome}</strong><span className="ck-cad-table__summary">{item.email}{item.cpf ? ` · CPF ${item.cpf}` : ''}</span></td>
-                  <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span></td>
+                  <td><strong>{item.nome}</strong><span className="ck-cad-table__summary">{item.email}{item.telefone ? ` · ${item.telefone}` : ''}{item.cpf ? ` · CPF ${item.cpf}` : ''}</span></td>
+                  <td>{formatarData(item.created_at)}</td>
+                  <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span>{item.plano_destino_nome ? <span className="ck-cad-table__summary">Plano pago: {item.plano_destino_nome}</span> : null}</td>
                   <td>{item.grade.map((slot) => `${dias[slot.dia_semana - 1]} · ${slot.turma_nome} · ${String(slot.horario_inicio || '').slice(0, 5)}`).join('; ')}</td>
                   <td>{item.dia_vencimento ? `Dia ${item.dia_vencimento}` : 'Não informado'}</td>
-                  <td><Badge tone={item.status === 'aprovada' ? 'success' : item.status === 'reprovada' ? 'danger' : 'warning'}>{statusLabel[item.status] || item.status}</Badge>{item.matricula_id ? <span className="ck-cad-table__summary">Matrícula #{item.matricula_id}</span> : null}{item.observacao ? <span className="ck-cad-table__summary">{item.observacao}</span> : null}</td>
-                  <td>{item.status === 'pendente' ? <div className="ck-cad-table__actions">
-                    {modoAcademia ? <Button size="sm" variant="secondary" disabled={salvando} onClick={() => abrirEdicao(item)}>Ajustar</Button> : null}
-                    <Button size="sm" variant="primary" disabled={salvando} onClick={() => { setObservacao(''); setDecisao({ id: item.id, acao: 'aprovar', nome: item.nome }); }}>Aprovar</Button>
-                    <Button size="sm" variant="danger" disabled={salvando} onClick={() => { setObservacao(''); setDecisao({ id: item.id, acao: 'reprovar', nome: item.nome }); }}>Reprovar</Button>
-                  </div> : null}</td>
+                  <td>
+                    <Badge tone={item.status === 'aprovada' ? 'success' : item.status === 'reprovada' ? 'danger' : 'warning'}>{statusLabel[item.status] || item.status}</Badge>
+                    {item.matricula_id ? <span className="ck-cad-table__summary">Matrícula #{item.matricula_id}{item.matricula_status ? ` · ${matriculaStatusLabel[item.matricula_status] || item.matricula_status}` : ''}</span> : null}
+                    {item.observacao ? <span className="ck-cad-table__summary">{item.observacao}</span> : null}
+                  </td>
+                  <td><div className="ck-cad-table__actions">
+                    {item.status === 'pendente'
+                      ? <Button size="sm" variant="primary" disabled={salvando} onClick={() => abrirRevisao(item)}>Revisar</Button>
+                      : <>
+                        <Button size="sm" variant="secondary" icon="pencil" disabled={salvando} onClick={() => abrirRevisao(item)}>Editar</Button>
+                        <Button size="sm" variant="danger" icon="trash" disabled={salvando} onClick={() => setExcluir(item)}>Excluir</Button>
+                      </>}
+                  </div></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -245,11 +342,12 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
         )}
       </Panel>
 
-      <Modal open={configAberta} size="md" title={dados?.configuracao?.configurada ? 'Editar pré-matrícula' : 'Montar pré-matrícula'} dismissable={!salvando} onClose={() => setConfigAberta(false)}
-        description="Defina como o pedido de pré-cadastro será apresentado aos alunos desta academia."
+      <Modal open={configAberta} size="lg" title={dados?.configuracao?.configurada ? 'Editar pré-matrícula' : 'Montar pré-matrícula'} dismissable={!salvando} onClose={() => setConfigAberta(false)}
+        description="Defina como o pedido de pré-cadastro será apresentado aos alunos desta academia e quais planos gratuitos levam a quais planos pagos."
         footer={<><Button variant="ghost" disabled={salvando} onClick={() => setConfigAberta(false)}>Cancelar</Button><Button variant="primary" icon="save" loading={salvando} onClick={salvar}>Salvar configuração</Button></>}>
         <div className="ck-mc-form">
-          <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão enviar o pedido pelo app." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
+          {erroModal ? <Callout tone="danger">{erroModal}</Callout> : null}
+          <Switch label="Pré-matrícula ativa" description="Alunos elegíveis poderão enviar o pedido pelo app. Exige ao menos um vínculo válido com turmas em dias suficientes." checked={!!config.ativa} onChange={(value) => setConfig((atual) => ({ ...atual, ativa: value }))} />
           <Switch label="Envio obrigatório" description="Quando ativo, o app exige o envio antes de continuar." checked={!!config.obrigatoria} onChange={(value) => setConfig((atual) => ({ ...atual, obrigatoria: value }))} />
           <SelectField label="Público" hint="A configuração controla quem pode iniciar um novo pedido. Solicitações já enviadas continuam disponíveis para acompanhamento."
             value={config.publico}
@@ -259,36 +357,71 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
               { value: 'ambos', label: publicoLabel.ambos },
             ]}
             onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
+          <div>
+            <strong>Planos da migração (gratuito → pago)</strong>
+            <p className="ck-mc-hint">O plano pago precisa ter a mesma modalidade e a mesma frequência semanal do gratuito. É ele que o aluno poderá contratar ao fim do período gratuito.</p>
+          </div>
+          {config.pares.map((par, indice) => {
+            const gratuito = catalogo.gratuitos.find((plano) => String(plano.id) === par.plano_free_id);
+            const usados = config.pares.filter((_, i) => i !== indice).map((outro) => outro.plano_free_id);
+            const pagos = catalogo.pagos.filter((plano) => gratuito
+              && plano.modalidade_id === gratuito.modalidade_id && plano.checkins_semanais === gratuito.checkins_semanais);
+            return <div key={`par-${indice}`} className="ck-mc-form">
+              <SelectField label={`Plano gratuito ${indice + 1}`} value={par.plano_free_id}
+                options={[{ value: '', label: 'Selecione o plano gratuito' }, ...catalogo.gratuitos
+                  .filter((plano) => !usados.includes(String(plano.id)))
+                  .map((plano) => ({ value: String(plano.id), label: `${plano.nome} · ${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}` }))]}
+                onChange={(event) => atualizarPar(indice, { plano_free_id: event.target.value, plano_pago_id: '' })} />
+              <SelectField label="Plano pago correspondente" value={par.plano_pago_id} disabled={!gratuito}
+                hint={gratuito && !pagos.length ? 'Não há plano pago ativo com a mesma modalidade e frequência.' : undefined}
+                options={[{ value: '', label: 'Selecione o plano pago' }, ...pagos.map((plano) => ({ value: String(plano.id), label: `${plano.nome} · ${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}` }))]}
+                onChange={(event) => atualizarPar(indice, { plano_pago_id: event.target.value })} />
+              <div className="ck-cad-table__actions">
+                <Button size="sm" variant="ghost" icon="trash" disabled={salvando} onClick={() => setConfig((atual) => ({ ...atual, pares: atual.pares.filter((_, i) => i !== indice) }))}>Remover vínculo</Button>
+              </div>
+            </div>;
+          })}
+          {!catalogo.gratuitos.length ? <Callout tone="warning">Esta academia não tem planos gratuitos ativos com aulas semanais. Cadastre-os em Planos.</Callout> : null}
+          <div className="ck-cad-table__actions">
+            <Button size="sm" variant="secondary" icon="plus" disabled={salvando || config.pares.length >= catalogo.gratuitos.length} onClick={() => setConfig((atual) => ({ ...atual, pares: [...atual.pares, novoPar()] }))}>Adicionar vínculo</Button>
+          </div>
         </div>
       </Modal>
 
       <Modal open={excluirConfig} size="sm" title="Excluir configuração?" dismissable={!salvando} onClose={() => setExcluirConfig(false)}
-        description="A pré-matrícula deixará de ser oferecida aos alunos. Os pedidos já recebidos serão preservados para consulta e aprovação."
+        description="A pré-matrícula deixará de ser oferecida aos alunos. Os pedidos já recebidos e as matrículas criadas serão preservados."
         footer={<><Button variant="ghost" disabled={salvando} onClick={() => setExcluirConfig(false)}>Cancelar</Button><Button variant="danger" loading={salvando} onClick={removerConfiguracao}>Excluir configuração</Button></>}>
         <p>Deseja excluir a configuração desta academia?</p>
       </Modal>
 
-      <Modal open={!!decisao} size="sm" title={decisao?.acao === 'aprovar' ? 'Aprovar pré-matrícula?' : 'Reprovar pré-matrícula?'} dismissable={!salvando} onClose={() => setDecisao(null)}
-        description={decisao?.acao === 'aprovar'
-          ? `A aprovação criará uma matrícula para ${decisao?.nome || 'este aluno'} com o plano, a grade e o vencimento revisados.`
-          : `Confirma a reprovação do pedido de ${decisao?.nome || 'este aluno'}?`}
-        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setDecisao(null)}>Cancelar</Button><Button variant={decisao?.acao === 'aprovar' ? 'primary' : 'danger'} loading={salvando} onClick={confirmarDecisao}>{decisao?.acao === 'aprovar' ? 'Aprovar' : 'Reprovar'}</Button></>}>
-        <TextAreaField label="Observação para o histórico" value={observacao} onChange={(event) => setObservacao(event.target.value)} />
+      <Modal open={!!excluir} size="sm" title="Excluir pré-matrícula?" dismissable={!salvando} onClose={() => setExcluir(null)}
+        description={`O pedido de ${excluir?.nome || 'este aluno'} sairá das listas e do status do aluno. A exclusão fica registrada para auditoria e a matrícula vinculada, se houver, é preservada.`}
+        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setExcluir(null)}>Cancelar</Button><Button variant="danger" icon="trash" loading={salvando} onClick={confirmarExclusao}>Excluir pedido</Button></>}>
+        <p>Esta ação não pode ser desfeita pelo painel.</p>
       </Modal>
 
-      <Modal open={!!edicao} size="lg" title="Ajustar pré-matrícula" dismissable={!salvando} onClose={() => setEdicao(null)}
-        description={`${edicao?.nome || ''}. Ajuste o plano e a grade antes de aprovar; o pedido continuará pendente até uma decisão.`}
-        footer={<><Button variant="ghost" disabled={salvando} onClick={() => setEdicao(null)}>Cancelar</Button><Button variant="primary" icon="save" loading={salvando} disabled={!planoEdicao || edicaoGrade.length !== Number(planoEdicao?.checkins_semanais) || edicaoGrade.some((slot) => !slot.turma_fixa_id || !slot.dia_semana)} onClick={salvarEdicao}>Salvar ajuste</Button></>}>
+      <Modal open={!!revisao} size="lg" title={pendenteNaModal ? 'Revisar pré-matrícula' : 'Editar solicitação'} dismissable={!salvando} onClose={() => setRevisao(null)}
+        description={revisao ? `${revisao.nome} · ${revisao.email}${revisao.telefone ? ` · ${revisao.telefone}` : ''} · enviado em ${formatarData(revisao.created_at)}` : ''}
+        footer={<>
+          <Button variant="ghost" disabled={salvando} onClick={() => setRevisao(null)}>Cancelar</Button>
+          <Button variant="secondary" icon="save" disabled={salvando || !formularioValido} onClick={salvarAjuste}>{pendenteNaModal ? 'Salvar ajuste' : 'Salvar alterações'}</Button>
+          {pendenteNaModal ? <>
+            <Button variant="danger" disabled={salvando} onClick={() => decidir('reprovar')}>Reprovar</Button>
+            <Button variant="primary" loading={salvando} disabled={!formularioValido} onClick={() => decidir('aprovar')}>Aprovar e criar matrícula</Button>
+          </> : null}
+        </>}>
         <div className="ck-mc-form">
-          <SelectField label="Plano" value={edicaoPlanoId} options={(dados?.planos || []).map((plano) => ({
-            value: String(plano.id),
-            label: `${plano.checkins_semanais}x por semana · ${plano.modalidade_nome}${plano.descricao ? ` · ${plano.descricao}` : ''}`,
-          }))} onChange={(event) => {
+          {erroModal ? <Callout tone="danger">{erroModal}</Callout> : null}
+          {revisao?.status === 'aprovada' ? <Callout tone="info">Estes são os dados da solicitação. A matrícula já criada não é alterada; mudanças no plano efetivo, na grade em uso ou na cobrança são feitas na gestão de matrículas.</Callout> : null}
+          {pendenteNaModal ? <Callout tone="info">Ao aprovar, a matrícula gratuita é criada com os dados abaixo. Se não houver vaga ou houver conflito com outra matrícula, o pedido continua aguardando.</Callout> : null}
+          {revisao && !planoEdicao ? <Callout tone="warning">O plano solicitado não está mais disponível para pré-matrícula. Selecione outro plano.</Callout> : null}
+          <SelectField label="Plano gratuito" value={planoEdicao ? edicaoPlanoId : ''} options={planoEdicao ? opcoesPlano : [{ value: '', label: 'Selecione o plano' }, ...opcoesPlano]} onChange={(event) => {
             const id = event.target.value;
             const plano = (dados?.planos || []).find((item) => item.id === Number(id));
             setEdicaoPlanoId(id);
             setEdicaoGrade(plano ? Array.from({ length: plano.checkins_semanais }, () => ({ turma_fixa_id: '', dia_semana: 0 })) : []);
           }} />
+          {planoEdicao?.plano_pago_nome ? <p className="ck-mc-hint">Plano pago vinculado: {planoEdicao.plano_pago_nome}</p> : null}
           {planoEdicao && planoEdicao.dias_disponiveis < planoEdicao.checkins_semanais
             ? <Callout tone="warning">Há turmas em {planoEdicao.dias_disponiveis} dia(s) diferente(s), mas este plano precisa de {planoEdicao.checkins_semanais}. Não é possível completar a grade com os horários ativos.</Callout>
             : null}
@@ -317,7 +450,9 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
               }} />;
           }) : null}
           <TextField label="Dia de vencimento (opcional)" type="number" min="1" max="31" value={edicaoVencimento}
+            error={vencimentoValido ? undefined : 'Informe um dia de 1 a 31.'}
             onChange={(event) => setEdicaoVencimento(event.target.value)} placeholder="De 1 a 31" />
+          {pendenteNaModal ? <TextAreaField label="Observação para o histórico (opcional)" value={observacao} onChange={(event) => setObservacao(event.target.value)} /> : null}
         </div>
       </Modal>
     </>

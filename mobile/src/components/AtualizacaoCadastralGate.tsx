@@ -11,6 +11,7 @@ import TextField from "@/src/components/ds/TextField";
 import PhoneField from "@/src/components/ds/PhoneField";
 import { ds, radius, space, type } from "@/src/components/ds/tokens";
 import api from "@/src/services/api";
+import { useRouter } from "expo-router";
 
 /**
  * Atualização cadastral pedida pelo super admin: cobre o app com os campos a revisar, a confirmação
@@ -101,6 +102,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [diaVencimento, setDiaVencimento] = useState("");
   const [erroPreMatricula, setErroPreMatricula] = useState("");
   const [erroCarregamentoFechado, setErroCarregamentoFechado] = useState(false);
+  const router = useRouter();
   const [salvandoPreMatricula, setSalvandoPreMatricula] = useState(false);
   const [carregandoPreMatricula, setCarregandoPreMatricula] = useState(false);
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -356,8 +358,18 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const podeAdiarPreMatricula = !!preMatricula
     && (!preMatricula.obrigatoria || !preMatricula.disponivel || statusResolvido || !preMatricula.planos.length);
   const exigeEnvioAgora = !!preMatricula?.obrigatoria && preMatricula.disponivel && !statusResolvido && !!preMatricula.planos.length;
-  const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula
+  const periodoGratuito = preMatricula?.status === "aprovada" ? preMatricula.periodo_gratuito ?? null : null;
+  const gratuitoEncerrado = !!periodoGratuito?.encerrado;
+  // Pedido aprovado e matrícula em dia não precisa de aviso a cada abertura do app
+  const aprovadaSemAviso = preMatricula?.status === "aprovada" && !gratuitoEncerrado;
+  const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula && !aprovadaSemAviso
     && (exigeEnvioAgora || preMatriculaAdiada !== preMatricula.tenant_id);
+  const contratarPlano = () => {
+    const destino = periodoGratuito?.plano_destino;
+    if (!destino || !preMatricula) return;
+    setPreMatriculaAdiada(preMatricula.tenant_id);
+    router.push({ pathname: "/plano-detalhes", params: { id: String(destino.id) } });
+  };
   const visivelErroPreMatricula = enabled && !visivelCadastro && !preMatricula && !!erroPreMatricula && !erroCarregamentoFechado;
   if (!visivelCadastro && !visivelPreMatricula && !visivelErroPreMatricula) return null;
 
@@ -502,12 +514,16 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <ScrollView style={styles.flex} contentContainerStyle={[styles.body, styles.preBody]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <View style={styles.preIntro}>
-                <Text style={styles.title} accessibilityRole="header">{!preMatricula.disponivel ? "Pré-matrícula indisponível" : preMatricula.status === "pendente" ? "Pedido em análise" : preMatricula.status === "aprovada" ? "Pedido aprovado" : "Escolha seus horários"}</Text>
+                <Text style={styles.title} accessibilityRole="header">{!preMatricula.disponivel ? "Pré-matrícula indisponível" : preMatricula.status === "pendente" ? "Pedido em análise" : gratuitoEncerrado ? "Período gratuito encerrado" : preMatricula.status === "aprovada" ? "Pedido aprovado" : "Escolha seus horários"}</Text>
                 <Text style={styles.text}>
                   {!preMatricula.disponivel
                     ? preMatricula.motivo || "Esta pré-matrícula não está disponível para sua conta."
                     : preMatricula.status === "pendente"
                       ? "Seu pedido foi recebido e está aguardando análise da academia."
+                      : gratuitoEncerrado
+                        ? periodoGratuito?.plano_destino
+                          ? `Seu acesso gratuito terminou. Para continuar, contrate o plano ${periodoGratuito.plano_destino.descricao}. Você verá o valor e as condições antes de confirmar.`
+                          : "Seu acesso gratuito terminou. O plano para continuar não está disponível no momento; fale com a academia."
                       : preMatricula.status === "aprovada"
                         ? preMatricula.matricula_id
                           ? `Seu pedido foi aprovado e sua matrícula #${preMatricula.matricula_id} foi criada.`
@@ -543,8 +559,11 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
                 {preMatricula.disponivel && !statusResolvido ? <Button variant="glow" size="lg" block icon="send" loading={salvandoPreMatricula} disabled={!planoSelecionado || gradePreMatricula.length !== Number(planoSelecionado?.checkins_semanais) || !vencimentoPreMatriculaValido} onPress={() => void salvarPreMatricula()}>
                   Enviar para análise
                 </Button> : null}
-                {podeAdiarPreMatricula ? <Button variant={statusResolvido ? "primary" : "ghost"} size="lg" block disabled={salvandoPreMatricula} onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
-                  {statusResolvido ? "Entendi" : "Fechar"}
+                {gratuitoEncerrado && periodoGratuito?.plano_destino ? <Button variant="glow" size="lg" block icon="shopping-bag" onPress={contratarPlano}>
+                  Contratar plano
+                </Button> : null}
+                {podeAdiarPreMatricula ? <Button variant={statusResolvido && !(gratuitoEncerrado && periodoGratuito?.plano_destino) ? "primary" : "ghost"} size="lg" block disabled={salvandoPreMatricula} onPress={() => setPreMatriculaAdiada(preMatricula.tenant_id)}>
+                  {gratuitoEncerrado && periodoGratuito?.plano_destino ? "Agora não" : statusResolvido ? "Entendi" : "Fechar"}
                 </Button> : null}
               </View>
             </View>

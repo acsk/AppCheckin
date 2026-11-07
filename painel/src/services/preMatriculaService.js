@@ -42,6 +42,22 @@ const preMatriculaService = {
     }
   },
 
+  async atualizar(id, tenantId, dados) {
+    try {
+      return (await api.put(`/superadmin/pre-matriculas/${id}`, { ...dados, tenant_id: tenantId })).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível atualizar a pré-matrícula.'));
+    }
+  },
+
+  async excluir(id, tenantId) {
+    try {
+      return (await api.delete(`/superadmin/pre-matriculas/${id}`, { params: { tenant_id: tenantId } })).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível excluir a pré-matrícula.'));
+    }
+  },
+
   async listarAcademia() {
     try {
       return (await api.get('/admin/pre-matriculas')).data;
@@ -55,6 +71,14 @@ const preMatriculaService = {
       return (await api.put(`/admin/pre-matriculas/${id}`, dados)).data;
     } catch (error) {
       throw new Error(mensagem(error, 'Não foi possível ajustar a pré-matrícula.'));
+    }
+  },
+
+  async excluirAcademia(id) {
+    try {
+      return (await api.delete(`/admin/pre-matriculas/${id}`)).data;
+    } catch (error) {
+      throw new Error(mensagem(error, 'Não foi possível excluir a pré-matrícula.'));
     }
   },
 
