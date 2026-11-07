@@ -391,7 +391,15 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
                   </td>
                   <td>{formatarData(item.created_at)}</td>
                   <td><strong>{item.checkins_semanais}x por semana</strong><span className="ck-cad-table__summary">{item.plano_descricao || 'Sem descrição'}</span>{item.plano_destino_nome ? <span className="ck-cad-table__summary">Plano pago: {item.plano_destino_nome}</span> : null}</td>
-                  <td>{item.grade.map((slot) => `${dias[slot.dia_semana - 1]} · ${slot.turma_nome} · ${String(slot.horario_inicio || '').slice(0, 5)}`).join('; ')}</td>
+                  <td>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                      {item.grade.map((slot) => (
+                        <Badge key={`${slot.turma_fixa_id}:${slot.dia_semana}`} tone="info">
+                          {slot.turma_nome}{slot.horario_inicio ? ` · ${String(slot.horario_inicio).slice(0, 5)}` : ''}
+                        </Badge>
+                      ))}
+                    </div>
+                  </td>
                   <td>{item.dia_vencimento ? `Dia ${item.dia_vencimento}` : 'Não informado'}</td>
                   <td>
                     <Badge tone={item.status === 'aprovada' ? 'success' : item.status === 'reprovada' ? 'danger' : 'warning'}>{statusLabel[item.status] || item.status}</Badge>
