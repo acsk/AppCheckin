@@ -183,6 +183,37 @@ class MatriculaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function previaBaixaManual(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $pagamentoId = $request->query('pagamento_id');
+        $result = $this->service->previaBaixaManual($id, $tenantId, $pagamentoId ? (int) $pagamentoId : null);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function baixaManual(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->baixaManualMatricula(
+            $id,
+            $tenantId,
+            $adminId !== null ? (int) $adminId : null,
+            $request->all()
+        );
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function alterarPlano(Request $request, int $id): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

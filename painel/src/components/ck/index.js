@@ -952,7 +952,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
         h(TextField, { label: 'Data do pagamento', type: 'date', value: paid[0], onChange: function (e) { paid[1](e.target.value); }, error: tried[0] ? errs.paid : null,
           hint: late > 0 ? 'Pago ' + late + (late === 1 ? ' dia' : ' dias') + ' depois do vencimento.' : late < 0 ? 'Pago ' + (-late) + (late === -1 ? ' dia' : ' dias') + ' antes do vencimento.' : 'Pago no dia do vencimento.' }),
         p.askNextDue ? h(TextField, { label: 'Próximo vencimento', type: 'date', value: nextDue[0], min: due[0] || undefined, onChange: function (e) { nextDue[1](e.target.value); }, error: tried[0] ? errs.next : null,
-          hint: 'A próxima parcela será criada com este vencimento.' }) : null,
+          hint: 'Fica registrado na matrícula; nenhuma parcela futura é criada.' }) : null,
         more[0] ? h(React.Fragment, null,
           p.allowReceipt !== false ? h(TextField, { label: 'Comprovante', icon: 'paperclip', value: receipt[0], onChange: function (e) { receipt[1](e.target.value); }, placeholder: 'Link ou código do comprovante', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }) : null,
           h(TextAreaField, { label: 'Observação', value: notes[0], onChange: function (e) { notes[1](e.target.value); }, placeholder: 'Aparece no histórico da fatura', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }))

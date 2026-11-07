@@ -124,7 +124,7 @@ class BaixaDuplicadaTest extends TestCase
         $this->assertSame([], $repo->parcelasParaConferirBaixa(3, 164, 1552, '2026-11-18', '2026-12-18')['pagas']);
     }
 
-    /** @param array{gerada?: string|null, proximo?: string|null} $saida */
+    /** @param array{proximo?: string|null} $saida */
     private function baixar(string $dataPagamento, ?bool $retroativa = null, ?string $proximoVenc = '2026-12-10', array &$saida = []): array
     {
         if ($retroativa !== null) {
@@ -136,11 +136,7 @@ class BaixaDuplicadaTest extends TestCase
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findPagamentoParaBaixa')->andReturn($parcela);
         $repo->shouldReceive('atualizarPagamentoBaixa', 'ativarMatriculaSePendente');
-        $repo->shouldReceive('inserirPagamentoPlano')->andReturnUsing(function (array $d) use (&$saida) {
-            $saida['gerada'] = $d['data_vencimento'];
-
-            return 1553;
-        });
+        $repo->shouldNotReceive('inserirPagamentoPlano');
         $repo->shouldReceive('atualizarProximaDataVencimentoSimples')->andReturnUsing(function ($id, $d) use (&$saida) {
             $saida['proximo'] = $d;
         });
@@ -153,21 +149,30 @@ class BaixaDuplicadaTest extends TestCase
         ]));
     }
 
-    public function test_baixa_usa_o_proximo_vencimento_informado(): void
+    public function test_baixa_so_registra_o_proximo_vencimento_na_matricula(): void
     {
         $saida = [];
         $r = $this->baixar(date('Y-m-d'), null, '2026-12-17', $saida);
 
         $this->assertSame(200, $r['status']);
-        $this->assertSame('2026-12-17', $saida['gerada']);
         $this->assertSame('2026-12-17', $saida['proximo']);
     }
 
-    public function test_proximo_vencimento_e_obrigatorio(): void
+    public function test_sem_proximo_vencimento_informado_usa_o_calculo_automatico(): void
     {
-        $r = $this->baixar(date('Y-m-d'), null, null);
+        $this->requireSqlite();
+        Schema::create('matriculas', function (Blueprint $t) {
+            $t->increments('id');
+            $t->string('tipo_acesso')->nullable();
+            $t->integer('dia_vencimento')->nullable();
+        });
+        DB::table('matriculas')->insert(['id' => 164, 'tipo_acesso' => 'horario_livre', 'dia_vencimento' => 10]);
 
-        $this->assertSame(400, $r['status']);
+        $saida = [];
+        $r = $this->baixar('2000-01-01', true, null, $saida);
+
+        $this->assertSame(200, $r['status']);
+        $this->assertSame('2026-12-10', $saida['proximo']);
     }
 
     public function test_proximo_vencimento_deve_ser_posterior_ao_da_parcela(): void
@@ -187,6 +192,29 @@ class BaixaDuplicadaTest extends TestCase
     public function test_data_retroativa_liberada_por_configuracao(): void
     {
         $r = $this->baixar('2000-01-01', true);
+
+        $this->assertSame(200, $r['status']);
+    }
+
+    public function test_baixa_manual_da_matricula_sem_parcela_em_aberto_registra_o_pagamento(): void
+    {
+        $parcela = ['id' => 1600, 'status_pagamento_id' => 1, 'matricula_id' => 164, 'tenant_id' => 3, 'aluno_id' => 112,
+            'plano_id' => 7, 'valor' => '80.00', 'matricula_valor' => '80.00', 'data_vencimento' => '2026-11-10',
+            'duracao_dias' => 30, 'ciclo_meses' => 1, 'pacote_contrato_id' => null];
+        $repo = Mockery::mock(AdminMatriculaRepository::class);
+        $repo->shouldReceive('findParcelaEmAbertoParaBaixaManual')->with(164, 3)->andReturn(null);
+        $repo->shouldReceive('findMatriculaParaBaixaManual')->with(164, 3)->andReturn(
+            ['id' => 164, 'aluno_id' => 112, 'plano_id' => 7, 'valor' => '80.00', 'proxima_data_vencimento' => '2026-11-10', 'data_vencimento' => null]);
+        $repo->shouldReceive('inserirPagamentoPlano')->once()->andReturn(1600);
+        $repo->shouldReceive('findPagamentoParaBaixa')->andReturn($parcela);
+        $repo->shouldReceive('atualizarPagamentoBaixa', 'ativarMatriculaSePendente');
+        $repo->shouldReceive('atualizarProximaDataVencimentoSimples')->once()->with(164, '2026-12-10');
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula');
+
+        $r = $this->service($repo, $pagamentos)->baixaManualMatricula(164, 3, 68, [
+            'data_pagamento' => date('Y-m-d'), 'proxima_data_vencimento' => '2026-12-10', 'confirmar_duplicidade' => true,
+        ]);
 
         $this->assertSame(200, $r['status']);
     }

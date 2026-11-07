@@ -218,6 +218,8 @@ Route::prefix('v2')->middleware(\App\Http\Middleware\NormalizarTelefones::class)
             Route::get('/matriculas/vencimentos/hoje', [AdminMatriculaController::class, 'vencimentosHoje']);
             Route::get('/matriculas/vencimentos/proximos', [AdminMatriculaController::class, 'proximosVencimentos']);
             Route::post('/matriculas/contas/{id}/baixa', [AdminMatriculaController::class, 'darBaixaConta']);
+            Route::get('/matriculas/{id}/baixa-manual/previa', [AdminMatriculaController::class, 'previaBaixaManual'])->whereNumber('id');
+            Route::post('/matriculas/{id}/baixa-manual', [AdminMatriculaController::class, 'baixaManual'])->whereNumber('id');
             Route::get('/turmas-fixas', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'index']);
             Route::post('/turmas-fixas', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'store']);
             Route::post('/turmas-fixas/acoes', [\App\Http\Controllers\Api\V2\Admin\TurmaFixaController::class, 'actions']);

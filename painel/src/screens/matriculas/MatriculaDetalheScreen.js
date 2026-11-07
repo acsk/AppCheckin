@@ -95,6 +95,7 @@ export default function MatriculaDetalheScreen() {
   const [loadingPreviaAlteracao, setLoadingPreviaAlteracao] = useState(false);
   const [modalConfirmAlteracaoVisible, setModalConfirmAlteracaoVisible] = useState(false);
   const [alterarPlanoErro, setAlterarPlanoErro] = useState('');
+  const [modalBaixaManualVisible, setModalBaixaManualVisible] = useState(false);
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
@@ -1351,9 +1352,19 @@ export default function MatriculaDetalheScreen() {
     : undefined;
 
   // Ações do cabeçalho, conforme o estado da matrícula.
+  const podeBaixaManual = podeCancelarMatricula && Number(matricula?.valor) > 0;
+  const parcelaBaixaManual = [...(pagamentosPendentes || [])]
+    .filter((pg) => !pg.pacote_contrato_id && !pg.cobranca_automatica)
+    .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)))[0]
+    || { valor: matricula?.valor, data_vencimento: matricula?.proxima_data_vencimento || matricula?.data_vencimento };
   const acoesCabecalho =
-    podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula || podeCancelarMatricula ? (
+    podeBaixaManual || podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula || podeCancelarMatricula ? (
       <>
+        {podeBaixaManual ? (
+          <CkButton variant="primary" icon="check-circle" onClick={() => setModalBaixaManualVisible(true)}>
+            Baixa manual
+          </CkButton>
+        ) : null}
         {podeExibirAlterarPlano && !(matricula?.valor > 0) ? (
           <CkButton variant="ghost" icon="calendar" onClick={handleAbrirModalEditarVencimento}>
             Alterar vencimento
@@ -1523,6 +1534,16 @@ export default function MatriculaDetalheScreen() {
         student={matricula?.usuario_nome || matricula?.aluno_nome}
         plan={matricula?.plano_nome}
         onSuccess={handleBaixaSuccess}
+      />
+
+      <BaixaPagamentoPlanoModal
+        visible={modalBaixaManualVisible}
+        onClose={() => setModalBaixaManualVisible(false)}
+        pagamento={parcelaBaixaManual}
+        matriculaId={matricula?.id}
+        student={matricula?.usuario_nome || matricula?.aluno_nome}
+        plan={matricula?.plano_nome}
+        onSuccess={() => { setModalBaixaManualVisible(false); carregarDados(); }}
       />
 
       {/* Modal de Baixa do Pacote */}

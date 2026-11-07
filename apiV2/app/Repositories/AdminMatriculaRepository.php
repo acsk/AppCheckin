@@ -987,6 +987,38 @@ class AdminMatriculaRepository
             ->all();
     }
 
+    /** @return array<string, mixed>|null */
+    public function findParcelaEmAbertoParaBaixaManual(int $matriculaId, int $tenantId): ?array
+    {
+        $row = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereNull('pacote_contrato_id')
+            ->orderBy('data_vencimento')
+            ->orderBy('id')
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function findMatriculaParaBaixaManual(int $matriculaId, int $tenantId): ?array
+    {
+        $row = DB::table('matriculas as m')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('plano_ciclos as pc', 'pc.id', '=', 'm.plano_ciclo_id')
+            ->leftJoin('assinatura_frequencias as af', 'af.id', '=', 'pc.assinatura_frequencia_id')
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->first([
+                'm.id', 'm.aluno_id', 'm.plano_id', 'm.valor', 'm.data_vencimento', 'm.proxima_data_vencimento',
+                'p.nome as plano_nome', 'p.duracao_dias', 'pc.meses as ciclo_meses', 'af.meses as frequencia_meses',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
     public function findPagamentoParaBaixa(int $pagamentoId, int $tenantId): ?array
     {
         $row = DB::table('pagamentos_plano as pp')

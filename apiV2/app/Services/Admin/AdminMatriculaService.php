@@ -1040,13 +1040,17 @@ class AdminMatriculaService
             return $this->error('data_vencimento inválida', 400);
         }
 
-        $proximoVencimento = $data['proxima_data_vencimento'] ?? null;
-        if (empty($proximoVencimento)) {
-            return $this->error('proxima_data_vencimento é obrigatória para baixa manual', 400);
-        }
         try {
-            $proximoVencimento = AcademyDateTime::parse((string) $proximoVencimento)->format('Y-m-d');
             $vencimentoAtual = AcademyDateTime::parse((string) $dataVencimento)->format('Y-m-d');
+            $proximoVencimento = ! empty($data['proxima_data_vencimento'])
+                ? AcademyDateTime::parse((string) $data['proxima_data_vencimento'])->format('Y-m-d')
+                : $this->calcularProximoVencimento(
+                    (int) $pagamento['matricula_id'],
+                    ($pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null) ? (int) ($pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses']) : null,
+                    (int) ($pagamento['duracao_dias'] ?? 30),
+                    $vencimentoAtual,
+                    ! empty($data['data_pagamento']) ? (string) $data['data_pagamento'] : null
+                );
         } catch (\Throwable) {
             return $this->error('proxima_data_vencimento inválida', 400);
         }
@@ -1088,44 +1092,6 @@ class AdminMatriculaService
 
         $this->matriculas->ativarMatriculaSePendente((int) $pagamento['matricula_id']);
 
-        $proximaParcela = null;
-        $periodoJaCobrado = false;
-        try {
-            $periodoJaCobrado = ParcelasPeriodo::periodoSeguinteJaCobrado(
-                (int) $pagamento['tenant_id'],
-                (int) $pagamento['matricula_id'],
-                $pagamentoId,
-                $vencimentoAtual,
-                $proximoVencimento
-            );
-        } catch (\Throwable $e) {
-            Log::warning('AdminMatriculaService::darBaixaConta checagem de período: '.$e->getMessage());
-        }
-
-        $valorProximaParcela = (float) ($pagamento['matricula_valor'] ?? $pagamento['valor']);
-        if ($valorProximaParcela > 0.001 && ! $periodoJaCobrado) {
-            $proximaParcelaId = $this->matriculas->inserirPagamentoPlano([
-                'tenant_id' => $pagamento['tenant_id'],
-                'aluno_id' => $pagamento['aluno_id'],
-                'matricula_id' => $pagamento['matricula_id'],
-                'plano_id' => $pagamento['plano_id'],
-                'valor' => $valorProximaParcela,
-                'valor_original' => $valorProximaParcela,
-                'desconto' => 0,
-                'motivo_desconto' => null,
-                'data_vencimento' => $proximoVencimento,
-                'status_pagamento_id' => 1,
-                'observacoes' => 'Pagamento gerado após confirmação (vencimento informado na baixa)',
-                'criado_por' => $adminId,
-            ]);
-            $proximaParcela = [
-                'id' => $proximaParcelaId,
-                'data_vencimento' => $proximoVencimento,
-                'valor' => $valorProximaParcela,
-                'status' => 'Aguardando',
-            ];
-        }
-
         $this->matriculas->atualizarProximaDataVencimentoSimples((int) $pagamento['matricula_id'], $proximoVencimento);
 
         $pagamentoAtualizado = $this->matriculas->findPagamentoParaBaixa($pagamentoId, $tenantId);
@@ -1148,17 +1114,125 @@ class AdminMatriculaService
         $aviso = $mesmoPeriodo !== []
             ? 'Atenção: este período também tem a parcela '.ParcelasPeriodo::descrever($mesmoPeriodo)
                 .'. Se for duplicada, cancele-a.'
-            : ($periodoJaCobrado ? 'A próxima parcela não foi criada: já existe cobrança para o período seguinte.' : null);
+            : null;
 
         return [
             'status' => 200,
             'body' => [
                 'message' => 'Baixa realizada com sucesso',
                 'pagamento' => $pagamentoAtualizado,
-                'proxima_parcela' => $proximaParcela,
                 'aviso_cobranca' => $aviso,
             ],
         ];
+    }
+
+    /** Mesma regra do vencimento automático: turma fixa mantém o dia; senão conta do mais tardio entre vencimento e pagamento. */
+    private function calcularProximoVencimento(int $matriculaId, ?int $meses, int $duracaoDias, string $vencimento, ?string $pagoEm): string
+    {
+        $venc = AcademyDateTime::parse($vencimento);
+        $turmaFixa = VencimentoTurmaFixa::daMatricula($matriculaId);
+        if ($turmaFixa) {
+            return VencimentoTurmaFixa::proximo($venc, $meses, $duracaoDias, $turmaFixa['dia_vencimento'])->format('Y-m-d');
+        }
+
+        $base = clone $venc;
+        if ($pagoEm) {
+            $pago = AcademyDateTime::parse($pagoEm);
+            $base = $pago > $venc ? $pago : $venc;
+        }
+        $base = clone $base;
+        if ($meses) {
+            $base->modify("+{$meses} months");
+        } else {
+            $base->add(new \DateInterval('P'.max(1, $duracaoDias).'D'));
+        }
+
+        return $base->format('Y-m-d');
+    }
+
+    /**
+     * Dados mostrados no modal de baixa manual: plano ativo, valor, vencimento atual e próximo vencimento calculado.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function previaBaixaManual(int $matriculaId, int $tenantId, ?int $pagamentoId = null): array
+    {
+        $matricula = $this->matriculas->findMatriculaParaBaixaManual($matriculaId, $tenantId);
+        if (! $matricula) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        $parcela = $pagamentoId
+            ? $this->matriculas->findPagamentoParaBaixa($pagamentoId, $tenantId)
+            : $this->matriculas->findParcelaEmAbertoParaBaixaManual($matriculaId, $tenantId);
+        if ($parcela && (int) $parcela['matricula_id'] !== $matriculaId) {
+            $parcela = null;
+        }
+
+        $vencimento = substr((string) ($parcela['data_vencimento'] ?? $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? ''), 0, 10);
+        if ($vencimento === '') {
+            $vencimento = AcademyDateTime::today();
+        }
+        $meses = ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses'] ?? null) ? (int) ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses']) : null;
+
+        return [
+            'status' => 200,
+            'body' => [
+                'plano' => ['id' => (int) $matricula['plano_id'], 'nome' => $matricula['plano_nome'] ?? null],
+                'valor' => (float) ($parcela['valor'] ?? $matricula['valor'] ?? 0),
+                'vencimento_atual' => $vencimento,
+                'proximo_vencimento' => $this->calcularProximoVencimento(
+                    $matriculaId, $meses, (int) ($matricula['duracao_dias'] ?? 30), $vencimento, AcademyDateTime::today()
+                ),
+                'pagamento_id' => $parcela ? (int) $parcela['id'] : null,
+            ],
+        ];
+    }
+
+    /**
+     * Baixa manual feita na matrícula (fora da lista de pagamentos): baixa a parcela em aberto mais antiga
+     * ou, sem nenhuma em aberto, registra o pagamento do vencimento atual. Nunca deixa parcela futura em aberto.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function baixaManualMatricula(int $matriculaId, int $tenantId, ?int $adminId, array $data): array
+    {
+        $parcela = $this->matriculas->findParcelaEmAbertoParaBaixaManual($matriculaId, $tenantId);
+
+        if ($parcela === null) {
+            $matricula = $this->matriculas->findMatriculaParaBaixaManual($matriculaId, $tenantId);
+            if (! $matricula) {
+                return $this->error('Matrícula não encontrada', 404);
+            }
+            $valor = (float) ($data['valor'] ?? $matricula['valor'] ?? 0);
+            if ($valor <= 0) {
+                return $this->error('Matrícula sem valor para baixa manual', 422);
+            }
+            $vencimento = $data['data_vencimento'] ?? $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            if (empty($vencimento)) {
+                return $this->error('data_vencimento é obrigatória para baixa manual', 400);
+            }
+            $pagamentoId = $this->matriculas->inserirPagamentoPlano([
+                'tenant_id' => $tenantId,
+                'aluno_id' => $matricula['aluno_id'],
+                'matricula_id' => $matriculaId,
+                'plano_id' => $matricula['plano_id'],
+                'valor' => $valor,
+                'valor_original' => $valor,
+                'desconto' => 0,
+                'data_vencimento' => substr((string) $vencimento, 0, 10),
+                'status_pagamento_id' => 1,
+                'observacoes' => 'Baixa manual registrada pela matrícula',
+                'criado_por' => $adminId,
+            ]);
+            $data['data_vencimento'] = substr((string) $vencimento, 0, 10);
+        } else {
+            $pagamentoId = (int) $parcela['id'];
+            $data['data_vencimento'] ??= substr((string) $parcela['data_vencimento'], 0, 10);
+        }
+
+        return $this->darBaixaConta($pagamentoId, $tenantId, $adminId, $data);
     }
 
     public const CODIGO_BAIXA_DUPLICADA = 'BAIXA_PERIODO_JA_PAGO';

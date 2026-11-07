@@ -15,7 +15,7 @@ function sugerirProximoVencimento(value) {
   return alvo.toISOString().slice(0, 10);
 }
 
-export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plano = false, student, plan }) {
+export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plano = false, student, plan, matriculaId }) {
   const [methods, setMethods] = useState([]);
   const [loadingMethods, setLoadingMethods] = useState(true);
   const [error, setError] = useState('');
@@ -23,10 +23,12 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
   const [confirmation, setConfirmation] = useState(null);
   const [duplicidade, setDuplicidade] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [previa, setPrevia] = useState(null);
+  const [loadingPrevia, setLoadingPrevia] = useState(!!(matriculaId || pagamento.matricula_id) && plano);
   const busy = useRef(false);
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const id = pagamento.pagamento_id || pagamento.id || (plano ? pagamento.conta_id : null);
+  const id = pagamento.pagamento_id || pagamento.id || (plano ? pagamento.conta_id : null) || matriculaId;
   const amount = Number(pagamento.valor);
   const brl = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0);
   const currency = brl(amount);
@@ -59,6 +61,18 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
     return () => { active = false; };
   }, [plano, attempt]);
 
+  const matriculaDaBaixa = matriculaId || pagamento.matricula_id;
+  const pagamentoDaPrevia = matriculaId ? null : (pagamento.pagamento_id || pagamento.id || pagamento.conta_id);
+  useEffect(() => {
+    if (!plano || !matriculaDaBaixa) return undefined;
+    let active = true;
+    api.get(`/admin/matriculas/${matriculaDaBaixa}/baixa-manual/previa`, { params: pagamentoDaPrevia ? { pagamento_id: pagamentoDaPrevia } : {} })
+      .then(({ data }) => { if (active) setPrevia(data); })
+      .catch((err) => console.error('Erro ao carregar prévia da baixa:', err))
+      .finally(() => { if (active) setLoadingPrevia(false); });
+    return () => { active = false; };
+  }, [plano, matriculaDaBaixa, pagamentoDaPrevia]);
+
   const close = () => { if (!busy.current) onClose(); };
   const submit = async (values, confirmarDuplicidade = false) => {
     if (busy.current) return;
@@ -83,7 +97,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         observacoes: values.notes || '',
       };
       if (plano) {
-        resposta = await api.post(`/admin/matriculas/contas/${id}/baixa`, {
+        resposta = await api.post(matriculaId ? `/admin/matriculas/${matriculaId}/baixa-manual` : `/admin/matriculas/contas/${id}/baixa`, {
           ...payload,
           data_vencimento: values.dueDate,
           proxima_data_vencimento: values.nextDueDate,
@@ -116,7 +130,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
       showWarning(`Pagamento confirmado. ${corpo.aviso_cobranca}`);
     } else {
       showSuccess(plano
-        ? (corpo.proxima_parcela ? 'Pagamento confirmado! Próxima parcela criada.' : 'Pagamento confirmado!')
+        ? 'Pagamento confirmado!'
         : 'Pagamento confirmado com sucesso!');
     }
     onClose();
@@ -126,11 +140,11 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
   return (
     <>
       <BaixaModal
-        open={!confirmation && !duplicidade}
-        invoice={{ id: `#${id || '-'}`, number: pagamento.numero_parcela, amount, dueDate: pagamento.data_vencimento?.slice(0, 10) }}
+        open={!confirmation && !duplicidade && !loadingPrevia}
+        invoice={{ id: matriculaId ? 'da matrícula' : `#${id || '-'}`, number: pagamento.numero_parcela, amount: previa?.valor ?? amount, dueDate: (previa?.vencimento_atual || pagamento.data_vencimento)?.slice(0, 10) }}
         today={today}
         student={student || pagamento.usuario_nome || pagamento.aluno_nome}
-        plan={plan || pagamento.plano_nome}
+        plan={previa?.plano?.nome || plan || pagamento.plano_nome}
         methods={methods}
         defaultMethod={pagamento.forma_pagamento_id ? String(pagamento.forma_pagamento_id) : ''}
         defaultNotes={plano ? '' : 'Baixa Manual'}
@@ -138,7 +152,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
         minDueDate={plano ? `${today.slice(0, 7)}-01` : undefined}
         allowReceipt={false}
         askNextDue={plano}
-        defaultNextDue={plano ? sugerirProximoVencimento(pagamento.data_vencimento) : ''}
+        defaultNextDue={plano ? (previa?.proximo_vencimento || sugerirProximoVencimento(pagamento.data_vencimento)) : ''}
         nextNote={false}
         error={loadingMethods ? 'Carregando formas de pagamento…' : error}
         errorAction={!loadingMethods && !methods.length ? <Button size="sm" onClick={() => setAttempt((value) => value + 1)}>Tentar novamente</Button> : null}
@@ -156,7 +170,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
       <Modal
         open={!!confirmation}
         title="Confirmar baixa"
-        description={`Registrar o recebimento de ${currency} para a fatura #${id}?`}
+        description={`Registrar o recebimento de ${currency} para ${matriculaId ? 'esta matrícula' : `a fatura #${id}`}?`}
         dismissable={!saving}
         onClose={() => setConfirmation(null)}
         footer={<>
@@ -164,7 +178,7 @@ export default function BaixaPagamentoForm({ pagamento, onClose, onSuccess, plan
           <Button variant="primary" loading={saving} onClick={() => submit(confirmation)}>Confirmar pagamento</Button>
         </>}
       >
-        <p>Confirme somente se o pagamento já foi recebido. A próxima parcela será criada no vencimento informado.</p>
+        <p>Confirme somente se o pagamento já foi recebido. O próximo vencimento informado será registrado na matrícula; nenhuma parcela futura é criada.</p>
       </Modal>
       <Modal
         open={!!duplicidade}
