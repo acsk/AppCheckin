@@ -41,6 +41,8 @@ export type ClassSlotProps = {
   attendees?: string[];
   note?: string | null;
   action?: SlotAction | null;
+  viewAction?: SlotAction | null;
+  withoutTimeline?: boolean;
   compact?: boolean;
   onPress?: () => void;
 };
@@ -151,15 +153,19 @@ export function ClassSlot(p: ClassSlotProps & { first?: boolean; last?: boolean 
 
   return (
     <View style={styles.slot}>
-      <View style={styles.time}>
-        <Text style={[styles.start, muted && { color: ds.inkMuted }, live && { color: ds.brandInk }]} maxFontSizeMultiplier={1.2}>{p.start}</Text>
-        <Text style={styles.end} maxFontSizeMultiplier={1.2}>{p.end}</Text>
-      </View>
+      {!p.withoutTimeline ? (
+        <>
+          <View style={styles.time}>
+            <Text style={[styles.start, muted && { color: ds.inkMuted }, live && { color: ds.brandInk }]} maxFontSizeMultiplier={1.2}>{p.start}</Text>
+            <Text style={styles.end} maxFontSizeMultiplier={1.2}>{p.end}</Text>
+          </View>
 
-      <View style={styles.rail} importantForAccessibility="no-hide-descendants">
-        <View style={[styles.line, p.first && { top: 16 }, p.last && { bottom: undefined, height: 16 }]} />
-        <View style={{ marginTop: live ? 12 : 14 }}><Dot status={live ? "live" : st} /></View>
-      </View>
+          <View style={styles.rail} importantForAccessibility="no-hide-descendants">
+            <View style={[styles.line, p.first && { top: 16 }, p.last && { bottom: undefined, height: 16 }]} />
+            <View style={{ marginTop: live ? 12 : 14 }}><Dot status={live ? "live" : st} /></View>
+          </View>
+        </>
+      ) : null}
 
       <TouchableOpacity
         activeOpacity={0.85}
@@ -176,6 +182,11 @@ export function ClassSlot(p: ClassSlotProps & { first?: boolean; last?: boolean 
           (muted || p.compact) && { backgroundColor: ds.surfaceSunken },
         ]}
       >
+        {p.withoutTimeline ? (
+          <Text style={styles.cardTime} maxFontSizeMultiplier={1.3}>
+            {p.start} – {p.end}
+          </Text>
+        ) : null}
         {!p.compact && (chip || p.reposicao) ? (
           <View style={styles.status}>
             {chip ? (
@@ -235,7 +246,7 @@ export function ClassSlot(p: ClassSlotProps & { first?: boolean; last?: boolean 
           </View>
         ) : null}
 
-        {act && !p.compact ? (
+        {(act || p.viewAction) && !p.compact ? (
           <View style={styles.actions}>
             {p.note ? (
               <Text style={styles.note} maxFontSizeMultiplier={1.3}>
@@ -244,17 +255,25 @@ export function ClassSlot(p: ClassSlotProps & { first?: boolean; last?: boolean 
             ) : (
               <View />
             )}
-            <Button
-              size="sm"
-              style={styles.actionButton}
-              variant={act.variant ?? (st === "open" ? "primary" : "secondary")}
-              icon={act.icon}
-              disabled={act.disabled}
-              loading={act.loading}
-              onPress={act.onPress}
-            >
-              {act.label}
-            </Button>
+            {act ? (
+              <Button
+                size="sm"
+                style={styles.actionButton}
+                variant={act.variant ?? (st === "open" ? "primary" : "secondary")}
+                icon={act.icon}
+                disabled={act.disabled}
+                loading={act.loading}
+                onPress={act.onPress}
+              >
+                {act.label}
+              </Button>
+            ) : null}
+            {p.viewAction ? (
+              <Button size="sm" style={styles.actionButton} variant={p.viewAction.variant ?? "secondary"}
+                icon={p.viewAction.icon} disabled={p.viewAction.disabled} loading={p.viewAction.loading} onPress={p.viewAction.onPress}>
+                {p.viewAction.label}
+              </Button>
+            ) : null}
           </View>
         ) : null}
       </TouchableOpacity>
@@ -361,6 +380,7 @@ const styles = StyleSheet.create({
     gap: space[3],
   },
   cardCompact: { paddingVertical: 10 },
+  cardTime: { fontSize: 15, lineHeight: 20, fontWeight: "900", color: ds.ink, fontVariant: ["tabular-nums"] },
   cardOpen: { borderColor: ds.brand },
   cardLive: { borderColor: ds.brandRed, borderWidth: 2, backgroundColor: ds.brandSoft },
   cardChecked: { borderColor: ds.success, backgroundColor: ds.successSoft },

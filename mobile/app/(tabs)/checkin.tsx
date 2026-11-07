@@ -26,7 +26,7 @@ import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 import { feedbackBloqueioCheckin } from "../../src/utils/checkinFeedback";
 
-import ClassTimeline, { ClassSlotProps, SlotStatus } from "@/src/components/ds/ClassTimeline";
+import ClassTimeline, { ClassSlot, ClassSlotProps, SlotStatus } from "@/src/components/ds/ClassTimeline";
 import AppHeader from "@/src/components/ds/AppHeader";
 import DayPicker from "@/src/components/ds/DayPicker";
 import Segmented from "@/src/components/ds/Segmented";
@@ -1456,6 +1456,7 @@ function CheckinScreenContent() {
 
   const toSlot = (turma: any): ClassSlotProps => {
     const status = getSlotStatus(turma);
+    const turmaFixa = !isProfessorOuAdmin && turma.tipo_acesso === "turma_fixa";
     const professorName =
       normalizeUtf8(String(turma.professor?.nome || turma.professor || "")) || "Sem professor";
     const displayName = cleanTurmaName(turma.nome, turma.modalidade, turma.professor);
@@ -1521,7 +1522,9 @@ function CheckinScreenContent() {
         ? `Turma fixa — sua vaga está reservada${cancelarAte ? `. Cancele até ${cancelarAte}` : ""}`
         : cancelarAte ? `Cancele até ${cancelarAte}` : `${turma.vagas_disponiveis} vagas livres`,
       action,
-      onPress: disabled ? undefined : () => openParticipants(turma),
+      withoutTimeline: turmaFixa,
+      viewAction: turmaFixa && action !== verTurma ? verTurma : null,
+      onPress: disabled && !turmaFixa ? undefined : () => openParticipants(turma),
     };
   };
 
@@ -1535,10 +1538,12 @@ function CheckinScreenContent() {
   const slotsMinhas = slots.filter((x) => x.status === "checked");
   const slotsFiltrados =
     filtroAulas === "disp" ? slotsDisponiveis : filtroAulas === "minhas" ? slotsMinhas : slots;
+  const slotsTurmaFixa = slotsFiltrados.filter((slot) => slot.withoutTimeline);
+  const slotsLinhaTempo = slotsFiltrados.filter((slot) => !slot.withoutTimeline);
   const agora = isHojeSelecionado ? horaAgora() : null;
   // Marcador "Agora" depois das aulas que já começaram (entre as não encerradas).
   const nowBefore = agora
-    ? slotsFiltrados.filter((x) => x.status !== "closed" && x.start <= agora).length
+    ? slotsLinhaTempo.filter((x) => x.status !== "closed" && x.start <= agora).length
     : 0;
 
   const handleToggleCheckinBloqueioTurma = async () => {
@@ -1748,16 +1753,19 @@ function CheckinScreenContent() {
                       : [{ id: "minhas", label: "Minhas", count: slotsMinhas.length }]),
                   ]}
                 />
-                <ClassTimeline
-                  items={slotsFiltrados}
-                  now={agora}
-                  nowBefore={nowBefore}
-                  emptyText={
-                    filtroAulas === "minhas"
-                      ? "Você ainda não fez check-in neste dia."
-                      : "Nenhuma aula disponível agora."
-                  }
-                />
+                {slotsTurmaFixa.map((slot) => <ClassSlot key={String(slot.id)} {...slot} />)}
+                {slotsLinhaTempo.length > 0 || slotsTurmaFixa.length === 0 ? (
+                  <ClassTimeline
+                    items={slotsLinhaTempo}
+                    now={agora}
+                    nowBefore={nowBefore}
+                    emptyText={
+                      filtroAulas === "minhas"
+                        ? "Você ainda não fez check-in neste dia."
+                        : "Nenhuma aula disponível agora."
+                    }
+                  />
+                ) : null}
               </View>
             ) : (
               <View style={styles.emptyState}>
