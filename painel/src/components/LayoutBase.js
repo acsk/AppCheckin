@@ -359,22 +359,22 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   );
 
   return (
-    <div className="ck-painel" style={{ height: '100vh', width: '100%' }}>
+    <div className="ck-painel" style={{ height: '100vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
+      {acessoSuporte ? (
+        <div className="ck-suporte-bar" role="status">
+          <Icon name="key" size={16} />
+          <span className="ck-suporte-bar__text">
+            <strong>{`Acesso de suporte: ${acessoSuporte.tenant_nome}`}</strong>
+            {` · até ${horaLocal(acessoSuporte.expira_em)}. Suas alterações ficam registradas e a academia vê este acesso.`}
+          </span>
+          <Button size="sm" variant="primary" loading={encerrando} onClick={encerrarAcesso}>Encerrar acesso</Button>
+        </div>
+      ) : null}
       <AppShell
         sidebar={isMobile ? null : sidebar}
         header={header}
         className={noPadding ? 'ck-shell--flush' : undefined}
       >
-        {acessoSuporte ? (
-          <div className="ck-suporte-bar" role="status">
-            <Icon name="key" size={16} />
-            <span className="ck-suporte-bar__text">
-              <strong>{`Acesso de suporte: ${acessoSuporte.tenant_nome}`}</strong>
-              {` · até ${horaLocal(acessoSuporte.expira_em)}. Suas alterações ficam registradas e a academia vê este acesso.`}
-            </span>
-            <Button size="sm" variant="primary" loading={encerrando} onClick={encerrarAcesso}>Encerrar acesso</Button>
-          </div>
-        ) : null}
         {/* Telas com cabeçalho próprio (ex.: Matricula) passam pageHeader={false} */}
         {pageHeader ? <PageHeader title={title} description={subtitle || undefined} /> : null}
         {children}
