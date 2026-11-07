@@ -282,6 +282,9 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
                   {par.plano_free_nome} → {par.plano_pago_nome} ({par.checkins_semanais}x por semana · {par.modalidade_nome}){par.valido ? '' : ' — vínculo inválido: revise os planos'}
                 </li>)}
               </ul> : <p className="ck-mc-hint">Nenhum plano gratuito vinculado a um plano pago.</p>}
+              {dados?.configuracao?.configurada && config.ativa && !(dados?.configuracao?.pares || []).some((par) => par.valido)
+                ? <Callout tone="danger">Pré-matrícula ativa sem nenhum vínculo válido: os alunos não veem planos no app. Clique em Editar configuração e vincule cada plano gratuito ao plano pago correspondente.</Callout>
+                : null}
               {paresInvalidos.length ? <Callout tone="warning">Há vínculos com plano inativo ou alterado. Eles não são oferecidos aos alunos até serem corrigidos.</Callout> : null}
             </div>
             <div className="ck-cad-table__actions">
