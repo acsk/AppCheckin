@@ -1,5 +1,13 @@
 <?php
 
+// Este arquivo é incluído com `require` em ~175 pontos; sem reaproveitar, uma única
+// requisição abria várias conexões e a hospedagem passava a recusar novas (SQLSTATE 2002).
+// Conexão com transação aberta não é compartilhada, para não misturar transações.
+$__appcheckinPdo = $GLOBALS['__appcheckin_pdo'] ?? null;
+if ($__appcheckinPdo instanceof PDO && !$__appcheckinPdo->inTransaction()) {
+    return $__appcheckinPdo;
+}
+
 // Helper para obter variável de ambiente com fallback de nomes
 if (!function_exists('env_or_server')) {
     function env_or_server(string $key, array $fallbacks = []): ?string {
@@ -75,6 +83,10 @@ try {
         $pdo->exec("SET time_zone = '-03:00'");
     }
     
+    if (!($__appcheckinPdo instanceof PDO)) {
+        $GLOBALS['__appcheckin_pdo'] = $pdo;
+    }
+
     return $pdo;
 } catch (PDOException $e) {
     error_log("[database.php] Erro ao conectar ao banco de dados: " . $e->getMessage());
