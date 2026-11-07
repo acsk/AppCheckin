@@ -6,6 +6,9 @@ use App\Repositories\AdminMatriculaRepository;
 use App\Services\Admin\AdminMatriculaService;
 use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
@@ -14,8 +17,34 @@ class AdminMatriculaUnicaTest extends TestCase
 {
     private const T = 3;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Schema::dropIfExists('pagamentos_plano');
+        Schema::dropIfExists('status_pagamento');
+        Schema::create('status_pagamento', function (Blueprint $t) {
+            $t->id();
+            $t->string('nome');
+        });
+        Schema::create('pagamentos_plano', function (Blueprint $t) {
+            $t->id();
+            $t->unsignedBigInteger('tenant_id');
+            $t->unsignedBigInteger('matricula_id');
+            $t->decimal('valor', 10, 2);
+            $t->date('data_vencimento');
+            $t->unsignedInteger('status_pagamento_id');
+        });
+        DB::table('status_pagamento')->insert([
+            ['id' => 1, 'nome' => 'Aguardando'],
+            ['id' => 2, 'nome' => 'Pago'],
+            ['id' => 4, 'nome' => 'Cancelado'],
+        ]);
+    }
+
     protected function tearDown(): void
     {
+        Schema::dropIfExists('pagamentos_plano');
+        Schema::dropIfExists('status_pagamento');
         Mockery::close();
         parent::tearDown();
     }
@@ -101,5 +130,35 @@ class AdminMatriculaUnicaTest extends TestCase
         $pagamentos->shouldReceive('cancelarParcelasAbertas')->once()->with(self::T, 460, Mockery::type('string'))->andReturn(1);
 
         $this->assertSame(201, $this->servico($repo, $pagamentos)->criar(self::T, 5, ['aluno_id' => 158, 'plano_id' => 8])['status']);
+    }
+
+    // Caso da matrícula 298: parcela do dia já paga e o painel confirmou "Cobrar mesmo assim"
+    public function test_periodo_ja_pago_nao_gera_nova_cobranca_nem_com_confirmacao(): void
+    {
+        $hoje = AcademyDateTime::today();
+        $ativa = ['id' => 298, 'plano_id' => 8, 'valor' => '120.00', 'status_codigo' => 'ativa', 'modalidade_id' => 3, 'data_vencimento' => $hoje, 'proxima_data_vencimento' => $hoje];
+        DB::table('pagamentos_plano')->insert(['id' => 1026, 'tenant_id' => self::T, 'matricula_id' => 298, 'valor' => 70, 'data_vencimento' => $hoje, 'status_pagamento_id' => 2]);
+        $repo = $this->repo($ativa, [$ativa]);
+        $repo->shouldNotReceive('atualizarMatriculaReuse');
+        $repo->shouldNotReceive('inserirPagamentoPlano');
+
+        $r = $this->servico($repo)->criar(self::T, 5, ['aluno_id' => 158, 'plano_id' => 9, 'permitir_cobranca_no_periodo' => true]);
+
+        $this->assertSame(409, $r['status']);
+        $this->assertSame('PERIODO_JA_PAGO', $r['body']['code']);
+    }
+
+    public function test_parcela_em_aberto_no_periodo_pede_confirmacao(): void
+    {
+        $hoje = AcademyDateTime::today();
+        $ativa = ['id' => 298, 'plano_id' => 8, 'valor' => '120.00', 'status_codigo' => 'ativa', 'modalidade_id' => 3, 'data_vencimento' => $hoje, 'proxima_data_vencimento' => $hoje];
+        DB::table('pagamentos_plano')->insert(['tenant_id' => self::T, 'matricula_id' => 298, 'valor' => 120, 'data_vencimento' => $hoje, 'status_pagamento_id' => 1]);
+        $repo = $this->repo($ativa, [$ativa]);
+        $repo->shouldNotReceive('inserirPagamentoPlano');
+
+        $r = $this->servico($repo)->criar(self::T, 5, ['aluno_id' => 158, 'plano_id' => 8]);
+
+        $this->assertSame(409, $r['status']);
+        $this->assertSame('COBRANCA_EXISTENTE_NO_PERIODO', $r['body']['code']);
     }
 }

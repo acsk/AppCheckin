@@ -808,15 +808,31 @@ class AdminMatriculaService
 
         // O novo ciclo entra numa matrícula que já tem cobrança para este período (ex.: renovação em
         // aberto vencendo hoje): a "Primeiro pagamento" cobraria o mesmo período duas vezes. Bloqueia,
-        // salvo confirmação explícita do painel (permitir_cobranca_no_periodo).
+        // salvo confirmação explícita do painel (permitir_cobranca_no_periodo). Período já pago nunca é
+        // cobrado de novo, nem com confirmação.
         $matriculaDestino = $matriculaMesmaModalidade ?: ($reutilizandoMatricula ? $matriculaVencida : null);
-        if ($matriculaDestino && $periodoTeste !== 1 && empty($data['permitir_cobranca_no_periodo'])) {
+        if ($matriculaDestino && $periodoTeste !== 1) {
             $existentes = ParcelasPeriodo::existentesAPartirDe($tenantId, (int) $matriculaDestino['id'], $dataInicio);
+            $pagas = array_values(array_filter($existentes, static fn ($x) => $x['status'] === 'Pago'));
             // Compra pendente nunca paga tem as parcelas em aberto canceladas mais abaixo: só o que foi pago conta
             if (! $matriculaMesmaModalidade && ($matriculaDestino['status_codigo'] ?? null) === 'pendente') {
-                $existentes = array_values(array_filter($existentes, static fn ($x) => $x['status'] === 'Pago'));
+                $existentes = $pagas;
             }
-            if ($existentes !== []) {
+            if ($pagas !== []) {
+                return [
+                    'status' => 409,
+                    'body' => [
+                        'type' => 'error',
+                        'code' => 'PERIODO_JA_PAGO',
+                        'message' => 'O período a partir de '.AcademyDateTime::parse($dataInicio)->format('d/m/Y')
+                            .' já está pago: '.ParcelasPeriodo::descrever($pagas)
+                            .'. Não dá para cobrar o mesmo período duas vezes: faça a renovação ou troca de plano no próximo vencimento da matrícula.',
+                        'parcelas' => $pagas,
+                        'matricula_id' => (int) $matriculaDestino['id'],
+                    ],
+                ];
+            }
+            if ($existentes !== [] && empty($data['permitir_cobranca_no_periodo'])) {
                 return [
                     'status' => 409,
                     'body' => [
