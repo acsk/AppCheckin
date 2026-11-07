@@ -22,6 +22,7 @@ export const monthLabel = (key) => { const [y, m] = key.split('-'); return `${MO
 
 /* Status de uma parcela: aguardando com vencimento passado conta como atrasada. */
 export function statusOf(p, todayISO) {
+  if (p.previsto) return 'previsto';
   const id = Number(p.status_pagamento_id);
   if (id === 2) return 'pago';
   if (id === 4) return 'cancelado';
@@ -32,6 +33,7 @@ export function statusOf(p, todayISO) {
 export const STATUS = {
   pago: { tone: 'success', label: 'Pago', plural: 'Pagos' },
   aguardando: { tone: 'warning', label: 'Aguardando', plural: 'Aguardando' },
+  previsto: { tone: 'warning', label: 'Previsto', plural: 'Previstos' },
   atrasado: { tone: 'danger', label: 'Atrasado', plural: 'Atrasados' },
   cancelado: { tone: 'neutral', label: 'Cancelado', plural: 'Cancelados' },
   estornado: { tone: 'neutral', label: 'Estornado', plural: 'Estornados' },
@@ -40,21 +42,21 @@ export const STATUS = {
 export const foraDoTotal = (st) => st === 'cancelado' || st === 'estornado';
 
 export function summarize(payments, todayISO) {
-  const s = { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0, count: { pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0 } };
+  const s = { pago: 0, aguardando: 0, previsto: 0, atrasado: 0, cancelado: 0, estornado: 0, count: { pago: 0, aguardando: 0, previsto: 0, atrasado: 0, cancelado: 0, estornado: 0 } };
   payments.forEach((p) => {
     const st = statusOf(p, todayISO);
     s[st] += Number(p.valor) || 0;
     s.count[st] += 1;
   });
-  s.total = s.pago + s.aguardando + s.atrasado;
-  s.totalCount = s.count.pago + s.count.aguardando + s.count.atrasado;
+  s.total = s.pago + s.aguardando + s.previsto + s.atrasado;
+  s.totalCount = s.count.pago + s.count.aguardando + s.count.previsto + s.count.atrasado;
   return s;
 }
 
 export function byMonth(payments, todayISO, fromDate, toDate) {
   const keys = [];
   for (let d = monthStart(fromDate); d <= toDate; d = monthStart(d, 1)) keys.push(isoDate(d).slice(0, 7));
-  const map = Object.fromEntries(keys.map((k) => [k, { key: k, pago: 0, aguardando: 0, atrasado: 0 }]));
+  const map = Object.fromEntries(keys.map((k) => [k, { key: k, pago: 0, aguardando: 0, previsto: 0, atrasado: 0 }]));
   payments.forEach((p) => {
     const k = String(p.data_vencimento || '').slice(0, 7);
     const st = statusOf(p, todayISO);
@@ -102,12 +104,12 @@ export function KpiCard({ icon, label, value, hint, tone = 'neutral', trend, onC
 }
 
 export function StatusSplit({ summary, showCancelled }) {
-  const rows = ['pago', 'aguardando', 'atrasado'].concat(showCancelled ? ['cancelado'] : []);
+  const rows = ['pago', 'previsto', 'aguardando', 'atrasado'].concat(showCancelled ? ['cancelado'] : []);
   const total = summary.total || 0;
   return (
     <div className="ck-fin-split">
       <div className="ck-mt-bar" role="img" aria-label={rows.map((k) => `${STATUS[k].label} ${money(summary[k])}`).join(', ')}>
-        {['pago', 'aguardando', 'atrasado'].map((k) => (summary[k] > 0 ? <span key={k} className={`ck-mt-bar__seg ck-mt-bar__seg--${STATUS[k].tone}`} style={{ width: `${(summary[k] / (total || 1)) * 100}%` }} /> : null))}
+        {['pago', 'previsto', 'aguardando', 'atrasado'].map((k) => (summary[k] > 0 ? <span key={k} className={`ck-mt-bar__seg ck-mt-bar__seg--${STATUS[k].tone}`} style={{ width: `${(summary[k] / (total || 1)) * 100}%` }} /> : null))}
       </div>
       <ul className="ck-mt-legend">
         {rows.map((k) => (
@@ -127,18 +129,18 @@ export function StatusSplit({ summary, showCancelled }) {
 }
 
 export function MonthlyChart({ months, currentKey, height = 200 }) {
-  const max = Math.max(1, ...months.map((m) => m.pago + m.aguardando + m.atrasado));
+  const max = Math.max(1, ...months.map((m) => m.pago + m.aguardando + m.previsto + m.atrasado));
   return (
     <div className="ck-fin-chart">
-      <div className="ck-fin-chart__plot" style={{ height }} role="img" aria-label={months.map((m) => `${monthLabel(m.key)}: recebido ${money(m.pago)}, em aberto ${money(m.aguardando + m.atrasado)}`).join('; ')}>
+      <div className="ck-fin-chart__plot" style={{ height }} role="img" aria-label={months.map((m) => `${monthLabel(m.key)}: recebido ${money(m.pago)}, em aberto ${money(m.aguardando + m.previsto + m.atrasado)}`).join('; ')}>
         {months.map((m) => {
-          const total = m.pago + m.aguardando + m.atrasado;
+          const total = m.pago + m.aguardando + m.previsto + m.atrasado;
           return (
-            <div key={m.key} className={`ck-fin-chart__col${m.key === currentKey ? ' is-current' : ''}`} title={`${monthLabel(m.key)}\nRecebido: ${money(m.pago)}\nAguardando: ${money(m.aguardando)}\nAtrasado: ${money(m.atrasado)}`}>
+            <div key={m.key} className={`ck-fin-chart__col${m.key === currentKey ? ' is-current' : ''}`} title={`${monthLabel(m.key)}\nRecebido: ${money(m.pago)}\nA receber: ${money(m.aguardando + m.previsto)}\nAtrasado: ${money(m.atrasado)}`}>
               <span className="ck-fin-chart__total">{total ? moneyShort(total) : ''}</span>
               <div className="ck-fin-chart__bar" style={{ height: total ? Math.max((total / max) * (height - 28), 4) : 0 }}>
                 {m.atrasado > 0 ? <span className="ck-fin-chart__seg ck-fin-chart__seg--late" style={{ flexGrow: m.atrasado }} /> : null}
-                {m.aguardando > 0 ? <span className="ck-fin-chart__seg ck-fin-chart__seg--wait" style={{ flexGrow: m.aguardando }} /> : null}
+                {m.aguardando + m.previsto > 0 ? <span className="ck-fin-chart__seg ck-fin-chart__seg--wait" style={{ flexGrow: m.aguardando + m.previsto }} /> : null}
                 {m.pago > 0 ? <span className="ck-fin-chart__seg ck-fin-chart__seg--paid" style={{ flexGrow: m.pago }} /> : null}
               </div>
             </div>
@@ -150,7 +152,7 @@ export function MonthlyChart({ months, currentKey, height = 200 }) {
       </div>
       <ul className="ck-fin-chart__legend">
         <li><span className="ck-fin-chart__key ck-fin-chart__seg--paid" />Recebido</li>
-        <li><span className="ck-fin-chart__key ck-fin-chart__seg--wait" />Aguardando</li>
+        <li><span className="ck-fin-chart__key ck-fin-chart__seg--wait" />A receber</li>
         <li><span className="ck-fin-chart__key ck-fin-chart__seg--late" />Atrasado</li>
       </ul>
     </div>

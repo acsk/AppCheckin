@@ -19,7 +19,7 @@ const PERIODS = [
   { value: 'ano', label: 'Este ano' },
   { value: 'custom', label: 'Personalizado' },
 ];
-const FILTERS = [['todos', 'Todos'], ['recebido', 'Recebidos no período'], ['pago', 'Pagos'], ['aguardando', 'Aguardando'], ['atrasado', 'Atrasados'], ['cancelado', 'Cancelados']];
+const FILTERS = [['todos', 'Todos'], ['recebido', 'Recebidos no período'], ['pago', 'Pagos'], ['previsto', 'Previstos (renovações)'], ['aguardando', 'Aguardando'], ['atrasado', 'Atrasados'], ['cancelado', 'Cancelados']];
 
 const titleCase = (n) => String(n || '').toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, s, c) => s + c.toUpperCase()).replace(/\s(Da|De|Do|Das|Dos|E)\s/g, (m) => m.toLowerCase());
 const norm = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -68,6 +68,7 @@ export default function RelatorioFinanceiroScreen() {
   const [page, setPage] = useState(1);
   const [payments, setPayments] = useState([]);
   const [recebidos, setRecebidos] = useState([]);
+  const [previsoes, setPrevisoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [user, setUser] = useState(null);
@@ -90,9 +91,10 @@ export default function RelatorioFinanceiroScreen() {
     Promise.all([
       financeiroService.listarPagamentos({ dataInicio: from, dataFim: to }),
       financeiroService.listarRecebidos({ dataInicio: from, dataFim: to }),
+      financeiroService.listarPrevisoes({ dataInicio: from, dataFim: to }).catch(() => []),
     ])
-      .then(([list, pagos]) => { if (active) { setPayments(list); setRecebidos(pagos); } })
-      .catch((err) => { if (active) { setPayments([]); setRecebidos([]); setError(err?.mensagemLimpa || err?.error || 'Não foi possível carregar as parcelas.'); } })
+      .then(([list, pagos, previstos]) => { if (active) { setPayments([...list, ...previstos]); setRecebidos(pagos); setPrevisoes(previstos); } })
+      .catch((err) => { if (active) { setPayments([]); setRecebidos([]); setPrevisoes([]); setError(err?.mensagemLimpa || err?.error || 'Não foi possível carregar as parcelas.'); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [from, to, invalidRange]);
@@ -112,7 +114,7 @@ export default function RelatorioFinanceiroScreen() {
     return q ? recebidos.filter((p) => matches(p, q)) : recebidos;
   }, [recebidos, query]);
   const counts = useMemo(() => {
-    const c = { todos: searched.length, recebido: searchedReceived.length, pago: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0 };
+    const c = { todos: searched.length, recebido: searchedReceived.length, pago: 0, previsto: 0, aguardando: 0, atrasado: 0, cancelado: 0, estornado: 0 };
     searched.forEach((p) => { c[statusOf(p, today)] += 1; });
     return c;
   }, [searched, searchedReceived]);
@@ -151,12 +153,12 @@ export default function RelatorioFinanceiroScreen() {
       ${relatorioHead('Relatório financeiro', `${byPayment ? 'Parcelas pagas' : 'Parcelas com vencimento'} de ${fdate(from)} a ${fdate(to)}${filter !== 'todos' && !byPayment ? ` · ${STATUS[filter].plural}` : ''}${query ? ` · busca "${query}"` : ''}`, tenantName)}
       <section class="kpis">
         <div class="kpi ok"><span>Recebido</span><strong>${money(received)}</strong><span>${recebidos.length} parcelas pagas no período</span></div>
-        <div class="kpi warn"><span>A receber</span><strong>${money(summary.aguardando)}</strong><span>${summary.count.aguardando} parcelas</span></div>
+        <div class="kpi warn"><span>A receber</span><strong>${money(summary.aguardando + summary.previsto)}</strong><span>${summary.count.previsto} renovações previstas · ${summary.count.aguardando} parcelas em aberto</span></div>
         <div class="kpi bad"><span>Em atraso</span><strong>${money(summary.atrasado)}</strong><span>${summary.count.atrasado} parcelas</span></div>
         <div class="kpi"><span>Parcelas do período pagas</span><strong>${pct(summary.pago, summary.total)}%</strong><span>Ticket médio ${money(ticket)}</span></div>
       </section>
-      ${months.length > 1 ? `<section class="card"><h2>Por mês de vencimento</h2><table><thead><tr><th>Mês</th><th class="num">Recebido</th><th class="num">Aguardando</th><th class="num">Atrasado</th><th class="num">Total</th></tr></thead><tbody>
-        ${months.map((m) => `<tr><td>${monthLabel(m.key)}</td><td class="num">${money(m.pago)}</td><td class="num">${money(m.aguardando)}</td><td class="num">${money(m.atrasado)}</td><td class="num">${money(m.pago + m.aguardando + m.atrasado)}</td></tr>`).join('')}
+      ${months.length > 1 ? `<section class="card"><h2>Por mês de vencimento</h2><table><thead><tr><th>Mês</th><th class="num">Recebido</th><th class="num">A receber</th><th class="num">Atrasado</th><th class="num">Total</th></tr></thead><tbody>
+        ${months.map((m) => `<tr><td>${monthLabel(m.key)}</td><td class="num">${money(m.pago)}</td><td class="num">${money(m.aguardando + m.previsto)}</td><td class="num">${money(m.atrasado)}</td><td class="num">${money(m.pago + m.aguardando + m.atrasado)}</td></tr>`).join('')}
       </tbody></table></section>` : ''}
       ${breakdown('Recebido por forma de pagamento', byMethod)}
       ${breakdown('Previsto por plano', byPlan)}
@@ -164,7 +166,7 @@ export default function RelatorioFinanceiroScreen() {
         ${rows.length ? rows.map(tr).join('') : '<tr><td colspan="7" class="muted">Nenhuma parcela neste filtro.</td></tr>'}
         <tr><td colspan="6"><strong>Total (sem cancelados)</strong></td><td class="num"><strong>${money(rowsTotal)}</strong></td></tr>
       </tbody></table></section>
-      <p class="foot">Recebido: parcelas pagas no período, pela data do pagamento. A receber, em atraso e o mês a mês: pela data de vencimento. Parcelas atrasadas incluem as que estão aguardando com vencimento anterior a ${fdate(today)}.</p>`;
+      <p class="foot">Recebido: parcelas pagas no período, pela data do pagamento. A receber, em atraso e o mês a mês: pela data de vencimento. "Previsto" é a renovação de matrículas sem cobrança em aberto, pelo próximo vencimento. Parcelas atrasadas incluem as que estão aguardando com vencimento anterior a ${fdate(today)}.</p>`;
     try {
       abrirRelatorioHtml('Relatório financeiro', body);
     } catch (err) {
@@ -208,7 +210,7 @@ export default function RelatorioFinanceiroScreen() {
 
         <div className="ck-kpis">
           <KpiCard emphasis tone="success" icon="check-circle" label="Recebido" value={loading ? '—' : money(received)} hint={`${recebidos.length} ${recebidos.length === 1 ? 'parcela paga' : 'parcelas pagas'} no período`} onClick={() => setFilter('recebido')} />
-          <KpiCard tone="warning" icon="clock" label="A receber" value={loading ? '—' : money(summary.aguardando)} hint={`${summary.count.aguardando} ${summary.count.aguardando === 1 ? 'parcela no prazo' : 'parcelas no prazo'}`} onClick={() => setFilter('aguardando')} />
+          <KpiCard tone="warning" icon="clock" label="A receber" value={loading ? '—' : money(summary.aguardando + summary.previsto)} hint={`${summary.count.previsto} ${summary.count.previsto === 1 ? 'renovação prevista' : 'renovações previstas'} pelo próximo vencimento`} onClick={() => setFilter('previsto')} />
           <KpiCard tone="danger" icon="alert-triangle" label="Em atraso" value={loading ? '—' : money(summary.atrasado)} hint={`${summary.count.atrasado} ${summary.count.atrasado === 1 ? 'parcela vencida' : 'parcelas vencidas'}`} onClick={() => setFilter('atrasado')} />
           <KpiCard tone="info" icon="trending-up" label="Parcelas do período pagas" value={loading ? '—' : `${pct(summary.pago, summary.total)}%`} hint={`Pelo vencimento · ticket médio ${money(ticket)}`} />
         </div>
@@ -218,7 +220,7 @@ export default function RelatorioFinanceiroScreen() {
             <header className="ck-dash__head">
               <div>
                 <h2 className="ck-mt-box__title">{months.length > 1 ? 'Por mês de vencimento' : 'Situação das parcelas'}</h2>
-                <p className="ck-dash__sub">{months.length > 1 ? 'Recebido, aguardando e atrasado em cada mês' : `Total previsto ${money(summary.total)}`}</p>
+                <p className="ck-dash__sub">{months.length > 1 ? 'Recebido, a receber e atrasado em cada mês' : `Total previsto ${money(summary.total)}`}</p>
               </div>
             </header>
             {loading ? <p className="ck-fin-empty" role="status">Carregando…</p>
@@ -282,7 +284,7 @@ export default function RelatorioFinanceiroScreen() {
                       const st = statusOf(p, today);
                       const href = `/matriculas/detalhe?id=${p.matricula_id}`;
                       return (
-                        <tr key={p.id} className="ck-ml__row" onClick={(e) => { if (!e.target.closest('a, button')) router.push(href); }}>
+                        <tr key={p.id || `previsto-${p.matricula_id}`} className="ck-ml__row" onClick={(e) => { if (!e.target.closest('a, button')) router.push(href); }}>
                           <td>
                             <div className="ck-ml__who">
                               <Avatar name={titleCase(p.aluno_nome)} size="sm" decorative />

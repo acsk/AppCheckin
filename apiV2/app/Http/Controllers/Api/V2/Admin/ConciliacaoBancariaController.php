@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V2\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\Admin\ConciliacaoBancariaService;
+use App\Services\Admin\PrevisaoReceitaService;
 use App\Support\ApiError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,18 @@ class ConciliacaoBancariaController extends Controller
         }
 
         $result = $this->service->conciliar($tenantId, $request->query('data_inicio'), $request->query('data_fim'));
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function previsao(Request $request, PrevisaoReceitaService $service): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $service->previsao($tenantId, $request->query('data_inicio'), $request->query('data_fim'));
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }

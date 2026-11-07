@@ -34,6 +34,16 @@ export const financeiroService = {
     }
   },
 
+  /** Renovações previstas: próximo vencimento das matrículas sem cobrança em aberto (a baixa manual não gera parcela futura). */
+  async listarPrevisoes({ dataInicio, dataFim } = {}) {
+    try {
+      const response = await api.get('/admin/financeiro/previsao', { params: { data_inicio: dataInicio, data_fim: dataFim } });
+      return response.data?.previsoes || [];
+    } catch (error) {
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   /** Conciliação bancária: pagamentos do Asaas/Mercado Pago no período casados com as baixas do Check-in. */
   async conciliacao({ dataInicio, dataFim } = {}) {
     try {

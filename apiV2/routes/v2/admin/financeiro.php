@@ -6,4 +6,5 @@ use Illuminate\Support\Facades\Route;
 // Contexto: prefix('v2/admin') + jwt.auth + admin.auth (routes/api.php)
 
 Route::get('/financeiro/conciliacao', [ConciliacaoBancariaController::class, 'index']);
+Route::get('/financeiro/previsao', [ConciliacaoBancariaController::class, 'previsao']);
 Route::post('/financeiro/conciliacao/{paymentId}/reprocessar', [ConciliacaoBancariaController::class, 'reprocessar']);
