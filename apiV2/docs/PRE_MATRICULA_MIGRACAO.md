@@ -69,4 +69,14 @@ configuração e das solicitações e associam a matrícula criada ao pedido.
 Execute `php artisan migrate --force` antes de publicar a API, o painel e o app
 móvel.
 
+## Erros
+
+As rotas de pré-matrícula (`/v2/mobile/pre-matricula`, `/v2/admin/pre-matriculas`
+e `/v2/superadmin/pre-matriculas`) respondem sempre em JSON, mesmo sem o
+cabeçalho `Accept`, no formato `{"message": "..."}` (validações incluem também
+`errors`). Falhas inesperadas retornam 500 com mensagem genérica e são
+registradas no log. Se as migrations ainda não foram executadas, o app recebe
+`pre_matricula: null` (recurso indisponível) e o painel recebe 503 com a
+orientação de atualizar o banco.
+
 Testes: `php vendor/bin/phpunit tests/Feature/PreMatriculaMigracaoTest.php`.

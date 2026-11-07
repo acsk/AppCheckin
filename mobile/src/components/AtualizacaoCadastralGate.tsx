@@ -100,6 +100,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const [gradePreMatricula, setGradePreMatricula] = useState<{ turma_fixa_id: number; dia_semana: number }[]>([]);
   const [diaVencimento, setDiaVencimento] = useState("");
   const [erroPreMatricula, setErroPreMatricula] = useState("");
+  const [erroCarregamentoFechado, setErroCarregamentoFechado] = useState(false);
   const [salvandoPreMatricula, setSalvandoPreMatricula] = useState(false);
   const [carregandoPreMatricula, setCarregandoPreMatricula] = useState(false);
   const [valores, setValores] = useState<Record<string, string>>({});
@@ -155,6 +156,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         // Sem conexão ou API antiga: não bloqueia o app por causa disso
       }
       setCarregandoPreMatricula(true);
+      setErroCarregamentoFechado(false);
       try {
         const resposta: any = await api.get("/mobile/pre-matricula");
         if (versao !== versaoBusca.current) return;
@@ -168,7 +170,9 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
         setErroPreMatricula("");
       } catch (error: any) {
         if (versao !== versaoBusca.current) return;
-        setErroPreMatricula(error?.response?.data?.message || "Não foi possível carregar a pré-matrícula.");
+        const data = error?.response?.data || {};
+        const details = Object.values(data.errors || {}).flat().join(" ");
+        setErroPreMatricula(details || data.message || data.error || "Não foi possível carregar a pré-matrícula. Tente novamente em instantes.");
         console.error("[PreMatriculaGate] Falha ao carregar pré-matrícula", error);
       } finally {
         if (versao === versaoBusca.current) setCarregandoPreMatricula(false);
@@ -354,7 +358,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const exigeEnvioAgora = !!preMatricula?.obrigatoria && preMatricula.disponivel && !statusResolvido && !!preMatricula.planos.length;
   const visivelPreMatricula = enabled && !visivelCadastro && !!preMatricula
     && (exigeEnvioAgora || preMatriculaAdiada !== preMatricula.tenant_id);
-  const visivelErroPreMatricula = enabled && !visivelCadastro && !preMatricula && !!erroPreMatricula;
+  const visivelErroPreMatricula = enabled && !visivelCadastro && !preMatricula && !!erroPreMatricula && !erroCarregamentoFechado;
   if (!visivelCadastro && !visivelPreMatricula && !visivelErroPreMatricula) return null;
 
   return <>
@@ -549,9 +553,9 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
       </Modal>
     ) : null}
     {visivelErroPreMatricula ? (
-      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => {}}>
+      <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setErroCarregamentoFechado(true)}>
         <SafeAreaView style={styles.root} edges={["bottom", "left", "right"]}>
-          <AppHeader title="Pré-matrícula" />
+          <AppHeader title="Pré-matrícula" actions={[{ icon: "x", label: "Fechar", disabled: carregandoPreMatricula, onPress: () => setErroCarregamentoFechado(true) }]} />
           <View style={[styles.body, styles.flex]}>
             <View style={styles.head}>
               <View style={styles.icon}><Feather name="alert-circle" size={24} color={ds.danger} /></View>
@@ -560,6 +564,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
             </View>
             <View style={styles.fields}>
               <Button variant="primary" loading={carregandoPreMatricula} onPress={() => void carregar()}>Tentar novamente</Button>
+              <Button variant="ghost" disabled={carregandoPreMatricula} onPress={() => setErroCarregamentoFechado(true)}>Agora não</Button>
             </View>
           </View>
         </SafeAreaView>

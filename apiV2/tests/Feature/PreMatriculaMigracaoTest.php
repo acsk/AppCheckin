@@ -318,6 +318,38 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertSame(0, DB::table('matriculas')->count());
     }
 
+    public function test_ambiente_sem_a_coluna_matricula_id_continua_funcionando(): void
+    {
+        $envio = $this->service->enviar(1, 1, [
+            'plano_id' => 1,
+            'grade' => [
+                ['turma_fixa_id' => 1, 'dia_semana' => 1],
+                ['turma_fixa_id' => 2, 'dia_semana' => 5],
+            ],
+        ]);
+        Schema::table('pre_matriculas', fn (Blueprint $table) => $table->dropColumn('matricula_id'));
+
+        $this->assertSame('pendente', $this->service->paraAluno(1, 1)['status']);
+        $this->assertNull($this->service->painelAcademia(1)['solicitacoes'][0]['matricula_id']);
+        $this->service->avaliar(1, $envio['id'], 99, 'reprovada');
+        $this->assertSame('reprovada', DB::table('pre_matriculas')->where('id', $envio['id'])->value('status'));
+    }
+
+    public function test_sem_tabelas_o_app_nao_recebe_erro_e_o_painel_recebe_503_legivel(): void
+    {
+        Schema::drop('pre_matriculas');
+        Schema::drop('pre_matricula_configuracoes');
+
+        $this->assertNull($this->service->paraAluno(1, 1));
+        try {
+            $this->service->painelAcademia(1);
+            $this->fail('O painel deve informar que a atualização do banco está pendente.');
+        } catch (HttpException $exception) {
+            $this->assertSame(503, $exception->getStatusCode());
+            $this->assertStringContainsString('atualização do banco de dados está pendente', $exception->getMessage());
+        }
+    }
+
     public function test_configuracao_preserva_data_de_criacao(): void
     {
         DB::table('pre_matricula_configuracoes')->where('tenant_id', 1)->update(['created_at' => '2025-01-02 03:04:05']);

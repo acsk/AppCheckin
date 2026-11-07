@@ -6,6 +6,7 @@ use App\Services\Admin\AdminMatriculaService;
 use App\Support\AcademyDateTime;
 use App\Support\Papel;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -16,6 +17,7 @@ class PreMatriculaService
     /** @return array{configuracao: array<string, mixed>, solicitacoes: list<array<string, mixed>>} */
     public function painel(int $tenantId): array
     {
+        $this->exigirTabelas();
         abort_unless(DB::table('tenants')->where('id', $tenantId)->exists(), 404, 'Academia não encontrada.');
 
         return [
@@ -27,6 +29,7 @@ class PreMatriculaService
     /** @return array{solicitacoes: list<array<string, mixed>>, planos: list<array<string, mixed>>, turmas: list<array<string, mixed>>} */
     public function painelAcademia(int $tenantId): array
     {
+        $this->exigirTabelas();
         abort_unless(DB::table('tenants')->where('id', $tenantId)->exists(), 404, 'Academia não encontrada.');
 
         return [
@@ -41,6 +44,7 @@ class PreMatriculaService
      */
     public function salvarConfiguracao(array $dados, ?int $userId): array
     {
+        $this->exigirTabelas();
         $validados = Validator::make($dados, [
             'tenant_id' => 'required|integer|min:1|exists:tenants,id',
             'ativa' => 'required|boolean',
@@ -92,6 +96,7 @@ class PreMatriculaService
     /** @return array<string, mixed> */
     public function excluirConfiguracao(int $tenantId): array
     {
+        $this->exigirTabelas();
         abort_unless(DB::table('tenants')->where('id', $tenantId)->exists(), 404, 'Academia não encontrada.');
         DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->delete();
 
@@ -101,6 +106,11 @@ class PreMatriculaService
     /** @return array<string, mixed>|null */
     public function paraAluno(int $tenantId, int $userId): ?array
     {
+        // Sem as tabelas (migration pendente) o recurso simplesmente não é oferecido ao aluno.
+        if (! $this->tabelasExistem()) {
+            return null;
+        }
+
         $config = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->where('ativa', 1)->first();
         if (! $config) {
             return null;
@@ -124,7 +134,7 @@ class PreMatriculaService
                 'status' => (string) $ultima->status,
                 'solicitacao_id' => (int) $ultima->id,
                 'observacao' => $ultima->observacao,
-                'matricula_id' => $ultima->matricula_id === null ? null : (int) $ultima->matricula_id,
+                'matricula_id' => $this->matriculaIdDe($ultima),
                 'planos' => [],
                 'turmas' => [],
             ];
@@ -172,6 +182,7 @@ class PreMatriculaService
      */
     public function enviar(int $tenantId, int $userId, array $dados): array
     {
+        $this->exigirTabelas();
         $validados = Validator::make($dados, [
             'plano_id' => 'required|integer|min:1',
             'grade' => 'required|array|min:1|max:7',
@@ -229,6 +240,7 @@ class PreMatriculaService
      */
     public function atualizarSolicitacao(int $tenantId, int $id, array $dados): array
     {
+        $this->exigirTabelas();
         $validados = Validator::make($dados, [
             'plano_id' => 'required|integer|min:1',
             'grade' => 'required|array|min:1|max:7',
@@ -273,6 +285,7 @@ class PreMatriculaService
 
     public function avaliar(int $tenantId, int $id, int $userId, string $decisao, ?string $observacao = null): array
     {
+        $this->exigirTabelas();
         abort_unless(in_array($decisao, ['aprovada', 'reprovada'], true), 422, 'Decisão inválida.');
         $observacao = trim((string) $observacao);
         if (mb_strlen($observacao) > 1000) {
@@ -295,7 +308,7 @@ class PreMatriculaService
                 'avaliada_por' => $userId,
                 'avaliada_em' => now(),
                 'observacao' => $observacao !== '' ? $observacao : null,
-                'matricula_id' => $matriculaId,
+                ...(Schema::hasColumn('pre_matriculas', 'matricula_id') ? ['matricula_id' => $matriculaId] : []),
                 'updated_at' => now(),
             ]);
 
@@ -409,7 +422,7 @@ class PreMatriculaService
                 'email' => (string) $row->email,
                 'cpf' => $row->cpf,
                 'plano_id' => (int) $row->plano_id,
-                'matricula_id' => $row->matricula_id === null ? null : (int) $row->matricula_id,
+                'matricula_id' => $this->matriculaIdDe($row),
                 'plano_descricao' => $this->descricaoPlano($row->plano_descricao),
                 'checkins_semanais' => (int) $row->checkins_semanais,
                 'grade' => $slots,
@@ -501,6 +514,25 @@ class PreMatriculaService
         }
 
         return $diasTurma;
+    }
+
+    private function tabelasExistem(): bool
+    {
+        return Schema::hasTable('pre_matricula_configuracoes') && Schema::hasTable('pre_matriculas');
+    }
+
+    private function exigirTabelas(): void
+    {
+        abort_unless(
+            $this->tabelasExistem(),
+            503,
+            'A pré-matrícula ainda não está disponível neste ambiente: a atualização do banco de dados está pendente.',
+        );
+    }
+
+    private function matriculaIdDe(object $linha): ?int
+    {
+        return isset($linha->matricula_id) ? (int) $linha->matricula_id : null;
     }
 
     private function alunoDaAcademia(int $tenantId, int $userId): bool
