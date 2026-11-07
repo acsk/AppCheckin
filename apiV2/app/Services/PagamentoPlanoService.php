@@ -370,6 +370,7 @@ class PagamentoPlanoService
             ->first([
                 'm.tipo_cobranca',
                 'm.data_vencimento',
+                'm.proxima_data_vencimento',
                 'm.data_inicio',
                 'm.valor',
                 'm.data_cancelamento',
@@ -450,6 +451,17 @@ class PagamentoPlanoService
         $novoStatus = 'ativa';
         $pendentes = (int) ($row->pendentes ?? 0);
         $diasAtraso = (int) ($row->dias_atraso ?? 0);
+
+        // Baixa manual não deixa parcela futura em aberto: sem parcela pendente, quem manda é o próximo
+        // vencimento gravado na matrícula (plano gratuito não tem cobrança).
+        if ($pendentes === 0 && ! $ehAvulso && (float) ($matriculaMeta->valor ?? 0) > 0) {
+            $proximoVenc = AcademyDateTime::dateOnly($matriculaMeta->proxima_data_vencimento ?? null);
+            $hoje = AcademyDateTime::today();
+            if ($proximoVenc !== null && $proximoVenc < $hoje) {
+                $pendentes = 1;
+                $diasAtraso = (int) (new \DateTime($hoje))->diff(new \DateTime($proximoVenc))->days;
+            }
+        }
 
         // Avulso: acesso = fim do período PAGO, por parcela paga:
         // venc >= pago + ciclo → parcela já representa o FIM do período (fluxo MP);

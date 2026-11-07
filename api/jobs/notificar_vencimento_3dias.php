@@ -78,9 +78,41 @@ try {
         $sql .= " AND pp.tenant_id = :tenant_id";
     }
 
+    // Baixa manual não deixa parcela futura em aberto: avisa pelo próximo vencimento da matrícula
+    $sql .= "
+        UNION ALL
+        SELECT
+            NULL as pagamento_id,
+            m.tenant_id,
+            m.id as matricula_id,
+            m.aluno_id,
+            m.valor,
+            m.proxima_data_vencimento as data_vencimento,
+            a.usuario_id,
+            u.nome as usuario_nome,
+            u.email as usuario_email
+        FROM matriculas m
+        INNER JOIN status_matricula sm ON sm.id = m.status_id AND sm.codigo = 'ativa'
+        LEFT JOIN alunos a ON a.id = m.aluno_id
+        LEFT JOIN usuarios u ON u.id = a.usuario_id
+        WHERE m.proxima_data_vencimento = :dataAlvoMatricula
+        AND COALESCE(m.valor, 0) > 0
+        AND m.tipo_cobranca != 'recorrente'
+        AND NOT EXISTS (
+            SELECT 1 FROM pagamentos_plano pp2
+            WHERE pp2.matricula_id = m.id AND pp2.status_pagamento_id IN (1, 3)
+        )
+    ";
+    if ($tenantId) {
+        $sql .= " AND m.tenant_id = :tenant_id_matricula";
+    }
+
     $stmt = $pdo->prepare($sql);
-    $params = ['dataAlvo' => $dataAlvo];
-    if ($tenantId) $params['tenant_id'] = $tenantId;
+    $params = ['dataAlvo' => $dataAlvo, 'dataAlvoMatricula' => $dataAlvo];
+    if ($tenantId) {
+        $params['tenant_id'] = $tenantId;
+        $params['tenant_id_matricula'] = $tenantId;
+    }
 
     $stmt->execute($params);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
