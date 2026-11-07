@@ -1,7 +1,7 @@
 # Pré-matrícula de migração
 
 O Super Admin habilita o pré-cadastro por academia. O aluno escolhe um plano
-gratuito de migração, os dias e horários e, opcionalmente, o dia de vencimento.
+gratuito de migração, os dias e horários e o dia de vencimento (obrigatório).
 O Admin da academia revisa o pedido e, ao aprovar, a API cria a matrícula no
 plano gratuito. Ao fim do período gratuito, o aluno pode contratar o plano pago
 vinculado.
@@ -13,6 +13,8 @@ academia e define:
 
 - se o fluxo está ativo e se o envio é obrigatório no app;
 - o público elegível: sem matrícula ativa, com matrícula ativa ou ambos;
+- a **contagem do período gratuito** (ver seção 5): a partir do dia de
+  vencimento do aluno (padrão) ou a partir da aprovação;
 - os **vínculos FREE → pago**: cada plano gratuito de migração aponta para um
   plano pago da mesma academia, modalidade e frequência semanal.
 
@@ -36,7 +38,7 @@ gravados nas matrículas e as matrículas já criadas.
 O aluno precisa de vínculo ativo com a academia e pertencer ao público
 elegível. O app mostra descrição e frequência do plano, sem preço nem o termo
 `FREE`. O aluno escolhe uma turma por dia distinto até completar a frequência
-e pode informar o dia de vencimento (1 a 31). A tela avisa que o acesso inicial
+e informa o dia de vencimento (1 a 31, obrigatório). A tela avisa que o acesso inicial
 é gratuito por tempo limitado e que a continuidade depende de contratação.
 
 O envio cria uma solicitação **Aguardando aprovação** e não reserva vaga. Cada
@@ -108,8 +110,24 @@ academia selecionada) têm **Editar** e **Excluir**.
 
 ## 5. Fim do período gratuito e compra
 
-A matrícula começa no plano gratuito, com as regras existentes de período de
-teste. O dia de vencimento do pré-cadastro é uma preferência para a contratação.
+A matrícula começa no plano gratuito, sem cobrança imediata, e o acesso vale
+desde a aprovação. O fim do período gratuito segue a **contagem** configurada:
+
+- `dia_vencimento` (padrão): o ciclo começa no próximo dia de vencimento do
+  aluno (hoje, se for o próprio dia; em mês curto, o dia 31 vira o último dia) e
+  dura a duração do plano gratuito (30 dias por padrão). O acesso é gratuito
+  até o fim desse ciclo e a cobrança passa a valer nesse dia. Exemplo: aprovado
+  em 06/11 com vencimento dia 10, o ciclo vai de 10/11 a 10/12 e o acesso
+  gratuito vai até 10/12. Depois, o aluno contrata o plano pago no app, com o
+  mesmo dia de vencimento. Assim todos entram no mês e a cobrança começa no
+  seguinte.
+- `aprovacao`: o período gratuito conta a partir da aprovação, pela duração do
+  plano (aprovado em 06/11, gratuito por 30 dias).
+
+A aprovação grava `data_vencimento`, `proxima_data_vencimento` e
+`data_inicio_cobranca` da matrícula com essa data e devolve `acesso_gratuito_ate`.
+Pedidos antigos sem vencimento não podem ser aprovados até que o dia seja
+informado (a modal de revisão o exige).
 
 Quando a matrícula ainda está no plano de valor zero e vence (ou fica
 `vencida`), `GET /v2/mobile/pre-matricula` devolve `periodo_gratuito` com
@@ -135,7 +153,7 @@ App (JWT do aluno; tenant do token):
   `matricula_id`, `periodo_gratuito`, `contratar`). No perfil do responsável
   traz também `dependentes` com a situação de cada um.
 - `POST /v2/mobile/pre-matricula`: `plano_id`, `grade` (`turma_fixa_id`,
-  `dia_semana`), `dia_vencimento` opcional (`null` ou 1–31) e `usuario_id`
+  `dia_semana`), `dia_vencimento` (1–31, obrigatório) e `usuario_id`
   opcional (dependente). O servidor resolve o plano pago pelo vínculo.
 
 Super Admin:
@@ -143,7 +161,8 @@ Super Admin:
 - `GET /v2/superadmin/pre-matriculas?tenant_id={id}`: configuração (com
   `pares`), fila, planos, turmas e `catalogo` de planos gratuitos e pagos.
 - `PUT /v2/superadmin/pre-matriculas/configuracao`: `tenant_id`, `ativa`,
-  `obrigatoria`, `publico` e `pares` (`plano_free_id`, `plano_pago_id`). Sem a
+  `obrigatoria`, `publico`, `contagem_gratuito` (`dia_vencimento` ou
+  `aprovacao`) e `pares` (`plano_free_id`, `plano_pago_id`). Sem a
   chave `pares`, os vínculos atuais são mantidos; com ela, substituídos.
 - `DELETE /v2/superadmin/pre-matriculas/configuracao?tenant_id={id}`.
 - `PUT /v2/superadmin/pre-matriculas/{id}` (`tenant_id`, `plano_id`, `grade`,
@@ -170,6 +189,7 @@ Migrations (execute `php artisan migrate --force` **antes** de publicar):
 - `2026_11_06_190000_pre_matriculas_migracao.php`: configuração e pedidos;
 - `2026_11_06_213500_add_matricula_id_to_pre_matriculas.php`: `matricula_id`;
 - `2026_11_07_000000_pre_matriculas_enviada_por.php`: `enviada_por_id`;
+- `2026_11_07_010000_pre_matricula_contagem_gratuito.php`: `contagem_gratuito`;
 - `2026_11_06_230000_pre_matricula_planos_e_exclusao.php`: tabela
   `pre_matricula_planos`, `plano_destino_id`/`excluida_em`/`excluida_por` nos
   pedidos e `plano_destino_id` em `matriculas`. Matrículas aprovadas antes

@@ -13,18 +13,34 @@ const publicoLabel = {
   com_matricula: 'Com matrícula ativa',
   ambos: 'Com ou sem matrícula ativa',
 };
+const contagemLabel = {
+  dia_vencimento: 'A partir do dia de vencimento do aluno',
+  aprovacao: 'A partir da aprovação',
+};
+const contagemHint = {
+  dia_vencimento: 'Ex.: aprovado dia 06 com vencimento dia 10, o ciclo vai de 10/11 a 10/12 (plano de 30 dias): o acesso é gratuito até 10/12 e a cobrança começa pela compra do plano pago no app.',
+  aprovacao: 'Ex.: aprovado dia 06, o acesso gratuito dura a duração do plano (30 dias), até 06/12.',
+};
 const novoPar = () => ({ plano_free_id: '', plano_pago_id: '' });
+// A API envia o instante em UTC (ISO com "Z"); exibe no fuso da academia
 const formatarData = (valor) => {
   if (!valor) return '—';
-  const data = new Date(String(valor).replace(' ', 'T'));
-  return Number.isNaN(data.getTime()) ? String(valor) : data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime())
+    ? String(valor)
+    : data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' });
+};
+
+const formatarDia = (valor) => {
+  const [ano, mes, dia] = String(valor).slice(0, 10).split('-');
+  return ano && mes && dia ? `${dia}/${mes}/${ano}` : String(valor);
 };
 
 export default function PreMatriculaPanel({ modoAcademia = false }) {
   const [academias, setAcademias] = useState([]);
   const [tenantId, setTenantId] = useState('');
   const [dados, setDados] = useState(null);
-  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula', pares: [] });
+  const [config, setConfig] = useState({ ativa: false, obrigatoria: false, publico: 'sem_matricula', contagem_gratuito: 'dia_vencimento', pares: [] });
   const [configAberta, setConfigAberta] = useState(false);
   const [excluirConfig, setExcluirConfig] = useState(false);
   const [filtroStatus, setFiltroStatus] = useState('pendente');
@@ -53,6 +69,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
           ativa: !!resultado.configuracao.ativa,
           obrigatoria: !!resultado.configuracao.obrigatoria,
           publico: resultado.configuracao.publico || 'sem_matricula',
+          contagem_gratuito: resultado.configuracao.contagem_gratuito || 'dia_vencimento',
           pares: (resultado.configuracao.pares || []).map((par) => ({
             plano_free_id: String(par.plano_free_id),
             plano_pago_id: String(par.plano_pago_id),
@@ -112,6 +129,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
         ativa: config.ativa,
         obrigatoria: config.obrigatoria,
         publico: config.publico,
+        contagem_gratuito: config.contagem_gratuito,
         pares: config.pares.map((par) => ({
           plano_free_id: Number(par.plano_free_id),
           plano_pago_id: Number(par.plano_pago_id),
@@ -161,7 +179,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
   const gradeCompleta = !!planoEdicao
     && edicaoGrade.length === Number(planoEdicao.checkins_semanais)
     && edicaoGrade.every((slot) => slot.turma_fixa_id && slot.dia_semana);
-  const vencimentoValido = edicaoVencimento === '' || (Number.isInteger(Number(edicaoVencimento)) && Number(edicaoVencimento) >= 1 && Number(edicaoVencimento) <= 31);
+  const vencimentoValido = edicaoVencimento !== '' && Number.isInteger(Number(edicaoVencimento)) && Number(edicaoVencimento) >= 1 && Number(edicaoVencimento) <= 31;
   const formularioValido = gradeCompleta && vencimentoValido;
   const dadosEdicao = () => ({
     plano_id: Number(edicaoPlanoId),
@@ -169,7 +187,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
       turma_fixa_id: Number(slot.turma_fixa_id),
       dia_semana: Number(slot.dia_semana),
     })),
-    dia_vencimento: edicaoVencimento ? Number(edicaoVencimento) : null,
+    dia_vencimento: Number(edicaoVencimento),
   });
   const houveAjuste = () => {
     if (!revisao) return false;
@@ -203,7 +221,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
   const decidir = async (acao) => {
     if (!revisao || salvando) return;
     if (acao === 'aprovar' && !formularioValido) {
-      setErroModal('Complete o plano, os dias e horários antes de aprovar.');
+      setErroModal('Complete o plano, os dias e horários e o dia de vencimento antes de aprovar.');
       return;
     }
     setSalvando(true);
@@ -215,7 +233,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
         ? await preMatriculaService.avaliarAcademia(revisao.id, acao, observacao)
         : await preMatriculaService.avaliar(revisao.id, Number(tenantId), acao, observacao);
       showSuccess(acao === 'aprovar'
-        ? `Pré-matrícula aprovada. Matrícula #${resultado.matricula_id} criada.`
+        ? `Pré-matrícula aprovada. Matrícula #${resultado.matricula_id} criada${resultado.acesso_gratuito_ate ? `; acesso gratuito até ${formatarDia(resultado.acesso_gratuito_ate)}` : ''}.`
         : 'Pré-matrícula reprovada.');
       setRevisao(null);
       await carregar(tenantId);
@@ -264,7 +282,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
 
   return (
     <>
-      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. A solicitação não reserva vaga. Ao aprovar, a matrícula gratuita é criada com os dados revisados; ao fim do período gratuito, o aluno pode contratar o plano pago vinculado.">
+      <Panel title="Pré-matrícula de migração" description="O aluno envia plano, dias/horários e dia de vencimento pelo app. O dia de vencimento é obrigatório. A solicitação não reserva vaga. Ao aprovar, a matrícula gratuita é criada com os dados revisados; ao fim do período gratuito, o aluno contrata o plano pago vinculado no app.">
         {erro ? <Callout tone="danger" action={<Button size="sm" onClick={() => carregar()}>Tentar novamente</Button>}>{erro}</Callout> : null}
         <div className="ck-mc-form">
           {!modoAcademia ? <SelectField label="Academia" value={tenantId} options={academias.map((academia) => ({ value: String(academia.id), label: academia.nome }))} onChange={(event) => setTenantId(event.target.value)} /> : null}
@@ -274,7 +292,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
               <strong>Configuração da pré-matrícula</strong>
               <p className="ck-mc-hint">
                 {dados?.configuracao?.configurada
-                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula}`
+                  ? `${config.ativa ? 'Ativa' : 'Inativa'} · ${config.obrigatoria ? 'Envio obrigatório' : 'Envio opcional'} · ${publicoLabel[config.publico] || publicoLabel.sem_matricula} · Gratuito ${(contagemLabel[config.contagem_gratuito] || contagemLabel.dia_vencimento).toLowerCase()}`
                   : 'Ainda não configurada para esta academia.'}
               </p>
               {(dados?.configuracao?.pares || []).length ? <ul className="ck-mc-hint">
@@ -289,7 +307,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
             </div>
             <div className="ck-cad-table__actions">
               <Button variant="primary" icon={dados?.configuracao?.configurada ? 'pencil' : 'plus'} disabled={carregando} onClick={() => {
-                if (!dados?.configuracao?.configurada) setConfig({ ativa: true, obrigatoria: false, publico: 'sem_matricula', pares: [novoPar()] });
+                if (!dados?.configuracao?.configurada) setConfig({ ativa: true, obrigatoria: false, publico: 'sem_matricula', contagem_gratuito: 'dia_vencimento', pares: [novoPar()] });
                 setErroModal('');
                 setConfigAberta(true);
               }}>{dados?.configuracao?.configurada ? 'Editar configuração' : 'Montar pré-matrícula'}</Button>
@@ -365,6 +383,13 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
               { value: 'ambos', label: publicoLabel.ambos },
             ]}
             onChange={(event) => setConfig((atual) => ({ ...atual, publico: event.target.value }))} />
+          <SelectField label="Contagem do período gratuito" hint={contagemHint[config.contagem_gratuito] || contagemHint.dia_vencimento}
+            value={config.contagem_gratuito}
+            options={[
+              { value: 'dia_vencimento', label: contagemLabel.dia_vencimento },
+              { value: 'aprovacao', label: contagemLabel.aprovacao },
+            ]}
+            onChange={(event) => setConfig((atual) => ({ ...atual, contagem_gratuito: event.target.value }))} />
           <div>
             <strong>Planos da migração (gratuito → pago)</strong>
             <p className="ck-mc-hint">O plano pago precisa ter a mesma modalidade e a mesma frequência semanal do gratuito. É ele que o aluno poderá contratar ao fim do período gratuito.</p>
@@ -457,7 +482,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
                   : slot));
               }} />;
           }) : null}
-          <TextField label="Dia de vencimento (opcional)" type="number" min="1" max="31" value={edicaoVencimento}
+          <TextField label="Dia de vencimento (obrigatório)" type="number" min="1" max="31" value={edicaoVencimento}
             error={vencimentoValido ? undefined : 'Informe um dia de 1 a 31.'}
             onChange={(event) => setEdicaoVencimento(event.target.value)} placeholder="De 1 a 31" />
           {pendenteNaModal ? <TextAreaField label="Observação para o histórico (opcional)" value={observacao} onChange={(event) => setObservacao(event.target.value)} /> : null}

@@ -6,6 +6,7 @@ use App\Repositories\UsuarioRepository;
 use App\Services\Admin\AdminMatriculaService;
 use App\Support\AcademyDateTime;
 use App\Support\Papel;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -15,6 +16,8 @@ use Illuminate\Validation\ValidationException;
 class PreMatriculaService
 {
     private const PUBLICOS = ['sem_matricula', 'com_matricula', 'ambos'];
+
+    private const CONTAGENS = ['dia_vencimento', 'aprovacao'];
 
     /** @return array{configuracao: array<string, mixed>, solicitacoes: list<array<string, mixed>>} */
     public function painel(int $tenantId): array
@@ -55,6 +58,7 @@ class PreMatriculaService
             'ativa' => 'required|boolean',
             'obrigatoria' => 'required|boolean',
             'publico' => 'required|string|in:'.implode(',', self::PUBLICOS),
+            'contagem_gratuito' => 'sometimes|string|in:'.implode(',', self::CONTAGENS),
         ], [
             'tenant_id.required' => 'Selecione uma academia.',
             'tenant_id.exists' => 'A academia selecionada não foi encontrada.',
@@ -62,6 +66,7 @@ class PreMatriculaService
             'obrigatoria.required' => 'Informe se o envio é obrigatório.',
             'publico.required' => 'Selecione quais alunos podem enviar a pré-matrícula.',
             'publico.in' => 'O público selecionado é inválido.',
+            'contagem_gratuito.in' => 'A contagem do período gratuito é inválida.',
         ])->validate();
 
         $tenantId = (int) $validados['tenant_id'];
@@ -86,6 +91,7 @@ class PreMatriculaService
             'ativa' => (bool) $validados['ativa'],
             'obrigatoria' => (bool) $validados['obrigatoria'],
             'publico' => $validados['publico'],
+            ...(isset($validados['contagem_gratuito']) ? ['contagem_gratuito' => $validados['contagem_gratuito']] : []),
             'atualizada_por' => $userId,
             'updated_at' => now(),
         ];
@@ -280,15 +286,16 @@ class PreMatriculaService
             'grade' => 'required|array|min:1|max:7',
             'grade.*.turma_fixa_id' => 'required|integer|min:1',
             'grade.*.dia_semana' => 'required|integer|between:1,7',
-            'dia_vencimento' => 'nullable|integer|between:1,31',
+            'dia_vencimento' => 'required|integer|between:1,31',
         ], [
             'plano_id.required' => 'Selecione um plano.',
             'grade.required' => 'Escolha seus dias e horários.',
             'grade.min' => 'Escolha seus dias e horários.',
             'grade.*.turma_fixa_id.required' => 'Escolha uma turma para cada dia.',
             'grade.*.dia_semana.required' => 'Escolha um dia para cada turma.',
-            'dia_vencimento.integer' => 'Informe um dia de pagamento entre 1 e 31.',
-            'dia_vencimento.between' => 'Informe um dia de pagamento entre 1 e 31.',
+            'dia_vencimento.required' => 'Informe o dia de vencimento (1 a 31).',
+            'dia_vencimento.integer' => 'Informe um dia de vencimento entre 1 e 31.',
+            'dia_vencimento.between' => 'Informe um dia de vencimento entre 1 e 31.',
         ])->validate();
 
         return DB::transaction(function () use ($tenantId, $userId, $validados, $enviadaPor) {
@@ -326,7 +333,7 @@ class PreMatriculaService
                 'enviada_por_id' => $enviadaPor,
                 'checkins_semanais' => $frequencia,
                 'grade' => json_encode($diasTurma, JSON_THROW_ON_ERROR),
-                'dia_vencimento' => $validados['dia_vencimento'] ?? null,
+                'dia_vencimento' => (int) $validados['dia_vencimento'],
                 'status' => 'pendente',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -347,15 +354,16 @@ class PreMatriculaService
             'grade' => 'required|array|min:1|max:7',
             'grade.*.turma_fixa_id' => 'required|integer|min:1',
             'grade.*.dia_semana' => 'required|integer|between:1,7',
-            'dia_vencimento' => 'nullable|integer|between:1,31',
+            'dia_vencimento' => 'required|integer|between:1,31',
         ], [
             'plano_id.required' => 'Selecione um plano.',
             'grade.required' => 'Escolha os dias e horários.',
             'grade.min' => 'Escolha os dias e horários.',
             'grade.*.turma_fixa_id.required' => 'Escolha uma turma para cada dia.',
             'grade.*.dia_semana.required' => 'Escolha um dia para cada turma.',
-            'dia_vencimento.integer' => 'Informe um dia de pagamento entre 1 e 31.',
-            'dia_vencimento.between' => 'Informe um dia de pagamento entre 1 e 31.',
+            'dia_vencimento.required' => 'Informe o dia de vencimento (1 a 31).',
+            'dia_vencimento.integer' => 'Informe um dia de vencimento entre 1 e 31.',
+            'dia_vencimento.between' => 'Informe um dia de vencimento entre 1 e 31.',
         ])->validate();
 
         return DB::transaction(function () use ($tenantId, $id, $validados) {
@@ -371,7 +379,7 @@ class PreMatriculaService
                 ...($aprovada ? [] : ['plano_destino_id' => $par['plano_pago_id']]),
                 'checkins_semanais' => (int) $plano->checkins_semanais,
                 'grade' => json_encode($grade, JSON_THROW_ON_ERROR),
-                'dia_vencimento' => $validados['dia_vencimento'] ?? null,
+                'dia_vencimento' => (int) $validados['dia_vencimento'],
                 'updated_at' => now(),
             ]);
 
@@ -449,6 +457,9 @@ class PreMatriculaService
                     ? 'Pré-matrícula aprovada e matrícula criada.'
                     : 'Pré-matrícula reprovada.',
                 'matricula_id' => $matriculaId,
+                'acesso_gratuito_ate' => $matriculaId
+                    ? DB::table('matriculas')->where('id', $matriculaId)->value('proxima_data_vencimento')
+                    : null,
             ];
         }, 3);
     }
@@ -467,6 +478,11 @@ class PreMatriculaService
             'O plano gratuito solicitado não está mais ativo ou não tem plano pago vinculado. Ajuste o plano antes de aprovar.',
         );
 
+        if ($solicitacao->dia_vencimento === null) {
+            throw ValidationException::withMessages([
+                'dia_vencimento' => 'Informe o dia de vencimento antes de aprovar: ele define o período gratuito e a cobrança futura.',
+            ]);
+        }
         $gradeSolicitada = json_decode((string) $solicitacao->grade, true, 512, JSON_THROW_ON_ERROR);
         $grade = $this->normalizarGrade($tenantId, $plano, $gradeSolicitada);
         $resultado = app(AdminMatriculaService::class)->criar($tenantId, $adminId, [
@@ -477,7 +493,7 @@ class PreMatriculaService
                 'turma_fixa_id' => $slot['turma_fixa_id'],
                 'dia_semana' => $slot['dia_semana'],
             ], $grade),
-            'dia_vencimento' => $solicitacao->dia_vencimento === null ? null : (int) $solicitacao->dia_vencimento,
+            'dia_vencimento' => (int) $solicitacao->dia_vencimento,
         ]);
         if (($resultado['status'] ?? 500) !== 201 || empty($resultado['body']['matricula']['id'])) {
             $body = $resultado['body'] ?? [];
@@ -499,12 +515,52 @@ class PreMatriculaService
         }
 
         $matriculaId = (int) $resultado['body']['matricula']['id'];
+        $this->ajustarPeriodoGratuito($tenantId, $matriculaId, $plano, (int) $solicitacao->dia_vencimento);
         // O destino fica na matrícula: mudar a configuração depois não troca o plano pago de quem já foi aprovado
         DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)
             ->update(['plano_destino_id' => $par['plano_pago_id']]);
         DB::table('pre_matriculas')->where('id', $solicitacao->id)->update(['plano_destino_id' => $par['plano_pago_id']]);
 
         return $matriculaId;
+    }
+
+    /**
+     * Período gratuito pela regra da academia. Com contagem "dia_vencimento", o ciclo começa no próximo dia de
+     * vencimento (hoje, se for o próprio dia) e dura a duração do plano; a cobrança passa a valer ao fim dele.
+     * Aprovado dia 06 com vencimento dia 10: gratuito até 10/12 para um ciclo de 30 dias.
+     */
+    private function ajustarPeriodoGratuito(int $tenantId, int $matriculaId, object $plano, int $diaVencimento): void
+    {
+        $contagem = DB::table('pre_matricula_configuracoes')->where('tenant_id', $tenantId)->value('contagem_gratuito') ?? 'dia_vencimento';
+        if ($contagem !== 'dia_vencimento') {
+            return;
+        }
+        $duracao = property_exists($plano, 'duracao_dias') && (int) $plano->duracao_dias > 0 ? (int) $plano->duracao_dias : 30;
+        $periodo = self::calcularPeriodoGratuito(AcademyDateTime::today(), $diaVencimento, $duracao);
+        DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update([
+            'data_vencimento' => $periodo['fim'],
+            'proxima_data_vencimento' => $periodo['fim'],
+            ...(Schema::hasColumn('matriculas', 'data_inicio_cobranca') ? ['data_inicio_cobranca' => $periodo['fim']] : []),
+        ]);
+    }
+
+    /** @return array{inicio_ciclo: string, fim: string} */
+    public static function calcularPeriodoGratuito(string $hoje, int $diaVencimento, int $duracaoDias): array
+    {
+        $dia = new \DateTimeImmutable($hoje, AcademyDateTime::tz());
+        $noMes = static function (\DateTimeImmutable $base) use ($diaVencimento): \DateTimeImmutable {
+            // Mês curto: dia 31 vira o último dia do mês
+            return $base->setDate((int) $base->format('Y'), (int) $base->format('n'), min($diaVencimento, (int) $base->format('t')));
+        };
+        $inicio = $noMes($dia->modify('first day of this month'));
+        if ($inicio < $dia->setTime(0, 0)) {
+            $inicio = $noMes($dia->modify('first day of next month'));
+        }
+
+        return [
+            'inicio_ciclo' => $inicio->format('Y-m-d'),
+            'fim' => $inicio->modify("+{$duracaoDias} days")->format('Y-m-d'),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -518,6 +574,7 @@ class PreMatriculaService
             'ativa' => (bool) ($row->ativa ?? false),
             'obrigatoria' => (bool) ($row->obrigatoria ?? false),
             'publico' => (string) ($row->publico ?? 'sem_matricula'),
+            'contagem_gratuito' => (string) ($row->contagem_gratuito ?? 'dia_vencimento'),
             'pares' => $this->pares($tenantId),
         ];
     }
@@ -710,8 +767,8 @@ class PreMatriculaService
                 'dia_vencimento' => $row->dia_vencimento === null ? null : (int) $row->dia_vencimento,
                 'status' => (string) $row->status,
                 'observacao' => $row->observacao,
-                'created_at' => $row->created_at,
-                'avaliada_em' => $row->avaliada_em,
+                'created_at' => $this->instanteUtc($row->created_at),
+                'avaliada_em' => $this->instanteUtc($row->avaliada_em),
             ];
         })->all();
     }
@@ -797,6 +854,12 @@ class PreMatriculaService
         return $diasTurma;
     }
 
+    /** Datas ficam em UTC no banco: sai ISO 8601 com "Z" para o cliente converter ao próprio fuso. */
+    private function instanteUtc(mixed $valor): ?string
+    {
+        return $valor ? Carbon::parse((string) $valor, 'UTC')->utc()->toIso8601ZuluString() : null;
+    }
+
     private function dependenteDe(int $usuarioId, int $responsavelId): bool
     {
         return DB::table('usuarios')->where('id', $usuarioId)->where('responsavel_usuario_id', $responsavelId)
@@ -864,6 +927,7 @@ class PreMatriculaService
             && Schema::hasColumn('pre_matriculas', 'excluida_em')
             && Schema::hasColumn('pre_matriculas', 'matricula_id')
             && Schema::hasColumn('pre_matriculas', 'enviada_por_id')
+            && Schema::hasColumn('pre_matricula_configuracoes', 'contagem_gratuito')
             && Schema::hasColumn('matriculas', 'plano_destino_id');
     }
 

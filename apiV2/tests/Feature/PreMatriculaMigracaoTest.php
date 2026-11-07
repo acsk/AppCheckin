@@ -96,6 +96,7 @@ class PreMatriculaMigracaoTest extends TestCase
         (require database_path('migrations/2026_11_06_213500_add_matricula_id_to_pre_matriculas.php'))->up();
         (require database_path('migrations/2026_11_06_230000_pre_matricula_planos_e_exclusao.php'))->up();
         (require database_path('migrations/2026_11_07_000000_pre_matriculas_enviada_por.php'))->up();
+        (require database_path('migrations/2026_11_07_010000_pre_matricula_contagem_gratuito.php'))->up();
 
         DB::table('tenants')->insert(['id' => 1, 'nome' => 'Academia']);
         DB::table('usuarios')->insert(['id' => 1, 'nome' => 'Maria Silva', 'email' => 'maria@example.com', 'cpf' => '123']);
@@ -128,6 +129,7 @@ class PreMatriculaMigracaoTest extends TestCase
     {
         return $this->service->enviar(1, $usuarioId, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],
@@ -203,7 +205,7 @@ class PreMatriculaMigracaoTest extends TestCase
 
         $this->assertSame([1], array_column($this->service->paraAluno(1, 1)['planos'], 'id'));
         try {
-            $this->service->enviar(1, 1, ['plano_id' => 3, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]);
+            $this->service->enviar(1, 1, ['plano_id' => 3, 'dia_vencimento' => 10, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]);
             $this->fail('Plano sem vínculo não pode receber pedidos.');
         } catch (ValidationException $exception) {
             $this->assertArrayHasKey('plano_id', $exception->errors());
@@ -296,6 +298,7 @@ class PreMatriculaMigracaoTest extends TestCase
         ], 99);
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],
@@ -325,6 +328,7 @@ class PreMatriculaMigracaoTest extends TestCase
         try {
             $this->service->enviar(1, 1, [
                 'plano_id' => 1,
+                'dia_vencimento' => 10,
                 'grade' => [
                     ['turma_fixa_id' => 1, 'dia_semana' => 1],
                     ['turma_fixa_id' => 2, 'dia_semana' => 1],
@@ -337,13 +341,14 @@ class PreMatriculaMigracaoTest extends TestCase
 
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],
             ],
         ]);
         $this->assertSame(0, DB::table('matriculas')->count());
-        $this->assertNull(DB::table('pre_matriculas')->where('id', $envio['id'])->value('dia_vencimento'));
+        $this->assertSame(10, (int) DB::table('pre_matriculas')->where('id', $envio['id'])->value('dia_vencimento'));
 
         DB::table('planos')->where('id', 1)->update(['descricao' => 'Descrição atualizada']);
         DB::table('turmas_fixas')->where('id', 1)->update(['nome' => 'Nome atualizado']);
@@ -357,7 +362,7 @@ class PreMatriculaMigracaoTest extends TestCase
                 $this->assertSame(1, $dados['usuario_id']);
                 $this->assertSame(1, $dados['plano_id']);
                 $this->assertSame('turma_fixa', $dados['tipo_acesso']);
-                $this->assertNull($dados['dia_vencimento']);
+                $this->assertSame(10, $dados['dia_vencimento']);
                 $this->assertSame([
                     ['turma_fixa_id' => 1, 'dia_semana' => 1],
                     ['turma_fixa_id' => 2, 'dia_semana' => 5],
@@ -394,6 +399,7 @@ class PreMatriculaMigracaoTest extends TestCase
     {
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],
@@ -423,6 +429,7 @@ class PreMatriculaMigracaoTest extends TestCase
     {
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],
@@ -510,6 +517,8 @@ class PreMatriculaMigracaoTest extends TestCase
         $envio = $this->enviarPadrao();
         $this->simularMatricula('2020-01-01');
         $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+        // A aprovação recalcula o período; aqui o período gratuito já terminou
+        DB::table('matriculas')->update(['proxima_data_vencimento' => '2020-01-01', 'data_vencimento' => '2020-01-01']);
 
         $periodo = $this->service->paraAluno(1, 1)['periodo_gratuito'];
         $this->assertTrue($periodo['encerrado']);
@@ -566,7 +575,7 @@ class PreMatriculaMigracaoTest extends TestCase
             'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
             'pares' => [['plano_free_id' => 1, 'plano_pago_id' => 10], ['plano_free_id' => 3, 'plano_pago_id' => 11]],
         ], 99);
-        $dados = ['plano_id' => 3, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 3]], 'dia_vencimento' => 20];
+        $dados = ['plano_id' => 3, 'dia_vencimento' => 10, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 3]], 'dia_vencimento' => 20];
 
         $reprovada = $this->enviarPadrao();
         $this->service->avaliar(1, $reprovada['id'], 99, 'reprovada', 'Dados incompletos');
@@ -612,7 +621,7 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->assertSame(1, DB::table('matriculas')->count());
         $this->assertSame(10, (int) DB::table('matriculas')->value('plano_destino_id'));
         try {
-            $this->service->atualizarSolicitacao(1, $pendente['id'], ['plano_id' => 1, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]]]);
+            $this->service->atualizarSolicitacao(1, $pendente['id'], ['plano_id' => 1, 'dia_vencimento' => 10, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]]]);
             $this->fail('Pedido excluído não pode ser editado.');
         } catch (HttpException $exception) {
             $this->assertSame(404, $exception->getStatusCode());
@@ -636,7 +645,7 @@ class PreMatriculaMigracaoTest extends TestCase
 
         foreach ([
             fn () => $this->service->avaliar(2, $envio['id'], 99, 'aprovada'),
-            fn () => $this->service->atualizarSolicitacao(2, $envio['id'], ['plano_id' => 1, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]),
+            fn () => $this->service->atualizarSolicitacao(2, $envio['id'], ['plano_id' => 1, 'dia_vencimento' => 10, 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1]]]),
             fn () => $this->service->excluirSolicitacao(2, $envio['id'], 99),
         ] as $operacao) {
             try {
@@ -688,6 +697,7 @@ class PreMatriculaMigracaoTest extends TestCase
 
         $envio = $this->service->enviar(1, 2, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
         ], 1);
 
@@ -712,6 +722,7 @@ class PreMatriculaMigracaoTest extends TestCase
         try {
             $this->service->enviar(1, 3, [
                 'plano_id' => 1,
+                'dia_vencimento' => 10,
                 'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
             ], 1);
             $this->fail('Usuário sem vínculo de dependência não pode receber pedido.');
@@ -735,6 +746,7 @@ class PreMatriculaMigracaoTest extends TestCase
 
         $this->service->enviar(1, 2, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
         ], 1);
         $this->assertSame('pendente', $this->service->dependentes(1, 1)[0]['status']);
@@ -746,6 +758,7 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->criarDependente(true);
         $envio = $this->service->enviar(1, 2, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]],
         ], 1);
         $mock = \Mockery::mock(AdminMatriculaService::class);
@@ -760,6 +773,106 @@ class PreMatriculaMigracaoTest extends TestCase
         $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
 
         $this->assertSame('aprovada', $this->service->paraAluno(1, 2, 1)['status']);
+    }
+
+    public function test_datas_da_fila_saem_em_utc_iso_para_o_painel_converter_ao_fuso(): void
+    {
+        $envio = $this->enviarPadrao();
+        DB::table('pre_matriculas')->where('id', $envio['id'])->update(['created_at' => '2026-11-07 01:43:14']);
+
+        $this->assertSame('2026-11-07T01:43:14Z', $this->service->painelAcademia(1)['solicitacoes'][0]['created_at']);
+    }
+
+    public function test_dia_de_vencimento_e_obrigatorio_no_envio_e_na_edicao(): void
+    {
+        $grade = [['turma_fixa_id' => 1, 'dia_semana' => 1], ['turma_fixa_id' => 2, 'dia_semana' => 5]];
+        foreach ([[], ['dia_vencimento' => null], ['dia_vencimento' => 0], ['dia_vencimento' => 32]] as $extra) {
+            try {
+                $this->service->enviar(1, 1, ['plano_id' => 1, 'grade' => $grade] + $extra);
+                $this->fail('Vencimento ausente ou inválido não pode ser aceito.');
+            } catch (ValidationException $exception) {
+                $this->assertArrayHasKey('dia_vencimento', $exception->errors());
+            }
+        }
+        $envio = $this->enviarPadrao();
+        try {
+            $this->service->atualizarSolicitacao(1, $envio['id'], ['plano_id' => 1, 'grade' => $grade]);
+            $this->fail('A edição também exige o vencimento.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('dia_vencimento', $exception->errors());
+        }
+    }
+
+    public function test_pedido_antigo_sem_vencimento_nao_e_aprovado_ate_informar_o_dia(): void
+    {
+        $envio = $this->enviarPadrao();
+        DB::table('pre_matriculas')->where('id', $envio['id'])->update(['dia_vencimento' => null]);
+        $mock = \Mockery::mock(AdminMatriculaService::class);
+        $mock->shouldNotReceive('criar');
+        $this->app->instance(AdminMatriculaService::class, $mock);
+
+        try {
+            $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+            $this->fail('Sem vencimento a aprovação deve falhar.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('dia_vencimento', $exception->errors());
+        }
+        $this->assertSame('pendente', DB::table('pre_matriculas')->where('id', $envio['id'])->value('status'));
+    }
+
+    public function test_periodo_gratuito_conta_a_partir_do_proximo_dia_de_vencimento(): void
+    {
+        // Aprovado dia 06 com vencimento dia 10: ciclo 10/11 a 10/12
+        $this->assertSame(['inicio_ciclo' => '2026-11-10', 'fim' => '2026-12-10'], PreMatriculaService::calcularPeriodoGratuito('2026-11-06', 10, 30));
+        // No próprio dia, começa hoje; depois do dia, vai para o mês seguinte
+        $this->assertSame(['inicio_ciclo' => '2026-11-10', 'fim' => '2026-12-10'], PreMatriculaService::calcularPeriodoGratuito('2026-11-10', 10, 30));
+        $this->assertSame(['inicio_ciclo' => '2026-12-05', 'fim' => '2027-01-04'], PreMatriculaService::calcularPeriodoGratuito('2026-11-20', 5, 30));
+        // Dia 31 em mês curto vira o último dia; virada de ano
+        $this->assertSame('2026-11-30', PreMatriculaService::calcularPeriodoGratuito('2026-11-06', 31, 30)['inicio_ciclo']);
+        $this->assertSame('2027-01-20', PreMatriculaService::calcularPeriodoGratuito('2026-12-21', 20, 30)['inicio_ciclo']);
+    }
+
+    public function test_aprovacao_aplica_a_contagem_configurada_na_matricula(): void
+    {
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2026-12-06');
+        $hoje = AcademyDateTime::today();
+        $esperado = PreMatriculaService::calcularPeriodoGratuito($hoje, 10, 30)['fim'];
+
+        $resultado = $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+
+        $this->assertSame($esperado, $resultado['acesso_gratuito_ate']);
+        $this->assertSame($esperado, DB::table('matriculas')->value('proxima_data_vencimento'));
+        $this->assertSame($esperado, DB::table('matriculas')->value('data_vencimento'));
+    }
+
+    public function test_contagem_pela_aprovacao_mantem_as_datas_da_matricula(): void
+    {
+        $this->service->salvarConfiguracao([
+            'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+            'contagem_gratuito' => 'aprovacao',
+        ], 99);
+        $this->assertSame('aprovacao', $this->service->painel(1)['configuracao']['contagem_gratuito']);
+        $envio = $this->enviarPadrao();
+        $this->simularMatricula('2026-12-06');
+
+        $resultado = $this->service->avaliar(1, $envio['id'], 99, 'aprovada');
+
+        $this->assertSame('2026-12-06', $resultado['acesso_gratuito_ate']);
+    }
+
+    public function test_contagem_invalida_e_recusada_e_o_padrao_e_dia_de_vencimento(): void
+    {
+        $this->assertSame('dia_vencimento', $this->service->painel(1)['configuracao']['contagem_gratuito']);
+        try {
+            $this->service->salvarConfiguracao([
+                'tenant_id' => 1, 'ativa' => true, 'obrigatoria' => false, 'publico' => 'sem_matricula',
+                'contagem_gratuito' => 'qualquer',
+            ], 99);
+            $this->fail('Contagem inválida não pode ser aceita.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('contagem_gratuito', $exception->errors());
+        }
     }
 
     public function test_configuracao_preserva_data_de_criacao(): void
@@ -777,6 +890,7 @@ class PreMatriculaMigracaoTest extends TestCase
     {
         $envio = $this->service->enviar(1, 1, [
             'plano_id' => 1,
+            'dia_vencimento' => 10,
             'grade' => [
                 ['turma_fixa_id' => 1, 'dia_semana' => 1],
                 ['turma_fixa_id' => 2, 'dia_semana' => 5],

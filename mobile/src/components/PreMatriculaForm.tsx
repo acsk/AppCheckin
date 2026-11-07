@@ -137,8 +137,8 @@ export default function PreMatriculaForm({ dados, planoId, grade, vencimento, di
       </View>
     </Section>
 
-    <Section title="3. DIA DE VENCIMENTO" aside="Opcional" padded>
-      <TextField label="Dia do mês" icon="calendar" value={vencimento} onChangeText={onVencimentoChange} editable={!disabled} keyboardType="number-pad" maxLength={2} placeholder="De 1 a 31" error={vencimentoInvalido ? "Informe um dia de 1 a 31." : null} hint="Dia do mês em que você prefere pagar." />
+    <Section title="3. DIA DE VENCIMENTO" aside="Obrigatório" padded>
+      <TextField label="Dia do mês" icon="calendar" value={vencimento} onChangeText={onVencimentoChange} editable={!disabled} keyboardType="number-pad" maxLength={2} placeholder="De 1 a 31" error={vencimentoInvalido ? "Informe um dia de 1 a 31." : null} hint="Dia do mês em que você vai pagar. Ele define até quando o acesso gratuito vale." />
     </Section>
     <View style={styles.note}>
       <Feather name="info" size={18} color={ds.inkMuted} />

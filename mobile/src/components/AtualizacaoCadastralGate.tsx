@@ -355,8 +355,8 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
       setErroPreMatricula(`Escolha exatamente ${frequencia} dia(s) e horário(s) por semana.`);
       return;
     }
-    if (diaVencimento && (!/^\d{1,2}$/.test(diaVencimento) || Number(diaVencimento) < 1 || Number(diaVencimento) > 31)) {
-      setErroPreMatricula("Informe um dia de pagamento entre 1 e 31.");
+    if (!/^\d{1,2}$/.test(diaVencimento) || Number(diaVencimento) < 1 || Number(diaVencimento) > 31) {
+      setErroPreMatricula("Informe o dia de vencimento, de 1 a 31.");
       return;
     }
     setSalvandoPreMatricula(true);
@@ -365,7 +365,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
       await api.post("/mobile/pre-matricula", {
         plano_id: planoSelecionado.id,
         grade: gradePreMatricula,
-        dia_vencimento: diaVencimento ? Number(diaVencimento) : null,
+        dia_vencimento: Number(diaVencimento),
         ...(beneficiarioId ? { usuario_id: beneficiarioId } : {}),
       });
       if (versao !== versaoBusca.current) return;
@@ -397,7 +397,7 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
   const dependentes = preMatricula?.dependentes ?? [];
   const nomeBeneficiario = dependentes.find((d) => d.usuario_id === beneficiarioId)?.nome ?? null;
   const planoSelecionado = pm?.planos.find((plano) => plano.id === planoPreMatricula) || null;
-  const vencimentoPreMatriculaValido = !diaVencimento || (/^\d{1,2}$/.test(diaVencimento) && Number(diaVencimento) >= 1 && Number(diaVencimento) <= 31);
+  const vencimentoPreMatriculaValido = /^\d{1,2}$/.test(diaVencimento) && Number(diaVencimento) >= 1 && Number(diaVencimento) <= 31;
   const visivelCadastro = enabled && !!pendente && adiada !== pendente.id;
   const statusResolvido = !!pm && ["pendente", "aprovada"].includes(pm.status || "");
   const proprioResolvido = !!preMatricula && ["pendente", "aprovada"].includes(preMatricula.status || "");
