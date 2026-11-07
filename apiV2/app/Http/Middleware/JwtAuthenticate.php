@@ -50,7 +50,14 @@ class JwtAuthenticate
 
         try {
             $usuario = $this->usuarios->findAuthContext($userId);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('JwtAuthenticate: falha ao carregar usuário', [
+                'user_id' => $userId,
+                'path' => $request->path(),
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+
             return ApiError::json(
                 'Falha ao conectar ao banco de dados',
                 'DATABASE_CONNECTION_FAILED',

@@ -5,6 +5,7 @@ import { superAdminService } from '../../services/superAdminService';
 import preMatriculaService from '../../services/preMatriculaService';
 import { showError, showSuccess } from '../../utils/toast';
 import { DIAS_SEMANA, agruparPorTurma, exportarCsvPorTurma, exportarPdfPorTurma, rotuloPlano, rotuloTurma } from '../../utils/relatorioPreMatriculaTurmas';
+import { descricaoTurmaComInicio } from '../../utils/descricaoTurma';
 
 const dias = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const statusLabel = { pendente: 'Aguardando aprovação', aprovada: 'Aprovada', reprovada: 'Reprovada' };
@@ -395,7 +396,7 @@ export default function PreMatriculaPanel({ modoAcademia = false }) {
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
                       {item.grade.map((slot) => (
                         <Badge key={`${slot.turma_fixa_id}:${slot.dia_semana}`} tone="info">
-                          {slot.turma_nome}{slot.horario_inicio ? ` · ${String(slot.horario_inicio).slice(0, 5)}` : ''}
+                          {descricaoTurmaComInicio(slot.turma_nome, slot.horario_inicio)}
                         </Badge>
                       ))}
                     </div>
