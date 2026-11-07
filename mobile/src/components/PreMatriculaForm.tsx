@@ -29,6 +29,8 @@ export type PreMatricula = {
   contratar?: "aqui" | "perfil_dependente" | "responsavel";
   /** Só no perfil do responsável: situação de cada dependente */
   dependentes?: DependentePreMatricula[];
+  /** Só no perfil do responsável: nome do próprio usuário, para a aba dele */
+  nome?: string;
   observacao: string | null;
   motivo?: string | null;
   planos: { id: number; descricao: string | null; checkins_semanais: number; modalidade_id: number; modalidade_nome: string; dias_disponiveis?: number }[];

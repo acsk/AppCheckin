@@ -28,6 +28,7 @@ class MobilePreMatriculaController extends Controller
                 : ($alunoId !== $atorId ? 'perfil_dependente' : 'aqui');
             if ($alunoId === $atorId && ! $perfilDependente) {
                 $estado['dependentes'] = $this->service->dependentes($tenantId, $atorId);
+                $estado['nome'] = (string) \Illuminate\Support\Facades\DB::table('usuarios')->where('id', $atorId)->value('nome');
             }
         }
 

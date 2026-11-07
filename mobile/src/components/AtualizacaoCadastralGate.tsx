@@ -91,6 +91,12 @@ const faltasSenha = (senha: string, nivel: string, min: number) => {
   return f;
 };
 
+const STATUS_ABA: Record<string, string> = { pendente: "Em análise", aprovada: "Aprovado", reprovada: "Reenviar" };
+const primeiroNome = (nome?: string | null) => {
+  const primeiro = (nome || "").trim().split(/\s+/)[0] || "";
+  return primeiro ? primeiro.charAt(0).toLocaleUpperCase("pt-BR") + primeiro.slice(1).toLocaleLowerCase("pt-BR") : "";
+};
+
 export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean }) {
   const insets = useSafeAreaInsets();
   const [pendente, setPendente] = useState<Pendente | null>(null);
@@ -569,13 +575,22 @@ export default function AtualizacaoCadastralGate({ enabled }: { enabled: boolean
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
             <ScrollView style={styles.flex} contentContainerStyle={[styles.body, styles.preBody]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {dependentes.length ? (
-                <View style={styles.quem} accessibilityRole="radiogroup" accessibilityLabel="Para quem é a pré-matrícula">
-                  <Text style={styles.quemLabel}>PARA QUEM?</Text>
+                <View style={styles.quem} accessibilityRole="tablist" accessibilityLabel="Para quem é a pré-matrícula">
+                  <Text style={styles.quemLabel}>PARA QUEM? TOQUE PARA ESCOLHER</Text>
                   <View style={styles.quemLista}>
-                    {[{ usuario_id: null as number | null, nome: "Eu" }, ...dependentes].map((opcao) => {
+                    {[
+                      { usuario_id: null as number | null, nome: preMatricula?.nome || "", eu: true, status: preMatricula?.status ?? null },
+                      ...dependentes.map((d) => ({ usuario_id: d.usuario_id as number | null, nome: d.nome, eu: false, status: d.status })),
+                    ].map((opcao) => {
                       const ativo = beneficiarioId === opcao.usuario_id;
-                      return <Pressable key={String(opcao.usuario_id)} disabled={salvandoPreMatricula} onPress={() => void escolherBeneficiario(opcao.usuario_id)} accessibilityRole="radio" accessibilityState={{ checked: ativo, disabled: salvandoPreMatricula }} style={[styles.quemChip, ativo && styles.quemChipAtivo]}>
-                        <Text style={[styles.quemTexto, ativo && styles.quemTextoAtivo]} numberOfLines={1}>{opcao.nome}</Text>
+                      const nome = primeiroNome(opcao.nome) || "Eu";
+                      const situacao = STATUS_ABA[opcao.status ?? ""] ?? "Preencher";
+                      return <Pressable key={String(opcao.usuario_id)} disabled={salvandoPreMatricula} onPress={() => void escolherBeneficiario(opcao.usuario_id)} accessibilityRole="tab" accessibilityLabel={`${nome}${opcao.eu ? " (você)" : ""}: ${situacao}`} accessibilityState={{ selected: ativo, disabled: salvandoPreMatricula }} style={({ pressed }) => [styles.quemChip, ativo && styles.quemChipAtivo, pressed && !ativo && styles.quemChipPressionado]}>
+                        <Feather name={opcao.eu ? "user" : "users"} size={16} color={ativo ? ds.onInverse : ds.ink} />
+                        <View style={styles.quemTextos}>
+                          <Text style={[styles.quemTexto, ativo && styles.quemTextoAtivo]} numberOfLines={1}>{nome}{opcao.eu ? " (você)" : ""}</Text>
+                          <Text style={[styles.quemStatus, ativo && styles.quemTextoAtivo]} numberOfLines={1}>{situacao}</Text>
+                        </View>
                       </Pressable>;
                     })}
                   </View>
@@ -675,9 +690,12 @@ const styles = StyleSheet.create({
   quem: { gap: space[2] },
   quemLabel: { ...type.caption, fontWeight: "800", letterSpacing: 1, color: ds.inkMuted },
   quemLista: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
-  quemChip: { maxWidth: "100%", paddingHorizontal: space[3], paddingVertical: space[2], borderRadius: radius.md, borderWidth: 1.5, borderColor: ds.lineStrong, backgroundColor: ds.surface },
+  quemChip: { maxWidth: "100%", minWidth: 132, flexDirection: "row", alignItems: "center", gap: space[2], paddingHorizontal: space[3], paddingVertical: space[2], borderRadius: radius.md, borderWidth: 1.5, borderColor: ds.lineStrong, backgroundColor: ds.surface },
   quemChipAtivo: { backgroundColor: ds.inverse, borderColor: ds.inverse },
+  quemChipPressionado: { opacity: 0.7 },
+  quemTextos: { flexShrink: 1 },
   quemTexto: { ...type.body, fontWeight: "700", color: ds.ink },
+  quemStatus: { ...type.caption, color: ds.inkMuted },
   quemTextoAtivo: { color: ds.onInverse },
   preActions: { width: "100%", maxWidth: 528, alignSelf: "center", gap: space[2] },
   head: { gap: space[2], paddingTop: space[2] },
