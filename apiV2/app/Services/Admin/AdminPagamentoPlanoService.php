@@ -7,6 +7,7 @@ use App\Support\AcademyDateTime;
 use App\Support\CobrancaAssinatura;
 use App\Support\ParcelasPeriodo;
 use App\Support\StatusPagamentoPlano;
+use App\Support\VencimentoTurmaFixa;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -720,7 +721,16 @@ class AdminPagamentoPlanoService
         }
 
         $proximaData = new \DateTime((string) $pagamento['data_vencimento']);
-        if ($mesesCiclo) {
+        $turmaFixa = VencimentoTurmaFixa::daMatricula((int) $pagamento['matricula_id']);
+        if ($turmaFixa) {
+            // Turma fixa: a parcela seguinte cai no mesmo dia de vencimento, pague quando pagar
+            $proximaData = VencimentoTurmaFixa::proximo(
+                $proximaData,
+                $mesesCiclo ? (int) $mesesCiclo : null,
+                (int) $plano->duracao_dias,
+                $turmaFixa['dia_vencimento'],
+            );
+        } elseif ($mesesCiclo) {
             $proximaData->modify("+{$mesesCiclo} months");
         } else {
             $proximaData->modify('+'.$plano->duracao_dias.' days');

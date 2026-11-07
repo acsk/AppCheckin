@@ -13,6 +13,7 @@ use App\Support\AcademyDateTime;
 use App\Support\CobrancaAssinatura;
 use App\Support\MotivoCancelamento;
 use App\Support\ParcelasPeriodo;
+use App\Support\VencimentoTurmaFixa;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -1086,7 +1087,12 @@ class AdminMatriculaService
                 }
             }
 
-            if ($pagoDate && $pagamentoVencimento) {
+            // Turma fixa: o ciclo segue o dia de vencimento; pagar antes ou depois não o desloca
+            $turmaFixa = VencimentoTurmaFixa::daMatricula((int) $pagamento['matricula_id']);
+
+            if ($turmaFixa && $pagamentoVencimento) {
+                $baseDate = $pagamentoVencimento;
+            } elseif ($pagoDate && $pagamentoVencimento) {
                 $baseDate = ($pagoDate > $pagamentoVencimento) ? $pagoDate : $pagamentoVencimento;
             } elseif ($pagamentoVencimento) {
                 $baseDate = $pagamentoVencimento;
@@ -1097,7 +1103,14 @@ class AdminMatriculaService
             }
 
             $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
-            if ($mesesCiclo) {
+            if ($turmaFixa) {
+                $proximoVencimento = VencimentoTurmaFixa::proximo(
+                    $baseDate,
+                    $mesesCiclo ? (int) $mesesCiclo : null,
+                    (int) ($pagamento['duracao_dias'] ?? 30),
+                    $turmaFixa['dia_vencimento'],
+                );
+            } elseif ($mesesCiclo) {
                 $proximoVencimento = clone $baseDate;
                 $proximoVencimento->modify("+{$mesesCiclo} months");
             } else {

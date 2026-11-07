@@ -707,6 +707,12 @@ class PagamentoPlanoService
      */
     public static function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
     {
+        // Turma fixa: pagar depois do vencimento não adianta o fim do período (o ciclo segue o dia de vencimento)
+        $base = Schema::hasColumn('matriculas', 'tipo_acesso')
+            ? "CASE WHEN m_acesso.tipo_acesso = 'turma_fixa' THEN pp_acesso.data_vencimento
+                    ELSE GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento) END"
+            : 'GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento)';
+
         return "(
             SELECT MAX(CASE
                 WHEN COALESCE(p_acesso.duracao_dias, 0) = 1 THEN
@@ -722,7 +728,7 @@ class PagamentoPlanoService
                         INTERVAL 2 DAY
                     )
                     THEN pp_acesso.data_vencimento
-                ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                ELSE DATE_ADD({$base}, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
             END)
             FROM pagamentos_plano pp_acesso
             INNER JOIN matriculas m_acesso

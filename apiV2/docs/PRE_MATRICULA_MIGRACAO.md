@@ -136,6 +136,23 @@ Quando a matrícula ainda está no plano de valor zero e vence (ou fica
 existente (`/plano-detalhes`) do plano pago, com preço e condições antes do
 aceite. Sem destino disponível, o app orienta a falar com a academia.
 
+**Vencimento fixo (só turma fixa).** Em matrícula de turma fixa o ciclo segue
+sempre o dia de vencimento, pague o aluno antes ou depois:
+
+- a parcela paga cobre de seu vencimento até o vencimento + ciclo; a parcela
+  seguinte vence no mesmo dia do mês (dia 31 em mês curto cai no último dia e
+  volta ao 31), sem deslizar 30 dias. Vale na baixa manual, na confirmação de
+  pagamento e na vigência do acesso (`sqlFimPeriodoPago`);
+- pagar atrasado não adianta o fim do período (vencimento 10/11 pago em 25/11
+  continua cobrindo até 10/12) e pagar adiantado não o antecipa;
+- na compra do plano pago após o gratuito, o `dia_vencimento` da matrícula é
+  mantido (o app não o envia; antes virava 5) e o primeiro ciclo pago começa
+  no vencimento mais recente (gratuito até 10/12, compra em 12/12: ciclo
+  10/12 a 10/01).
+
+Matrículas de horário livre seguem a regra anterior (ciclo a partir do
+pagamento atrasado). Código: `App\Support\VencimentoTurmaFixa`.
+
 A compra reaproveita a matrícula vencida da modalidade (mesma turma e grade) e
 encerra o período de teste; a ativação revalida grade e vaga pelas regras de
 matrícula. Para matrículas de turma fixa, a contratação pelo app é liberada

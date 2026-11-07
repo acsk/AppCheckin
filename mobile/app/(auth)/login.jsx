@@ -22,7 +22,7 @@ import Button from "../../src/components/ds/Button";
 import TechBackground from "../../src/components/ds/TechBackground";
 import TextField from "../../src/components/ds/TextField";
 import TenantSelectionModal from "../../src/components/ds/TenantSelectionModal";
-import { ds as DS } from "../../src/components/ds/tokens";
+import { ds as DS, radius, space, type } from "../../src/components/ds/tokens";
 import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
 import {
   ativarBiometria,
@@ -656,6 +656,26 @@ export default function LoginScreen() {
               {loading ? "Entrando…" : "Entrar"}
             </Button>
 
+            <TouchableOpacity
+              onPress={() => router.push("/(auth)/login-dependente")}
+              style={[styles.dependente, loading && styles.dependenteDisabled]}
+              activeOpacity={0.8}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Sou dependente"
+              accessibilityHint="Entrar com o e-mail do responsável e o seu PIN"
+              accessibilityState={{ disabled: loading }}
+            >
+              <View style={styles.dependenteIcon}>
+                <Feather name="users" size={20} color={DS.brandInk} />
+              </View>
+              <View style={styles.dependenteText}>
+                <Text style={styles.dependenteTitle}>Sou dependente</Text>
+                <Text style={styles.dependenteSubtitle}>Entre com o e-mail do seu responsável</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={DS.inkMuted} />
+            </TouchableOpacity>
+
             {biometria.disponivel && biometria.email ? (
               <View style={styles.biometria}>
                 <Button variant="secondary" size="lg" block icon="unlock" disabled={loading} onPress={() => void entrarComBiometria()}>
@@ -674,13 +694,6 @@ export default function LoginScreen() {
               </View>
             ) : null}
 
-            <TouchableOpacity
-              onPress={() => router.push("/(auth)/login-dependente")}
-              style={[styles.linkHit, { alignSelf: "center" }]}
-              accessibilityRole="link"
-            >
-              <Text style={styles.link}>Sou dependente: entrar com o e-mail do responsável</Text>
-            </TouchableOpacity>
             <View style={styles.signup}>
               <Text style={styles.signupText}>Não tem uma conta?</Text>
               <TouchableOpacity
@@ -832,6 +845,31 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: DS.info,
   },
+  dependente: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space[3],
+    minHeight: 64,
+    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: space[3],
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: DS.line,
+    backgroundColor: DS.surface,
+  },
+  dependenteDisabled: { opacity: 0.5 },
+  dependenteIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: DS.brandSoft,
+  },
+  dependenteText: { flex: 1, minWidth: 0 },
+  dependenteTitle: { ...type.body, fontWeight: "800", color: DS.ink },
+  dependenteSubtitle: { ...type.caption, color: DS.inkMuted },
   biometria: {
     alignItems: "center",
     gap: 4,

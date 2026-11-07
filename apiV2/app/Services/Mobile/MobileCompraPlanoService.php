@@ -17,9 +17,11 @@ use App\Support\MetodoPagamentoResolver;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\StatusPagamentoPlano;
 use App\Support\TrocaPlanoApp;
+use App\Support\VencimentoTurmaFixa;
 use DateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MobileCompraPlanoService
 {
@@ -50,7 +52,8 @@ class MobileCompraPlanoService
         $planoId = (int) $data['plano_id'];
         app(\App\Services\AcessoHibridoService::class)->exigirContratacaoSecretaria($userId, $tenantId, $planoId);
         $planoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
-        $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
+        $diaInformado = isset($data['dia_vencimento']);
+        $diaVencimento = $diaInformado ? (int) $data['dia_vencimento'] : 5;
         $metodoPagamento = strtolower(trim((string) ($data['metodo_pagamento'] ?? 'checkout')));
 
         if (! in_array($metodoPagamento, ['checkout', 'pix', 'boleto', 'cartao', 'credit_card', 'card'], true)) {
@@ -311,6 +314,7 @@ class MobileCompraPlanoService
             ->first([
                 'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor', 'm.data_inicio',
                 'm.data_vencimento', 'm.proxima_data_vencimento',
+                ...(Schema::hasColumn('matriculas', 'tipo_acesso') ? ['m.tipo_acesso', 'm.dia_vencimento'] : []),
             ]);
 
         $pendente = $pendenteRow ? (array) $pendenteRow : null;
@@ -382,6 +386,7 @@ class MobileCompraPlanoService
                         'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor',
                         'm.data_inicio', 'm.data_vencimento', 'm.proxima_data_vencimento',
                         'sm.codigo as status_codigo',
+                        ...(Schema::hasColumn('matriculas', 'tipo_acesso') ? ['m.tipo_acesso', 'm.dia_vencimento'] : []),
                     ]);
 
                 if ($matriculaExistenteRow) {
@@ -410,6 +415,25 @@ class MobileCompraPlanoService
                             ? 'renovacao'
                             : ($valorCompra >= (float) $matriculaExistente['valor'] ? 'upgrade' : 'downgrade');
                     }
+                }
+            }
+
+            // Turma fixa: o dia de vencimento da matrícula vale sempre. O app não o envia na compra (nunca
+            // sobrescreve com o padrão) e o primeiro ciclo pago começa no vencimento, não no dia do pagamento.
+            if ($reutilizandoMatricula && $matriculaExistente && ($matriculaExistente['tipo_acesso'] ?? null) === 'turma_fixa') {
+                $diaDaMatricula = (int) ($matriculaExistente['dia_vencimento'] ?? 0);
+                if (! $diaInformado && $diaDaMatricula >= 1 && $diaDaMatricula <= 31) {
+                    $diaVencimento = $diaDaMatricula;
+                }
+                if ($diaVencimento >= 1 && $diaVencimento <= 31) {
+                    $dataInicio = VencimentoTurmaFixa::ultimaOcorrencia(date('Y-m-d'), $diaVencimento);
+                    $dataVencimento = VencimentoTurmaFixa::proximo(
+                        new DateTime($dataInicio),
+                        $duracaoMeses > 1 ? $duracaoMeses : null,
+                        (int) $plano['duracao_dias'],
+                        $diaVencimento,
+                    );
+                    $proximaDataVencimento = clone $dataVencimento;
                 }
             }
 
