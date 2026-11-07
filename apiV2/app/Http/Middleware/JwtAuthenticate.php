@@ -49,7 +49,7 @@ class JwtAuthenticate
         }
 
         try {
-            $usuario = $this->usuarios->findAuthContext($userId);
+            $usuario = $this->carregarUsuarioComRetentativa($userId);
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::error('JwtAuthenticate: falha ao carregar usuário', [
                 'user_id' => $userId,
@@ -184,6 +184,26 @@ class JwtAuthenticate
     }
 
     /** Rotas do app que contratam, pagam ou cancelam (bloqueadas no login próprio do dependente). */
+    /**
+     * Hospedagem compartilhada recusa conexões ao MySQL de forma intermitente
+     * (SQLSTATE 2002). Esta é a primeira consulta da requisição, então uma
+     * reconexão aqui salva a requisição inteira.
+     */
+    private function carregarUsuarioComRetentativa(int $userId): ?array
+    {
+        for ($tentativa = 1; ; $tentativa++) {
+            try {
+                return $this->usuarios->findAuthContext($userId);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ($tentativa >= 3 || ! str_contains($e->getMessage(), '[2002]')) {
+                    throw $e;
+                }
+                usleep(200000 * $tentativa);
+                \Illuminate\Support\Facades\DB::purge();
+            }
+        }
+    }
+
     public static function ehCompraOuPagamento(string $path): bool
     {
         return preg_match('#^v2/mobile/(comprar-plano|migrar-plano|pagamento/|pacotes/(\d+/contratar|contratos/\d+/(pagar|cobranca|renovar))|recorrencia/(contratar|contratos/\d+/)|assinatura/\d+/cancelar|diaria/\d+/cancelar)#', $path) === 1;
